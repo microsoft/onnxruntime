@@ -729,7 +729,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.wasm else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_TEST=" + (
-            "ON" if args.enable_wasm_test and args.minimal_build == 'off' else "OFF"),
+            "ON" if args.enable_wasm_test and args.minimal_build is None else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -928,7 +928,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         ]
 
         # by default, disable running unit tests due to wasm size and speed.
-        if not args.enable_wasm_test or args.minimal_build != 'off':
+        if not args.enable_wasm_test or args.minimal_build is not None:
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]

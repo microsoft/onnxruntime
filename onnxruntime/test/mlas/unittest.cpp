@@ -576,7 +576,7 @@ public:
             MlasGemmPackB(transB, N, K, B, ldb, BP);
         }
 
-        uint64_t zstart = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+        long long int zstart = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
         for (unsigned k = 0; k < BENCH_ITERATONS; k++) {
             if (Packed) {
                 MlasGemm(transA, M, N, K, alpha, A, lda, BP, beta, C, N, threadpool);
@@ -584,7 +584,7 @@ public:
                 MlasGemm(transA, transB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
             }
         }
-        uint64_t zend = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+        long long int zend = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
         printf("mlas FgemmPacked %dx%dx%d Benchmark(%d, %d) time %lld\n", (int)M, int(N), int(K), transA, transB, zend-zstart);
     }
 

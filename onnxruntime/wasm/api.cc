@@ -16,36 +16,38 @@ void ort_init() {
 Ort::Session* ort_create_session(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
   session_options.SetLogId("onnxjs");
+
+  // disable thread pool for now since not all major browsers support WebAssembly threading.
   session_options.SetIntraOpNumThreads(1);
 
   return new Ort::Session(*g_env, data, data_length, session_options);
 }
 
 void ort_release_session(Ort::Session* session) {
-  Ort::Session* p = session;
-  delete p;
+  delete session;
 }
 
 size_t ort_get_input_count(Ort::Session* session) {
   return session->GetInputCount();
 }
+
 size_t ort_get_output_count(Ort::Session* session) {
   return session->GetOutputCount();
 }
 
 char* ort_get_input_name(Ort::Session* session, size_t index) {
-  Ort::AllocatorWithDefaultOptions a;
-  return session->GetInputName(index, a);
+  Ort::AllocatorWithDefaultOptions allocator;
+  return session->GetInputName(index, allocator);
 }
 
 char* ort_get_output_name(Ort::Session* session, size_t index) {
-  Ort::AllocatorWithDefaultOptions a;
-  return session->GetOutputName(index, a);
+  Ort::AllocatorWithDefaultOptions allocator;
+  return session->GetOutputName(index, allocator);
 }
 
 void ort_free(void* ptr) {
-  Ort::AllocatorWithDefaultOptions a;
-  a.Free(ptr);
+  Ort::AllocatorWithDefaultOptions allocator;
+  allocator.Free(ptr);
 }
 
 OrtValue* ort_create_tensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length) {
@@ -62,8 +64,8 @@ void ort_get_tensor_data(OrtValue* tensor, int* data_type, void** data, size_t**
   Ort::Value v{tensor};
   auto info = v.GetTensorTypeAndShapeInfo();
   size_t dims_len = info.GetDimensionsCount();
-  Ort::AllocatorWithDefaultOptions a;
-  size_t* p_dims = reinterpret_cast<size_t*>(a.Alloc(sizeof(size_t) * dims_len));
+  Ort::AllocatorWithDefaultOptions allocator;
+  size_t* p_dims = reinterpret_cast<size_t*>(allocator.Alloc(sizeof(size_t) * dims_len));
   *data = v.GetTensorMutableData<void>();
   *data_type = info.GetElementType();
   *dims_length = dims_len;

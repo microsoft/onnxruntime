@@ -101,7 +101,7 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
   return steady_clock::now() - steady_now < rel_time ? std::cv_status::no_timeout : std::cv_status::timeout;
 }
 }  // namespace onnxruntime
-#elif defined(ENABLE_ORT_WASM)
+#elif defined(__wasm__)
 #include <mutex>
 #include <condition_variable>
 namespace onnxruntime {

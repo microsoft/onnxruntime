@@ -143,19 +143,12 @@ file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/*.cc"
 )
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY)
-  file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/common/*.cc"
-    "${TEST_SRC_DIR}/common/*.h"
-    "${TEST_SRC_DIR}/common/logging/*.cc"
-    "${TEST_SRC_DIR}/common/logging/*.h"
-  )
-else()
-  file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/common/*.cc"
-    "${TEST_SRC_DIR}/common/*.h"
-  )
-endif()
+file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/common/*.cc"
+  "${TEST_SRC_DIR}/common/*.h"
+  "${TEST_SRC_DIR}/common/logging/*.cc"
+  "${TEST_SRC_DIR}/common/logging/*.h"
+)
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 

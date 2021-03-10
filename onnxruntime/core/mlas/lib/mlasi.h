@@ -49,7 +49,7 @@ Abstract:
 #undef pixel
 #undef bool
 #endif
-#if defined(__wasm_simd128__)
+#if defined(MLAS_TARGET_WASMSIMD)
 #include <wasm_simd128.h>
 #endif
 #endif

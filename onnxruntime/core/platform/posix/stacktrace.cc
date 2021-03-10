@@ -3,7 +3,7 @@
 
 #include "core/common/common.h"
 
-#if !defined(__ANDROID__) && !defined(ENABLE_ORT_WASM)
+#if !defined(__ANDROID__) && !defined(__wasm__)
 #include <execinfo.h>
 #endif
 #include <vector>
@@ -13,7 +13,7 @@ namespace onnxruntime {
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(ENABLE_ORT_WASM)
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__)
   constexpr int kCallstackLimit = 64;  // Maximum depth of callstack
 
   void* array[kCallstackLimit];

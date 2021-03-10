@@ -13,7 +13,6 @@ add_executable(onnxruntime_wasm
 )
 
 add_compile_definitions(
-  ENABLE_ORT_WASM
   MLAS_NO_ONNXRUNTIME_THREADPOOL
 )
 

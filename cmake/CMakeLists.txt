@@ -529,6 +529,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
   if(NOT TARGET GTest::gtest)
     message("Use gtest from submodule")
+
+    # WebAssembly doesn't support threading properly yet.
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+      set(gtest_disable_pthreads ON)
+    endif()
+
     # gtest and gmock
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
