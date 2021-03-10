@@ -88,4 +88,3 @@ jobs:
       condition: 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
-  
