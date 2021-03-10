@@ -35,10 +35,10 @@ template <typename T>
 __global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_lengthes, const int num_sequences, const int sequence_length_for_split, T* output) {
 
   const int hidden_size = gridDim.z;
-  const int num_sequences_max = blockDim.y;
+  const int num_sequences_max = blockDim.x;
   const int batch_id = blockIdx.x;
   const int hidden_id = blockIdx.z;
-  const int seq_id_per_batch = blockIdx.y;
+  const int seq_id_per_batch = threadIdx.x;
 
   int sentence_lengthes_prefixsum[256]; // num_sequences <= 256
 
@@ -83,8 +83,8 @@ bool SequencePooling(
   const int64_t* sentence_lengthes,
   T* output) {
   const int num_sequences_max = 256;
-  const dim3 grid(batch_size, num_sequences_max, hidden_size);
-  const dim3 block(1, 1, 1);
+  const dim3 grid(batch_size, 1, hidden_size);
+  const dim3 block(num_sequences_max, 1, 1);
 
   SequencePoolingKernel<T><<<grid, block, 0, stream>>>(input, sentence_lengthes, num_sequences, sequence_length_for_split, output);
   cudaDeviceSynchronize();
