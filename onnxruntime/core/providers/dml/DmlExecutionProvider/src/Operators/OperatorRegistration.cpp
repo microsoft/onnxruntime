@@ -576,10 +576,10 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStridesFromAnyEp,      requiredConstantCpuInputs(2))},
     {REG_INFO(     11,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStridesFromAnyEp,      requiredConstantCpuInputs(2))}, // 11 is identical to 9.
 
-    {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,       DmlGraphSupport::NotSupported)},
-    {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,     DmlGraphSupport::NotSupported)},
-    {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,           DmlGraphSupport::NotSupported)},
-    {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,           DmlGraphSupport::NotSupported)},
+    {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,       DmlGraphSupport::Supported)},
+    {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,     DmlGraphSupport::Supported)},
+    {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,           DmlGraphSupport::Supported)},
+    {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,           DmlGraphSupport::Supported)},
 };
  
 template<typename T> 
