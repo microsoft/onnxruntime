@@ -1,3 +1,8 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
 import os
 import sys
 
@@ -9,28 +14,17 @@ else:
     sys.path.append(os.path.join(file_path, '..'))
 from symbolic_shape_infer import *
 
-import onnx
-
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     def __init__(self, model, verbose=0, int_max=2**31 - 1, auto_merge=True, guess_output_rank=False):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.model_ = onnx.ModelProto()
         self.model_.CopyFrom(model)
-
-        self.dispatcher_['Gelu'] = self._infer_Gelu
-        self.dispatcher_['FastGelu'] = self._infer_FastGelu
-        self.dispatcher_['BiasGelu'] = self._infer_BiasGelu
-        self.dispatcher_['Attention'] = self._infer_Attention
-        self.dispatcher_['LongformerAttention'] = self._infer_LongformerAttention
-        self.dispatcher_['LayerNormalization'] = self._infer_LayerNormalization
-        self.dispatcher_['SkipLayerNormalization'] = self._infer_SkipLayerNormalization
-
         self.all_shapes_inferred_ = False
         self.inferred_ = False
 
     # The goal is to remove dynamic_axis_mapping
-    def infer(self, dynamic_axis_mapping={"batch_size": 4, "seq_len": 7}):
+    def infer(self, dynamic_axis_mapping):
         if self.inferred_:
             return self.all_shapes_inferred_
 
@@ -42,33 +36,6 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
 
         self.inferred_ = True
         return self.all_shapes_inferred_
-
-    def _infer_Gelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_FastGelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_BiasGelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_Attention(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_LongformerAttention(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_LayerNormalization(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_SkipLayerNormalization(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
-
-    def _infer_BertOp_SameInputOutputShape_Impl(self, node):
-        shape = self._get_shape(node, 0)
-        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
     # override _preprocess() to avoid unnecessary model copy since ctor copies the model
     def _preprocess(self, in_mp):
@@ -96,6 +63,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         return sympy_shape
 
     def get_edge_shape(self, edge):
+        assert (self.all_shapes_inferred_ == True)
         if edge not in self.known_vi_:
             print("Cannot retrive the shape of " + str(edge))
             return None
@@ -108,6 +76,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         return shape
 
     def compare_shape(self, edge, edge_other):
+        assert (self.all_shapes_inferred_ == True)
         shape = self.get_edge_shape(edge)
         shape_other = self.get_edge_shape(edge_other)
         if shape is None or shape_other is None:

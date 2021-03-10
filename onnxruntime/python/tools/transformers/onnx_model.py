@@ -21,13 +21,21 @@ class OnnxModel:
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
-        self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+        self.shape_infer_helper = None
 
-    def infer_runtime_shape(self):
-        return self.shape_infer_helper.infer()
+    def infer_runtime_shape(self, dynamic_axis_mapping, update = False):
+        shape_infer_helper = None
+        if update:
+            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            self.shape_infer_helper = shape_infer_helper
+        else:
+            if self.shape_infer_helper is None:
+                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            shape_infer_helper = self.shape_infer_helper
 
-    def compare_edge_runtime_shape(self, edge, edge_other):
-        return self.shape_infer_helper.compare_shape(edge, edge_other)
+        if shape_infer_helper.infer(dynamic_axis_mapping):
+            return shape_infer_helper
+        return None
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}

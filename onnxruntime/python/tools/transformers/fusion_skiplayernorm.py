@@ -18,6 +18,7 @@ class FusionSkipLayerNormalization(Fusion):
     """
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
+        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7})
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
@@ -35,8 +36,8 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
-        if self.model.infer_runtime_shape():
-            if not self.model.compare_edge_runtime_shape(add.input[0], add.input[1]):
+        if self.shape_infer_helper is not None:
+            if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                 return
         else:
             logger.warning(
