@@ -13,6 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include <type_traits>
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -53,15 +54,54 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
   if (status.IsOK()) {
-    if (*size >= value.size() + 1) {
+    if (out == nullptr) {  // User is querying the true size of the attribute
+      *size = value.size() + 1;
+      return nullptr;
+    } else if (*size >= value.size() + 1) {
       std::memcpy(out, value.data(), value.size());
       out[value.size()] = '\0';
       *size = value.size() + 1;
       return nullptr;
-    } else {
+    } else {  // User has provided a buffer that is not large enough
       *size = value.size() + 1;
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
     }
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
+template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
+static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
+  if (out == nullptr) {  // User is querying the true size of the attribute
+    *size = values.size();
+    return Status::OK();
+  } else if (*size >= values.size()) {
+    std::memcpy(out, values.data(), values.size() * sizeof(T));
+    *size = values.size();
+  } else {  // User has provided a buffer that is not large enough
+    *size = values.size();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Result buffer is not large enough");
+  }
+
+  return Status::OK();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ float* out, _Inout_ size_t* size) {
+  std::vector<float> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
+  if (status.IsOK()) {
+    status = CopyDataFromVectorToMemory<float>(values, out, size);
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ int64_t* out, _Inout_ size_t* size) {
+  std::vector<int64_t> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
+  if (status.IsOK()) {
+    status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
   }
   return onnxruntime::ToOrtStatus(status);
 }

@@ -44,6 +44,10 @@ namespace perftest {
       "\t-v: Show verbose information.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
+      "\t-f [free_dimension_override]: Specifies a free dimension by name to override to a specific value for performance optimization. "
+      "Syntax is [dimension_name:override_value]. override_value must > 0\n"
+      "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
+      "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
@@ -60,11 +64,52 @@ namespace perftest {
       "\t [Example] [For OpenVINO EP] -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
       "\t-h: help\n");
 }
+#ifdef _WIN32
+static const ORTCHAR_T* overrideDelimiter = L":";
+#else
+static const ORTCHAR_T* overrideDelimiter = ":";
+#endif
+static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
+  std::basic_string<ORTCHAR_T> free_dim_str(optarg);
+  size_t delimiter_location = free_dim_str.find(overrideDelimiter);
+  if (delimiter_location >= free_dim_str.size() - 1) {
+    return false;
+  }
+  dim_identifier = free_dim_str.substr(0, delimiter_location);
+  std::basic_string<ORTCHAR_T> override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
+  ORT_TRY {
+    override_val = std::stoll(override_val_str.c_str());
+    if (override_val <= 0) {
+      return false;
+    }
+  } ORT_CATCH (...) {
+    return false;
+  }
+  return true;
+}
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
     switch (ch) {
+      case 'f': {
+        std::basic_string<ORTCHAR_T> dim_name;
+        int64_t override_val;
+        if (!ParseDimensionOverride(dim_name, override_val)) {
+          return false;
+        }
+        test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
+        break;
+      }
+      case 'F': {
+        std::basic_string<ORTCHAR_T> dim_denotation;
+        int64_t override_val;
+        if (!ParseDimensionOverride(dim_denotation, override_val)) {
+          return false;
+        }
+        test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
+        break;
+      }
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
           test_config.run_config.test_mode = TestMode::kFixDurationMode;
