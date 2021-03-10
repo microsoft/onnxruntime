@@ -83,6 +83,21 @@ class NeuralNetMultiplePositionalArguments(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsVarKeyword, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2, **kwargs):
+        model_input = input1 + input2
+        out = self.fc1(model_input)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
 class NeuralNetPositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetPositionalArguments, self).__init__()
@@ -218,18 +233,38 @@ def test_forward_call_multiple_positional_arguments():
     output = ort_model(x, y)
     assert output is not None
 
-# TODO: Re-enable after "Support models with dynamically defined inputs" done.
-# def test_forward_call_positional_arguments():
-#     device = 'cuda'
+def test_forward_call_multiple_positional_arguments_var_keyword():
+    device = 'cuda'
 
-#     N, D_in, H, D_out = 64, 784, 500, 10
-#     model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-#     model = ORTModule(model)
-#     args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
 
-#     # Make sure model runs without any exception
-#     output = model(*args)
-#     assert output is not None
+    # TODO: remove exception check and uncomment the rest of the test when
+    # PyTorch ONNX exporter supports **kwargs.
+    with pytest.raises(NotImplementedError) as runtime_error:
+        ort_model = ORTModule(model)
+    assert '**kwargs' in str(runtime_error.value)
+
+    # # Check that the original forward signature is preserved.
+    # assert signature(model.forward) == signature(ort_model.forward)
+    # x = torch.randn(N, D_in, device=device)
+    # y = torch.randn(N, D_in, device=device)
+
+    # # Make sure model runs without any exception
+    # output = ort_model(x, y)
+    # assert output is not None
+
+def test_forward_call_positional_arguments():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    model = ORTModule(model)
+    args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+
+    # Make sure model runs without any exception
+    output = model(*args)
+    assert output is not None
 
 def test_forward_call_keyword_arguments():
     device = 'cuda'
