@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "matmul_sparse_info.h"
 #include "core/providers/cpu/math/matmul.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -93,6 +94,10 @@ template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
+  if (sparse_info_) {
+    return matmul_sparse::Compute<T>(ctx, *sparse_info_, false, false);
+  }
+
   const auto* a = ctx->Input<Tensor>(0);
   const auto* b = ctx->Input<Tensor>(1);
 
@@ -110,7 +115,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   const auto* b_data = reinterpret_cast<const T*>(b->DataRaw());
   auto* y_data = reinterpret_cast<T*>(y->MutableDataRaw());
 
-  // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
     math::MatMul<T>(
@@ -126,11 +130,28 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+template <class T>
+Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
+  is_packed = false;
+
+  // only pack Matrix B
+  if (param.input_idx == 1) {
+    if (param.UseCsrFormat()) {
+      return matmul_sparse::PrePack<T>(tensor, param, false, utils::ToTensorProtoElementType<T>(), sparse_info_, is_packed);
+    }
+  }
+  return Status::OK();
+}
+
+
 Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
   // only pack Matrix B
   if (param.input_idx == 1) {
+    if (param.UseCsrFormat()) {
+      return matmul_sparse::PrePack<float>(tensor, param, trans_b_attr_, utils::ToTensorProtoElementType<float>(), sparse_info_, is_packed);
+    }
     is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();
@@ -138,6 +159,11 @@ Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, b
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+
+  if (sparse_info_) {
+    return matmul_sparse::Compute<float>(ctx, *sparse_info_, false, false);
+  }
+
 
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);

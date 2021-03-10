@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "matmul_sparse_info.h"
 
 namespace onnxruntime {
 
@@ -12,7 +13,11 @@ class MatMul final : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {}
 
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
+
   Status Compute(OpKernelContext* context) const override;
+
+  std::unique_ptr<matmul_sparse::MatMulSparseInfo<T>> sparse_info_;
 };
 
 template <>
@@ -36,6 +41,7 @@ class MatMul<float> final : public OpKernel {
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;
+  std::unique_ptr<matmul_sparse::MatMulSparseInfo<float>> sparse_info_;
 };
 
 }  // namespace onnxruntime
