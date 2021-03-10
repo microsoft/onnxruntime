@@ -150,7 +150,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # build WebAssembly
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
-option(onnxruntime_ENABLE_WEBASSEMBLY_TEST "Enable this option to run WebAssembly unit tests" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -1552,7 +1552,7 @@ if (onnxruntime_BUILD_CSHARP)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR onnxruntime_ENABLE_WEBASSEMBLY_TEST)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
     string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()
 

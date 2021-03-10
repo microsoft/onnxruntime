@@ -309,12 +309,10 @@ def parse_arguments():
         "This is only supported on MacOS")
 
     # WebAssembly build
-    parser.add_argument("--wasm", action='store_true', help="build for WebAssembly")
+    parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
     parser.add_argument(
-        "--enable_wasm_test",
-        action='store_true',
-        help="Run unit tests for WebAssembly. "
-        "Don't set this flag for distribution purpose or with minimal build")
+        "--disable_wasm_exception_catching", action='store_true',
+        help="Disable exception catching in WebAssembly.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -727,9 +725,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
-        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.wasm else "OFF"),
-        "-Donnxruntime_ENABLE_WEBASSEMBLY_TEST=" + (
-            "ON" if args.enable_wasm_test and args.minimal_build is None else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
+                                                                  else "ON"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -900,7 +898,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_CXX_COMPILER=" + compilers[1]
             ]
 
-    if args.wasm:
+    if args.build_wasm:
         # install emscripten if not exist.
         # since emscripten doesn't support file packaging required for unit tests,
         # need to apply patch with the specific version of emscripten.
@@ -928,13 +926,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         ]
 
         # by default, disable running unit tests due to wasm size and speed.
-        if not args.enable_wasm_test or args.minimal_build is not None:
+        if not args.test:
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
-            args.test = False
         else:
             # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
+            #
+            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
+            #       should be removed once the following PR get merged:
+            #       https://github.com/emscripten-core/emscripten/pull/11785
             shutil.copy(
                 os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
                 os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
@@ -1045,7 +1046,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
 
         build_tool_args = []
         if num_parallel_jobs != 1:
-            if is_windows() and args.cmake_generator != 'Ninja' and not args.wasm:
+            if is_windows() and args.cmake_generator != 'Ninja' and not args.build_wasm:
                 build_tool_args += [
                     "/maxcpucount:{}".format(num_parallel_jobs),
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
@@ -1831,6 +1832,10 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
+    if args.build_wasm:
+        if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
+            raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
+
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
@@ -1879,7 +1884,7 @@ def main():
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
         if is_windows():
-            if args.wasm:
+            if args.build_wasm:
                 cmake_extra_args = ['-G', 'Ninja']
             elif args.cmake_generator == 'Ninja':
                 if args.x86 or args.arm or args.arm64:
@@ -1950,7 +1955,7 @@ def main():
                         "Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
 
-        if (args.android or args.ios or args.enable_windows_store or args.wasm
+        if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android, iOS, and WebAssembly
             path_to_protoc_exe = build_protoc_for_host(
