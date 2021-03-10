@@ -15,6 +15,7 @@ bool LaunchSequencePoolingKernel(
     const int batch_size,
     const int hidden_size,
     const int num_sequences,
+    const int sequence_length_for_split,
     const size_t element_size
 );
 

@@ -43,6 +43,7 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& sentence_lengthes_shape = sentence_lengthes_tensor->Shape().GetDims();
 
   const int batch_size = static_cast<int>(input_shape[0]);
+  const int sequence_length_for_split = static_cast<int>(input_shape[1]);
   const int hidden_size = static_cast<int>(input_shape[2]);
   const int num_sequences = static_cast<int>(sentence_lengthes_shape[1]);
 
@@ -63,6 +64,7 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
           batch_size,
           hidden_size,
           num_sequences,
+          sequence_length_for_split,
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
