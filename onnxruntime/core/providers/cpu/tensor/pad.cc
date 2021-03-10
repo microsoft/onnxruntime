@@ -3,7 +3,6 @@
 
 #include "core/providers/cpu/tensor/pad.h"
 
-#include "core/common/optional.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
@@ -245,6 +244,10 @@ static Status PadImpl(OpKernelContext* ctx,
                       const std::vector<int64_t>& slices,
                       const Mode& mode,
                       T value) {
+  if (!utils::HasType<AllEnabledPadTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type not supported in this build.");
+  }
+
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
   std::vector<int64_t> output_dims(orig_input_shape.GetDims());
@@ -514,31 +517,22 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     slices_to_use = &slices_;
   }
 
-  optional<Status> pad_status{};
+  Status pad_status{};
   switch (element_size) {
     case sizeof(uint32_t):
-      if (utils::HasTypeWithSameSize<AllEnabledPadTypes, uint32_t>()) {
-        pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
-      }
+      pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
       break;
     case sizeof(uint64_t):
-      if (utils::HasTypeWithSameSize<AllEnabledPadTypes, uint64_t>()) {
-        pad_status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
-      }
+      pad_status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
       break;
     case sizeof(uint8_t):
-      if (utils::HasTypeWithSameSize<AllEnabledPadTypes, uint8_t>()) {
-        pad_status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
-      }
+      pad_status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
       break;
     default:
+      pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
       break;
   }
 
-  if (!pad_status) {
-    pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
-  }
-
-  return *pad_status;
+  return pad_status;
 }
 };  // namespace onnxruntime
