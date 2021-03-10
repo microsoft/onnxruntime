@@ -44,6 +44,10 @@ namespace perftest {
       "\t-v: Show verbose information.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
+      "\t-f [free_dimension_override]: Specifies a free dimension by name to override to a specific value for performance optimization. "
+      "Syntax is [dimension_name:override_value]. override_value must > 0\n"
+      "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
+      "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
@@ -61,9 +65,10 @@ namespace perftest {
       "\t-h: help\n");
 }
 
+static const wchar_t* overrideDelimiter = L":";
 static bool ParseDimensionOverride(std::string &dim_identifier, int64_t &override_val) {
   std::wstring free_dim_str = optarg;
-  size_t delimiter_location = free_dim_str.find(L":");
+  size_t delimiter_location = free_dim_str.find(overrideDelimiter);
   if (delimiter_location >= free_dim_str.size() - 1) {
     return false;
   }
