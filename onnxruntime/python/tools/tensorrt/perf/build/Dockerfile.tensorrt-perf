@@ -1,5 +1,4 @@
-FROM onnxruntime-trt-1
-RUN rm /opt/miniconda/lib/libstdc++.so.6
+FROM onnxruntime-trt
 RUN apt-get update
 RUN apt-get -y install libprotobuf-dev protobuf-compiler pciutils
 RUN pip install coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil

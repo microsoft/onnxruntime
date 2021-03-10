@@ -11,7 +11,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         python3-dev
 
 # Dependencies: conda
-wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
+wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
 rm ~/miniconda.sh
 /opt/miniconda/bin/conda clean -ya
 

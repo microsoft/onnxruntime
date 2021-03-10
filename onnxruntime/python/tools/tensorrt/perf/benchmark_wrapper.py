@@ -8,7 +8,6 @@ import json
 import re
 import pprint
 from benchmark import *
-from perf_utils import *
 
 def write_model_info_to_file(model, path):
     with open(path, 'w') as file:
