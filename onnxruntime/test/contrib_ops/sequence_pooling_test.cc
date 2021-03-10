@@ -13,7 +13,6 @@ static void SequencePoolingTest(
   const std::vector<float>& batch_input,
   const std::vector<int64_t>& batch_sequence_lengths,
   const std::vector<float>& output,
-  const std::vector<float>& masks,
   const int batch_size,
   const int sequence_length_for_split,
   const int hidden_size,
@@ -37,7 +36,6 @@ static void SequencePoolingTest(
     tester_1.AddInput<MLFloat16>("batch_input_tensor", {batch_size, sequence_length_for_split, hidden_size}, ToFloat16(batch_input));
     tester_1.AddInput<int64_t>("batch_sentence_lengthes", {batch_size, num_sequence}, batch_sequence_lengths);
     tester_1.AddOutput<MLFloat16>("output", {batch_size, num_sequence_max, hidden_size}, ToFloat16(output));
-    tester_1.AddOutput<MLFloat16>("masks", {batch_size, num_sequence_max}, ToFloat16(masks));
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_1;
     execution_providers_1.push_back(DefaultCudaExecutionProvider());
@@ -47,16 +45,19 @@ static void SequencePoolingTest(
 
 
 TEST(SequencePoolingTest, Test_1) {
-  std::vector<float> batch_input{1.0f, 2.0f, 3.0f, 3.0f, 5.0f, 5.0f, 4.0f, 3.0f, 6.0f,
-                                 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
-                                 1.0f, 2.0f, 3.0f, 3.0f, 5.0f, 5.0f, 4.0f, 3.0f, 6.0f,
-                                 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
-  std::vector<int64_t> batch_sequence_lengths{1, 2, 3, 1, 2, 3};
-  std::vector<float> output{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f,
-                            1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f};
-  std::vector<float> masks{1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f};
+  std::vector<float> batch_input{1.0f, 3.0f, -3.0f, 3.0f, -5.0f,
+                                 5.0f, -4.0f, -3.0f, 6.0f, 3.0f,
+                                 -1.0f, -2.0f, 3.0f, -4.0f, 5.0f,
+                                 -6.0f, 7.0f, 8.0f, -9.0f, 1.0f,
+                                 1.0f, 5.0f, 3.0f, 8.0f, -2.0f,
+                                 6.0f, 1.0f, 3.0f, 2.0f, 4.0f};
+  std::vector<int64_t> batch_sequence_lengths{1, 1, 4};
+  std::vector<float> output{1.0f, 3.0f, -3.0f, 3.0f, -5.0f,
+                            5.0f, -4.0f, -3.0f, 6.0f, 3.0f,
+                            6.0f, 7.0f, 8.0f, 8.0f, 5.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  SequencePoolingTest(batch_input, batch_sequence_lengths, output, masks, 2, 6, 3, 3);
+  SequencePoolingTest(batch_input, batch_sequence_lengths, output, 1, 6, 5, 3);
 }
 
 }  // namespace test
