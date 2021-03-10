@@ -2,14 +2,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "dump_utils.h"
+#include "cusparse_support.h"
+
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/math/matmul.h"
-
-#include "dump_utils.h"
-#include "cusparse_support.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -189,6 +189,43 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
   return Status::OK();
 }
 
+/// <summary>
+/// The function executes the logic of BlockedEll format support
+/// This function assumes that cudaDataType for a, b are uniform.
+/// see https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm
+/// </summary>
+/// <param name="device_major">has to be 7 or 8</param>
+/// <param name="a_b_type">cuda type for A and B</param>
+/// <param name="op_A">transpose mode for B, but bc we are swapping args, it is A</param>
+/// <returns></returns>
+bool CanUseBlockedEllFormat(const cudaDeviceProp& dev_props, cudaDataType a_b_type,
+                            cudaDataType c_type, cudaDataType compute_type) {
+  if (
+      (
+          a_b_type == CUDA_R_16F &&
+          (c_type == CUDA_R_16F || c_type == CUDA_R_32F) &&
+          compute_type == c_type) ||
+      (a_b_type == CUDA_R_16F && c_type == CUDA_R_16F && compute_type == CUDA_R_32F)) {
+    return dev_props.major >= 7;
+  }
+
+  // Omit this for now
+  //if (a_b_type == CUDA_R_8I &&
+  //    c_type == CUDA_R_8I && compute_type == CUDA_R_32I &&
+  //    !transa) {
+  //  return (dev_props.major >= 7 && dev_props.minor >= 5);
+  //}
+
+  if (
+      (a_b_type == CUDA_R_32F || a_b_type == CUDA_R_32F) &&
+      c_type == a_b_type &&
+      compute_type == a_b_type) {
+    return dev_props.major >= 8;
+  }
+
+  return false;
+}
+
 Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& prepack_param,
                bool transb, int32_t expected_kernel_type, cudaDataType cuda_type,
                std::unique_ptr<SparseInfo>& sparse_info, bool& is_packed) {
@@ -238,10 +275,10 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
   const int64_t num_cols = transb ? N : K;
   const int64_t lead_dim = transb ? K : N;
 
-  // if Ell format is specified but the hardware is not we then default
-  // to one of the belows
+  // Blocked ELL has partial support for Volta. For Float32/Float64 it still requires Ampere arch (8)
+  // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm
   const auto& dev_props = kernel->GetDeviceProp();
-  if (param.UseEllFormat() && dev_props.major >= 7) {
+  if (param.UseEllFormat() && CanUseBlockedEllFormat(dev_props, cuda_type, cuda_type, cuda_type)) {
     // Some tunables which we may adjust for both testing and depending on the matrix size.
     // Must be power of two
     const int64_t ell_block_size = param.ell_block_size;
@@ -445,7 +482,22 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
 
   cusparseHandle_t handle = kernel->CusparseHandle();
 
-  auto spmm_algo = sparse_info.param_.UseCsrFormat() ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_ALG_DEFAULT;
+  // For CSR
+  // CUSPARSE_SPMM_CSR_ALG3 is the newer algo but it does not support transposing A (in our case B) and falls back to
+  // CUSPARSE_SPMM_CSR_ALG2 which provides better performance with RowMajor. We are RowMajor but
+  // because of the argument swapping we say ColMajor.
+  // CUSPARSE_SPMM_CSR_ALG3 also does not support float16/bfloat16 data types
+  cusparseSpMMAlg_t spmm_algo = CUSPARSE_SPMM_ALG_DEFAULT;
+  if (sparse_info.param_.UseCsrFormat()) {
+    if (op_B == CUSPARSE_OPERATION_TRANSPOSE) {
+      spmm_algo = CUSPARSE_SPMM_CSR_ALG2;
+    } else if (cuda_type != CUDA_C_16F && cuda_type != CUDA_C_16BF) {
+      spmm_algo = CUSPARSE_SPMM_CSR_ALG3;
+    }
+  }
+
+  // For Blocked ELL the default is translated to CUSPARSE_SPMM_BLOCKED_ELL_ALG1 algorithm
+
   CUSPARSE_RETURN_IF_ERROR(cusparseSpMM_bufferSize(handle,
                                                    op_B,
                                                    op_A,
@@ -458,7 +510,11 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
                                                    spmm_algo,
                                                    &buffer_size));
 
-  auto work_buffer = kernel->GetScratchBuffer<uint8_t>(buffer_size);
+  IAllocatorUniquePtr<uint8_t> work_buffer;
+  if (buffer_size > 0) {
+    work_buffer = kernel->GetScratchBuffer<uint8_t>(buffer_size);
+  }
+
   CUSPARSE_RETURN_IF_ERROR(cusparseSpMM(handle,
                                         op_B,
                                         op_A,

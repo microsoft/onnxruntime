@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <core/framework/data_types_internal.h>
 #include <iostream>
 #include <iomanip>
 
