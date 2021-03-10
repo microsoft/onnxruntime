@@ -14,6 +14,7 @@ from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -122,7 +123,6 @@ class ORTTrainer(object):
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
-        # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\

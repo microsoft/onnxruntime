@@ -280,7 +280,7 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options)
         except RuntimeError:
             if self._enable_fallback:
-                print("EP Error using {}".format(self._providers))
+                print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
@@ -522,3 +522,17 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
+
+    def to_dlpack(self):
+        '''
+        Returns a DLPack object from the OrtValue.
+        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
+        '''
+        return self._ortvalue.to_dlpack()
+
+    @staticmethod
+    def from_dlpack(dlpack_tensor):
+        '''
+        Returns a OrtValue object from DLPack.
+        '''
+        return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
