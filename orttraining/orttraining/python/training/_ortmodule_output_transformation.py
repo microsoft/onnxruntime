@@ -161,6 +161,11 @@ def get_flattened_output_module(original_module):
     return FlattenedOutputModule(original_module)
 
 def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kwargs):
+    # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
+    for input_parameter in all_input_parameters:
+        if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            warnings.warn("The model's forward method has **kwargs parameter which is not supported.")
+
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
@@ -181,7 +186,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kw
                 name = f'var_positional_{input_parameter.name}{var_positional_idx}'
                 var_positional_idx += 1
                 inp = inputs[i]
-                if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+                if inp is not None and name in onnx_graph_input_names:
                     if inp.requires_grad:
                         # input_names_require_grad holds all input tensors that have requires_grad
                         input_names_require_grad.append(name)
@@ -199,7 +204,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kw
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-            if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+            if inp is not None and name in onnx_graph_input_names:
                 if inp.requires_grad:
                     # input_names_require_grad holds all input tensors that have requires_grad
                     input_names_require_grad.append(name)
