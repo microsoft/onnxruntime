@@ -86,16 +86,6 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
 
 namespace {
 
-std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  const auto& dims = tensor_proto.dims();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
-  for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i];
-  }
-
-  return tensor_shape_vec;
-}
-
 // This function doesn't support string tensors
 static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_len,
                                           size_t expected_num_elements, size_t element_size,
@@ -506,6 +496,16 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   return TensorShape(std::move(tensor_shape_vec));
 }
 
+std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  const auto& dims = tensor_proto.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    tensor_shape_vec[i] = dims[i];
+  }
+
+  return tensor_shape_vec;
+}
+
 struct UnInitializeParam {
   void* preallocated;
   size_t preallocated_size;
@@ -605,16 +605,16 @@ static Status GetFileContent(
 */
 Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                           Tensor& tensorp) {
+                           Tensor& tensor) {
   // Validate tensor compatibility
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-  if (tensor_shape_vec != tensorp.Shape().GetDims()) {
+  if (tensor_shape_vec != tensor.Shape().GetDims()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  if (source_type->Size() > tensorp.DataType()->Size()) {
+  if (source_type->Size() > tensor.DataType()->Size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProto type ", DataTypeImpl::ToString(source_type),
-                           " can not be writen into Tensor type ", DataTypeImpl::ToString(tensorp.DataType()));
+                           " can not be writen into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
   }
 
   // find raw data in proto buf
@@ -655,7 +655,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   }
 
   // unpacking tensor_proto data to preallocated tensor
-  void* preallocated = tensorp.MutableDataRaw();
+  void* preallocated = tensor.MutableDataRaw();
   int64_t tensor_size = 1;
   {
     for (auto i : tensor_proto.dims()) {

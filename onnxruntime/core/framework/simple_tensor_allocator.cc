@@ -10,7 +10,7 @@ common::Status SimpleTensorAllocator::Trace(int /*id*/, const ONNX_NAMESPACE::Te
 }
 
 common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index, const char* /*name*/,
-                                                            std::unique_ptr<MemBuffer>& /*out*/,
+                                                            std::unique_ptr<MemBuffer>& /*buf_out*/,
                                                             AllocatorPtr& alloc_out) {
   const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
     // just return allocator and let others handle it.

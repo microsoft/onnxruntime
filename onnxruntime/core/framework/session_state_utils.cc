@@ -40,12 +40,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 
   // Get shape and type of the tensor, and allocate the empty tensor
-  const auto& dims = tensor_proto.dims();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
-  for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i];
-  }
-  TensorShape tensor_shape{tensor_shape_vec};
+  TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
   if (m != nullptr) {
@@ -59,7 +54,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, alloc);
   }
 
-  if (strcmp(p_tensor->Location().name, CPU) == 0 || p_tensor->Location().mem_type == OrtMemTypeCPUOutput) {
+  if (strcmp(p_tensor->Location().name, CPU) == 0) {
     // deserialize directly to CPU tensor
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {
@@ -118,8 +113,8 @@ common::Status SaveInitializedTensors(
       if (!ort_value_name_idx_map.GetIdx(name, ort_value_index).IsOK()) {
         retval = false;
       } else {
-        auto planned_mem_info = exec_plan.GetLocation(ort_value_index);
-        auto user_mem_info = it->second->Get<Tensor>().Location();
+        const auto& planned_mem_info = exec_plan.GetLocation(ort_value_index);
+        const auto& user_mem_info = it->second->Get<Tensor>().Location();
         retval = user_mem_info.device == planned_mem_info.device;
         if (!retval) {
           LOGS(logger, WARNING) << "Cannot use user supplied initializer with name: ("
@@ -203,11 +198,6 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
-#ifndef NDEBUG
-      if (m != nullptr) {
-        ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
-      }
-#endif
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
                                          data_transfer_mgr);
       if (!st.IsOK()) {

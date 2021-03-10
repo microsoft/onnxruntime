@@ -29,7 +29,7 @@ class SimpleTensorAllocator : public ITensorAllocator {
     planned_memory_sizes_in_byte = std::unordered_map<std::string, size_t>();
     return Status::OK();
   }
-  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name, std::unique_ptr<MemBuffer>& out, AllocatorPtr& alloc_out) override;
+  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name, std::unique_ptr<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override;
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override;
   const MemoryPatternGroup& GetMemPatterns() override {
     return mem_patterns_;
