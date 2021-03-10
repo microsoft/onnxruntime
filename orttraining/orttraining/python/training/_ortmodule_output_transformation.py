@@ -161,11 +161,6 @@ def get_flattened_output_module(original_module):
     return FlattenedOutputModule(original_module)
 
 def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kwargs):
-    # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
-    for input_parameter in all_input_parameters:
-        if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-            raise NotImplementedError("The model's forward method has **kwargs parameter which is currently not supported.")
-
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []

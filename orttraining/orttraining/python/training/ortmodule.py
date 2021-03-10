@@ -239,6 +239,11 @@ class ORTModule(torch.nn.Module):
             _ortmodule_output_transformation.get_flattened_output_module(self._original_module)
         self._original_module_parameters = signature(self._original_module.forward).parameters.values()
 
+        # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
+        for input_parameter in self._original_module_parameters:
+            if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                raise NotImplementedError("The model's forward method has **kwargs parameter which is currently not supported.")
+
         self._onnx_inference = None
         self._is_training = True
 
