@@ -193,7 +193,9 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
 
 Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   if (index < 0 || index >= OutputCount()) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Index out of range.");
+    return Status(common::ONNXRUNTIME, common::FAIL, "Index out of range. " +
+                                                      std::to_string(index) + " was specified, but " +
+                                                      "range is (0, " + std::to_string(OutputCount()) + ")");
   }
 
   auto output_arg_index = GetOutputArgIndex(index);

@@ -122,7 +122,7 @@ last_pipeline_stage_ranks = [2, 3]
 
 # The loss values computed at the last pipeline stages. Note that intermediate
 # stages may not have valid loss values, so we don't check them.
-expected_loss_history = [0.9420, 0.6608, 0.9083, 1.2142, 1.1009]
+expected_loss_history = [0.9420, 0.6608, 0.8944, 1.2279, 1.1173]
 if rank in last_pipeline_stage_ranks:
     for result, expected in zip(loss_history, expected_loss_history):
         assert torch.allclose(result.cpu(), torch.Tensor([expected], device='cpu'), 1e-03)

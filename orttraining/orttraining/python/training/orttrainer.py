@@ -14,7 +14,6 @@ from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 

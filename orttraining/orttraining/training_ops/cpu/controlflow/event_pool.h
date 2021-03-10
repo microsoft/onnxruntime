@@ -21,9 +21,7 @@ class OrtEventPool final {
   }
   void SignalEvent(int64_t id);
   bool QueryEvent(int64_t id) const;
-  void WaitAndResetEvent(int64_t id);
   void WaitEvent(int64_t id) const;
-  void ResetEvent(int64_t id);
   void ResetAllEvents();
 
   static size_t GetPoolSize() {

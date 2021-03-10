@@ -37,7 +37,7 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
           full_shape_outputs_.end()) {
         ORT_ENFORCE(ctx->Input<Tensor>(i)->Shape() == backward_inputs.second[i].Get<Tensor>().Shape());
       }
-      ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]);
+      ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]));
     }
   }
 
