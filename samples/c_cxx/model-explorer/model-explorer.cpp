@@ -49,13 +49,13 @@ int main(int argc, char** argv) {
     cout << "Usage: ./onnx-api-example <onnx_model.onnx>" << endl;
     return -1;
   }
-  std::string str = argv[1];
-  std::basic_string<ORTCHAR_T> model_file;
+
 #ifdef _WIN32
+  std::string str = argv[1];
   std::wstring wide_string = std::wstring(str.begin(), str.end());
-  model_file = std::basic_string<ORTCHAR_T>(wide_string);
+  std::basic_string<ORTCHAR_T> model_file = std::basic_string<ORTCHAR_T>(wide_string);
 #else
-  model_file = std::basic_string<ORTCHAR_T>(str.c_str());
+  std::string model_file = argv[1];
 #endif
 
   // onnxruntime setup
