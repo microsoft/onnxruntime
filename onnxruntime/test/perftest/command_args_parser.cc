@@ -65,7 +65,7 @@ namespace perftest {
       "\t-h: help\n");
 }
 
-static const wchar_t* overrideDelimiter = L":";
+static const ORTCHAR_T* overrideDelimiter = L":";
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
