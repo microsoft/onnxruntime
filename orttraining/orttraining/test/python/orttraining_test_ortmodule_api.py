@@ -243,7 +243,7 @@ def test_forward_call_multiple_positional_arguments_var_keyword():
     # PyTorch ONNX exporter supports **kwargs.
     with pytest.raises(NotImplementedError) as runtime_error:
         ort_model = ORTModule(model)
-    assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
+    assert '**kwargs' in str(runtime_error.value)
 
     # # Check that the original forward signature is preserved.
     # assert signature(model.forward) == signature(ort_model.forward)
