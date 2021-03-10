@@ -60,7 +60,14 @@ int main(int argc, char** argv) {
     cout << "Usage: ./onnx-api-example <onnx_model.onnx>" << endl;
     return -1;
   }
+
+#ifdef _WIN32
+  std::string str = argv[1];
+  std::wstring wide_string = std::wstring(str.begin(), str.end());
+  std::basic_string<ORTCHAR_T> model_file = std::basic_string<ORTCHAR_T>(wide_string);
+#else
   std::string model_file = argv[1];
+#endif
 
   // onnxruntime setup
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "batch-model-explorer");
