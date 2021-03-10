@@ -121,9 +121,9 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
 }
 
 template <typename T>
-static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, cudaStream_t compute_stream) {
+static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, void* compute_stream) {
 #ifdef USE_CUDA
-  cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : compute_stream);
+  cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream));
 #else
   for (auto i = from; i < to; i++) {
     Y[i - from] = X[i];
@@ -155,11 +155,11 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
 
       custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<float>(output), reinterpret_cast<cudaStream_t>(compute_stream_));
+                   ort_.GetTensorMutableData<float>(output), compute_stream_);
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<double>(output), reinterpret_cast<cudaStream_t>(compute_stream_));
+                   ort_.GetTensorMutableData<double>(output), compute_stream_);
       break;
     default:
       throw std::exception("Unsupported input type");
