@@ -23,11 +23,7 @@ ONNX_OPSET_VERSION = 12
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_input(value_info.name, inputs[idx].device.type,
-                              _utils.get_device_index(inputs[idx].device),
-                              _utils.dtype_torch_to_numpy(inputs[idx].dtype),
-                              list(inputs[idx].size()),
-                              inputs[idx].data_ptr())
+        io_binding.bind_ortvalue_input(value_info.name, onnxruntime.OrtValue.from_dlpack(to_dlpack(inputs[idx])))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -170,7 +166,6 @@ class ORTModule(torch.nn.Module):
 
                     # Use IO binding
                     # Push user output grads to ONNX backend.
-                    backward_grad_output_ortvalue = []
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
                         if grad_output is None:
@@ -182,8 +177,7 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    for grad_output in contiguous_grad_outputs:
-                        backward_grad_output_ortvalue.append(onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)))
+                    backward_grad_output_ortvalue = [onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id
