@@ -263,8 +263,12 @@ class ORTModule(torch.nn.Module):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+        from torch.utils.cpp_extension import ROCM_HOME
+        self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
-        self._use_external_cuda_allocator = True
+        # Disable external allocator for ROCM EP since external allocator is not supported yet.
+        self._use_external_cuda_allocator = (False if self.is_rocm_pytorch else True)
         if self._use_external_cuda_allocator:
             self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
@@ -296,7 +300,8 @@ class ORTModule(torch.nn.Module):
         provider_options = None
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"])
+            providers.append("CPUExecutionProvider")
             if self._use_external_cuda_allocator:
                 provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
             else:
