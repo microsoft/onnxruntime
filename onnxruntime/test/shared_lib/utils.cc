@@ -31,7 +31,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Do computation
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : compute_stream_);
+  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
 #else
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
@@ -61,7 +61,7 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // Do computation
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : compute_stream_);
+  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
 #else
   for (int64_t i = 0; i < size; i++) {
     out[i] = static_cast<float>(X[i] + Y[i]);
@@ -155,11 +155,11 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
 
       custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<float>(output), compute_stream_);
+                   ort_.GetTensorMutableData<float>(output), reinterpret_cast<cudaStream_t>(compute_stream_));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<double>(output), compute_stream_);
+                   ort_.GetTensorMutableData<double>(output), reinterpret_cast<cudaStream_t>(compute_stream_));
       break;
     default:
       throw std::exception("Unsupported input type");
