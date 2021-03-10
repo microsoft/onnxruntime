@@ -2208,6 +2208,40 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(YieldOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Yield Op.")
+      .Input(0, "outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs_grad", "Gradient of outputs returned from pytorch.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("full_shape_outputs", "The indices of the outputs that must have full shape.", AttributeProto::INTS)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs());
+        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+        }
+
+        const std::string attribute_name = "full_shape_outputs";
+        auto full_shape_outputs = ctx.getAttribute(attribute_name);
+        if (nullptr == full_shape_outputs) {  // attribute not present
+          fail_type_inference("Value of attribute ", attribute_name, " not specified");
+        }
+
+        for (size_t i = 0, n = static_cast<size_t>(full_shape_outputs->ints_size()); i < n; ++i) {
+          size_t j = static_cast<size_t>(full_shape_outputs->ints(static_cast<int>(i)));
+          auto typeProto = ctx.getInputType(j);
+          if (hasShape(*typeProto)) {
+            propagateShapeFromInputToOutput(ctx, j, j);
+          }
+        }
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

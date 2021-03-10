@@ -39,7 +39,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
-#include "orttraining/core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
