@@ -151,6 +151,23 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+function(set_msvc_c_cpp_compiler_warning_level warning_level)
+  if (NOT "${warning_level}" MATCHES "^[0-4]$")
+    message(FATAL_ERROR "Expected warning_level of 0-4, got '${warning_level}'.")
+  endif()
+
+  if (MSVC)
+    set(warning_flag "/W${warning_level}")
+    get_property(opts DIRECTORY PROPERTY COMPILE_OPTIONS)
+    # only match the generator expression added by this function
+    list(FILTER opts EXCLUDE REGEX "^\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/W[0-4]>$")
+    list(APPEND opts "$<$<COMPILE_LANGUAGE:C,CXX>:${warning_flag}>")
+    set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
+  endif()
+endfunction()
+
+set_msvc_c_cpp_compiler_warning_level(3)
+
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
 if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
@@ -161,10 +178,6 @@ endif()
 
 if(onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
-endif()
-
-if(WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " /W3")
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -979,9 +992,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
   string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
 endif()
 
-set(ORT_WARNING_FLAGS )
 #Adjust warning flags
 if (WIN32)
+    set(ORT_WARNING_FLAGS)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
     if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
       add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
@@ -989,11 +1002,6 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
-    if(onnxruntime_USE_CUDA)
-      list(APPEND ORT_WARNING_FLAGS "/W3")
-    else()
-      list(APPEND ORT_WARNING_FLAGS "/W4")
-    endif()
     #Compiler bug, we should get such warnings. It will be fixed in a new VC release
     list(APPEND ORT_WARNING_FLAGS "/wd4127")
     # class needs to have dll-interface to be used by clients
@@ -1043,6 +1051,11 @@ if (WIN32)
       string(APPEND CMAKE_CXX_FLAGS " ${ORT_FLAG}")
       string(APPEND CMAKE_C_FLAGS " ${ORT_FLAG}")
     endforeach()
+    if(onnxruntime_USE_CUDA)
+      set_msvc_c_cpp_compiler_warning_level(3)
+    else()
+      set_msvc_c_cpp_compiler_warning_level(4)
+    endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning
