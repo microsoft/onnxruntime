@@ -5,43 +5,13 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "cusparse_support.h"
 
 namespace onnxruntime {
 
 class MatMulComputeHelper;
 
 namespace cuda {
-
-/// <summary>
-/// Captures Prepack() information along the data and its shape
-/// </summary>
-struct SparseInfo {
-  OpKernel::PrepackParam param_;
-  TensorShape shape_;
-  ptrdiff_t K_, N_; // computed in PrePack() and here for verification
-  std::vector<IAllocatorUniquePtr<uint8_t>> prepack_buffers_;   // Typed buffer
-#ifdef USE_CUSPARSE
-  onnxruntime::optional<cusparseLtHandle_t> handle_lt_;
-#endif
-  onnxruntime::optional<cusparseSpMatDescr_t> sparse_desc_;
-
-  SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape)
-      : param_(p), shape_(shape), prepack_buffers_() {}
-
-  SparseInfo(const SparseInfo&) = delete;
-  SparseInfo& operator=(const SparseInfo&) = delete;
-
-  ~SparseInfo() {
-    if (sparse_desc_.has_value()) {
-      cusparseDestroySpMat(*sparse_desc_);
-    }
-#ifdef USE_CUSPARSE
-    if (handle_lt_.has_value()) {
-      cusparseLtDestroy(&*handle_lt_);
-    }
-#endif
-  }
-};
 
 template <typename T>
 class MatMul final : public CudaKernel {
@@ -68,7 +38,7 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   // Argument 1 is a sparse weight coming from constant initializer
   // if set
-  std::unique_ptr<SparseInfo> sparse_info_;
+  std::unique_ptr<cusparse_helper::SparseInfo> sparse_info_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

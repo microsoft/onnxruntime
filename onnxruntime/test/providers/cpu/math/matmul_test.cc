@@ -310,6 +310,7 @@ TEST(MathOpTest, SparseInitializerTests) {
 
   // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
   // Disable TensorRT because of unsupported data type
+  // std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   if (is_b_constant) {
     // NNAPI: currently fails for the "test 2D empty input" case
@@ -317,7 +318,7 @@ TEST(MathOpTest, SparseInitializerTests) {
   }
   SessionOptions opts;
   opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_CSR_FORMAT;
-  opts.constant_initializers_ell_block_size = 3;
+  opts.constant_initializers_ell_block_size = 3; // Valid only for ELL
   test.Run(opts, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   // test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
