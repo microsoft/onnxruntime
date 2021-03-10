@@ -280,7 +280,7 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options)
         except RuntimeError:
             if self._enable_fallback:
-                print("EP Error using {}".format(self._providers))
+                print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
@@ -486,6 +486,23 @@ class OrtValue:
         return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
 
+    @staticmethod
+    def ortvalue_from_data_ptr(shape=None, element_type=None, device_type='cpu', device_id=0, buffer_ptr=None):
+        '''
+        Factory method to construct an OrtValue (which holds a Tensor) from given buffer_ptr
+        :param shape: List of integers indicating the shape of the OrtValue
+        :param element_type: The data type of the elements in the OrtValue (numpy type)
+        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_id: device id, e.g. 0
+        :param buffer_ptr: data buffer pointer
+        '''
+        if shape is None or element_type is None or buffer_ptr is None:
+            raise ValueError("`element_type`, `shape` and `buffer_ptr` are to be provided")
+
+        return OrtValue(C.OrtValue.ortvalue_from_data_ptr(shape, element_type,
+                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                        buffer_ptr))
+
     def data_ptr(self):
         '''
         Returns the address of the first element in the OrtValue's data buffer
@@ -522,3 +539,10 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
+
+    def to_dlpack(self):
+        '''
+        Returns a DLPack object from the OrtValue.
+        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
+        '''
+        return self._ortvalue.to_dlpack()
