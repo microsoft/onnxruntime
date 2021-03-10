@@ -314,9 +314,10 @@ def _create_operator_type_usage_processors():
     #
     # Ops we are ignoring currently so as not to produce meaningless/unused output:
     # - Implementation is type agnostic:
-    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Tile, Unsqueeze
     #    com.microsoft: DynamicQuantizeMatMul, MatMulIntegerToFloat
     # - Only one type supported in the ORT implementation:
+    #    ai.onnx: NonMaxSuppression
     #    com.microsoft: FusedConv, FusedGemm, FusedMatMul
     # - Implementation does not have any significant type specific code:
     #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
