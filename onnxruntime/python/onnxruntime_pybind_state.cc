@@ -1056,7 +1056,7 @@ void addOpSchemaSubmodule(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef ENABLE_TRAINING
-void dlpack_capsule_destructor(PyObject* data) {
+void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
   if (dlmanged_tensor) {
     // the dlmanged_tensor has not been consumed, call deleter ourselves.
@@ -1221,28 +1221,6 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
-#ifdef ENABLE_TRAINING
-      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device, int64_t data_ptr) {
-        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
-        PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
-          throw std::runtime_error("Not a valid numpy type");
-        }
-
-        int type_num = dtype->type_num;
-        Py_DECREF(dtype);
-
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape,
-                                                                            reinterpret_cast<void*>(data_ptr), info);
-
-        auto ort_value = onnxruntime::make_unique<OrtValue>();
-        ort_value->Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-        return ort_value;
-      })
-#endif
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1307,9 +1285,16 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ort_value);
+        DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
-            PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
+            PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
+      })
+      .def_static("from_dlpack", [](py::object data) {
+        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
+        OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor);
+        // Make sure this capsule will never be used again.
+        PyCapsule_SetName(data.ptr(), "used_dltensor");
+        return ort_value;
       })
 #endif
       ;
