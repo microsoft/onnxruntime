@@ -77,12 +77,12 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   }
   dim_identifier = free_dim_str.substr(0, delimiter_location);
   std::basic_string<ORTCHAR_T> override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
-  try {
+  ORT_TRY {
     override_val = std::stoll(override_val_str.c_str());
     if (override_val <= 0) {
       return false;
     }
-  } catch (...) {
+  } ORT_CATCH (...) {
     return false;
   }
   return true;
