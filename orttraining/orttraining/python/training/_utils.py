@@ -2,28 +2,11 @@ import importlib.util
 import numpy as np
 import os
 import sys
-import time
 import torch
 from onnx import TensorProto
 
 from functools import wraps
 
-def timeit(enabled=True):
-    def noop_inner(my_func):
-        return my_func
-
-    def inner(my_func):
-        @wraps(my_func)
-        def timed(*args, **kw):
-            tstart = time.time()
-            output = my_func(*args, **kw)
-            tend = time.time()
-
-            print('{}: took {:.3f}ms to execute'.format(my_func.__name__, (tend - tstart) * 1000))
-            return output
-        return timed
-
-    return inner if enabled else noop_inner
 
 def get_device_index(device):
     if isinstance(device, str):
@@ -41,16 +24,6 @@ def get_device_index_from_input(input):
     else:
         device_index = get_device_index(input.device)
     return device_index
-
-def get_device_from_input_args_kwargs(*args, **kwargs):
-    '''Returns device index from first PyTorch Tensor within *args or **kwargs'''
-
-    device = None
-    if args:
-        device = torch.device(args[0].device)
-    if not device and kwargs:
-        device = torch.device(next(iter(kwargs.values())).device)
-    return device
 
 def get_device_from_module(module):
     '''Returns the first device found in the `module`'s parameters or None'''
@@ -80,15 +53,6 @@ def get_device_str(device):
     else:
         raise RuntimeError('Unsupported device type')
     return device
-
-def get_default_device_str(type):
-    if isinstance(type, str):
-        if type == 'cuda':
-            return 'cuda:' + str(torch.cuda.current_device())
-        else:
-            return 'cpu'
-    else:
-        raise RuntimeError('Unsupported device type')
 
 def get_all_gradients_finite_name_from_session(session):
     '''Find all_gradients_finite node on Session graph and return its name'''

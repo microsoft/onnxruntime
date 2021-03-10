@@ -9,8 +9,9 @@ from inspect import signature
 from torch.utils.dlpack import from_dlpack
 from torch.utils.cpp_extension import load_inline
 
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
+# Needed to override PyTorch methods
+from typing import TypeVar
+T = TypeVar('T', bound='Module')
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import register_custom_ops_pytorch_exporter
@@ -18,11 +19,6 @@ from . import _utils, _ortmodule_output_transformation
 
 
 ONNX_OPSET_VERSION = 12
-__TEMP_ENABLE_METHOD_TIMING__ = False
-
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-T = TypeVar('T', bound='Module')
-
 
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
@@ -43,6 +39,15 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     shape = [dim.dim_value for dim in value_info.type.tensor_type.shape.dim]
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
+
+def _check_same_device(device, argument_str, *args):
+    '''Check that all tensor arguments in *args reside on the same device as the input device'''
+
+    for arg in args:
+        if arg is not None and isinstance(arg, torch.Tensor):
+            arg_device = torch.device(arg.device)
+            if arg_device != device:
+                raise RuntimeError(f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
@@ -109,7 +114,7 @@ class ORTModule(torch.nn.Module):
                 self._input_names_require_grad = input_names_require_grad
                 self._initialize_module_gradient_graph_builder()
 
-            if self._current_input_shape is None or self._current_input_shape != new_input_shape:
+            if self._current_input_shape is None:
                 self._current_input_shape = new_input_shape
                 self._build_training_graph()
                 self._create_training_session()
@@ -134,6 +139,9 @@ class ORTModule(torch.nn.Module):
                     Module outputs are returned to the user
                     '''
 
+                    # Assert that the input and model device match
+                    _check_same_device(self._device, "Input argument to forward", *inputs)
+
                     # Use IO binding
                     _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
@@ -147,12 +155,18 @@ class ORTModule(torch.nn.Module):
                     ctx.set_materialize_grads(False)
                     ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
 
+                    # Assert that the outputs and model device match
+                    _check_same_device(self._device, "Output argument from forward", *user_outputs)
+
                     return user_outputs
 
                 @staticmethod
                 def backward(ctx, *grad_outputs):
                     '''Performs backward pass based on grad wrt module output
                     '''
+
+                    # Assert that the grad_outputs and model device match
+                    _check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                     # Use IO binding
                     # Push user output grads to ONNX backend.
@@ -328,7 +342,6 @@ class ORTModule(torch.nn.Module):
         self._is_training = mode
         self._flattened_output_module.train(mode)
 
-    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
