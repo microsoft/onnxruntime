@@ -28,53 +28,63 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
- bool status = false;
+ bool vpu_status = false;
+ bool import_blob_status = false;
+ std::ifstream blob_path;
  std::string model_blob_name;
-
- if(global_context_.use_compiled_network == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
-    std::ifstream blob_path;
-    if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
+ if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
       std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
       std::string model_name= global_context_.onnx_model_path_name.substr(model_index+1);
       std::size_t model_extension_index = model_name.find_last_of(".");
       if(openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
-        model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context.subgraph_name + "_ov_" + "fully" + ".blob";
+          model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "fully" + ".blob";
       }
       else {
-        model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context.subgraph_name + "_ov_" + "partially" + ".blob";
+         model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
       }
       blob_path.open("ov_compiled_blobs/" + model_blob_name);
       if (!blob_path.is_open()) {
           LOGS_DEFAULT(INFO) << log_tag << "Device specific Compiled blob doesn't exist for this model";
       } else {
           LOGS_DEFAULT(INFO) << log_tag << "Device specific Compiled blob already exists for this model";
-          status = true;
+          vpu_status = true;
       }
-    }
+ }
 
-    if (status == true|| openvino_ep::backend_utils::UseCompiledNetwork()) {
-      auto blob = std::getenv("OV_BLOB_PATH");
-      std::ifstream compiled_blob_path{blob};
-      try {
-        if(status == true) {
-          LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
-          exe_network_ = global_context_.ie_core.ImportNetwork(blob_path, hw_target, {});
-        } else {
-          LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
-          exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
-        }
-      } catch (InferenceEngine::details::InferenceEngineException &e) {
-        ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
-      } catch(...) {
-        ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name);
-      }
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+ if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
+  char * blob = nullptr;
+  #ifdef _WIN32
+	    size_t env_name_len = 0;
+	    char* env_name = nullptr;
+	    if (_dupenv_s(&env_name, &env_name_len, "OV_BLOB_PATH") == 0 && env_name != nullptr) {
+		    blob = env_name;
+		    free(env_name);
+	    }
+	#else
+      blob = std::getenv("OV_BLOB_PATH");
+	#endif
+  std::ifstream compiled_blob_path{blob};
+  try {
+    if(vpu_status == true) {
+      LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
+      exe_network_ = global_context_.ie_core.ImportNetwork(blob_path, hw_target, {});
+    } else {
+      LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
+      exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
     }
+  } catch (InferenceEngine::details::InferenceEngineException &e) {
+    ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
+  } catch(...) {
+    ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name);
   }
+  import_blob_status = true;
+  LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
+}
 
-  if(status == false && !openvino_ep::backend_utils::UseCompiledNetwork()) {
-      ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-      SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+if ((global_context_.use_compiled_network == true && import_blob_status == false) || vpu_status == false) {
+  if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
+    ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
     #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
       if (const_outputs_map_.size() == subgraph_context_.output_names.size())
         subgraph_context_.is_constant = true;
@@ -122,17 +132,18 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
       exe_network_.Export(compiled_blob_dump);
     }
   }
-    //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
-    //The nireq value can also be configured to any num_of_threads during runtime
-    size_t nireq = global_context_.num_of_threads;
-    LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
-  #ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The value of nireq being used is: " << nireq << std::endl;
-    }
-  #endif
-    inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
+}
+  //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
+  //The nireq value can also be configured to any num_of_threads during runtime
+  size_t nireq = global_context_.num_of_threads;
+  LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    std::cout << "The value of nireq being used is: " << nireq << std::endl;
   }
+#endif
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
+}
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx

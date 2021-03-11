@@ -38,6 +38,8 @@ void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file
   model_proto.SerializeToOstream(outfile);
 }
 
+#endif
+
 bool UseCompiledNetwork() {
 #ifdef _WIN32
   size_t env_name_len = 0;
@@ -46,12 +48,9 @@ bool UseCompiledNetwork() {
   free(env_name);
   return res;
 #else
-  return (std::getenv("OV_USE_COMPILED_NETWORK") != nullptr);;
+  return (std::getenv("OV_USE_COMPILED_NETWORK") != nullptr);
 #endif
 }
-
-#endif
-
 struct static_cast_int64 {
   template <typename T1>  // T1 models type statically convertible to T
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
