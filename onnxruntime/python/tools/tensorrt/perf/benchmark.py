@@ -106,15 +106,9 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
         logger.info("trtexec fails...")
         return None
 
-def get_memory_usage(): 
-    import psutil
-    mem_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-    logger.info("Memory Used {}".format(mem_mb))
-    return int(mem_mb)
-
 def get_trtexec_path(): 
     trtexec_options = get_output(["find", "/", "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/bin/trtexec', trtexec_options).group()
+    trtexec_path = re.search(r'.*/workspace/.*/bin/trtexec', trtexec_options).group()
     return trtexec_path
 
 def get_latency_result(runtimes, batch_size, mem_mb=None):
@@ -176,15 +170,23 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     return (sess_inputs, sess_outputs)
 
-def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
+def track_ep_memory(ep): 
+     return trt in ep or cuda in ep or standalone_trt in ep
 
+def get_max_memory(mem_file): 
+    import pandas as pd
+    df = pd.read_csv(mem_file)
+    max_mem = max(df.iloc[:,0].map(lambda x:x.strip(' MiB')).astype(int))
+    return max_mem
+
+def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
     runtimes = []
     if args.input_data == "random":
         repeat_times = 1 # warn-up run is included in ort_inputs
     else:
         repeat_times += 1 # add warn-up run
     
-    mem_mb = None
+    mem_usage = None
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
@@ -194,9 +196,19 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_outputs)
 
         try:
-            runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-            if args.track_memory and (trt in ep or cuda in ep): 
-                mem_mb = get_memory_usage() 
+            if args.track_memory and track_ep_memory(ep): 
+                mem_file = './temp.csv'
+                p = subprocess.Popen(["nvidia-smi", "--query-gpu=memory.used", "--format=csv", "-l", "1", "-f", mem_file])
+                
+                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+                
+                p.terminate()
+                p.wait()
+                mem_usage = get_max_memory(mem_file) 
+                os.remove(mem_file)
+            else: 
+                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+
             runtimes += runtime
 
         except Exception as e:
@@ -210,7 +222,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     result = {}
     result.update(result_template)
     result.update({"io_binding": False})
-    latency_result = get_latency_result(runtimes, batch_size, mem_mb)
+    latency_result = get_latency_result(runtimes, batch_size, mem_usage)
     result.update(latency_result)
     logger.info(result)
     return result
@@ -1262,20 +1274,22 @@ def output_latency(results, csv_filename):
                         "CPU \n 90th percentile (ms)",
                         "CUDA fp32 \nmean (ms)",
                         "CUDA fp32 \n90th percentile (ms)",
-                        "CUDA EP fp32 \n memory usage (mb)",
+                        "CUDA EP fp32 \nmemory usage (MiB)",
                         "TRT EP fp32 \nmean (ms)",
                         "TRT EP fp32 \n90th percentile (ms)",
-                        "TRT EP fp32 \n memory usage (mb)",
+                        "TRT EP fp32 \nmemory usage (MiB)",
                         "Standalone TRT fp32 \nmean (ms)",
                         "Standalone TRT fp32 \n90th percentile (ms)",
+                        "Standalone TRT fp32 \nmemory usage (MiB)",
                         "CUDA fp16 \nmean (ms)",
                         "CUDA fp16 \n90th percentile (ms)",
-                        "CUDA EP fp16 \n memory usage (mb)",
+                        "CUDA EP fp16 \nmemory usage (MiB)",
                         "TRT EP fp16 \nmean (ms)",
                         "TRT EP fp16 \n90 percentile (ms)",
-                        "TRT EP fp16 \n memory usage (mb)",
+                        "TRT EP fp16 \nmemory usage (MiB)",
                         "Standalone TRT fp16 \nmean (ms)",
                         "Standalone TRT fp16 \n90th percentile (ms)",
+                        "Standalone TRT fp16 \nmemory usage (MiB)",
                         "TRT v CUDA EP \ngain (mean) (%)",
                         "TRT v CUDA EP fp16 \ngain (mean) (%)", 
                         "EP v Native TRT \ngain (mean) (%)",
@@ -1325,6 +1339,10 @@ def output_latency(results, csv_filename):
             standalone_trt_90_percentile = ""
             if standalone_trt in value and 'latency_90_percentile' in value[standalone_trt]:
                 standalone_trt_90_percentile = value[standalone_trt]['latency_90_percentile']
+            
+            standalone_trt_memory = ""
+            if standalone_trt in value and 'memory' in value[standalone_trt]:
+                standalone_trt_memory = value[standalone_trt]['memory']
 
             cuda_fp16_average = ""
             if cuda_fp16 in value and 'average_latency_ms' in value[cuda_fp16]:
@@ -1357,6 +1375,10 @@ def output_latency(results, csv_filename):
             standalone_trt_fp16_90_percentile = ""
             if standalone_trt_fp16 in value and 'latency_90_percentile' in value[standalone_trt_fp16]:
                 standalone_trt_fp16_90_percentile = value[standalone_trt_fp16]['latency_90_percentile']
+            
+            standalone_trt_fp16_memory = ""
+            if standalone_trt_fp16 in value and 'memory' in value[standalone_trt_fp16]:
+                standalone_trt_fp16_memory = value[standalone_trt_fp16]['memory']
 
             row = [key,
                    cpu_average, 
@@ -1369,6 +1391,7 @@ def output_latency(results, csv_filename):
                    trt_memory,
                    standalone_trt_average,
                    standalone_trt_90_percentile,
+                   standalone_trt_memory,
                    cuda_fp16_average,
                    cuda_fp16_90_percentile,
                    cuda_fp16_memory,
@@ -1377,6 +1400,7 @@ def output_latency(results, csv_filename):
                    trt_fp16_memory,
                    standalone_trt_fp16_average,
                    standalone_trt_fp16_90_percentile,
+                   standalone_trt_fp16_memory,
                    value[trt_cuda_gain] if trt_cuda_gain in value else "  ",
                    value[trt_cuda_fp16_gain] if trt_cuda_fp16_gain in value else "  ",
                    value[trt_native_gain] if trt_native_gain in value else "  ",
