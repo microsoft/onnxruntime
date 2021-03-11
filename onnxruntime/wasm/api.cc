@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "api.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -15,7 +18,7 @@ void ort_init() {
 
 Ort::Session* ort_create_session(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
-  session_options.SetLogId("onnxjs");
+  session_options.SetLogId("onnxruntime");
 
   // disable thread pool for now since not all major browsers support WebAssembly threading.
   session_options.SetIntraOpNumThreads(1);

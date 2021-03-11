@@ -1,3 +1,20 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    direct_conv_chw.cpp
+
+Abstract:
+
+    This module implements the kernels for the single precision direct
+    convolution kernels.
+
+--*/
+
 #include "mlasi.h"
 
 // filter 3x3, dilations are all 1. pad is 0 or 1, input_image_width > 2
