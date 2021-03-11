@@ -494,6 +494,8 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
     } else if (cuda_type != CUDA_C_16F && cuda_type != CUDA_C_16BF) {
       spmm_algo = CUSPARSE_SPMM_CSR_ALG3;
     }
+  } else if (sparse_info.param_.UseCooFormat()) {
+    spmm_algo = CUSPARSE_SPMM_COO_ALG3;
   }
 
   // For Blocked ELL the default is translated to CUSPARSE_SPMM_BLOCKED_ELL_ALG1 algorithm

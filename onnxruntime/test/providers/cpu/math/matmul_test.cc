@@ -317,7 +317,7 @@ TEST(MathOpTest, SparseInitializerTests) {
     excluded_providers.insert(kNnapiExecutionProvider);
   }
   SessionOptions opts;
-  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_ELL_FORMAT;
+  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_COO_FORMAT;
   opts.constant_initializers_ell_block_size = 3; // Valid only for ELL
   test.Run(opts, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   // test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
