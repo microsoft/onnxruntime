@@ -677,7 +677,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 #endif
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
-      : env_(env),
+      : profiler_(num_threads),
+        env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
@@ -685,8 +686,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         all_coprimes_(num_threads),
         blocked_(0),
         done_(false),
-        cancelled_(false),
-        profiler_(num_threads) {
+        cancelled_(false) {
 
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
