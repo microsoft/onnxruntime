@@ -152,62 +152,42 @@ class ThreadPoolProfiler {
     MAX_EVENT
   };
   ThreadPoolProfiler(int num_threads);
-  ~ThreadPoolProfiler() = default;
+  ~ThreadPoolProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
-  void Start();                          //start profiling
-  std::string Stop();                    //stop profiling and return collected numbers
-  void LogStart();                       //record the starting time point
-  void LogEnd(ThreadPoolEvent);          //calculate and save the time elapsed from last start point
-  void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
-  void LogRun(int);
-  std::string DumpPerThreadStat();
+  void Start();                       //called by executor to start profiling
+  std::string Stop();                 //called by executor to stop profiling and return collected numbers
+  void LogBlockSize(std::ptrdiff_t);  //called in main thread to log the decision made by the cost model
+  void LogStart();                    //called in main thread to record the starting time point
+  void LogEnd(ThreadPoolEvent);       //called in main thread to calculate and save the time elapsed from last start point
+  void LogEndAndStart(ThreadPoolEvent);
+  void LogThreadId(int);              //called in child thread to log its id
+  void LogRun(int);                   //called in child thread to log num of run
+  void LogSpin(int);                  //called in child thread to log num of spinning
+  void LogBlock(int);                 //called in child thread to log num of blocking
+  std::string DumpChildThreadStat();  //return all child statitics collected so far
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
-  // profiler for each parent thread that calling into the thread pool
-  struct ParentThreadProfiler {
+  struct MainThreadStat {
     uint64_t events_[MAX_EVENT] = {};
+    std::vector<std::ptrdiff_t> blocks_; //block size determined by cost model
     std::vector<onnxruntime::TimePoint> points_;
+    void LogBlockSize(std::ptrdiff_t);
     void LogStart();
     void LogEnd(ThreadPoolEvent);
     void LogEndAndStart(ThreadPoolEvent);
     std::string Reset();
   };
-  nsync::nsync_mu shared_lock_ = NSYNC_MU_INIT;
-  struct LockRead {
-    nsync::nsync_mu* lock_ = nullptr;
-    LockRead(nsync::nsync_mu* lock) : lock_(lock) {
-      nsync_mu_rlock(lock_);
-    }
-    ~LockRead() {
-      nsync_mu_runlock(lock_);
-    }
-  };
-  struct LockWrite {
-    nsync::nsync_mu* lock_ = nullptr;
-    LockWrite(nsync::nsync_mu* lock) : lock_(lock) {
-      nsync_mu_lock(lock_);
-    }
-    ~LockWrite() {
-      nsync_mu_unlock(lock_);
-    }
-  };
-  using ProfilerMap = std::unordered_map<::std::thread::id, ParentThreadProfiler>;
-  ProfilerMap per_thread_stat_map_;
-  inline ProfilerMap::iterator GetPerThreadStat() {
-    LockRead lock_read(&shared_lock_);
-    return per_thread_stat_map_.find(std::this_thread::get_id());
-  }
-  inline void SetPerThreadStat() {
-    LockWrite lock_write(&shared_lock_);
-    per_thread_stat_map_.emplace(std::this_thread::get_id(), ParentThreadProfiler{});
-  }
-  // statistics per thread owned by the thread pool
+  bool enabled_ = false;
+  thread_local static MainThreadStat main_thread_stat_;
   int num_threads_;
   struct ChildThreadStat {
-    uint32_t num_run = 0;
-    uint32_t core = 0;
+    std::thread::id thread_id_;
+    uint32_t num_run_ = 0;
+    uint32_t num_spin_ = 0;
+    uint32_t num_block_ = 0;
+    uint32_t core_ = 0;
   };
   std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
 };
@@ -262,7 +242,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [0,k) where k<=n.
   virtual void RunInParallelSection(ThreadPoolParallelSection &ps,
                                     std::function<void(unsigned idx)> fn,
-                                    unsigned n) = 0;
+                                    unsigned n, std::ptrdiff_t block_size) = 0;
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
@@ -279,7 +259,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [ Note that this 20% overhead is more than paid for when we have
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
-                             unsigned n) = 0;
+                             unsigned n, std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling()  = 0;
   virtual std::string StopProfiling() = 0;
 };
@@ -1021,7 +1001,8 @@ void SummonWorkers(PerThread &pt,
 
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
-                          unsigned n) override {
+                          unsigned n, std::ptrdiff_t block_size) override {
+  profiler_.LogBlockSize(block_size);
   profiler_.LogStart();
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1069,7 +1050,8 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
 
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  profiler_.LogBlockSize(block_size);
   profiler_.LogStart();
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
@@ -1321,6 +1303,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     const int steal_count = spin_count/100;
 
     SetDenormalAsZero(set_denormal_as_zero_);
+    profiler_.LogThreadId(thread_id);
 
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
@@ -1332,6 +1315,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
+            profiler_.LogSpin(thread_id);
             t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
@@ -1381,6 +1365,9 @@ int CurrentThreadId() const EIGEN_FINAL {
                           should_exit = true;
                         }
                       }
+                    }
+                    if (should_block) {
+                      profiler_.LogBlock(thread_id); 
                     }
                     return should_block;
                   },

@@ -31,81 +31,88 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+thread_local ThreadPoolProfiler::MainThreadStat ThreadPoolProfiler::main_thread_stat_;
+
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads) : num_threads_(num_threads) {
   child_thread_stats_.reset(new ChildThreadStat[num_threads]);
 }
 
+ThreadPoolProfiler::~ThreadPoolProfiler() {
+  enabled_ = false;
+}
+
 void ThreadPoolProfiler::Start() {
-  auto per_thread_number = GetPerThreadStat();
-  if (per_thread_number == per_thread_stat_map_.end()) {
-    SetPerThreadStat();
-  }
+  enabled_ = true;
 }
 
 std::string ThreadPoolProfiler::Stop() {
-  auto per_thread_number = GetPerThreadStat();
-  if (per_thread_number == per_thread_stat_map_.end()) {
-    return {};
-  } else {
+  if (enabled_) {
     std::stringstream ss;
     ss << "{\"main_thread:\": {"
-       << per_thread_number->second.Reset()
+       << main_thread_stat_.Reset()
        << "}, \"sub_threads\": {"
-       << DumpPerThreadStat()
+       << DumpChildThreadStat()
        << "}}";
     return ss.str();
+  } else {
+    return {};
+  }
+}
+
+void ThreadPoolProfiler::LogBlockSize(std::ptrdiff_t block_size) {
+  if (enabled_) {
+    main_thread_stat_.LogBlockSize(block_size);
   }
 }
 
 void ThreadPoolProfiler::LogStart() {
-  if (per_thread_stat_map_.empty()) {
-    return;
-  }
-  auto per_thread_number = GetPerThreadStat();
-  if (per_thread_number != per_thread_stat_map_.end()) {
-    per_thread_number->second.LogStart();
+  if (enabled_) {
+    main_thread_stat_.LogStart();
   }
 }
 
 void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
-  if (per_thread_stat_map_.empty()) {
-    return;
-  }
-  auto per_thread_number = GetPerThreadStat();
-  if (per_thread_number != per_thread_stat_map_.end()) {
-    per_thread_number->second.LogEnd(evt);
+  if (enabled_) {
+    main_thread_stat_.LogEnd(evt);
   }
 }
 
 void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
-  if (per_thread_stat_map_.empty()) {
-    return;
-  }
-  auto per_thread_number = GetPerThreadStat();
-  if (per_thread_number != per_thread_stat_map_.end()) {
-    per_thread_number->second.LogEndAndStart(evt);
+  if (enabled_) {
+    main_thread_stat_.LogEndAndStart(evt);
   }
 }
 
-void ThreadPoolProfiler::ParentThreadProfiler::LogStart() {
+void ThreadPoolProfiler::MainThreadStat::LogBlockSize(std::ptrdiff_t block_size) {
+  blocks_.emplace_back(block_size);
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogStart() {
   points_.emplace_back(Clock::now());
 }
 
-void ThreadPoolProfiler::ParentThreadProfiler::LogEnd(ThreadPoolEvent evt) {
+void ThreadPoolProfiler::MainThreadStat::LogEnd(ThreadPoolEvent evt) {
   ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
   events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
   points_.pop_back();
 }
 
-void ThreadPoolProfiler::ParentThreadProfiler::LogEndAndStart(ThreadPoolEvent evt) {
+void ThreadPoolProfiler::MainThreadStat::LogEndAndStart(ThreadPoolEvent evt) {
   ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
   events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
   points_.back() = Clock::now();
 }
 
-std::string ThreadPoolProfiler::ParentThreadProfiler::Reset() {
+std::string ThreadPoolProfiler::MainThreadStat::Reset() {
   ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
   std::stringstream ss;
+  ss << "\"thread_id\": " << std::this_thread::get_id() << ", \"block_size\": [";
+  if (!blocks_.empty()) {
+    std::copy(blocks_.begin(), blocks_.end() - 1, std::ostream_iterator<std::ptrdiff_t>(ss, ", "));
+    ss << blocks_.back();
+    blocks_.clear();
+  }
+  ss << "], ";
   for (int i = 0; i < MAX_EVENT; ++i) {
     ss << "\"" << ThreadPoolProfiler::GetEventName(static_cast<ThreadPoolEvent>(i))
        << "\": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
@@ -131,38 +138,47 @@ const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) {
   }
 }
 
+void ThreadPoolProfiler::LogThreadId(int thread_idx) {
+  child_thread_stats_[thread_idx].thread_id_ = std::this_thread::get_id();
+}
+
 void ThreadPoolProfiler::LogRun(int thread_idx) {
-  static const uint32_t mod = (1U << 31) - 1;
-  static const uint32_t mask = (1U << 4) - 1;
-  if (per_thread_stat_map_.empty()) {
-    return;
-  }
-  child_thread_stats_[thread_idx].num_run =
-      (child_thread_stats_[thread_idx].num_run + 1) & mod;
-  if ((child_thread_stats_[thread_idx].num_run & (~mask)) == 0) {
+  if (enabled_) {
+    static uint32_t mask = ~((1U << 10) - 1);
+    if ((child_thread_stats_[thread_idx].num_run_ & mask) == 0) {
 #ifdef _WIN32
-    child_thread_stats_[thread_idx].core = GetCurrentProcessorNumber();
+      child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
 #else
-    //uint32_t node = 0;
-    //getcpu(&child_thread_stats_[thread_idx].core, &node);
-    child_thread_stats_[thread_idx].core = sched_getcpu();
+      child_thread_stats_[thread_idx].core_ = sched_getcpu();
 #endif
+    }
+    child_thread_stats_[thread_idx].num_run_++;
   }
 }
 
-std::string ThreadPoolProfiler::DumpPerThreadStat() {
-  if (per_thread_stat_map_.empty()) {
-    return {};
-  } else {
-    std::stringstream ss;
-    for (int i = 0; i < num_threads_; ++i) {
-      ss << "\"" << i << "\": {"
-         << "\"run\":" << child_thread_stats_[i].num_run << ", "
-         << "\"core\":"<< child_thread_stats_[i].core << "}"
-         << (i == num_threads_ - 1 ? "" : ",");
-    }
-    return ss.str();
+void ThreadPoolProfiler::LogSpin(int thread_idx) {
+  if (enabled_) {
+    child_thread_stats_[thread_idx].num_spin_++;
   }
+}
+
+void ThreadPoolProfiler::LogBlock(int thread_idx) {
+  if (enabled_) {
+    child_thread_stats_[thread_idx].num_block_++;
+  }
+}
+
+std::string ThreadPoolProfiler::DumpChildThreadStat() {
+  std::stringstream ss;
+  for (int i = 0; i < num_threads_; ++i) {
+    ss << "\"" << child_thread_stats_[i].thread_id_ << "\": {"
+       << "\"num_run\":" << child_thread_stats_[i].num_run_ << ", "
+       << "\"num_spin\":" << child_thread_stats_[i].num_spin_ << ", "
+       << "\"num_block\":" << child_thread_stats_[i].num_block_ << ", "
+       << "\"core\":" << child_thread_stats_[i].core_ << "}"
+       << (i == num_threads_ - 1 ? "" : ",");
+  }
+  return ss.str();
 }
 
   // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
@@ -354,7 +370,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // Run the work in the thread pool (and in the current thread).  Synchronization with helping
   // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
   // run_work.
-  RunInParallel(run_work, num_work_items);
+  RunInParallel(run_work, num_work_items, block_size);
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
@@ -417,15 +433,15 @@ ThreadPool::ParallelSection::~ParallelSection() {
 #endif
 }
 
-void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
+void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) {
   if (underlying_threadpool_) {
     if (ThreadPool::ParallelSection::current_parallel_section) {
       underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->ps_.get()),
                                                    std::move(fn),
-                                                   n);
+                                                   n, block_size);
     } else {
       underlying_threadpool_->RunInParallel(std::move(fn),
-                                            n);
+                                            n, block_size);
     }
   } else {
     fn(0);

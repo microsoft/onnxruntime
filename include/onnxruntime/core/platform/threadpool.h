@@ -400,7 +400,7 @@ class ThreadPool {
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
-  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
+  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size);
 
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
