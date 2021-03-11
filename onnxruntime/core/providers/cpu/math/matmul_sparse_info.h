@@ -6,7 +6,6 @@
 #include <memory>
 #include <core/framework/op_kernel.h>
 #include <Eigen/SparseCore>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -81,7 +80,7 @@ static Status Compute(OpKernelContext* ctx, const MatMulSparseInfo<T>& sparse_in
   const bool trans_b = transb && right_shape.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left->Shape(), right_shape, trans_a, trans_b));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_shape, right_shape, trans_a, trans_b));
   if (helper.OutputShape().Size() == 0)
     return Status::OK();
 
