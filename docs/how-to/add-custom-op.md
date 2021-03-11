@@ -33,7 +33,7 @@ See [this](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test
 
 Note that when a model being inferred on gpu, onnxruntime will insert MemcpyToHost op before a cpu custom op and append MemcpyFromHost after to make sure tensor(s) are accessible throughout calling, meaning there are no extra efforts required from custom op developer for the case.
 
-When using CUDA custom ops, to ensure synchronization between ORT's CUDA kernels and the custom CUDA kernels, they must use the same CUDA stream. To ensure this, you may first create a CUDA stream and pass it to the underlying Session via SessionOptions (use `OrtCudaProviderOptions` struct). This will ensure ORT's CUDA kernels use that stream and if the custom CUDA kernels are launched 
+When using CUDA custom ops, to ensure synchronization between ORT's CUDA kernels and the custom CUDA kernels, they must use the same CUDA stream. To ensure this, you may first create a CUDA stream and pass it to the underlying Session via SessionOptions (use `OrtCudaProviderOptions` struct). This will ensure ORT's CUDA kernels use that stream and if the custom CUDA kernels are launched
 using the same stream, synchronization is now taken care of implicitly. For a sample, please see how the afore-mentioned `MyCustomOp` is being launched and how the Session using this custom op is created.
 
 ## Use RegisterCustomRegistry API
