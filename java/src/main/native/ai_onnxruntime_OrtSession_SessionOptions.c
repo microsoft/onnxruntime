@@ -377,22 +377,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addROCM
- * Signature: (JJI)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
-    (void)jobj;
-  #ifdef USE_ROCM
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID));
-  #else
-    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when ROCM is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addDnnl
  * Signature: (JJI)V
  */
