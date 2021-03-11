@@ -22,6 +22,7 @@
 #include "test_allocator.h"
 #include "test_fixture.h"
 #include "utils.h"
+#include "custom_op_utils.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -94,14 +95,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   if (provider_type == 1) {
 #ifdef USE_CUDA
     std::cout << "Running simple inference with cuda provider" << std::endl;
-    OrtCUDAProviderOptions cuda_options{
-        0,
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-        std::numeric_limits<size_t>::max(),
-        0,
-        true,
-        cuda_compute_stream != nullptr ? 1 : 0,
-        cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr};
+    auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(compute_stream);
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_UNUSED_PARAMETER(cuda_compute_stream);
@@ -319,14 +313,7 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions cuda_options{
-      0,
-      OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-      std::numeric_limits<size_t>::max(),
-      0,
-      true,
-      1,
-      compute_stream};
+  auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(compute_stream);
   session_options.AppendExecutionProvider_CUDA(cuda_options);
 #endif
 

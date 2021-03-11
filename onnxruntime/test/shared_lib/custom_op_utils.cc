@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "utils.h"
+#include "custom_op_utils.h"
 #include "core/common/common.h"
 
 #ifdef USE_CUDA
@@ -33,6 +33,10 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
+  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
+  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
+  // cudaStreamSynchronize(nullptr);
 #else
   ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
@@ -64,6 +68,10 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
+  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
+  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
+  // cudaStreamSynchronize(nullptr);
 #else
   ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
@@ -126,7 +134,12 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
 template <typename T>
 static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, void* compute_stream) {
 #ifdef USE_CUDA
+  // Launch on stream 0 or user provided stream
   cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream));
+  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
+  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
+  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
+  // cudaStreamSynchronize(nullptr);
 #else
   ORT_UNUSED_PARAMETER(compute_stream);
   for (auto i = from; i < to; i++) {

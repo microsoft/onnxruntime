@@ -14,6 +14,7 @@
 
 #include "test_allocator.h"
 #include "utils.h"
+#include "custom_op_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -27,14 +28,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   session_options.Add(custom_op_domain);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions cuda_options{
-      0,
-      OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-      std::numeric_limits<size_t>::max(),
-      0,
-      true,
-      cuda_compute_stream != nullptr ? 1 : 0,
-      cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr};
+  auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(cuda_compute_stream);
   session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
   ORT_UNUSED_PARAMETER(cuda_compute_stream);
@@ -101,13 +95,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
     so.SetOptimizedModelFilePath(ort_file.c_str());
 
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options{0,
-                                        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                        std::numeric_limits<size_t>::max(),
-                                        0,
-                                        true,
-                                        1,
-                                        compute_stream};
+    OrtCUDAProviderOptions cuda_options{};
     so.AppendExecutionProvider_CUDA(cuda_options);
 #endif
 
