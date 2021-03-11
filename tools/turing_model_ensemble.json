@@ -1,5 +1,6 @@
 {
     "max_seq_len": 1024,
+    "eos_token": 50256,
     "input_ids_name": "input_ids",
     "position_ids_name": "position_ids",
     "logits_name": "logits",

@@ -175,8 +175,8 @@ static float HalfToFloat(uint16_t h) {
   return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
 }
 
-struct RequestProcessor {
-  Token* ProcessRequest(Token& token,
+struct RequestExecutor {
+  Token* ExecuteRequest(Token& token,
                         const PipelineConfig::ModelConfig& mcfg,
                         PipelineSession::SessionState& session_state,
                         RequestExecutionFrame& exec_frame /* pass by non-const exec_frame intentional as we'll update the state */) {
@@ -429,7 +429,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
   std::unordered_map<int, ReqId> req_idx_req_id_map;
 
   // First enqueue the first step and first stage processing for all the requests
-  RequestProcessor rp;
+  RequestExecutor rp;
   auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   int num_reqs = req_list.size();
 
@@ -497,7 +497,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
           token_ptr->Init(exec_frame.req_id, step_id, one_req.input_names, std::move(i_values));
         }
 
-        token_ptr = rp.ProcessRequest(*token_ptr, model_config, session_state, exec_frame);
+        token_ptr = rp.ExecuteRequest(*token_ptr, model_config, session_state, exec_frame);
       }  // done with one step/all stages
 
       // modify input_ids and posn_ids here

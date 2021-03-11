@@ -7,6 +7,7 @@
 #include <onnxruntime_cxx_api.h>
 #include "json.hpp"
 #include "task_thread_pool.h"
+#include "concurrent_queue.h"
 
 namespace onnxruntime {
 using ReqId = int64_t;
@@ -76,6 +77,7 @@ struct PipelineConfig {
   };
 
   int max_seq_len;
+  int eos_token;
   int num_stages;  // = model_config_vec.size()
   std::string input_ids_name;
   std::string position_ids_name;
@@ -163,8 +165,25 @@ struct RequestExecutionFrame {
 };
 
 struct PipelineSession {
+  using ResponseQueue = ConcurrentQueue<Token*>;
   OrtStatus* Run(const std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int num_steps);
+  OrtStatus* CopyFinalOutput(Token& token, OrtResp& ort_resp);
   OrtStatus* HandleAndReturnFailure(const char* error_msg);
+  void SetupAndScheduleAllRequestsToStage0(const std::vector<OrtReq>& req_list,
+                                           std::vector<OrtResp>& resp_list,
+                                           std::unordered_map<ReqId, RequestExecutionFrame>& req_frame_map,
+                                           ResponseQueue& resp_queue);
+  struct SessionState;
+  void ThreadWorkerFn(ResponseQueue& resp_queue,
+                      Token& token,
+                      const PipelineConfig::ModelConfig& mcfg,
+                      SessionState& session_state,
+                      RequestExecutionFrame& exec_frame);
+  OrtStatus* ProcessResponses(int num_reqs,
+                              int num_steps,
+                              std::unordered_map<ReqId, RequestExecutionFrame>& req_frame_map,
+                              ResponseQueue& resp_queue,
+                              std::vector<OrtResp>& resp_list);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens);
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
   PipelineSession(const PipelineConfig& ens, Ort::Env& env);

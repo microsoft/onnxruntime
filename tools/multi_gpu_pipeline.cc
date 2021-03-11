@@ -18,7 +18,6 @@
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #include "task_thread_pool.h"
-#include "concurrent_queue.h"
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/Default/Half.h"
 #include "cxxopts.hpp"
@@ -175,217 +174,217 @@ static float HalfToFloat(uint16_t h) {
   return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
 }
 
-struct RequestProcessor {
-  Token* ProcessRequest(Token& token,
-                        const PipelineConfig::ModelConfig& mcfg,
-                        PipelineSession::SessionState& session_state,
-                        RequestExecutionFrame& exec_frame /* pass by non-const exec_frame intentional as we'll update the state */) {
-    // std::ostringstream ostr;
-    // ostr << "Executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")";
-    // const std::string& str = ostr.str();
-    // std::cout << str << "\n";
-    // Timer t(str.c_str());
+static Token* ExecuteRequest(Token& token,
+                             const PipelineConfig::ModelConfig& mcfg,
+                             PipelineSession::SessionState& session_state,
+                             RequestExecutionFrame& exec_frame /* pass by non-const exec_frame intentional as we'll update the state */) {
+  // std::ostringstream ostr;
+  // ostr << "Executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")";
+  // const std::string& str = ostr.str();
+  // std::cout << str << "\n";
+  // Timer t(str.c_str());
 
-    int model_idx = exec_frame.stage_id;
-    RequestExecutionFrame::RunState& run_state = exec_frame.model_run_state_vec[model_idx];
+  int model_idx = exec_frame.stage_id;
+  RequestExecutionFrame::RunState& run_state = exec_frame.model_run_state_vec[model_idx];
 
-    // set the GPU device id for this thread
-    CheckStatus(g_ort->SetCurrentGpuDeviceId(mcfg.device_id));
+  // set the GPU device id for this thread
+  CheckStatus(g_ort->SetCurrentGpuDeviceId(mcfg.device_id));
 
-    // reuse the token; move the things out of this token since we'll overwrite them
-    auto* out_token_ptr = &token;
-    auto in_token_ort_value_names = token.ort_value_names;
-    std::vector<OrtValueHandle> in_token_ort_values;
-    in_token_ort_values.reserve(token.ort_values.size());
-    for (auto& v : token.ort_values) {
-      in_token_ort_values.push_back(std::move(v));
-    }
-    token.ort_value_names.clear();
-    token.ort_values.clear();
+  // reuse the token; move the things out of this token since we'll overwrite them
+  auto* out_token_ptr = &token;
+  auto in_token_ort_value_names = token.ort_value_names;
+  std::vector<OrtValueHandle> in_token_ort_values;
+  in_token_ort_values.reserve(token.ort_values.size());
+  for (auto& v : token.ort_values) {
+    in_token_ort_values.push_back(std::move(v));
+  }
+  token.ort_value_names.clear();
+  token.ort_values.clear();
 
-    // if (token.step_id > 0 && exec_frame.stage_id == 0) {
-    //   auto* posn_ids_data = in_token_ort_values[1].GetTensorData<int64_t>();
-    //   for (int i = 0; i < exec_frame.batch_size; ++i) {
-    //     std::cout << "step_id: " << token.step_id << " posn: " << posn_ids_data[i] << "\n";
-    //   }
-    // }
+  // if (token.step_id > 0 && exec_frame.stage_id == 0) {
+  //   auto* posn_ids_data = in_token_ort_values[1].GetTensorData<int64_t>();
+  //   for (int i = 0; i < exec_frame.batch_size; ++i) {
+  //     std::cout << "step_id: " << token.step_id << " posn: " << posn_ids_data[i] << "\n";
+  //   }
+  // }
 
-    auto& io_binding_obj = *run_state.io_binding;
-    auto* io_binding = static_cast<OrtIoBinding*>(io_binding_obj);
-    io_binding_obj.ClearBoundInputs();
-    io_binding_obj.ClearBoundOutputs();
+  auto& io_binding_obj = *run_state.io_binding;
+  auto* io_binding = static_cast<OrtIoBinding*>(io_binding_obj);
+  io_binding_obj.ClearBoundInputs();
+  io_binding_obj.ClearBoundOutputs();
 
-    // inputs
-    // go through all the inputs from the config and for each one if you find it in token.input_names
-    // use the value from there.
-    // else search this input name inside past_input_names. If found, get the corresponding output name from
-    // present_output_names and the OrtValue associated with it.
-    for (const auto& iname : mcfg.input_names) {
-      auto rc = Contains(in_token_ort_value_names, iname);
-      if (rc.first) {
-        // std::cout << stage_id << "/" << token.step_id << " binding input " << token.ort_value_names[rc.second] << "\n";
-        CheckStatus(g_ort->BindInput(io_binding, iname.c_str(), in_token_ort_values[rc.second]));
-        continue;
-      }
-
-      rc = Contains(mcfg.past_input_names, iname);
-      if (rc.first) {
-        const auto& mapped_oname = mcfg.present_output_names[rc.second];
-        // std::cout << stage_id << "/" << token.step_id << " state_binding " << iname << " with value of " << mapped_oname << "\n";
-        CheckStatus(g_ort->BindInput(io_binding, iname.c_str(), run_state.output_val_map.at(mapped_oname)));
-      }
+  // inputs
+  // go through all the inputs from the config and for each one if you find it in token.input_names
+  // use the value from there.
+  // else search this input name inside past_input_names. If found, get the corresponding output name from
+  // present_output_names and the OrtValue associated with it.
+  for (const auto& iname : mcfg.input_names) {
+    auto rc = Contains(in_token_ort_value_names, iname);
+    if (rc.first) {
+      // std::cout << stage_id << "/" << token.step_id << " binding input " << token.ort_value_names[rc.second] << "\n";
+      CheckStatus(g_ort->BindInput(io_binding, iname.c_str(), in_token_ort_values[rc.second]));
+      continue;
     }
 
-    // allocate outputs
-    // output seq len = current input seq len + past seq len (which is 0 the first time)
-    // if output is a state, use the pre-allocated buffer to create an OrtValue and bind it.
-    // if output is not a state, bind using just cuda_mem_info.
+    rc = Contains(mcfg.past_input_names, iname);
+    if (rc.first) {
+      const auto& mapped_oname = mcfg.present_output_names[rc.second];
+      // std::cout << stage_id << "/" << token.step_id << " state_binding " << iname << " with value of " << mapped_oname << "\n";
+      CheckStatus(g_ort->BindInput(io_binding, iname.c_str(), run_state.output_val_map.at(mapped_oname)));
+    }
+  }
 
-    // get seq len of input_ids (stage 0) or input_hidden_states (stage 1)
-    auto rc = Contains(in_token_ort_value_names, mcfg.input_to_use_for_seq_len);
-    assert(rc.first);  // TODO
-    const auto& input_ort_value = in_token_ort_values[rc.second];
-    int input_seq_len = input_ort_value.GetTensorTypeAndShapeInfo().GetShape()[mcfg.seq_len_dim_index_in_input];
+  // allocate outputs
+  // output seq len = current input seq len + past seq len (which is 0 the first time)
+  // if output is a state, use the pre-allocated buffer to create an OrtValue and bind it.
+  // if output is not a state, bind using just cuda_mem_info.
 
-    // get past seq len
-    // assume past_seq_len is same for all states
-    int past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
-                           .GetTensorTypeAndShapeInfo()
-                           .GetShape()[mcfg.seq_len_dim_index_in_state];
-    // std::cout << "input_seq_len: " << input_seq_len << "\n";
-    // std::cout << "past_seq_len: " << past_seq_len << "\n";
-    // new seq len for state output = seq len of input_ids + past_seq_len
-    int new_seq_len = input_seq_len + past_seq_len;
+  // get seq len of input_ids (stage 0) or input_hidden_states (stage 1)
+  auto rc = Contains(in_token_ort_value_names, mcfg.input_to_use_for_seq_len);
+  assert(rc.first);  // TODO
+  const auto& input_ort_value = in_token_ort_values[rc.second];
+  int input_seq_len = input_ort_value.GetTensorTypeAndShapeInfo().GetShape()[mcfg.seq_len_dim_index_in_input];
 
-    auto& ort_sess = session_state.session;
+  // get past seq len
+  // assume past_seq_len is same for all states
+  int past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
+                         .GetTensorTypeAndShapeInfo()
+                         .GetShape()[mcfg.seq_len_dim_index_in_state];
+  // std::cout << "input_seq_len: " << input_seq_len << "\n";
+  // std::cout << "past_seq_len: " << past_seq_len << "\n";
+  // new seq len for state output = seq len of input_ids + past_seq_len
+  int new_seq_len = input_seq_len + past_seq_len;
 
-    // populate shape for state outputs
-    // assume same shape for all outputs
-    auto rc2 = Contains(mcfg.output_names, mcfg.present_output_names[0]);
-    assert(rc2.first);
-    auto out_idx = rc2.second;
-    auto past_present_state_shape = GetShape(ort_sess, out_idx, false /*output*/);
-    past_present_state_shape[mcfg.batch_dim_index_in_state] = exec_frame.batch_size;
-    past_present_state_shape[mcfg.seq_len_dim_index_in_state] = new_seq_len;
+  auto& ort_sess = session_state.session;
 
-    // assume types are same for all states
-    auto past_present_type = ort_sess.GetOutputTypeInfo(out_idx).GetTensorTypeAndShapeInfo().GetElementType();
+  // populate shape for state outputs
+  // assume same shape for all outputs
+  auto rc2 = Contains(mcfg.output_names, mcfg.present_output_names[0]);
+  assert(rc2.first);
+  auto out_idx = rc2.second;
+  auto past_present_state_shape = GetShape(ort_sess, out_idx, false /*output*/);
+  past_present_state_shape[mcfg.batch_dim_index_in_state] = exec_frame.batch_size;
+  past_present_state_shape[mcfg.seq_len_dim_index_in_state] = new_seq_len;
 
-    for (const auto& oname : mcfg.output_names) {
-      auto rc = Contains(mcfg.present_output_names, oname);
-      if (rc.first) {
-        auto& mem_allocation = token.step_id % 2 == 0  // even: use buffer1 for input and buffer2 for output
-                                   ? run_state.present_past_prealloc_buffer_2_vec[rc.second]
-                                   : run_state.present_past_prealloc_buffer_1_vec[rc.second];
-        // std::cout << "mem allocation size: " << mem_allocation.size() << "\n";
-        auto output_ort_val = Ort::Value::CreateTensor(
-            session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
-            past_present_state_shape.data(), past_present_state_shape.size(), past_present_type);
-        // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
-        //           << " created tensor for " << oname << "\n";
-        CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), output_ort_val));
-      } else {
-        // if oname is present in OrtResp::output_names, bind the corresponding OrtValue from OrtResp
-        // we check in OrtResp::output_names because we want to use the info provided by the user to tell us
-        // where the output should go.
-        auto rc = Contains(exec_frame.ort_resp.output_names, oname);
-        if (rc.first) {  // logits
-          // get the corresponding ortval from OrtResp
-          auto* mem_info = exec_frame.ort_resp.output_meminfo[rc.second];
-          // if user provided mem_info, use that for binding
-          if (mem_info) {
-            CheckStatus(g_ort->BindOutputToDevice(io_binding, oname.c_str(), mem_info));
-          } else {  // bind the pre-allocated OrtVal
-            const auto& ort_val = exec_frame.ort_resp.output_values[rc.second];
-            CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), ort_val));
-          }
-        } else {  // inter stage outputs (e.g. hidden_states)
-          // get shape of oname
-          auto found = Contains(mcfg.output_names, oname);
-          assert(found.first);
-          auto inter_stage_output_shape = GetShape(ort_sess, found.second, false /*output*/);
+  // assume types are same for all states
+  auto past_present_type = ort_sess.GetOutputTypeInfo(out_idx).GetTensorTypeAndShapeInfo().GetElementType();
 
-          // replace batch_size and seq_len
-          inter_stage_output_shape[mcfg.batch_dim_in_inter_stage_output] = exec_frame.batch_size;
-          inter_stage_output_shape[mcfg.seq_len_dim_in_inter_stage_output] = input_seq_len;
-
-          auto& mem_allocation = run_state.inter_stage_output_prealloc_buffer_map.at(oname);
-          auto inter_stage_ort_val = Ort::Value::CreateTensor(
-              session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
-              inter_stage_output_shape.data(), inter_stage_output_shape.size(), past_present_type);
-          CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), inter_stage_ort_val));
+  for (const auto& oname : mcfg.output_names) {
+    auto rc = Contains(mcfg.present_output_names, oname);
+    if (rc.first) {
+      auto& mem_allocation = token.step_id % 2 == 0  // even: use buffer1 for input and buffer2 for output
+                                 ? run_state.present_past_prealloc_buffer_2_vec[rc.second]
+                                 : run_state.present_past_prealloc_buffer_1_vec[rc.second];
+      // std::cout << "mem allocation size: " << mem_allocation.size() << "\n";
+      auto output_ort_val = Ort::Value::CreateTensor(
+          session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
+          past_present_state_shape.data(), past_present_state_shape.size(), past_present_type);
+      // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
+      //           << " created tensor for " << oname << "\n";
+      CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), output_ort_val));
+    } else {
+      // if oname is present in OrtResp::output_names, bind the corresponding OrtValue from OrtResp
+      // we check in OrtResp::output_names because we want to use the info provided by the user to tell us
+      // where the output should go.
+      auto rc = Contains(exec_frame.ort_resp.output_names, oname);
+      if (rc.first) {  // logits
+        // get the corresponding ortval from OrtResp
+        auto* mem_info = exec_frame.ort_resp.output_meminfo[rc.second];
+        // if user provided mem_info, use that for binding
+        if (mem_info) {
+          CheckStatus(g_ort->BindOutputToDevice(io_binding, oname.c_str(), mem_info));
+        } else {  // bind the pre-allocated OrtVal
+          const auto& ort_val = exec_frame.ort_resp.output_values[rc.second];
+          CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), ort_val));
         }
+      } else {  // inter stage outputs (e.g. hidden_states)
+        // get shape of oname
+        auto found = Contains(mcfg.output_names, oname);
+        assert(found.first);
+        auto inter_stage_output_shape = GetShape(ort_sess, found.second, false /*output*/);
+
+        // replace batch_size and seq_len
+        inter_stage_output_shape[mcfg.batch_dim_in_inter_stage_output] = exec_frame.batch_size;
+        inter_stage_output_shape[mcfg.seq_len_dim_in_inter_stage_output] = input_seq_len;
+
+        auto& mem_allocation = run_state.inter_stage_output_prealloc_buffer_map.at(oname);
+        auto inter_stage_ort_val = Ort::Value::CreateTensor(
+            session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
+            inter_stage_output_shape.data(), inter_stage_output_shape.size(), past_present_type);
+        CheckStatus(g_ort->BindOutput(io_binding, oname.c_str(), inter_stage_ort_val));
       }
     }
+  }
 
-    // run
-    // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
-    //           << " just before run\n";
-    {
-      // std::string run_timer_str = "Run: " + str;
-      // Timer t2(run_timer_str.c_str());
-      ort_sess.Run({}, io_binding_obj);
-    }
-    // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
-    //           << " Done with run\n";
-    // now populate token and save state from this run
-    auto vec_out_vals = io_binding_obj.GetOutputValues();
-    for (int i = 0, end = mcfg.output_names.size(); i < end; ++i) {
-      const auto& oname = mcfg.output_names[i];
+  // run
+  // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
+  //           << " just before run\n";
+  {
+    // std::string run_timer_str = "Run: " + str;
+    // Timer t2(run_timer_str.c_str());
+    ort_sess.Run({}, io_binding_obj);
+  }
+  // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
+  //           << " Done with run\n";
+  // now populate token and save state from this run
+  auto vec_out_vals = io_binding_obj.GetOutputValues();
+  for (int i = 0, end = mcfg.output_names.size(); i < end; ++i) {
+    const auto& oname = mcfg.output_names[i];
 
-      // Assume that the same output name is not present in both the state that needs to be kept
-      // and that needs to be passed on to the next layer.
-      auto is_loop_back_state_output = Contains(mcfg.present_output_names, oname);
-      assert(!(is_loop_back_state_output.first && mcfg.inter_stage_output_input_map.count(oname)));
+    // Assume that the same output name is not present in both the state that needs to be kept
+    // and that needs to be passed on to the next layer.
+    auto is_loop_back_state_output = Contains(mcfg.present_output_names, oname);
+    assert(!(is_loop_back_state_output.first && mcfg.inter_stage_output_input_map.count(oname)));
 
-      // if this output is present in present_output_names, store it in model_run_state_vec
-      // because we don't want to store all outputs
-      if (is_loop_back_state_output.first) {
-        // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
-        //           << " saving state " << oname << "\n";
-        assert(vec_out_vals[i].GetTensorData<Ort::Float16_t>());
-        run_state.output_val_map[oname] = OrtValueHandle(vec_out_vals[i].release());
-        continue;
-      }
-
-      // only pass those outputs to the next layer for which there is a config in the ensemble
-      // other outputs are states to be used in the next run
-      if (mcfg.inter_stage_output_input_map.count(oname)) {
-        // std::cout << "Copying output req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ") "
-        // << mcfg.inter_stage_output_input_map.at(oname) << "\n";
-        out_token_ptr->ort_value_names.push_back(mcfg.inter_stage_output_input_map.at(oname));  // input_hidden_states
-        assert(vec_out_vals[i].GetTensorData<Ort::Float16_t>());
-        // if (oname == "hidden_states") {
-        //   auto* data = vec_out_vals[i].GetTensorData<Ort::Float16_t>();
-        //   auto typeshape = vec_out_vals[i].GetTensorTypeAndShapeInfo();
-        //   auto slen = typeshape.GetShape()[1];
-        //   // std::cout << "slen: " << slen << " bsize: " << typeshape.GetShape()[0] << "\n";
-        //   std::vector<Ort::Float16_t> v(exec_frame.batch_size * slen * 4096);
-        //   cudaMemcpy(v.data(), data, sizeof(Ort::Float16_t) * exec_frame.batch_size * slen * 4096, cudaMemcpyDefault);
-        //   for (int b = 0; b < exec_frame.batch_size * 94 * 4096; b += 94 * 4096) {
-        //     std::cout << "b = " << b << "\n";
-        //     for (int k = 0; k < 10; ++k) {
-        //       printf("output hidden state %f\n", HalfToFloat(v[b + k]));
-        //     }
-        //   }
-        // }
-        out_token_ptr->ort_values.push_back(OrtValueHandle(vec_out_vals[i].release()));
-      }
+    // if this output is present in present_output_names, store it in model_run_state_vec
+    // because we don't want to store all outputs
+    if (is_loop_back_state_output.first) {
+      // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
+      //           << " saving state " << oname << "\n";
+      assert(vec_out_vals[i].GetTensorData<Ort::Float16_t>());
+      run_state.output_val_map[oname] = OrtValueHandle(vec_out_vals[i].release());
+      continue;
     }
 
-    // std::cout << "Done executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")"
-    //           << "\n";
-    return out_token_ptr;
-  };
+    // only pass those outputs to the next layer for which there is a config in the ensemble
+    // other outputs are states to be used in the next run
+    if (mcfg.inter_stage_output_input_map.count(oname)) {
+      // std::cout << "Copying output req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ") "
+      // << mcfg.inter_stage_output_input_map.at(oname) << "\n";
+      out_token_ptr->ort_value_names.push_back(mcfg.inter_stage_output_input_map.at(oname));  // input_hidden_states
+      assert(vec_out_vals[i].GetTensorData<Ort::Float16_t>());
+      // if (oname == "hidden_states") {
+      //   auto* data = vec_out_vals[i].GetTensorData<Ort::Float16_t>();
+      //   auto typeshape = vec_out_vals[i].GetTensorTypeAndShapeInfo();
+      //   auto slen = typeshape.GetShape()[1];
+      //   // std::cout << "slen: " << slen << " bsize: " << typeshape.GetShape()[0] << "\n";
+      //   std::vector<Ort::Float16_t> v(exec_frame.batch_size * slen * 4096);
+      //   cudaMemcpy(v.data(), data, sizeof(Ort::Float16_t) * exec_frame.batch_size * slen * 4096, cudaMemcpyDefault);
+      //   for (int b = 0; b < exec_frame.batch_size * 94 * 4096; b += 94 * 4096) {
+      //     std::cout << "b = " << b << "\n";
+      //     for (int k = 0; k < 10; ++k) {
+      //       printf("output hidden state %f\n", HalfToFloat(v[b + k]));
+      //     }
+      //   }
+      // }
+      out_token_ptr->ort_values.push_back(OrtValueHandle(vec_out_vals[i].release()));
+    }
+  }
+
+  // std::cout << "Done executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")"
+  //           << "\n";
+  return out_token_ptr;
 };
 
-// GetNewInputIdsFromLogits
 static void GetNewInputIdsFromLogits(int batch_size,
                                      const OrtValueHandle& logits,
                                      const std::vector<int64_t>& logits_shape,
+                                     int eos_token,
                                      std::vector<int64_t>& input_ids,
-                                     std::vector<int64_t>& input_ids_shape) {
+                                     std::vector<int64_t>& input_ids_shape,
+                                     bool& are_all_input_ids_eos_tokens) {
   // Timer t("GetNewInputIdsFromLogits");
+  are_all_input_ids_eos_tokens = false;
   input_ids.clear();
   input_ids_shape.clear();
 
@@ -402,8 +401,8 @@ static void GetNewInputIdsFromLogits(int batch_size,
   int skip = (logits_shape[1] - 1) * logits_shape[2];
 
   // now find the max per onnx batch
+  int num_eos_tokens_predicted = 0;
   for (int batch_id = 0; batch_id < num_elems; batch_id += ltwo) {  // TODO parallelize on batches
-                                                                    // if (batch_id == 0)
     // std::cout << "batch_id " << batch_id << " first: " << logits_data[batch_id + skip] << "\n";
     auto tmp = std::max_element(logits_data + batch_id + skip,
                                 logits_data + batch_id + skip + logits_shape[2],
@@ -411,8 +410,12 @@ static void GetNewInputIdsFromLogits(int batch_size,
     int64_t max_idx = std::distance(logits_data + batch_id + skip, tmp);
     // if (batch_id == 0)
     // std::cout << "batch_id: " << batch_id << " next token: " << max_idx << "\n";
+    if (max_idx == eos_token) {
+      ++num_eos_tokens_predicted;
+    }
     input_ids.push_back(max_idx);
   }
+  are_all_input_ids_eos_tokens = (num_eos_tokens_predicted == batch_size);
 }
 
 void GetNewPosnIds(int batch_size, int orig_input_seq_len, int step_id, std::vector<int64_t>& posn_ids) {
@@ -428,57 +431,65 @@ OrtStatus* PipelineSession::HandleAndReturnFailure(const char* error_msg) {
   return g_ort->CreateStatus(ORT_FAIL, error_msg);
 }
 
-// TODO proper error handling
-// TODO - replace all cout with LOG
-// For simplicity even if one req in the batch fails, we consider the full batch to have failed.
-OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector<OrtResp>& resp_list, int num_steps) {
-  using ResponseQueue = ConcurrentQueue<Token*>;
-  ResponseQueue resp_queue;
-  std::unordered_map<ReqId, RequestExecutionFrame> req_frame_map;
-
-  // code that will run by the threads in the threadpool
-  auto lambda_helper = [](ResponseQueue& resp_queue,
-                          RequestProcessor& rp,
-                          Token& token,
-                          const PipelineConfig::ModelConfig& mcfg,
-                          PipelineSession::SessionState& session_state,
-                          RequestExecutionFrame& exec_frame) {
-    Token* out_token_ptr = nullptr;
-    try {
-      out_token_ptr = rp.ProcessRequest(token, mcfg, session_state, exec_frame);
-    } catch (const std::exception& e) {
-      std::ostringstream error;
-      error << "Error in processing request id: " << token.req_id << " with exception: " << e.what();
-      out_token_ptr = &exec_frame.token;
-      out_token_ptr->req_id = token.req_id;
-      out_token_ptr->step_id = token.step_id;
-      out_token_ptr->error_msg = error.str();
-    } catch (...) {
-      std::ostringstream error;
-      error << "Error in processing request id: " << token.req_id << " with unknown exception";
-      out_token_ptr = &exec_frame.token;
-      out_token_ptr->req_id = token.req_id;
-      out_token_ptr->step_id = token.step_id;
-      out_token_ptr->error_msg = error.str();
+OrtStatus* PipelineSession::CopyFinalOutput(Token& token, OrtResp& ort_resp) {
+  int resp_index = 0;
+  for (const auto& oname : ort_resp.output_names) {
+    auto ex = Contains(token.ort_value_names, oname);
+    if (ex.first) {
+      ort_resp.output_values[resp_index] = token.ort_values[ex.second].release();
+    } else {
+      // case when the user requested output was not present in the final output
+      std::ostringstream ostr;
+      ostr << "Error: Output " << oname << " is not produced by the final stage\n";
+      return HandleAndReturnFailure(ostr.str().c_str());
     }
-    resp_queue.Push(out_token_ptr);
-  };
+    ++resp_index;
+  }
+  return nullptr;
+}
 
-  // First enqueue the first step and first stage processing for all the requests
-  RequestProcessor rp;
-  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  int num_reqs = req_list.size();
+static bool AllInputIdsAreEosTokens(const std::vector<int64_t>& input_ids, int64_t eos_token) {
+  // TODO optimize input_ids
+  return std::all_of(std::begin(input_ids),
+                     std::end(input_ids),
+                     [eos_token](int64_t val) { return val == eos_token; });
+}
 
-  for (int req_idx = 0; req_idx < num_reqs; ++req_idx) {
+void PipelineSession::ThreadWorkerFn(ResponseQueue& resp_queue,
+                                     Token& token,
+                                     const PipelineConfig::ModelConfig& mcfg,
+                                     PipelineSession::SessionState& session_state,
+                                     RequestExecutionFrame& exec_frame) {
+  Token* out_token_ptr = nullptr;
+  try {
+    out_token_ptr = ExecuteRequest(token, mcfg, session_state, exec_frame);
+  } catch (const std::exception& e) {
+    std::ostringstream error;
+    error << "Error in processing request id: " << token.req_id << " with exception: " << e.what();
+    out_token_ptr = &exec_frame.token;
+    out_token_ptr->req_id = token.req_id;
+    out_token_ptr->step_id = token.step_id;
+    out_token_ptr->error_msg = error.str();
+  } catch (...) {
+    std::ostringstream error;
+    error << "Error in processing request id: " << token.req_id << " with unknown exception";
+    out_token_ptr = &exec_frame.token;
+    out_token_ptr->req_id = token.req_id;
+    out_token_ptr->step_id = token.step_id;
+    out_token_ptr->error_msg = error.str();
+  }
+  resp_queue.Push(out_token_ptr);
+}
+
+void PipelineSession::SetupAndScheduleAllRequestsToStage0(const std::vector<OrtReq>& req_list,
+                                                          std::vector<OrtResp>& resp_list,
+                                                          std::unordered_map<ReqId, RequestExecutionFrame>& req_frame_map,
+                                                          ResponseQueue& resp_queue) {
+  for (int req_idx = 0, num_reqs = req_list.size(); req_idx < num_reqs; ++req_idx) {
     ReqId req_id = CreateRequestId();
     // std::cout << "creating req_id: " << req_id << "\n";
     auto& one_req = req_list[req_idx];
     auto& one_resp = resp_list[req_idx];
-
-    // validate resp vector
-    auto& ovalues = resp_list[req_idx].output_values;
-    const auto& onames = resp_list[req_idx].output_names;
-    assert(ovalues.size() == onames.size());
 
     // store batch size and input seq len to change position_ids for step > 0
     auto rc = Contains(one_req.input_names, pcfg.model_config_vec[0].input_to_use_for_seq_len);
@@ -489,7 +500,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
       i_values.push_back(OrtValueHandle(v, false));  // don't own the OrtValues supplied by the user
     }
     const auto& shape = i_values[rc.second]
-                            .GetTensorTypeAndShapeInfo()
+                            .GetTensorTypeAndShapeInfo()  // TODO are you leaking memory here?
                             .GetShape();
     int orig_seq_len = shape[pcfg.model_config_vec[0].seq_len_dim_index_in_input];
     int batch_size = shape[pcfg.model_config_vec[0].batch_dim_index_in_input];
@@ -500,22 +511,28 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
     auto rcx = req_frame_map.emplace(req_id, std::move(tmp_exec_frame));
     assert(rcx.second);
 
-    // enqueue request
+    // schedule request
     int step_id = 0;
     auto* in_token_ptr = &req_frame_map.at(req_id).token;
     in_token_ptr->Init(req_id, step_id, one_req.input_names, std::move(i_values));
     auto& exec_frame = req_frame_map.at(req_id);
     const auto& model_config = pcfg.model_config_vec[stage_id];
     auto& session_state = model_session_state_vec[stage_id];
-    auto lambda = [&model_config, &session_state, &lambda_helper, &resp_queue, &rp, in_token_ptr, &exec_frame]() {
-      lambda_helper(resp_queue, rp, *in_token_ptr, model_config, session_state, exec_frame);
+    auto lambda = [this, &model_config, &session_state, &resp_queue, in_token_ptr, &exec_frame]() {
+      this->ThreadWorkerFn(resp_queue, *in_token_ptr, model_config, session_state, exec_frame);
     };
     std::function<void()> task(lambda);
 
-    // enqueue the request to the first stage
+    // schedule the request to the first stage
     pipeline_stages[0]->ScheduleTask(std::move(task));
   }
+}
 
+OrtStatus* PipelineSession::ProcessResponses(int num_reqs,
+                                             int num_steps,
+                                             std::unordered_map<ReqId, RequestExecutionFrame>& req_frame_map,
+                                             ResponseQueue& resp_queue,
+                                             std::vector<OrtResp>& resp_list) {
   // get logits index
   auto f = Contains(pcfg.model_config_vec[pcfg.num_stages - 1].output_names, pcfg.logits_name);
   assert(f.first);
@@ -523,6 +540,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
 
   // now read the response queue and enqueue further steps/stages for processing
   // passing the output of one stage to the next one
+  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   int req_processed = 0;
   while (req_processed < num_reqs) {
     Token* token_ptr = nullptr;
@@ -545,19 +563,9 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
       if (step_id == num_steps) {  // we're done with all steps of this request, move the output
         // look for the requested output_names in the token
         // fetch the corresponding Ort::Value and copy it to OrtResp
-        int req_index = exec_frame.req_index;
-        int resp_index = 0;
-        for (const auto& oname : resp_list[req_index].output_names) {
-          auto ex = Contains(token_ptr->ort_value_names, oname);
-          if (ex.first) {
-            resp_list[req_index].output_values[resp_index] = token_ptr->ort_values[ex.second].release();
-          } else {
-            // case when the user requested output was not present in the final output
-            std::ostringstream ostr;
-            ostr << "Error: Output " << oname << " is not produced by the final stage\n";
-            return HandleAndReturnFailure(ostr.str().c_str());
-          }
-          ++resp_index;
+        auto status = CopyFinalOutput(*token_ptr, resp_list[exec_frame.req_index]);
+        if (status) {
+          return status;
         }
         req_frame_map.erase(req_id);
         ++req_processed;
@@ -575,7 +583,22 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
         auto& input_ids_shape = exec_frame.next_step_input_buffer_map[pcfg.input_ids_name].shape;
         const auto& logits_ort_val = token_ptr->ort_values[rc.second];
         auto logits_shape = logits_ort_val.GetTensorTypeAndShapeInfo().GetShape();
-        GetNewInputIdsFromLogits(batch_size, logits_ort_val, logits_shape, input_ids, input_ids_shape);
+        bool are_all_input_ids_eos_tokens = false;
+        GetNewInputIdsFromLogits(batch_size, logits_ort_val, logits_shape, pcfg.eos_token,
+                                 input_ids, input_ids_shape,
+                                 are_all_input_ids_eos_tokens);
+        // If the next set of generated input ids are EOS tokens, it's time to stop this request
+        // even if we've not reached num_steps
+        if (are_all_input_ids_eos_tokens) {
+          std::cout << "All input ids are EOS tokens; aborting this request\n";
+          auto status = CopyFinalOutput(*token_ptr, resp_list[exec_frame.req_index]);
+          if (status) {
+            return status;
+          }
+          req_frame_map.erase(req_id);
+          ++req_processed;
+          continue;
+        }
 
         // assume shape is same for both input_ids and position_ids
         auto input_ids_tensor = Ort::Value::CreateTensor<int64_t>(cpu_memory_info, input_ids.data(), input_ids.size(),
@@ -607,8 +630,8 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
     // re-enqueue request
     const auto& model_config = pcfg.model_config_vec[exec_frame.stage_id];
     auto& session_state = model_session_state_vec[exec_frame.stage_id];
-    auto lambda = [&model_config, &session_state, &lambda_helper, &resp_queue, &rp, token_ptr, &exec_frame]() {
-      lambda_helper(resp_queue, rp, *token_ptr, model_config, session_state, exec_frame);
+    auto lambda = [this, &model_config, &session_state, &resp_queue, token_ptr, &exec_frame]() {
+      this->ThreadWorkerFn(resp_queue, *token_ptr, model_config, session_state, exec_frame);
     };
     std::function<void()> task(lambda);
 
@@ -619,6 +642,51 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
   return nullptr;
 }
 
+static OrtStatus* ValidateRequest(const std::vector<OrtReq>& req_list, const std::vector<OrtResp>& resp_list) {
+  if (req_list.size() != resp_list.size()) {
+    return g_ort->CreateStatus(ORT_INVALID_ARGUMENT, "Size of request and response lists differ.");
+  }
+
+  for (int i = 0, end = req_list.size(); i < end; ++i) {
+    const auto& ivalues = req_list[i].input_names;
+    const auto& inames = req_list[i].input_values;
+    if (ivalues.size() != inames.size()) {
+      std::ostringstream ostr;
+      ostr << "Size of request names and OrtValues differ for index " << i;
+      g_ort->CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+
+    const auto& ovalues = resp_list[i].output_values;
+    const auto& onames = resp_list[i].output_names;
+    if (ovalues.size() != onames.size()) {
+      std::ostringstream ostr;
+      ostr << "Size of response names and OrtValues differ for index " << i;
+      g_ort->CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+  }
+
+  return nullptr;
+}
+
+// TODO proper error handling
+// TODO - replace all cout with LOG
+// For simplicity even if one req in the batch fails, we consider the full batch to have failed.
+OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector<OrtResp>& resp_list, int num_steps) {
+  auto status = ValidateRequest(req_list, resp_list);
+  if (status) {
+    return status;
+  }
+
+  ResponseQueue resp_queue;
+  std::unordered_map<ReqId, RequestExecutionFrame> req_frame_map;
+
+  SetupAndScheduleAllRequestsToStage0(req_list, resp_list, req_frame_map, resp_queue);
+
+  int num_reqs = req_list.size();
+  status = ProcessResponses(num_reqs, num_steps, req_frame_map, resp_queue, resp_list);
+  return status;
+}
+
 void PipelineSession::ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& pcfg) {
   std::ifstream ifs(ensemble_json_file);
   if (!ifs.good()) {
@@ -627,6 +695,7 @@ void PipelineSession::ParseEnsembleJsonFile(const std::string& ensemble_json_fil
 
   auto j = json::parse(ifs, nullptr, true);
 
+  pcfg.eos_token = j["eos_token"];
   pcfg.input_ids_name = j["input_ids_name"];
   pcfg.position_ids_name = j["position_ids_name"];
   pcfg.logits_name = j["logits_name"];
@@ -903,6 +972,7 @@ int main(int argc, char* argv[]) {
       if (num_steps == 10 && batch_size == 1) {
         std::cout << "validating output for batch " << bsz << "\n";
         assert(v == valid_results);
+        std::cout << "validation successful\n";
       }
     }
   }
