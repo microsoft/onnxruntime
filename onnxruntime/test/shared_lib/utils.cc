@@ -164,6 +164,6 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
                    ort_.GetTensorMutableData<double>(output), compute_stream_);
       break;
     default:
-      throw std::exception("Unsupported input type");
+      ORT_THROW("Unsupported input type");
   }
 }
