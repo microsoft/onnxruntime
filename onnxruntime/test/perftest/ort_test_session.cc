@@ -136,14 +136,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
-	tensorrt_options.device_id = 0;
+    tensorrt_options.device_id = 0;
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
-	tensorrt_options.has_trt_options = has_trt_options;
+    tensorrt_options.has_trt_options = has_trt_options;
     tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
     tensorrt_options.trt_fp16_enable = trt_fp16_enable;
     tensorrt_options.trt_int8_enable = trt_int8_enable;
-	tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
+    tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
     tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
