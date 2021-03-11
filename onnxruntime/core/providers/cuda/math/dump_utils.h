@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/providers/cuda/cuda_common.h"
 #include <core/framework/data_types_internal.h>
 #include <iostream>
 #include <iomanip>
