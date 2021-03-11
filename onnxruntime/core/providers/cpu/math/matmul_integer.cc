@@ -14,6 +14,18 @@ class MatMulInteger final : public MatMulIntegerBase {
   MatMulInteger(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
+
+  enum InIdx : int {
+      A = 0,
+      B = 1,
+      Azero = 2,
+      Bzero = 3
+  };
+
+  enum OutIdx : int { Y = 0 };
+
+ protected:
+  int GetBIdx() override { return InIdx::B; }
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -29,12 +41,12 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger);
 
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(0);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const auto* a = ctx->Input<Tensor>(InIdx::A);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(InIdx::B);
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
+  Tensor* y = ctx->Output(OutIdx::Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
@@ -43,13 +55,13 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   // validate zero points
   uint8_t a_offset = 0;
   uint8_t b_offset = 0;
-  const auto* a_zero_point = ctx->Input<Tensor>(2);
+  const auto* a_zero_point = ctx->Input<Tensor>(InIdx::Azero);
   if (a_zero_point != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
                 "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
     a_offset = *a_zero_point->template Data<uint8_t>();
   }
-  const auto* b_zero_point = ctx->Input<Tensor>(3);
+  const auto* b_zero_point = ctx->Input<Tensor>(InIdx::Bzero);
   if (b_zero_point != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
                 "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");

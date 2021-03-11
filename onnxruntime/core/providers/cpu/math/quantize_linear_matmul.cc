@@ -13,7 +13,6 @@
 
 namespace onnxruntime {
 
-
 ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
     kOnnxDomain,
@@ -26,21 +25,21 @@ ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(0);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(3);
+  const auto* a = ctx->Input<Tensor>(IN_A);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), packed_b_ ? b_shape_ : b->Shape()));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
+  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
 
   // validate offsets
-  const auto* a_offset = ctx->Input<Tensor>(2);
-  const auto* b_offset = ctx->Input<Tensor>(5);
-  const auto* y_offset = ctx->Input<Tensor>(7);
+  const auto* a_offset = ctx->Input<Tensor>(IN_Azero);
+  const auto* b_offset = ctx->Input<Tensor>(IN_Bzero);
+  const auto* y_offset = ctx->Input<Tensor>(IN_Yzero);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_offset),
               "QLinearMatmul : input zero point must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(b_offset),
@@ -49,9 +48,9 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
               "QLinearMatmul : result zero point must be a scalar or 1D tensor of size 1");
 
   // validate scale
-  const auto* a_scale = ctx->Input<Tensor>(1);
-  const auto* b_scale = ctx->Input<Tensor>(4);
-  const auto* y_scale = ctx->Input<Tensor>(6);
+  const auto* a_scale = ctx->Input<Tensor>(IN_Ascale);
+  const auto* b_scale = ctx->Input<Tensor>(IN_Bscale);
+  const auto* y_scale = ctx->Input<Tensor>(IN_Yscale);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
               "QLinearMatmul : input scale must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale),
@@ -89,12 +88,10 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
       gemm_params.B = packed_b_.get();
       gemm_params.BIsPacked = true;
       gemm_params.BIsSigned = b_is_signed_;
-    } else if (b != nullptr) {
+    } else {
       gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i];
       gemm_params.BIsPacked = false;
       gemm_params.BIsSigned = b->IsDataType<int8_t>();
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B should not be null.");
     }
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
 

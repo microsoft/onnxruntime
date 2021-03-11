@@ -17,7 +17,9 @@ class MatMulIntegerToFloatBase : public MatMulIntegerBase {
   MatMulIntegerToFloatBase(const OpKernelInfo& info) : MatMulIntegerBase(info) {
   }
 
- protected:
+  enum OutIdx : int { Y = 0 };
+
+protected:
   Status ComputeCommon(OpKernelContext* ctx,
                        const uint8_t* a_data,
                        const TensorShape& a_shape,
@@ -38,7 +40,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape, packed_b_ ? b_shape_ : b->Shape()));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
+  Tensor* y = ctx->Output(OutIdx::Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
@@ -86,6 +88,17 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
+
+  enum InIdx : int {
+    A = 0,
+    B = 1,
+    Bscale = 2,
+    Bzero = 3,
+    bias = 4
+  };
+
+ protected:
+  int GetBIdx() override { return InIdx::B; }
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
@@ -93,18 +106,31 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
   MatMulIntegerToFloat(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
+
+  enum InIdx : int {
+    A = 0,
+    B = 1,
+    Ascale = 2,
+    Bscale = 3,
+    Azero = 4,
+    Bzero = 5,
+    bias = 6
+  };
+
+ protected:
+  int GetBIdx() override { return InIdx::B; }
 };
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
-  const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const Tensor* a = ctx->Input<Tensor>(InIdx::A);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(InIdx::B);
 
-  const Tensor* b_scale_tensor = ctx->Input<Tensor>(2);
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(InIdx::Bscale);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "DynamicQuantizeMatMul : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
   float b_scale = *b_scale_tensor->template Data<float>();
 
-  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(3);
+  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(InIdx::Bzero);
   uint8_t b_zero_point = 0;
   if (b_zero_point_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
@@ -134,26 +160,26 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
                        b,
                        b_zero_point,
                        a_scale * b_scale,
-                       ctx->Input<Tensor>(4));
+                       ctx->Input<Tensor>(InIdx::bias));
 }
 
 Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
-  const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const Tensor* a = ctx->Input<Tensor>(InIdx::A);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(InIdx::B);
 
-  const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
+  const Tensor* a_scale_tensor = ctx->Input<Tensor>(InIdx::Ascale);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
               "MatMulIntegerToFloat : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
   float a_scale = *a_scale_tensor->template Data<float>();
 
-  const Tensor* b_scale_tensor = ctx->Input<Tensor>(3);
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(InIdx::Bscale);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "MatMulIntegerToFloat : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
   float b_scale = *b_scale_tensor->template Data<float>();
 
   // validate zero points
   uint8_t a_zero_point = 0;
-  const Tensor* a_zero_point_tensor = ctx->Input<Tensor>(4);
+  const Tensor* a_zero_point_tensor = ctx->Input<Tensor>(InIdx::Azero);
   if (a_zero_point_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point_tensor),
                 "MatMulIntegerToFloat : input A zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
@@ -161,7 +187,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   }
 
   uint8_t b_zero_point = 0;
-  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(5);
+  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(InIdx::Bzero);
   if (b_zero_point_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
                 "MatMulIntegerToFloat : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
@@ -175,7 +201,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
                        b,
                        b_zero_point,
                        a_scale * b_scale,
-                       ctx->Input<Tensor>(6));
+                       ctx->Input<Tensor>(InIdx::bias));
 }
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(

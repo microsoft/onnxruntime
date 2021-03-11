@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/quantize_linear_matmul.h"
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -193,16 +194,17 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
 
-using namespace ONNX_NAMESPACE;
-
-// Test kernel that extends QLearnMatMul for extra verification
+/**
+ * @brief Extend QLinearMatMul for verifing prepacking behavior 
+*/
 struct PrePackTestOp {
+  // TODO!! use template and macro to extract a common utility out of this
+  //   for grey box kernel testing by extending kernel classes.
   static constexpr const char* OpName = "QLinearMatMulPrePack";
   static constexpr const char* OpDomain = "testing";
 
-  // TODO!! query QLinearMatMul schema instead of copy this much code!!
   static ONNX_NAMESPACE::OpSchema OpSchema() {
-    // Get QLinearMatMul schema from global registry and hack
+    // Get QLinearMatMul schema from global registry, copy and hack
     auto p_original = ONNX_NAMESPACE::OpSchemaRegistry::Schema("QLinearMatMul", 10, "");
     ONNX_NAMESPACE::OpSchema modified;
 
@@ -215,121 +217,20 @@ struct PrePackTestOp {
     for (int i = 0; i < inputs.size(); i++) {
       const auto& in = inputs[i];
       modified.Input(i, in.GetName(), in.GetDescription(), in.GetTypeStr(),
-          in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
+                     in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
     }
 
     const auto& outputs = p_original->outputs();
     for (int oi = 0; oi < outputs.size(); oi++) {
       const auto& out = outputs[oi];
       modified.Output(oi, out.GetName(), out.GetDescription(), out.GetTypeStr(),
-          out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());
+                      out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());
     }
-    
+
     for (const auto& ty : p_original->typeConstraintParams()) {
       modified.TypeConstraint(ty.type_param_str, ty.allowed_type_strs, ty.description);
     }
     return modified;
-
-/*    ONNX_NAMESPACE::OpSchema schema;
-    schema.SetDoc("Return success, error, or throw based on the input.")
-        .SetName(OpName)
-        .SetDomain(OpDomain)
-        .SinceVersion(10)
-        .Input(
-            0,
-            "a",
-            "N-dimensional quantized matrix a",
-            "T1",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            1,
-            "a_scale",
-            "scale of quantized input a",
-            "tensor(float)",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            2,
-            "a_zero_point",
-            "zero point of quantized input a",
-            "T1",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            3,
-            "b",
-            "N-dimensional quantized matrix b",
-            "T2",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            4,
-            "b_scale",
-            "scale of quantized input b",
-            "tensor(float)",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            5,
-            "b_zero_point",
-            "zero point of quantized input b",
-            "T2",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            6,
-            "y_scale",
-            "scale of quantized output y",
-            "tensor(float)",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Input(
-            7,
-            "y_zero_point",
-            "zero point of quantized output y",
-            "T3",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .Output(
-            0,
-            "y",
-            "Quantized matrix multiply results from a * b",
-            "T3",
-            OpSchema::Single,
-            true,
-            1,
-            OpSchema::NonDifferentiable)
-        .TypeConstraint(
-            "T1",
-            {"tensor(int8)", "tensor(uint8)"},
-            "Constrain input a and its zero point data type to 8-bit integer tensor.")
-        .TypeConstraint(
-            "T2",
-            {"tensor(int8)", "tensor(uint8)"},
-            "Constrain input b and its zero point data type to 8-bit integer tensor.")
-        .TypeConstraint(
-            "T3",
-            {"tensor(int8)", "tensor(uint8)"},
-            "Constrain output y and its zero point data type to 8-bit integer tensor.");
-
-    return schema;*/
   }
 
   class QLinearMatMulPrePackT : public QLinearMatMul {
@@ -338,12 +239,15 @@ struct PrePackTestOp {
     }
 
     Status Compute(OpKernelContext* context) const override {
-      ORT_ENFORCE(bool(packed_b_), "QLinearMatMul input B should be pre-packed, but it is not!");
+      if (!(bool(packed_b_) || (b_shape_ == context->Input<Tensor>(IN_B)->Shape()))) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected prepacking did not happen.");
+      }
       return QLinearMatMul::Compute(context);
     }
   };
 
   static KernelDefBuilder KernelDef() {
+    // TODO extract this out of existing OP's kernel def instead of copying code!
     KernelDefBuilder def;
     def.SetName(OpName)
         .SetDomain(OpDomain)
@@ -359,7 +263,7 @@ struct PrePackTestOp {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
-  std::vector<OpSchema> schemas{PrePackTestOp::OpSchema()};
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, PrePackTestOp::OpDomain, 10, 11)).IsOK()) << status;
   KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename PrePackTestOp::QLinearMatMulPrePackT(info); };
@@ -380,7 +284,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   test_non_empty.AddOutput<uint8_t>("T3", {2, 3}, {168, 115, 255, 1, 66, 151});
   test_non_empty.Run();
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime
