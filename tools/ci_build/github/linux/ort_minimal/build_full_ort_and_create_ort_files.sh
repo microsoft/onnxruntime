@@ -5,6 +5,7 @@
 
 set -e
 set -x
+export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
