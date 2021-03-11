@@ -7,21 +7,24 @@ import os
 try:
     import flatbuffers  # noqa
     have_flatbuffers = True
-    from .ort_format_model import OperatorTypeUsageManager  # noqa
+    from .ort_format_model import GloballyAllowedTypesOpTypeImplFilter, OperatorTypeUsageManager  # noqa
 except ImportError:
     have_flatbuffers = False
 
 
 def parse_config(config_file: str, enable_type_reduction: bool = False):
     '''
-    Parse the configuration file and return the required operators dictionary, and possibly either an
-    OperatorTypeUsageManager or a globally allowed types list.
+    Parse the configuration file and return the required operators dictionary and an
+    OpTypeImplFilterInterface instance.
 
     Configuration file lines can do the following:
     1. specify required operators
     2. specify globally allowed types for all operators
+    3. specify what it means for no required operators to be specified
 
-    The basic format for specifying required operators (1) is `domain;opset;op1,op2...`
+    1. Specifying required operators
+
+    The basic format for specifying required operators is `domain;opset;op1,op2...`
     e.g. `ai.onnx;11;Add,Cast,Clip,...
 
     If the configuration file is generated from ORT format models it may optionally contain JSON for per-operator
@@ -41,50 +44,72 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
         `{"inputs": {"0": ["float", "int32_t"], "1": ["int32_t"]}}`
 
     Finally some operators do non-standard things and store their type information under a 'custom' key.
-    ai.onnx.OneHot is an example of this, where 3 type names from the inputs are combined into a string.
-        `{"custom": ["float_int64_t_int64_t", "int64_t_string_int64_t"]}`
+    ai.onnx.OneHot is an example of this, where the three input types are combined into a triple.
+        `{"custom": [["float", "int64_t", "int64_t"], ["int64_t", "std::string", "int64_t"]]}`
 
-    The format for specifying globally allowed types for all operators (2) is `!globally_allowed_types;T0,T1,...`
+    2. Specifying globally allowed types for all operators
+
+    The format for specifying globally allowed types for all operators is:
+        `!globally_allowed_types;T0,T1,...`
+
     Ti should be a C++ scalar type supported by ONNX and ORT.
     At most one globally allowed types specification is allowed.
 
     Specifying per-operator type information and specifying globally allowed types are mutually exclusive - it is an
     error to specify both.
 
+    3. Specify what it means for no required operators to be specified
+
+    By default, if no required operators are specified, NO operators are required.
+
+    With the following line, if no required operators are specified, ALL operators are required:
+        `!no_ops_specified_means_all_ops_are_required`
+
     :param config_file: Configuration file to parse
     :param enable_type_reduction: Set to True to use the type information in the config.
                                   If False the type information will be ignored.
-                                  If the flatbuffers module is unavailable op-specific type information will be ignored
-                                  as the per-op usage of the type information is via OperatorTypeUsageManager which has
-                                  a dependency on the ORT flatbuffers python schema.
-    :return: required_ops, op_type_usage_manager, globally_allowed_types:
-             Dictionary of domain:opset:[ops] for required operators
-             OperatorTypeUsageManager manager with operator specific type usage information if available. None if
-             type reduction was disabled, per-op type reduction was not specified, or the flatbuffers module is not
-             available.
-             List of globally allowed types. None if type reduction was disabled, or globally allowed types were not
-             specified.
-             At most one of the op_type_usage_manager and globally_allowed_types tuple elements will not be None.
+                                  If the flatbuffers module is unavailable type information will be ignored as the
+                                  type-based filtering has a dependency on the ORT flatbuffers schema.
+    :return: required_ops: Dictionary of domain:opset:[ops] for required operators. If None, all operators are
+                           required.
+             op_type_impl_filter: OpTypeImplFilterInterface instance if type reduction is enabled, the flatbuffers
+                                  module is available, and type reduction information is present. None otherwise.
     '''
 
     if not os.path.isfile(config_file):
         raise ValueError('Configuration file {} does not exist'.format(config_file))
 
+    # only enable type reduction when flatbuffers is available
+    enable_type_reduction = enable_type_reduction and have_flatbuffers
+
     required_ops = {}
-    op_type_usage_manager = OperatorTypeUsageManager() if enable_type_reduction and have_flatbuffers else None
+    no_ops_specified_means_all_ops_are_required = False
+    op_type_usage_manager = OperatorTypeUsageManager() if enable_type_reduction else None
     has_op_type_reduction_info = False
     globally_allowed_types = None
 
+    def process_non_op_line(line):
+        if not line or line.startswith("#"):  # skip empty lines and comments
+            return True
+
+        if line.startswith("!globally_allowed_types;"):  # handle globally allowed types
+            if enable_type_reduction:
+                nonlocal globally_allowed_types
+                if globally_allowed_types is not None:
+                    raise RuntimeError("Globally allowed types were already specified.")
+                globally_allowed_types = set(segment.strip() for segment in line.split(';')[1].split(','))
+            return True
+
+        if line == "!no_ops_specified_means_all_ops_are_required":  # handle all ops required line
+            nonlocal no_ops_specified_means_all_ops_are_required
+            no_ops_specified_means_all_ops_are_required = True
+            return True
+
+        return False
+
     with open(config_file, 'r') as config:
         for line in [orig_line.strip() for orig_line in config.readlines()]:
-            if not line or line.startswith("#"):  # skip empty lines and comments
-                continue
-
-            if line.startswith("!globally_allowed_types;"):  # handle globally allowed types
-                if enable_type_reduction:
-                    if globally_allowed_types is not None:
-                        raise RuntimeError("Globally allowed types were already specified.")
-                    globally_allowed_types = [segment.strip() for segment in line.split(';')[1].split(',')]
+            if process_non_op_line(line):
                 continue
 
             domain, opset_str, operators_str = [segment.strip() for segment in line.split(';')]
@@ -151,6 +176,10 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
             else:
                 required_ops[domain][opset].update(operators)
 
+    if len(required_ops) == 0 and no_ops_specified_means_all_ops_are_required:
+        required_ops = None
+
+    op_type_impl_filter = None
     if enable_type_reduction:
         if not has_op_type_reduction_info:
             op_type_usage_manager = None
@@ -158,4 +187,9 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
             raise RuntimeError(
                 "Specifying globally allowed types and per-op type reduction info together is unsupported.")
 
-    return required_ops, op_type_usage_manager, globally_allowed_types
+        if globally_allowed_types is not None:
+            op_type_impl_filter = GloballyAllowedTypesOpTypeImplFilter(globally_allowed_types)
+        elif op_type_usage_manager is not None:
+            op_type_impl_filter = op_type_usage_manager.make_op_type_impl_filter()
+
+    return required_ops, op_type_impl_filter

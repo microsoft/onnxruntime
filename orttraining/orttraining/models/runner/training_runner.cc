@@ -1225,7 +1225,6 @@ Status WithOrtValuesFromTensorProtos(
 
   NameMLValMap name_to_ort_value{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& tensor_proto : tensor_protos) {
     const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
@@ -1239,16 +1238,13 @@ Status WithOrtValuesFromTensorProtos(
     const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
 
     OrtValue ort_value;
-    OrtCallback callback;
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
-        ort_value, callback));
-    ScopedOrtCallbackInvoker callback_invoker{callback};
+        ort_value));
 
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   ORT_RETURN_IF_ERROR(use_name_to_ort_value_fn(name_to_ort_value));
