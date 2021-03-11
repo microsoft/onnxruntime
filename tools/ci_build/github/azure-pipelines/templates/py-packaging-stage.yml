@@ -342,6 +342,9 @@ stages:
           externalFeed: 'ortgpunightlytraining'
         displayName: 'TwineAuthenticate ortgpunightlytraining'
 
+      - script: 'pip install twine'
+        displayName: 'pip install twine'
+
       - script: 'twine upload --repository testpypi --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)'
         displayName: 'twine upload --repository testpypi --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)'
 
