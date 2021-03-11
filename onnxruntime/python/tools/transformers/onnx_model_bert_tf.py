@@ -553,4 +553,5 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        self.prune_graph()
+        # Temporary work around for the following comment as it will cause topological issues for a bert model
+        # self.prune_graph()
