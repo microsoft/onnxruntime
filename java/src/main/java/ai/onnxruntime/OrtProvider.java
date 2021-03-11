@@ -11,7 +11,6 @@ import java.util.Map;
 public enum OrtProvider {
   CPU("CPUExecutionProvider"),
   CUDA("CUDAExecutionProvider"),
-  ROCM("ROCMExecutionProvider"),
   DNNL("DnnlExecutionProvider"),
   OPEN_VINO("OpenVINOExecutionProvider"),
   NUPHAR("NupharExecutionProvider"),
