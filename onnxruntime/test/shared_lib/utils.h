@@ -5,7 +5,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 
-OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void* cuda_compute_stream) {
+inline OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void* cuda_compute_stream) {
   OrtCUDAProviderOptions cuda_options{
       0,
       OrtCudnnConvAlgoSearch::EXHAUSTIVE,
