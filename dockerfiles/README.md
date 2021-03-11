@@ -24,6 +24,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 |-------------------|---------------------------------------|---------------------------------------|-------------------------|
 | Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0, v0.5.1, :v1.0.0, :v1.2.0, :v1.3.0, :v1.4.0, :v1.5.2 | :latest |
 | CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7, :v0.5.1-cuda10.1-cudnn7, :v1.0.0-cuda10.1-cudnn7, :v1.2.0-cuda10.1-cudnn7, :v1.3.0-cuda10.1-cudnn7, :v1.4.0-cuda10.1-cudnn7, :v1.5.2-cuda10.2-cudnn8 | :latest-cuda            |
+| OpenVino          | mcr.microsoft.com/azureml/onnxruntime | :v1.6.0-openvino-2021.1.110, :v1.7.0-openvino-2021.2.200 | :latest-openvino |
 | OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm, :v1.0.0-openvino-r1.1-vadm, :v1.4.0-openvino-2020.3.194-vadm, :v1.5.2-openvino-2020.4.287-vadm | :latest-openvino-vadm |
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad, :v1.3.0-openvino-2020.2.120-myriad, :v1.4.0-openvino-2020.3.194-myriad, :v1.5.2-openvino-2020.4.287-myriad | :latest-openvino-myriad |
 | OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu, :v1.3.0-openvino-2020.2.120-cpu, :v1.4.0-openvino-2020.3.194-cpu, :v1.5.2-openvino-2020.4.287-cpu | :latest-openvino-cpu    |
@@ -267,7 +268,7 @@ Instructions assume you are on Jetson host in the root of onnxruntime git projec
 
 Two-step installation is required:
 
-1. Build Python 'wheel' for ONNX Runtime on host Jetson system;
+1. Build Python 'wheel' for ONNX Runtime on host Jetson system; Pre-built Python wheels are also available at [Nvidia Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
 2. Build Docker image using ONNX Runtime wheel from step 1. You can also install the wheel on the host directly.
 
 Here are the build commands for each step:
@@ -341,7 +342,7 @@ Note: When running the container you built in Docker, please either use 'nvidia-
   ```
 3. Send HTTP requests to the container running ONNX Runtime Server
 
-  Send HTTP requests to the docker container through the binding local port. Here is the full [usage document](https://github.com/Microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
+  Send HTTP requests to the docker container through the binding local port. Here is the full [usage document](../docs/ONNX_Runtime_Server_Usage.md).
   ```
   curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
   ```

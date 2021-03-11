@@ -6,8 +6,21 @@
 #include <map>
 #include "gsl/gsl"
 #include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0,
+    float, int64_t, int8_t, std::string);
+}
+
+using UniqueDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
+using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
 
 /*
 ONNX_OPERATOR_SET_SCHEMA(
@@ -70,7 +83,9 @@ ONNX_OPERATOR_SET_SCHEMA(
 ONNX_CPU_OPERATOR_KERNEL(
     Unique,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T",
+                                      BuildKernelDefConstraintsFromTypeList<UniqueDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledUniqueDataTypes>()),
     Unique);
 
 Status Unique::Compute(OpKernelContext* context) const {
@@ -78,6 +93,7 @@ Status Unique::Compute(OpKernelContext* context) const {
 
   Status status;
   // arbitrary set of types to support initially
+  // Note: The non-string implementations can probably be based on data type size.
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context);
   else if (input.IsDataType<int64_t>())
@@ -285,6 +301,10 @@ static void CreateOutput(OpKernelContext& context,
 
 template <typename T>
 Status Unique::ComputeImpl(OpKernelContext& context) const {
+  if (!utils::HasType<EnabledUniqueDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   const Tensor& input = *context.Input<Tensor>(0);
   auto data = input.DataAsSpan<T>();
 
