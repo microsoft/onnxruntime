@@ -39,17 +39,23 @@ size_t EMSCRIPTEN_KEEPALIVE ort_get_output_count(ort_session_handle_t session);
  * get the model's input name.
  * @param session handle of the specified session
  * @param index the input index
- * @returns a pointer to a buffer which contains C-style string. Caller should release the buffer after use by calling ort_free().
+ * @returns a pointer to a buffer which contains C-style string.
+ * @remarks caller should release the C style string after use by calling ort_free().
  */
 char* EMSCRIPTEN_KEEPALIVE ort_get_input_name(ort_session_handle_t session, size_t index);
 /**
  * get the model's output name.
  * @param session handle of the specified session
  * @param index the output index
- * @returns a pointer to a buffer which contains C-style string. Caller should release the buffer after use by calling ort_free().
+ * @returns a pointer to a buffer which contains C-style string.
+ * @remarks caller should release the C style string after use by calling ort_free().
  */
 char* EMSCRIPTEN_KEEPALIVE ort_get_output_name(ort_session_handle_t session, size_t index);
 
+/**
+ * free the specified buffer.
+ * @param ptr a pointer to the buffer.
+ */
 void EMSCRIPTEN_KEEPALIVE ort_free(void* ptr);
 
 /**
