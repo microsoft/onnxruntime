@@ -72,11 +72,12 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
 
 #ifdef USE_CUDA
-  // It is okay to use the default stream for the custom op as it is the only op in the model
-  // where it is being used.
-  // If interleaved with other ORT CUDA kernels, create a compute stream and pass it via session options
-  // and use the same stream to launch the custom kernel too.
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, nullptr};
+  // We need to launch our custom op in the same compute stream as the one we will be
+  // passing to ORT via Session options to use for the entire session (i.e.) CUDA ORT kernels
+  // will now use the same stream too
+  cudaStream_t compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
 #else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
 #endif
@@ -91,7 +92,13 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
     so.SetOptimizedModelFilePath(ort_file.c_str());
 
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options{};
+    OrtCUDAProviderOptions cuda_options{0,
+                                        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+                                        std::numeric_limits<size_t>::max(),
+                                        0,
+                                        true,
+                                        1,
+                                        compute_stream};
     so.AppendExecutionProvider_CUDA(cuda_options);
 #endif
 
@@ -110,6 +117,10 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+
+#ifdef USE_CUDA
+  cudaStreamDestroy(compute_stream);
+#endif
 }
 #endif  // if !defined(ORT_MINIMAL_BUILD)
 

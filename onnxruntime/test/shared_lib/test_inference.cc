@@ -104,6 +104,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
         cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr};
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
+    ORT_UNUSED_PARAMETER(cuda_compute_stream);
     return;
 #endif
   } else if (provider_type == 2) {
