@@ -439,7 +439,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (!int8_calibration_cache_name_env.empty()) {
         int8_calibration_cache_name_ = int8_calibration_cache_name_env;
       }
-	}
+    }
 
     if (info.has_trt_options) {
       int8_use_native_tensorrt_calibration_table_ = info.int8_use_native_calibration_table;
