@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
+#include "core/common/common.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -125,6 +126,7 @@ static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, void* compu
 #ifdef USE_CUDA
   cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream));
 #else
+  ORT_UNUSED_PARAMETER(compute_stream);
   for (auto i = from; i < to; i++) {
     Y[i - from] = X[i];
   }
