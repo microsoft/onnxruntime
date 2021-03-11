@@ -541,8 +541,16 @@ endif(onnxruntime_USE_DML)
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api_experimental STATIC
-  ${winml_lib_api_experimental_dir}/Dummy.cpp
-  ${winml_lib_api_experimental_dir}/Dummy.h
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.h
   ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
   ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
   ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
@@ -568,7 +576,7 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental) # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental)      # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 

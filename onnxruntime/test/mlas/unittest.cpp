@@ -537,63 +537,7 @@ public:
 };
 
 template<bool Packed>
-class MlasQgemmU8X8U8X8TestBase;
-
-template<>
-class MlasQgemmU8X8U8X8TestBase<false> : public MlasTestBase
-{
-protected:
-    void
-    TestGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const uint8_t* A,
-        size_t lda,
-        uint8_t offa,
-        const uint8_t* B,
-        size_t ldb,
-        uint8_t offb,
-        bool BIsSigned,
-        int32_t* C,
-        size_t ldc
-        )
-    {
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, threadpool);
-    }
-
-    void
-    TestGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const uint8_t* A,
-        size_t lda,
-        uint8_t offa,
-        const uint8_t* B,
-        size_t ldb,
-        uint8_t offb,
-        bool BIsSigned,
-        float* C,
-        size_t ldc,
-        float CScale,
-        const float* Bias
-        )
-    {
-        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
-        MlasGemm(M, N, K,
-                 A, lda, offa,
-                 B, ldb, offb, BIsSigned,
-                 reinterpret_cast<int32_t*>(C), ldc,
-                 threadpool,
-                 &scale_bias_processor);
-    }
-};
-
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-
-template<>
-class MlasQgemmU8X8U8X8TestBase<true> : public MlasTestBase
+class MlasQgemmU8X8U8X8TestBase : public MlasTestBase
 {
 private:
     void*
@@ -628,8 +572,69 @@ protected:
         size_t ldc
         )
     {
-        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, threadpool);
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = &offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.C = C;
+        GemmParameters.ldc = ldc;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
+    }
+
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        const uint8_t* offb,
+        bool BIsSigned,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.PerColumnZeroPoints = true;
+        GemmParameters.C = C;
+        GemmParameters.ldc = ldc;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
     }
 
     void
@@ -650,21 +655,36 @@ protected:
         const float* Bias
         )
     {
-        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
-        MlasGemm(M, N, K,
-                 A, lda, offa,
-                 PackedB, offb, BIsSigned,
-                 reinterpret_cast<int32_t*>(C), ldc,
-                 threadpool,
-                 &scale_bias_processor);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR ScaleBiasProcessor(C, ldc, &CScale, Bias);
+
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = &offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.C = reinterpret_cast<int32_t*>(C);
+        GemmParameters.ldc = ldc;
+        GemmParameters.OutputProcessor = &ScaleBiasProcessor;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
     }
 
 private:
     MatrixGuardBuffer<uint8_t> BufferBPacked;
 };
-
-#endif
 
 template<typename xint8_t, typename OutputType, bool Packed>
 class MlasQgemmU8X8Test;
@@ -695,6 +715,23 @@ private:
         size_t M,
         size_t N,
         size_t K,
+        uint8_t offa
+        )
+    {
+        const uint8_t* A = BufferA.GetBuffer(K * M);
+        const uint8_t* B = BufferB.GetBuffer(N * K);
+        const uint8_t* ZeroPointB = BufferZeroPointB.GetBuffer(N);
+        int32_t* C = BufferC.GetBuffer(N * M);
+        int32_t* CReference = BufferCReference.GetBuffer(N * M);
+
+        Test(M, N, K, A, K, offa, B, N, ZeroPointB, C, CReference, N);
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
@@ -715,6 +752,36 @@ private:
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
                 printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, int(offa), int(offb));
+                break;
+            }
+        }
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        const uint8_t *offb,
+        int32_t* C,
+        int32_t* CReference,
+        size_t ldc
+        )
+    {
+        std::fill_n(C, M * N, -1);
+        std::fill_n(CReference, M * N, -1);
+
+        this->TestGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc);
+        ReferenceQgemm(M, N, K, A, lda, offa, (const xint8_t*)B, ldb, (const xint8_t*)offb, CReference, ldc);
+
+        for (size_t f = 0; f < M * N; f++) {
+            if (C[f] != CReference[f]) {
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d!\n", M, N, K, int(offa));
                 break;
             }
         }
@@ -755,8 +822,44 @@ private:
         }
     }
 
+    void
+    ReferenceQgemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const xint8_t* B,
+        size_t ldb,
+        const xint8_t* offb,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        for (size_t m = 0; m < M; m++) {
+
+            for (size_t n = 0; n < N; n++) {
+
+                const uint8_t* a = A + (m * lda);
+                const xint8_t* b = B + n;
+                int32_t* c = C + (m * ldc) + n;
+                int32_t sum = 0;
+
+                for (size_t k = 0; k < K; k++) {
+                    sum += ((int32_t(*b) - offb[n]) * (int32_t(*a) - offa));
+                    b += ldb;
+                    a += 1;
+                }
+
+                *c = sum;
+            }
+        }
+    }
+
     MatrixGuardBuffer<uint8_t> BufferA;
     MatrixGuardBuffer<uint8_t> BufferB;
+    MatrixGuardBuffer<uint8_t> BufferZeroPointB;
     MatrixGuardBuffer<int32_t> BufferC;
     MatrixGuardBuffer<int32_t> BufferCReference;
     const bool BIsSigned = std::is_signed<xint8_t>::value;
@@ -769,12 +872,15 @@ public:
     {
         for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 14, 211);
+            Test(b, b, b, 21);
         }
         for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 14, 211);
+            Test(b, b, b, 17);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
             Test(b, b, b, 34, 1);
+            Test(b, b, b, 1);
         }
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 85, 173);
@@ -786,6 +892,7 @@ public:
         }
         Test(43, 500, 401, 183, 223);
         Test(1023, 1023, 1023, 5, 8);
+        Test(1023, 1023, 1023, 7);
     }
 
     void
@@ -3130,7 +3237,6 @@ RunThreadedTests(
     printf("QGEMM U8U8=float tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {
         printf("QGEMM U8S8=int32_t packed tests.\n");
         onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, true>>()->ExecuteShort();
@@ -3143,7 +3249,6 @@ RunThreadedTests(
         printf("QGEMM U8U8=float packed tests.\n");
         onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, true>>()->ExecuteShort();
     }
-#endif
 
     printf("Conv2D tests.\n");
     onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();

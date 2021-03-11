@@ -77,9 +77,6 @@ else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
         DOCKER_FILE=Dockerfile.ubuntu_gpu
-        if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
-            DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
-        fi
         if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         fi
@@ -90,8 +87,8 @@ else
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 20.07
-        IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
+        # TensorRT container release 20.12
+        IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
@@ -104,16 +101,9 @@ else
             --dockerfile $DOCKER_FILE --context .
     else
         IMAGE="$BUILD_OS"
-        if [ $BUILD_ARCH = "x86" ]; then
-            IMAGE="$IMAGE.x86"
-            $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-                --dockerfile Dockerfile.ubuntu_x86 --context .
-        else
-            $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
+        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
                 --dockerfile Dockerfile.ubuntu --context .
-        fi
     fi
 fi
 
@@ -139,6 +129,7 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
+                      --volume /data/onnx:/data/onnx:ro \
                       --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then

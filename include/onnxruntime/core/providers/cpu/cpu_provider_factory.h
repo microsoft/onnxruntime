@@ -10,6 +10,7 @@ extern "C" {
 /**
  * \param use_arena zero: false. non-zero: true.
  */
+ORT_EXPORT
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessionOptions* options, int use_arena)
 ORT_ALL_ARGS_NONNULL;
 

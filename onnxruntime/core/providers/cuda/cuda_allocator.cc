@@ -64,6 +64,23 @@ void CUDAAllocator::Free(void* p) {
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
+void* CUDAExternalAllocator::Alloc(size_t size) {
+  void* p = nullptr;
+  if (size > 0) {
+    p = alloc_(size);
+
+    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    ORT_ENFORCE(p != nullptr);
+
+  }
+
+  return p;
+}
+
+void CUDAExternalAllocator::Free(void* p) {
+  free_(p);
+}
+
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }

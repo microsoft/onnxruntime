@@ -170,9 +170,6 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)  // double support only implemented in CUDA/ROCM kernel
-TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
-  RunFusedMatMulTest<double>("TransposeMatMul", 1);
-}
 
 TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
   RunFusedMatMulTest<double>("FusedMatMul", 1);
@@ -205,17 +202,6 @@ TEST(FusedMatMulOpTest, FloatTypeScale) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, 0.5f, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, false, 2.0f, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, 4.0f, true);
-}
-
-TEST(TransposeMatMulOpTest, FloatTypeScale) {
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, false, false, 0.5f);
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, false, 2.0f);
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, true, 4.0f);
-
-  // now run tests with b constant.
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, false, false, 0.5f, true);
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, false, 2.0f, true);
-  RunFusedMatMulTest<float>("TransposeMatMul", 1, true, true, 4.0f, true);
 }
 
 }  // namespace transpose_matmul

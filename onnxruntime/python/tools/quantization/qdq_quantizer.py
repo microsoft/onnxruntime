@@ -42,7 +42,7 @@ class QDQQuantizer(ONNXQuantizer):
                 self.tensors_to_quantize.append(tensor_name)
         elif tensor_name in self.value_infos.keys():
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type is TensorProto.FLOAT:
+            if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
                 self.tensors_to_quantize.append(tensor_name)
         else:
             logging.warning(
@@ -134,7 +134,7 @@ class QDQQuantizer(ONNXQuantizer):
                 self.model.add_nodes([qlinear_node, dequant_node])
 
                 quantized_value = QuantizedValue(tensor_name, tensor_name + "_QuantizeLinear", scale_name, zp_name,
-                                                 QuantizedValueType.Input, None, self.input_qType)
+                                                 QuantizedValueType.Input)
                 self.quantized_value_map[tensor_name] = quantized_value
 
     def quantize_bias_tensors(self):

@@ -11,7 +11,6 @@ class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
     is_packed = false;
 
@@ -43,7 +42,6 @@ class MatMulIntegerBase : public OpKernel {
     }
     return Status::OK();
   }
-#endif
 
  protected:
   bool b_is_signed_{true};

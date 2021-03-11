@@ -75,7 +75,8 @@ class RegistrationProcessor:
     '''
 
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
-                             start_version: int, end_version: int = None, type: str = None):
+                             start_version: int, end_version: typing.Optional[int] = None,
+                             type: typing.Optional[str] = None):
         '''
         Process lines that contain a kernel registration.
         :param lines: Array containing the original lines containing the kernel registration.
@@ -182,6 +183,11 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
             [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
         registration_processor.process_registration(lines_to_process, domain, op_type,
                                                     int(start_version), int(end_version), type)
+
+    else:
+        log.warning("Ignoring unhandled kernel registration variant: {}".format(code_line))
+        for line in lines_to_process:
+            registration_processor.process_other_line(line)
 
     return offset + 1
 

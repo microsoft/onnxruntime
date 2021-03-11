@@ -36,7 +36,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl' or 'armnn'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -98,6 +98,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
+  bool enable_coreml = false;
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
@@ -166,6 +167,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
+            enable_coreml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -288,8 +291,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -375,6 +377,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
       fprintf(stderr, "NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_coreml) {
+#ifdef USE_COREML
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
+#else
+      fprintf(stderr, "CoreML is not supported in this build");
       return -1;
 #endif
     }
@@ -799,7 +809,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_dml) {

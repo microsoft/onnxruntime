@@ -610,7 +610,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
             &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
       }
     }
-  } else {  
+  } else {
     // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     // cudnnReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
     // the output is zeros of the output size
@@ -771,6 +771,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
+SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int64_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 
@@ -927,6 +928,13 @@ template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
+template Tensor ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
 }  // namespace ReductionOps
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -955,6 +963,7 @@ REGISTER_KERNEL_TYPED_12(ReduceMax, MLFloat16)
 REGISTER_KERNEL_TYPED_12(ReduceMax, float)
 REGISTER_KERNEL_TYPED_12(ReduceMax, double)
 REGISTER_KERNEL_TYPED_12(ReduceMax, int32_t)
+REGISTER_KERNEL_TYPED_12(ReduceMax, int64_t)
 REGISTER_KERNEL_TYPED_12(ReduceMax, int8_t)
 REGISTER_KERNEL_TYPED_12(ReduceMax, uint8_t)
 
@@ -973,6 +982,7 @@ REGISTER_KERNEL_TYPED_13(ReduceSum, MLFloat16)
 REGISTER_KERNEL_TYPED_13(ReduceSum, float)
 REGISTER_KERNEL_TYPED_13(ReduceSum, double)
 REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
+REGISTER_KERNEL_TYPED_13(ReduceSum, int64_t)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED_13(ReduceSum, BFloat16)
 #endif

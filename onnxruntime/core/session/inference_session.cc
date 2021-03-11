@@ -14,7 +14,6 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -44,7 +43,6 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
-#include "core/session/custom_ops.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -52,6 +50,11 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+// custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#include "core/framework/customregistry.h"
+#include "core/session/custom_ops.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
@@ -229,6 +232,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
+      bool allow_intra_op_spinning =
+          session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.intra_op_param;
       if (to.name == nullptr) {
         to.name = ORT_TSTR("intra-op");
@@ -239,10 +244,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.auto_set_affinity = to.thread_pool_size == 0 &&
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
+      to.allow_spinning = allow_intra_op_spinning;
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
+      bool allow_inter_op_spinning = 
+          session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
@@ -251,6 +259,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
       to.set_denormal_as_zero = set_denormal_as_zero;
+      to.allow_spinning = allow_inter_op_spinning;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
@@ -449,8 +458,33 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+// Custom Op support
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
+  std::shared_ptr<CustomRegistry> custom_registry;
+  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
+  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
+  return Status::OK();
+}
 
+common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
+  if (custom_registry == nullptr) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
+  }
+
+  custom_registries_.push_back(custom_registry);
+
+  // Insert session-level customized kernel registry.
+  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
+#endif
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
@@ -474,32 +508,7 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
 
   return Status::OK();
 }
-#endif
 
-common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
-  std::shared_ptr<CustomRegistry> custom_registry;
-  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
-  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
-  return Status::OK();
-}
-
-common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
-  if (custom_registry == nullptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
-  }
-
-  custom_registries_.push_back(custom_registry);
-
-  // Insert session-level customized kernel registry.
-  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-
-#if !defined(ORT_MINIMAL_BUILD)
-  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
-#endif
-  return Status::OK();
-}
-
-#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
@@ -1895,7 +1904,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+        optimizer_utils::GenerateTransformers(level, session_options_,
                                               *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                               custom_list);
     for (auto& entry : transformers_to_register) {
