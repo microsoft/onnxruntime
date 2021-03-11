@@ -23,6 +23,10 @@ limitations under the License.
 #include "core/platform/ort_mutex.h"
 #ifdef _WIN32
 #include "processthreadsapi.h"
+#include <codecvt>
+#include <locale>
+#elif defined(__APPLE__)
+#include <cpuid.h>
 #else
 #include <sched.h>
 #endif
@@ -33,8 +37,16 @@ namespace concurrency {
 
 thread_local ThreadPoolProfiler::MainThreadStat ThreadPoolProfiler::main_thread_stat_;
 
-ThreadPoolProfiler::ThreadPoolProfiler(int num_threads) : num_threads_(num_threads) {
+ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
+    num_threads_(num_threads) {
   child_thread_stats_.reset(new ChildThreadStat[num_threads]);
+#ifdef _WIN32
+  using convert_type = std::codecvt_utf8<wchar_t>;
+  std::wstring_convert<convert_type, wchar_t> converter;
+  threal_pool_name_ = converter.to_bytes(threal_pool_name);
+#else
+  threal_pool_name_ = threal_pool_name;
+#endif
 }
 
 ThreadPoolProfiler::~ThreadPoolProfiler() {
@@ -46,17 +58,16 @@ void ThreadPoolProfiler::Start() {
 }
 
 std::string ThreadPoolProfiler::Stop() {
-  if (enabled_) {
-    std::stringstream ss;
-    ss << "{\"main_thread:\": {"
-       << main_thread_stat_.Reset()
-       << "}, \"sub_threads\": {"
-       << DumpChildThreadStat()
-       << "}}";
-    return ss.str();
-  } else {
-    return {};
-  }
+  ORT_ENFORCE(enabled_, "Profiler not started yet");
+  std::stringstream ss;
+  ss << "{\"main_thread:\": {"
+     << "\"thread_pool_name\": \""
+     << threal_pool_name_ << "\", "
+     << main_thread_stat_.Reset()
+     << "}, \"sub_threads\": {"
+     << DumpChildThreadStat()
+     << "}}";
+  return ss.str();
 }
 
 void ThreadPoolProfiler::LogBlockSize(std::ptrdiff_t block_size) {
@@ -144,10 +155,16 @@ void ThreadPoolProfiler::LogThreadId(int thread_idx) {
 
 void ThreadPoolProfiler::LogRun(int thread_idx) {
   if (enabled_) {
-    static uint32_t mask = ~((1U << 10) - 1);
+    static uint32_t mask = ~((1U << 8) - 1);
     if ((child_thread_stats_[thread_idx].num_run_ & mask) == 0) {
 #ifdef _WIN32
       child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
+#elif defined(__APPLE__)
+      uint32_t CPUInfo[4];
+      __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
+      if ((CPUInfo[3] & (1 << 9)) != 0) {
+        child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
+      }
 #else
       child_thread_stats_[thread_idx].core_ = sched_getcpu();
 #endif

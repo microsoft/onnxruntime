@@ -131,6 +131,12 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#ifdef _WIN32
+using CHAR_TYPE = wchar_t;
+#else
+using CHAR_TYPE = char;
+#endif
+
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
@@ -151,7 +157,7 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler(int num_threads);
+  ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name);
   ~ThreadPoolProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
@@ -187,9 +193,10 @@ class ThreadPoolProfiler {
     uint32_t num_run_ = 0;
     uint32_t num_spin_ = 0;
     uint32_t num_block_ = 0;
-    uint32_t core_ = 0;
+    int32_t core_ = -1; //core that the thread run on recently
   };
   std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
+  std::string threal_pool_name_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
@@ -670,14 +677,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
-#ifdef _WIN32
-  using CHAR_TYPE = wchar_t;
-#else
-  using CHAR_TYPE = char;
-#endif
+
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
-      : profiler_(num_threads),
+      : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
