@@ -455,7 +455,8 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
 
             # add a squeeze node to convert a 3-d mask to 2-d
-            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0]) or self.match_parent_path(mask_nodes[-1], ['Expand'], [0])
+            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0]) or self.match_parent_path(
+                mask_nodes[-1], ['Expand'], [0])
             squeeze_node_name = "Squeeze_3d_to_2d_mask"
             squeeze_output_name = squeeze_node_name + "_output"
             if squeeze_node is None and len(mask_nodes) == 5 and self.find_graph_input(mask_nodes[-1].input[0]) is None:
@@ -468,17 +469,19 @@ class BertOnnxModelTF(BertOnnxModel):
             if is_same_root:
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
-                # For tf models, q and v are flipped. 
+                # For tf models, q and v are flipped.
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_k, matmul_q, matmul_v,
-                                                                             add_k, add_q, add_v, parent.output[0],
+                                                                             add_k, add_q, add_v, self.num_heads,
+                                                                             self.hidden_size, parent.output[0],
                                                                              qkv_nodes[2].output[0])
                 if qkv_nodes[1].op_type == 'Einsum':
                     # add reshape before einsum
                     tensor = helper.make_tensor(name=qkv_nodes[1].name + "_newshape",
                                                 data_type=TensorProto.INT64,
                                                 dims=[4],
-                                                vals=np.int64([[0, 0, self.num_heads,
-                                                       int(self.hidden_size / self.num_heads)]]).tobytes(),
+                                                vals=np.int64(
+                                                    [[0, 0, self.num_heads,
+                                                      int(self.hidden_size / self.num_heads)]]).tobytes(),
                                                 raw=True)
                     self.add_initializer(tensor)
                     reshape_ = helper.make_node("Reshape",
