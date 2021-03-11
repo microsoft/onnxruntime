@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 file(GLOB_RECURSE onnxruntime_wasm_src CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/wasm/api.h"
   "${ONNXRUNTIME_ROOT}/wasm/api.cc"
 )
 
