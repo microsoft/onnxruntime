@@ -305,6 +305,7 @@ if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
+
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
@@ -523,7 +524,7 @@ add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (onnxruntime_BUILD_WEBASSEMBLY)
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -552,7 +553,7 @@ add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (onnxruntime_BUILD_WEBASSEMBLY)
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
