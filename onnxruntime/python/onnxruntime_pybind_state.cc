@@ -503,13 +503,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
             }
-		  } else if (option.first == "trt_max_workspace_size") {
+          } else if (option.first == "trt_max_workspace_size") {
             if (!option.second.empty()) {
               params.trt_max_workspace_size = std::stoull(option.second);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
             }
-		  } else if (option.first == "trt_fp16_enable") {	
+          } else if (option.first == "trt_fp16_enable") {	
             if (option.second == "True" || option.second == "true") {
               params.trt_fp16_enable = true;
             } else if (option.second == "False" || option.second == "false") {
