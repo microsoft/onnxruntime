@@ -125,7 +125,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain, compute_stream);
 
 #ifdef USE_CUDA
   cudaStreamDestroy(compute_stream);
