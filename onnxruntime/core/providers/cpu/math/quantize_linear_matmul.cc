@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "matmul_integer_base.h"
+
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/common/safeint.h"
@@ -11,9 +13,9 @@
 
 namespace onnxruntime {
 
-class QLinearMatMul final : public OpKernel {
+class QLinearMatMul final : public MatMulIntegerBase {
  public:
-  QLinearMatMul(const OpKernelInfo& info) : OpKernel(info) {}
+  QLinearMatMul(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };
@@ -31,10 +33,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(0);
-  const auto* b = ctx->Input<Tensor>(3);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(3);
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), packed_b_ ? b_shape_ : b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -84,13 +86,22 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   gemm_params.ZeroPointA = *a_offset->template Data<uint8_t>();
   gemm_params.ldb = gemm_params.N;
   gemm_params.ZeroPointB = static_cast<const uint8_t*>(b_offset->DataRaw());
-  gemm_params.BIsSigned = b->IsDataType<int8_t>();
   gemm_params.C = gemm_output;
   gemm_params.ldc = gemm_params.N;
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
-    gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i];
+    if (packed_b_) {
+      gemm_params.B = packed_b_.get();
+      gemm_params.BIsPacked = true;
+      gemm_params.BIsSigned = b_is_signed_;
+    } else if (b != nullptr) {
+      gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i];
+      gemm_params.BIsPacked = false;
+      gemm_params.BIsSigned = b->IsDataType<int8_t>();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B should not be null.");
+    }
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
 
     MlasRequantizeOutput(gemm_output,
