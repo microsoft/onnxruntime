@@ -75,7 +75,6 @@ static Status Compute(OpKernelContext* ctx, const MatMulSparseInfo<T>& sparse_in
                       bool transa, bool transb) {
   const Tensor* left = ctx->Input<Tensor>(0);
   const auto& left_shape = left->Shape();
-  const auto left_num_dims = left_shape.NumDimensions();
   
   const auto& right_shape = sparse_info.shape_;
   const bool trans_a = transa && left->Shape().NumDimensions() != 1;
