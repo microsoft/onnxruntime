@@ -314,9 +314,10 @@ def _create_operator_type_usage_processors():
     #
     # Ops we are ignoring currently so as not to produce meaningless/unused output:
     # - Implementation is type agnostic:
-    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Tile, Unsqueeze
     #    com.microsoft: DynamicQuantizeMatMul, MatMulIntegerToFloat
     # - Only one type supported in the ORT implementation:
+    #    ai.onnx: NonMaxSuppression
     #    com.microsoft: FusedConv, FusedGemm, FusedMatMul
     # - Implementation does not have any significant type specific code:
     #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
@@ -330,14 +331,15 @@ def _create_operator_type_usage_processors():
                                   'Gemm',
                                   'IsNaN',
                                   'Log', 'LogSoftmax', 'LpNormalization',
-                                  'MatMul', 'Max', 'Min',
-                                  'Neg', 'NonMaxSuppression', 'NonZero',
+                                  'MatMul', 'Max', 'MaxPool', 'Mean', 'Min',
+                                  'Neg', 'NonZero',
                                   'Pad',
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
-                                  'Relu', 'Resize', 'RoiAlign', 'Round',
-                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt',
-                                  'Tanh', 'Tile', 'TopK', 'Transpose',
+                                  'Relu', 'Resize', 'ReverseSequence', 'RoiAlign', 'Round',
+                                  'ScatterND', 'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt', 'Sum',
+                                  'Tanh', 'TopK', 'Transpose',
+                                  'Unique',
                                   'Where']
 
     default_processor_onnx_ops_requiring_int64_for_input_0 = ['Add',
