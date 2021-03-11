@@ -73,12 +73,13 @@ MODELS = {
     "albert-xlarge-v2": (["input_ids"], 12, True, "bert"),
     #"albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
     "albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
-    # T5
-    "t5-small": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
-    "t5-base": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
-    "t5-large": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
-    "t5-3b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
-    "t5-11b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    # T5 (use benchmark_t5.py instead)
+    # "t5-small": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
+    # "t5-base": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
+    # "t5-large": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    # "t5-3b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    # "t5-11b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    #"valhalla/t5-small-qa-qg-hl": (["input_ids"], 12, True, "bert"),
     # XLM-RoBERTa
     "xlm-roberta-base": (["input_ids"], 11, False, "bert"),
     "xlm-roberta-large": (["input_ids"], 11, True, "bert"),
@@ -124,10 +125,7 @@ MODELS = {
     # "funnel-transformer/xlarge-base": (["input_ids"], 12, True, "bert"),    
     # Layoutlm
     "microsoft/layoutlm-base-uncased": (["input_ids"], 11, False, "bert"),
-    "microsoft/layoutlm-large-uncased": (["input_ids"], 11, True, "bert"),
-
-    "microsoft/deberta-base": (["input_ids"], 11, False, "bert"),
-    "microsoft/deberta-large": (["input_ids"], 11, True, "bert"),
+    "microsoft/layoutlm-large-uncased": (["input_ids"], 11, False, "bert"),
     # Squeezebert
     "squeezebert/squeezebert-uncased": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli": (["input_ids"], 11, False, "bert"),
