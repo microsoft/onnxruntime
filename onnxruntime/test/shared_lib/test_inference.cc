@@ -95,7 +95,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   if (provider_type == 1) {
 #ifdef USE_CUDA
     std::cout << "Running simple inference with cuda provider" << std::endl;
-    auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(compute_stream);
+    auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(cuda_compute_stream);
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_UNUSED_PARAMETER(cuda_compute_stream);
