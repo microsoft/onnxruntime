@@ -131,6 +131,6 @@ MODELS = {
     "squeezebert/squeezebert-mnli": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli-headless": (["input_ids"], 11, False, "bert"),
     "unc-nlp/lxmert-base-uncased": (["input_ids", "visual_feats", "visual_pos"], 11, False, "bert"),
-    "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
-    "google/pegasus-large": (["input_ids"], 11, False, "bert"),
+    # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
+    # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 }
