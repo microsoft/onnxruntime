@@ -24,6 +24,8 @@ static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -87,9 +89,9 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool* fp16_enable_ptr = nullptr;
-  bool* int8_enable_ptr = nullptr;
-  size_t* max_workspace_size_ptr = nullptr;
+  bool fp16_enable;
+  bool int8_enable;
+  size_t max_workspace_size;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
@@ -98,6 +100,8 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
+  bool dla_enable;
+  int dla_core;
 };
 
 // Logical device representation.
@@ -148,6 +152,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   mutable char model_path_[4096]; // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  bool dla_enable_ = false;
+  int dla_core_ = 0;
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

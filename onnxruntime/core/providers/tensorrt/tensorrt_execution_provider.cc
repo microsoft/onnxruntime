@@ -20,6 +20,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <iostream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -470,6 +471,24 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
+
+  if (fp16_enable_ || int8_enable_) { // DLA can only be enabled with FP16 or INT8
+    const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
+    if (!dla_enable_env.empty()) {
+      dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
+    }
+	
+	if (dla_enable_) {
+      const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
+      if (!dla_core_env.empty()) {
+        dla_core_ = std::stoi(dla_enable_env);
+      }
+    }
+  }
+
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
+
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1109,6 +1128,34 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
     }
 
+    // Set DLA
+    if (fp16_enable_ || int8_enable_) {
+      if (dla_enable_ && dla_core_ >= 0) {//DLA can only run with FP16 and INT8
+        int number_of_dla_core = trt_builder->getNbDLACores();
+        if (number_of_dla_core == 0) {
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core, but platform doesn't have any DLA core";
+          std::cout << "[TensorRT EP] Try to use DLA core, but platform doesn't have any DLA core" << std::endl;
+		  dla_enable_ = false;
+        } else {
+          if (dla_core_ >= number_of_dla_core) {
+            LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core #" << dla_core_ << ", but it exceeds platform's maximum DLA core number " << number_of_dla_core << ". Use DLA core 0 instead.";
+            std::cout << "[TensorRT EP] Try to use DLA core #" << dla_core_ << ", but it exceeds maximum DLA core number " << number_of_dla_core << ". Use DLA core 0 instead." << std::endl;
+            dla_core_ = 0;
+          }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << dla_core_;
+          std::cout << "[TensorRT EP] use DLA core #" << dla_core_ << std::endl;		  
+          //if (allowGPUFallback) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
+          //}
+          //builder->setFp16Mode(true);
+          trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
+          trt_config->setDLACore(dla_core_);
+          //trt_config->setFlag(BuilderFlag::kSTRICT_TYPES);
+          trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
+		}
+      }
+    }
+
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
@@ -1222,9 +1269,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &max_workspace_size_,
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, max_workspace_size_,
             trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_,
-            allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_};
+            allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, dla_enable_, dla_core_};
       *state = p.release();
       return 0;
     };
@@ -1466,11 +1513,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_state->context->reset();
         trt_state->engine->reset();
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-        trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+        trt_config->setMaxWorkspaceSize(trt_state->max_workspace_size);
         trt_config->addOptimizationProfile(trt_profile);
 
         // Set INT8 Per Tensor Dynamic range
-        if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
+        if (trt_state->int8_enable && trt_builder->platformHasFastInt8()) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
@@ -1478,13 +1525,22 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         // Set precision
-        if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr)) {
+        if (trt_state->fp16_enable && trt_state->int8_enable) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-        } else if (*(trt_state->fp16_enable_ptr)) {
+        } else if (trt_state->fp16_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-        } else if (*(trt_state->int8_enable_ptr)) {
+        } else if (trt_state->int8_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
+
+        // Set DLA (DLA can only run with FP16 or INT8)
+        if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << dla_core_;
+            trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
+            trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
+            trt_config->setDLACore(trt_state->dla_core);
+            //trt_config->setFlag(BuilderFlag::kSTRICT_TYPES);
+  		}
 
         // Build engine
         *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
