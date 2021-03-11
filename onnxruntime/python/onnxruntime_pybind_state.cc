@@ -490,7 +490,61 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                           sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions params{0, 0, nullptr};
+      OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 1 << 30, 0, 0, nullptr, 0};
+      std::string trt_int8_calibration_table_name;
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "has_trt_options") {
+            if (option.second == "True" || option.second == "true") {
+              params.has_trt_options = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.has_trt_options = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+		  } else if (option.first == "trt_max_workspace_size") {
+            if (!option.second.empty()) {
+              params.trt_max_workspace_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
+            }
+		  } else if (option.first == "trt_fp16_enable") {	
+            if (option.second == "True" || option.second == "true") {
+              params.trt_fp16_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_fp16_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_int8_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_int8_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_int8_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_int8_calibration_table_name") {
+            if (!option.second.empty()) {
+              trt_int8_calibration_table_name = option.second;
+              params.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a file name i.e. 'cal_table'.\n");
+            }
+          } else if (option.first == "trt_int8_use_native_calibration_table") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_int8_use_native_calibration_table = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_int8_use_native_calibration_table = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else {
+            ORT_THROW("Invalid TensorRT EP option: ", option.first);
+          }
+        }
+      }
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
 #endif
     } else if (type == kMIGraphXExecutionProvider) {
