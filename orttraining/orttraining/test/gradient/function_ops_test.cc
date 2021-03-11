@@ -21,9 +21,9 @@ namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
-static ONNX_NAMESPACE::TypeProto makeFloatTensorType(std::vector<int64_t> dims) {
+static ONNX_NAMESPACE::TypeProto TensorType(int32_t elem_type, std::vector<int64_t> dims) {
   ONNX_NAMESPACE::TypeProto typeProto;
-  typeProto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  typeProto.mutable_tensor_type()->set_elem_type(elem_type);
   auto* shape = typeProto.mutable_tensor_type()->mutable_shape();
   for (auto dim : dims)
     shape->add_dim()->set_dim_value(dim);
@@ -55,7 +55,8 @@ Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> out
   return fetches;
 }
 
-void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
+// Restricted to float tensors
+static void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
   auto size = tensor1.Shape().Size();
   auto* data1 = tensor1.template Data<float>();
   auto* data2 = tensor2.template Data<float>();
@@ -63,8 +64,16 @@ void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
   float threshold = 0.001f;
 
   for (int i = 0; i < size; ++i) {
-    std::cout << data2[i] << " at " << i << "\n";
     ASSERT_NEAR(data1[i], data2[i], threshold) << "as position i:" << i;
+  }
+}
+
+static void AssertEqual(const std::vector<OrtValue>& results1, const std::vector<OrtValue>& results2) {
+  ASSERT_EQ(results1.size(), results2.size());
+  for (int i = 0; i < results1.size(); i++) {
+    auto& value1 = results1[i].Get<Tensor>();
+    auto& value2 = results2[i].Get<Tensor>();
+    AssertEqual(value1, value2);
   }
 }
 
@@ -84,7 +93,7 @@ struct FunctionTestCase {
   FunctionTestCase(const char* _opname) : opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
   void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data) {
-    auto arg_type = makeFloatTensorType(shape);
+    auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
     input_args.emplace_back(input_name, &arg_type);
 
     OrtValue ort_value;
@@ -127,22 +136,15 @@ struct FunctionTestCase {
     auto& call_node = AddCallNodeTo(graph);
     ASSERT_TRUE(graph.Resolve().IsOK());
 
-    std::cout << graph << std::endl;
     auto results1 = Run(model, input_value_map, output_names);
 
-    // Now, inline function body.
+    // Now, inline function body, and run it.
     graph.InlineFunction(call_node);
     ASSERT_TRUE(graph.Resolve().IsOK());
 
-    std::cout << graph << std::endl;
     auto results2 = Run(model, input_value_map, output_names);
 
-    ASSERT_EQ(results1.size(), results2.size());
-    for (int i = 0; i < results1.size(); i++) {
-      auto& value1 = results1[i].Get<Tensor>();
-      auto& value2 = results2[i].Get<Tensor>();
-      AssertEqual(value1, value2);
-    }
+    AssertEqual(results1, results2);
   }
 };
 
