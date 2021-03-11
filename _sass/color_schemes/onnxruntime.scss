@@ -5,14 +5,3 @@ $btn-primary-color: $blue-000;
     width: 100%;
 }
   
-.side-bar {
-@include mq(lg) {
-    width: $nav-width;
- }
-}
-
-.main {
-@include mq(lg) {
-    margin-left: $nav-width;
- }
-}
