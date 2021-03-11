@@ -341,7 +341,7 @@ stages:
         inputs:
           externalFeed: 'ortgpunightlytraining'
         displayName: 'TwineAuthenticate ortgpunightlytraining'
-	
+
       - script: 'twine upload --repository testpypi --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)'
         displayName: 'twine upload --repository testpypi --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)'
 
