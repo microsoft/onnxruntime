@@ -34,6 +34,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
 #else
+  ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
   }
@@ -64,6 +65,7 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
 #else
+  ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = static_cast<float>(X[i] + Y[i]);
   }
