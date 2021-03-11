@@ -84,7 +84,7 @@ def _load_torch_allocator_cpp_extension(verbosity):
 
 class ORTModule(torch.nn.Module):
 
-    def __init__(self, module, verbosity = Verbosity.WARNING):
+    def __init__(self, module):
         assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
         # Create forward dynamically, so each ORTModule instance will have its own copy.
@@ -228,7 +228,7 @@ class ORTModule(torch.nn.Module):
         super(ORTModule, self).__init__()
 
         # Verbosity for logging
-        self._verbosity = verbosity
+        self._verbosity = Verbosity.WARNING
 
         # Support contrib OPs
         register_custom_ops_pytorch_exporter.register_custom_op()
@@ -421,7 +421,8 @@ class ORTModule(torch.nn.Module):
                                 opset_version=ONNX_OPSET_VERSION,
                                 do_constant_folding=False,
                                 training=torch.onnx.TrainingMode.TRAINING,
-                                dynamic_axes=dynamic_axes)
+                                dynamic_axes=dynamic_axes,
+                                verbose=self._verbosity < Verbosity.WARNING)
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
