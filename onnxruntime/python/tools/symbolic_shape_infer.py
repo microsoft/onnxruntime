@@ -1194,6 +1194,7 @@ class SymbolicShapeInference:
         vi.CopyFrom(new_vi)
 
     def _infer_Attention(self, node):
+        #TODO: shape inference for the other output (present).
         shape = self._get_shape(node, 0)
         shape_bias = self._get_shape(node, 2)
         shape[2] = shape_bias[0] / 3
@@ -1202,28 +1203,28 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
     def _infer_BiasGelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
     def _infer_FastGelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
     def _infer_Gelu(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
     def _infer_LayerNormalization(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
     def _infer_LongformerAttention(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
     def _infer_SkipLayerNormalization(self, node):
-        self._infer_BertOp_SameInputOutputShape_Impl(node)
+        self._propagate_shape_and_type(node)
 
-    def _infer_BertOp_SameInputOutputShape_Impl(self, node):
-        shape = self._get_shape(node, 0)
-        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+    def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
+        shape = self._get_shape(node, input_index)
+        output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[output_index]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[output_index], output_dtype, shape))
 
     def _infer_impl(self, start_sympy_data=None):
         self.sympy_data_ = start_sympy_data or {}
