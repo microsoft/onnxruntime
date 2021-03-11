@@ -2193,6 +2193,33 @@ Example 4:
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("IsAllFinite")
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)"},
+          "Constrain the output to a boolean tensor.")
+      .Input(0, "input", "Input tensors to check.", "V",
+             OpSchema::Variadic)
+      .Output(
+          0,
+          "output",
+          "The output scalar. Its value is true if all input "
+          "tensors are finite. Otherwise, the output value would "
+          "be false.",
+          "T")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();

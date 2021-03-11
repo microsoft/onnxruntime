@@ -40,7 +40,7 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
 #define REGISTER_ISALLFINITE_KERNEL_TYPED(T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
       IsAllFinite,                                                   \
-      kMSDomain,                                                     \
+      kOnnxDomain,                                                     \
       1,                                                             \
       T,                                                             \
       kCudaExecutionProvider,                                        \

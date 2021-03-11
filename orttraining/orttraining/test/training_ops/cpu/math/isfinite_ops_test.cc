@@ -53,7 +53,7 @@ TEST(IsFiniteTest, MLFloat16) {
 }
 
 TEST(IsAllFiniteTest, FalseFloat) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
@@ -67,7 +67,7 @@ TEST(IsAllFiniteTest, FalseFloat) {
 }
 
 TEST(IsAllFiniteTest, TrueFloat) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
@@ -138,7 +138,7 @@ std::vector<std::vector<float>> generate_is_all_finite_test_data(
 
 TEST(IsAllFiniteTest, MoreFalseFloatTensorLarge) {
   for (int test_count = 0; test_count < 10; ++test_count) {
-    OpTester test("IsAllFinite", 1, kMSDomain);
+    OpTester test("IsAllFinite", 1, kOnnxDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(13, 941736, expected_answer, test_count);
     for (int i = 0; i < tensors.size(); ++i) {
@@ -153,7 +153,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLarge) {
 
 TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
   for (int test_count = 0; test_count < 10; ++test_count) {
-    OpTester test("IsAllFinite", 1, kMSDomain);
+    OpTester test("IsAllFinite", 1, kOnnxDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, test_count);
     for (int i = 0; i < tensors.size(); ++i) {
@@ -167,7 +167,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
 }
 
 TEST(IsAllFiniteTest, MoreFalseFloatMultipleFalse) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
   auto tensors = generate_is_all_finite_test_data(1234, 1987, 0.1f, 0);
   for (int i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
@@ -179,7 +179,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatMultipleFalse) {
 }
 
 TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
   bool expected_answer = true;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
   for (int i = 0; i < tensors.size(); ++i) {
@@ -194,7 +194,7 @@ TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
 }
 
 TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, 0);
   for (int i = 0; i < tensors.size(); ++i) {
@@ -209,7 +209,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
 }
 
 TEST(IsAllFiniteTest, MoreFalseFloatTensorLargeFloat16) {
-  OpTester test("IsAllFinite", 1, kMSDomain);
+  OpTester test("IsAllFinite", 1, kOnnxDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
   for (int i = 0; i < tensors.size(); ++i) {

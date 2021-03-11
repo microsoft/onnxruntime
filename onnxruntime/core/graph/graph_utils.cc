@@ -267,7 +267,7 @@ int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
   auto itr = std::find_if(node_args.begin(), node_args.end(),
                           [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
   ORT_ENFORCE(itr != node_args.end(),
-              "Attempting to get index by a name which does not exist.");
+              "Attempting to get index by a name which does not exist:", name , "for node: " , node.Name());
   auto index = std::distance(node_args.begin(), itr);
   return static_cast<int>(index);
 }
@@ -708,6 +708,17 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
   MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+
+  for (Node& node : nodes) {
+    RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.Index());
+  }
+}
+
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node_start,
+Node& replacement_node_end) {
+  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node_start);
+  MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
   for (Node& node : nodes) {
     RemoveNodeOutputEdges(graph, node);
