@@ -7,6 +7,7 @@
 // custom ops are only supported in a minimal build if explicitly enabled
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+#include "core/common/common.h"
 #include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -21,15 +22,23 @@ extern std::unique_ptr<Ort::Env> ort_env;
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
                           const std::vector<Input>& inputs, const char* output_name,
                           const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
-                          Ort::CustomOpDomain& custom_op_domain) {
+                          Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions cuda_options{};
+  OrtCUDAProviderOptions cuda_options{
+      0,
+      OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+      std::numeric_limits<size_t>::max(),
+      0,
+      true,
+      cuda_compute_stream != nullptr ? 1 : 0,
+      cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr};
   session_options.AppendExecutionProvider_CUDA(cuda_options);
+#else
+  ORT_UNUSED_PARAMETER(cuda_compute_stream);
 #endif
-
   Ort::Session session(env, model_uri.c_str(), session_options);
 
   MockedOrtAllocator allocator;
