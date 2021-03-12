@@ -15,27 +15,29 @@ from typing import TypeVar
 T = TypeVar('T', bound='Module')
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 from . import _utils, _ortmodule_output_transformation
 
 
 ONNX_OPSET_VERSION = 12
 
+
+def _ortvalue_to_dlpack(ortvalue):
+    return ortvalue._ortvalue.to_dlpack()
+
+def _ortvalue_from_dlpack(dlpack_tensor):
+    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
+
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, onnxruntime.OrtValue.from_dlpack(to_dlpack(inputs[idx])))
+        io_binding.bind_ortvalue_input(value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
                                device_id=_utils.get_device_index(device))
 
-def _onnx_value_info_to_buffer_tensor(value_info, device):
-    '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
-
-    shape = [dim.dim_value for dim in value_info.type.tensor_type.shape.dim]
-    dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
-    return torch.zeros(shape, device=device, dtype=dtype)
 
 def _check_same_device(device, argument_str, *args):
     '''Check that all tensor arguments in *args reside on the same device as the input device'''
@@ -55,7 +57,7 @@ def _check_same_device(device, argument_str, *args):
 # Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
 # real data type of the inputs in the backeard graph, and perform the cast only necessary.
 def _ort_output_to_torch_tensor(ort_output):
-    tensor = from_dlpack(ort_output.to_dlpack())
+    tensor = from_dlpack(_ortvalue_to_dlpack(ort_output))
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 def _load_torch_allocator_cpp_extension():
@@ -178,7 +180,7 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
+                    backward_grad_output_ortvalue = [_ortvalue_from_dlpack(to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id
