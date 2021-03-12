@@ -337,7 +337,8 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - script: 'pip install twine'
+      - script: |
+          'python -m pip install twine'
         displayName: 'pip install twine'
 
       - task: TwineAuthenticate@1
