@@ -30,7 +30,6 @@ extensions = [
     "sphinx.ext.autodoc",
     'sphinx.ext.githubpages',
     "sphinx_gallery.gen_gallery",
-    'sphinx.ext.autodoc',
     'sphinx.ext.graphviz',
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
 ]

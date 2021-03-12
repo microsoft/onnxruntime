@@ -86,7 +86,7 @@ def _openvino_verify_device_type(device_read):
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(',')
         if (len(comma_separated_devices) < 2):
-            print("Atleast two devices required in Hetero Mode")
+            print("At least two devices required in Hetero Mode")
             status_hetero = False
         dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
         for dev in comma_separated_devices:
@@ -183,10 +183,14 @@ def parse_arguments():
         help="""When running the Test phase, run symbolic shape inference against
         available test data directories.""")
 
-    # generate documentaiton
+    # generate documentation
     parser.add_argument(
         "--gen_doc", action='store_true',
         help="Generate documentation on contrib ops")
+
+    parser.add_argument(
+        "--gen-api-doc", action='store_true',
+        help="Generate API documentation for PyTorch frontend")
 
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
@@ -1994,6 +1998,11 @@ def main():
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
+
+    if args.gen_api_doc and (args.build or args.test):
+        print('Generating Python doc for ORTModule...')
+        docbuild_dir = os.path.join(source_dir, 'tools', 'doc')
+        run_subprocess(['bash', 'builddoc_ortmodule.sh'], cwd=docbuild_dir)
 
     log.info("Build complete")
 
