@@ -32,7 +32,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   bool b_signed;  // can't modify b_is_signed_, this is a const method
   if (packed_b_) {
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
-    b_start = static_cast<uint8_t *>(packed_b_.get());
+    b_start = static_cast<const uint8_t*>(packed_b_.get());
     b_signed = b_is_signed_;
   } else {
     const Tensor* b = ctx->Input<Tensor>(IN_B);

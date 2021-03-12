@@ -41,13 +41,29 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger);
 
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(InIdx::A);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(InIdx::B);
-
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_));
-  Tensor* y = ctx->Output(OutIdx::Y, helper.OutputShape());
+  const auto* a = ctx->Input<Tensor>(InIdx::A);
 
+  const uint8_t* b_data;
+  bool b_signed;
+  if (packed_b_) {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
+    b_data = static_cast<const uint8_t*>(packed_b_.get());
+    b_signed = b_is_signed_;
+  } else {
+    const Tensor* b = ctx->Input<Tensor>(InIdx::B);
+    if (b == nullptr) {
+      // the framework has checks to ensure this won't happen,
+      // just need this to shutup static analysis.
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Required input B can not be null!");
+    }
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+    b_data = static_cast<const uint8_t*>(b->DataRaw());
+    b_signed = b->IsDataType<int8_t>();
+  }
+
+  Tensor* y = ctx->Output(OutIdx::Y, helper.OutputShape());
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
@@ -77,22 +93,15 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   gemm_params.ldb = gemm_params.N;
   gemm_params.ZeroPointB = &b_offset;
   gemm_params.ldc = gemm_params.N;
+  gemm_params.BIsPacked = bool(packed_b_);
+  gemm_params.BIsSigned = b_signed;
 
   const auto* a_data = a->template Data<uint8_t>();
   auto* y_data = y->template MutableData<int32_t>();
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     gemm_params.A = a_data + helper.LeftOffsets()[i];
-    if (packed_b_) {
-      gemm_params.B = packed_b_.get();
-      gemm_params.BIsPacked = true;
-      gemm_params.BIsSigned = b_is_signed_;
-    } else if (b != nullptr) {
-      gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) +  + helper.RightOffsets()[i];
-      gemm_params.BIsSigned = b->IsDataType<int8_t>();
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B should not be null.");
-    }
+    gemm_params.B = b_data + (gemm_params.BIsPacked ? 0UL : helper.RightOffsets()[i]);
     gemm_params.C = y_data + helper.OutputOffsets()[i];
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
   }
