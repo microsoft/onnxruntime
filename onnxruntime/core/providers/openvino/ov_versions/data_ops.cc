@@ -488,7 +488,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Min", obj});
   } 
   {
-      UnsupportedOpMode obj = {{V_2020_4,V_2021_2,V_2021_2},
+      UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
         //All matmuls except float have computation missmatch
         const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -649,16 +649,23 @@ void DataOps::populate_op_mode_supported() {
       [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
         //start, end, axes need to be a initializer
         bool cond_for_slice = false;
-        if (node->InputDefs().size() > 1) {
-          const auto& start_arg = node->InputDefs()[1];
-          const auto& end_arg = node->InputDefs()[2];
-          cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
-          cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
+        const auto& data_arg = node->InputDefs()[0];
+        auto graph_inputs = graph_viewer_.GetInputs();
+
+        auto it = find(graph_inputs.begin(), graph_inputs.end(), data_arg);
+        if (it != graph_inputs.end()) {
+          if (node->InputDefs().size() > 1) {
+            const auto& start_arg = node->InputDefs()[1];
+            const auto& end_arg = node->InputDefs()[2];
+            cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
+            cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
+          }
+          if (node->InputDefs().size() > 3) {
+            const auto& axes_arg = node->InputDefs()[3];
+            cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
+          }
         }
-        if (node->InputDefs().size() > 3) {
-          const auto& axes_arg = node->InputDefs()[3];
-          cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
-        }
+
         return cond_for_slice;
       }
     };
