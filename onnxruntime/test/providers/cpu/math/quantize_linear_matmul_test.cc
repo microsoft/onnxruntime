@@ -282,7 +282,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   test_non_empty.AddInput<float>("y_scale", {1}, {0.0107f}, true);
   test_non_empty.AddInput<uint8_t>("y_zero_point", {1}, {118}, true);
   test_non_empty.AddOutput<uint8_t>("T3", {2, 3}, {168, 115, 255, 1, 66, 151});
-  test_non_empty.Run();
+  test_non_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

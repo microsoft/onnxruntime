@@ -29,15 +29,10 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
 
   const uint8_t* b_start;
-  const std::vector<size_t>* b_step;
   bool b_signed;  // can't modify b_is_signed_, this is a const method
-  std::vector<size_t> all_zeros;
-
   if (packed_b_) {
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
     b_start = static_cast<uint8_t *>(packed_b_.get());
-    all_zeros.resize(helper.RightOffsets().size(), 0UL);
-    b_step = &all_zeros;
     b_signed = b_is_signed_;
   } else {
     const Tensor* b = ctx->Input<Tensor>(IN_B);
@@ -49,7 +44,6 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
     }
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
     b_start = static_cast<const uint8_t*>(b->DataRaw());
-    b_step = &helper.RightOffsets();
     b_signed = b->IsDataType<int8_t>();
   }
 
@@ -108,7 +102,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
-    gemm_params.B = b_start + (*b_step)[i];
+    gemm_params.B = b_start + (gemm_params.BIsPacked ? 0UL : helper.RightOffsets()[i]);
 
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
 
