@@ -481,14 +481,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 	if (dla_enable_) {
       const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
       if (!dla_core_env.empty()) {
-        dla_core_ = std::stoi(dla_enable_env);
+        dla_core_ = std::stoi(dla_core_env);
       }
     }
   }
-
-static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
-static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
-
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
