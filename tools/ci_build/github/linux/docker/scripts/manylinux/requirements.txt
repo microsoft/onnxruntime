@@ -8,3 +8,4 @@ protobuf
 sympy==1.1.1
 flake8
 flatbuffers
+twine
