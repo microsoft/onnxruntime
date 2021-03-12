@@ -66,8 +66,10 @@ TEST_F(ActivationOpTest, Celu) {
   TestActivationOp<float>(
       "Celu",
       input_values,
+      // TODO: Investigate why gcc 4 fails to compile without the explicit cast
       [alpha](float x) { return std::max(0.0f, x) + std::min(0.0f, alpha * (static_cast<float>(exp(x / alpha)) - 1)); },
-      {{"alpha", alpha}}, true, 12);
+      // Disable on TensorRT as it seems like it doesn't yet support Celu
+      {{"alpha", alpha}}, false, 12);
 }
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
