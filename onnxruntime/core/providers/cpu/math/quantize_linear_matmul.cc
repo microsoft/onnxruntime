@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_integer_base.h"
+#include "quantize_linear_matmul.h"
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -13,12 +13,6 @@
 
 namespace onnxruntime {
 
-class QLinearMatMul final : public MatMulIntegerBase {
- public:
-  QLinearMatMul(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
-
-  Status Compute(OpKernelContext* context) const override;
-};
 
 ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
