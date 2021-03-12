@@ -40,13 +40,17 @@ thread_local ThreadPoolProfiler::MainThreadStat ThreadPoolProfiler::main_thread_
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
     num_threads_(num_threads) {
   child_thread_stats_.reset(new ChildThreadStat[num_threads]);
+  if (threal_pool_name) {
 #ifdef _WIN32
-  using convert_type = std::codecvt_utf8<wchar_t>;
-  std::wstring_convert<convert_type, wchar_t> converter;
-  threal_pool_name_ = converter.to_bytes(threal_pool_name);
+    using convert_type = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_type, wchar_t> converter;
+    threal_pool_name_ = converter.to_bytes(threal_pool_name);
 #else
-  threal_pool_name_ = threal_pool_name;
+    threal_pool_name_ = threal_pool_name;
 #endif
+  } else {
+    threal_pool_name_ = "unnamed_thread_pool";
+  }
 }
 
 ThreadPoolProfiler::~ThreadPoolProfiler() {
