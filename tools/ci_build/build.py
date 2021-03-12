@@ -1787,6 +1787,9 @@ def main():
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
+    if args.gen_api_doc and len(args.config) != 1:
+        raise BuildError('Using --get-api-doc requires a single build config')
+
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
@@ -2002,7 +2005,8 @@ def main():
     if args.gen_api_doc and (args.build or args.test):
         print('Generating Python doc for ORTModule...')
         docbuild_dir = os.path.join(source_dir, 'tools', 'doc')
-        run_subprocess(['bash', 'builddoc.sh'], cwd=docbuild_dir)
+        run_subprocess(['bash', 'builddoc.sh', os.path.dirname(sys.executable),
+                        source_dir, build_dir, args.config[0]], cwd=docbuild_dir)
 
     log.info("Build complete")
 
