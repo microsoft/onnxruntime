@@ -1385,9 +1385,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 
-            # if args.enable_training and args.use_cuda:
-            #     # run basic frontend tests
-            #     run_training_python_frontend_tests(cwd=cwd)
+            if args.enable_training and args.use_cuda:
+                # run basic frontend tests
+                run_training_python_frontend_tests(cwd=cwd)
 
             try:
                 import onnx  # noqa
