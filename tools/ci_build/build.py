@@ -2002,7 +2002,7 @@ def main():
     if args.gen_api_doc and (args.build or args.test):
         print('Generating Python doc for ORTModule...')
         docbuild_dir = os.path.join(source_dir, 'tools', 'doc')
-        run_subprocess(['bash', 'builddoc_ortmodule.sh'], cwd=docbuild_dir)
+        run_subprocess(['bash', 'builddoc.sh'], cwd=docbuild_dir)
 
     log.info("Build complete")
 

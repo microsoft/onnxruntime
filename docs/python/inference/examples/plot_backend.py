@@ -20,10 +20,16 @@ from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 import onnxruntime.backend as backend
 from onnx import load
 
+########################################
+# The device depends on how the package was compiled,
+# GPU or CPU.
+from onnxruntime import get_device
+device = get_device()
+
 name = datasets.get_example("logreg_iris.onnx")
 model = load(name)
 
-rep = backend.prepare(model, 'CPU')
+rep = backend.prepare(model, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
@@ -33,16 +39,10 @@ except (RuntimeError, InvalidArgument) as e:
     print(e)
 
 ########################################
-# The device depends on how the package was compiled,
-# GPU or CPU.
-from onnxruntime import get_device
-print(get_device())
-
-########################################
 # The backend can also directly load the model
 # without using *onnx*.
 
-rep = backend.prepare(name, 'CPU')
+rep = backend.prepare(name, device)
 x = np.array([[-1.0, -2.0]], dtype=np.float32)
 try:
     label, proba = rep.run(x)
