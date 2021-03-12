@@ -30,10 +30,6 @@ set (CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convenient
-# On the other hand it does not allow some others.
-# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
