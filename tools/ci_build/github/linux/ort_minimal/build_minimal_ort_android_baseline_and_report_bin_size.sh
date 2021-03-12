@@ -5,7 +5,7 @@
 
 set -e
 set -x
-
+export PATH=/opt/python/cp37-cp37m/bin:$PATH
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
 echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
 
