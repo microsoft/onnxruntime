@@ -2937,6 +2937,40 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  Model::Save(*p_model, "fusion/fused_simplified_layer_norm_with_casts.onnx");
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
+  ASSERT_TRUE(op_to_count["Pow"] == 0);
+  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
+  ASSERT_TRUE(op_to_count["Casts"] == 3);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "SimplifiedLayerNormalization") {
+      // LayerNormalization should have two inputs.
+      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
+      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+    } else {
+      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
+}
+
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
                                     int skip_ln_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
