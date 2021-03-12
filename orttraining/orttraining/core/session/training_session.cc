@@ -480,9 +480,6 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
-  ORT_IGNORE_RETURN_VALUE(
-    Save("with_gradients.onnx", SaveOption::NO_RELOAD));
-
   if (partition_after_ad) {
     ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
       pipeline_stage_id,
