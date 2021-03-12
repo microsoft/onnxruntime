@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -13,9 +14,9 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 }  // namespace op_kernel_type_control
 
 namespace {
