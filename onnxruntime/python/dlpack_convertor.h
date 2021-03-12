@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/ml_value.h"
-#include "python/dlpack.h"
+#include <dlpack/dlpack.h>
 
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 
