@@ -246,14 +246,6 @@ void
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
 
 typedef
-void
-(MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
-    );
-
-typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
-
-typedef
 size_t
 (MLASCALL MLAS_GEMM_U8S8_KERNEL)(
     const uint8_t* A,
@@ -265,7 +257,7 @@ size_t
     size_t ldc,
     const int32_t* RowSumVector,
     const int32_t* ColumnSumVector,
-    int32_t DepthValue,
+    const int32_t* ZeroPointB,
     bool ZeroMode
     );
 
@@ -296,7 +288,7 @@ size_t
     size_t ldc,
     const int32_t* RowSumVector,
     const int32_t* ColumnSumVector,
-    int32_t DepthValue,
+    const int32_t* ZeroPointB,
     bool ZeroMode
     );
 
@@ -697,26 +689,17 @@ MlasSgemmOperation(
     );
 
 //
-// Quantized integer matrix/matrix multiply operation.
+// Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_KERNEL_SSE;
-struct MLAS_GEMM_U8S8_KERNEL_AVX2;
-struct MLAS_GEMM_U8U8_KERNEL_AVX2;
+struct MLAS_GEMM_U8X8_DISPATCH;
 
-template<typename KernelType>
-void
-MLASCALL
-MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
-    );
-
-template<typename KernelType>
-void
-MLASCALL
-MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
-    );
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
 // Quantized depthwise convolution kernels.
@@ -767,12 +750,10 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8S8Operation;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8S8PackedOperation;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMV_U8S8_KERNEL GemvU8S8Kernel;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8U8Operation;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8U8PackedOperation;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
     PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
@@ -799,6 +780,10 @@ struct MLAS_PLATFORM {
     uint32_t MaximumThreadCount;
 #else
     static constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+#endif
+
+#if defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
 #endif
 };
 

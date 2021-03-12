@@ -13,6 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include <type_traits>
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -53,15 +54,54 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
   if (status.IsOK()) {
-    if (*size >= value.size() + 1) {
+    if (out == nullptr) {  // User is querying the true size of the attribute
+      *size = value.size() + 1;
+      return nullptr;
+    } else if (*size >= value.size() + 1) {
       std::memcpy(out, value.data(), value.size());
       out[value.size()] = '\0';
       *size = value.size() + 1;
       return nullptr;
-    } else {
+    } else {  // User has provided a buffer that is not large enough
       *size = value.size() + 1;
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
     }
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
+template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
+static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
+  if (out == nullptr) {  // User is querying the true size of the attribute
+    *size = values.size();
+    return Status::OK();
+  } else if (*size >= values.size()) {
+    std::memcpy(out, values.data(), values.size() * sizeof(T));
+    *size = values.size();
+  } else {  // User has provided a buffer that is not large enough
+    *size = values.size();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Result buffer is not large enough");
+  }
+
+  return Status::OK();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ float* out, _Inout_ size_t* size) {
+  std::vector<float> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
+  if (status.IsOK()) {
+    status = CopyDataFromVectorToMemory<float>(values, out, size);
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ int64_t* out, _Inout_ size_t* size) {
+  std::vector<int64_t> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
+  if (status.IsOK()) {
+    status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
   }
   return onnxruntime::ToOrtStatus(status);
 }
@@ -125,18 +165,35 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       size_t type_id_counter = 0;
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
+        onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+
+        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
+        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
+        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+          option = onnx::OpSchema::FormalParameterOption::Optional;
+        }
+
         auto type = op->GetInputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter));
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else {
-          schema.Input(i, "Input" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+          schema.Input(i, "Input" + std::to_string(i), "",
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
         }
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
+        onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+
+        // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
+        // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
+        if (op->version >= 8 && op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+          option = onnx::OpSchema::FormalParameterOption::Optional;
+        }
+
         auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           ORT_ENFORCE(type_id_counter == 1,
@@ -146,9 +203,10 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
                       "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
                       "cannot be inferred without which model loading cannot proceed.");
 
-          schema.Output(i, "Output" + std::to_string(i), "", "T0");
+          schema.Output(i, "Output" + std::to_string(i), "", "T0", option);
         } else {
-          schema.Output(i, "Output" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+          schema.Output(i, "Output" + std::to_string(i), "",
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
         }
       }
 

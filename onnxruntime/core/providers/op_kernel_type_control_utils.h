@@ -36,6 +36,12 @@ constexpr bool HasTypeWithSameSize() {
   return boost::mp11::mp_set_contains<EnabledTypeSizes, SizeOfT<T>>::value;
 }
 
+/**
+ * The union of the given type sets.
+ */
+template <typename... TypeSets>
+using TypeSetUnion = boost::mp11::mp_set_union<TypeSets...>;
+
 }  // namespace utils
 }  // namespace onnxruntime
 
