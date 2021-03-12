@@ -344,8 +344,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\())
-C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\()):
+        FUNCTION_ENTRY MlasConv\KernelType\()FloatKernel\Isa\()
 
         push    rbp
         push    rbx
