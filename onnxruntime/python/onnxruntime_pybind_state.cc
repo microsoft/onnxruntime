@@ -4,6 +4,7 @@
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
+#include "python/dlpack_convertor.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -26,9 +27,6 @@
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 
-#ifdef ENABLE_TRAINING
-#include "python/dlpack_convertor.h"
-#endif
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -1055,7 +1053,6 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef ENABLE_TRAINING
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
   if (dlmanged_tensor) {
@@ -1067,7 +1064,6 @@ void DlpackCapsuleDestructor(PyObject* data) {
     PyErr_Clear();
   }
 }
-#endif
 
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
@@ -1283,7 +1279,6 @@ void addObjectMethods(py::module& m, Environment& env) {
 #endif
         return obj;
       })
-#ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
@@ -1296,7 +1291,6 @@ void addObjectMethods(py::module& m, Environment& env) {
         PyCapsule_SetName(data.ptr(), "used_dltensor");
         return ort_value;
       })
-#endif
       ;
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
