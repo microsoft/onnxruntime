@@ -61,6 +61,14 @@ TEST_F(ActivationOpTest, Elu) {
                           {{"alpha", alpha}});
 }
 
+TEST_F(ActivationOpTest, Celu) {
+  float alpha = -0.5f;
+  TestActivationOp<float>(
+      "Celu",
+      input_values,
+      [alpha](float x) { return std::max(0.f, x) + std::min(0.f, alpha * (exp(x / alpha) - 1)); },
+      {{"alpha", alpha}}, true, 12);
+}
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
   TestActivationOp<float>("LeakyRelu",
