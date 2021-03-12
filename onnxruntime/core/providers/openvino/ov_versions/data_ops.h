@@ -66,6 +66,7 @@ public:
   virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);
   virtual bool InsertNode(const Node* node, const std::string& name);
+  VersionNum GetVersion() const { return version_id_; }
 
 };
 
