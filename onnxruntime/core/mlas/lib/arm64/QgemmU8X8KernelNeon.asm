@@ -84,7 +84,7 @@ Return Value:
 
 --*/
 
-        LEAF_ENTRY MlasGemmU8X8KernelNeon
+        LEAF_ENTRY A64NAME(MlasGemmU8X8KernelNeon)
 
         ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
         ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
@@ -603,6 +603,6 @@ StoreOutputPartial1AddModeM1
         st1     {v16.s}[0],[x2]
         b       ExitKernelM1
 
-        LEAF_END MlasGemmU8X8KernelNeon
+        LEAF_END A64NAME(MlasGemmU8X8KernelNeon)
 
         END

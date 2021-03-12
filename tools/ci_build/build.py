@@ -265,6 +265,10 @@ def parse_arguments():
         help="Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
+        "--arm64ec", action='store_true',
+        help="Create ARM64EC makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
     parser.add_argument(
@@ -675,7 +679,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for ARM/ARM64
         # (no native compilation supported through this script).
-        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
@@ -1621,7 +1625,7 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -1733,7 +1737,7 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
-    cross_compiling = args.arm or args.arm64 or args.android
+    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -1829,7 +1833,7 @@ def main():
             update_submodules(source_dir)
         if is_windows():
             if args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64:
+                if args.x86 or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
@@ -1839,7 +1843,7 @@ def main():
                 cmake_extra_args = [
                     '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
                 ]
-            elif args.arm or args.arm64:
+            elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
                 if path_to_protoc_exe is None:
@@ -1847,8 +1851,10 @@ def main():
                         cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ['-A', 'ARM']
-                else:
+                elif args.arm64:
                     cmake_extra_args = ['-A', 'ARM64']
+                elif args.arm64ec:
+                    cmake_extra_args = ['-A', 'ARM64EC']
                 cmake_extra_args += ['-G', args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)

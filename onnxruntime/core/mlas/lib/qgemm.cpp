@@ -1740,7 +1740,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
         uint32x2_t RowSumsLow = vpadd_u32(vget_high_u32(RowSums), vget_low_u32(RowSums));
         RowSumsLow = vpadd_u32(RowSumsLow, RowSumsLow);
         vst1_lane_u32(reinterpret_cast<uint32_t*>(RowSumBuffer), RowSumsLow, 0);
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
         // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
         // as VS2019 added new intrinsics to make the operation work. Also, not
         // all build environments using VS2019 have the up-to-date arm64_neon.h,
