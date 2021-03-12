@@ -115,7 +115,7 @@ common::Status TrainingAgent::RunBackward(int64_t run_id, const std::vector<OrtV
 }
 
 void TrainingAgent::CancelPendingBackwardRun(int64_t run_id) {
-  LOGS(*inference_session_->GetLogger(), WARNING) << "Canceling background task with run_id " << run_id;
+  LOGS(*inference_session_->GetLogger(), INFO) << "Canceling background task with run_id " << run_id;
 
   // resume background thread with terminate = true
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, {}, true);
