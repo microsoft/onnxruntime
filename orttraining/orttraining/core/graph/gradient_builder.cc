@@ -161,7 +161,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           NodeDef("Reshape", {GO(0), dY_target_shape_node.output_args[0]}, {IA("dY_reshape_2d")}),
 
           // dB = A' * dY
-          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, std::vector<AttributeProto>{MakeAttribute("transA", int64_t(1)), MakeAttribute("beta", 0.0f)})};
     } else {
       NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
       NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
@@ -190,7 +190,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           NodeDef("Reshape", {GO(0), IA("dY_target_shape")}, {IA("dY_reshape_2d")}),
 
           // dB = A' * dY
-          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, std::vector<AttributeProto>{MakeAttribute("transA", int64_t(1)), MakeAttribute("beta", 0.0f)})};
     }
   };
 
