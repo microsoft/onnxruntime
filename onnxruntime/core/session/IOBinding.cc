@@ -97,7 +97,6 @@ common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
   }
-
   return Status::OK();
 }
 
@@ -107,9 +106,17 @@ void IOBinding::ClearOutputs() {
   outputs_device_info_.clear();
 }
 
-const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
+std::vector<std::string>& IOBinding::GetOutputNames() { return output_names_; }
 
-std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
+std::vector<OrtValue>& IOBinding::GetOutputs() { 
+  // std::ostringstream ostr;
+  // ostr << "output_names_:";
+  // for (auto name : output_names_) {
+  //   ostr << name << ",";
+  // }
+  // LOGS_DEFAULT(WARNING) << ostr.str();
+  return outputs_; 
+}
 
 const std::vector<OrtDevice>& IOBinding::GetOutputsDeviceInfo() const {
   return outputs_device_info_;

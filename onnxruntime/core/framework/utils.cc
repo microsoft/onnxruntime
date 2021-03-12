@@ -437,6 +437,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    LOGS(logger, WARNING) << "terminate_flag=" << terminate_flag;
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
@@ -511,6 +512,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
+  LOGS(logger, WARNING) << "terminate_flag=" << terminate_flag;
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                                  execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
@@ -522,6 +524,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
+  LOGS(logger, WARNING) << "terminate_flag=" << terminate_flag;
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger);
   return status;

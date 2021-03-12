@@ -1538,7 +1538,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 
     if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+      LOGS(*session_logger_, WARNING) << "Running with tag: " << run_options.run_tag;
     }
 
     ++current_num_runs_;
@@ -1568,7 +1568,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
 #endif
-
+    LOGS(*session_logger_, WARNING) << "run_options.terminate " << run_options.terminate;
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,

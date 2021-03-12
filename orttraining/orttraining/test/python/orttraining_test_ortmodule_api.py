@@ -218,6 +218,94 @@ def test_forward_call_single_positional_argument():
     output = ort_model(x)
     assert output is not None
 
+def test_forward_call_once():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    loss1 = ort_model(x)
+
+def test_forward_and_back():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device, requires_grad=True)
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    loss = prediction.sum()
+    loss.backward()
+
+def test_forward_call_twice_single_positional_argument():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    loss1 = ort_model(x)
+    loss2 = ort_model(x)
+
+def test_forward_backward_calls_twice():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    #forward1 forward2 backward2 backward1
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    prediction1 = ort_model(x1)
+    loss1 = prediction1.sum()
+    print("loss1 = ", loss1)
+    prediction2 = ort_model(x2)
+    loss2 = prediction2.sum()
+    print("loss2 = ", loss2)
+    loss1.backward()
+    print("x_grad1 = ", x1.grad)
+    x1.grad = None
+    loss2.backward()
+    print("x_grad2 = ", x2.grad)
+    
+
+def test_overlapping_forward_backward_calls():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    #forward1 forward2 backward2 backward1
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    prediction1 = ort_model(x1)
+    loss1 = prediction1.sum()
+    print("loss1 = ", loss1)
+    prediction2 = ort_model(x2)
+    loss2 = prediction2.sum()
+    print("loss2 = ", loss2)
+    loss2.backward()
+    print("x_grad2 = ", x2.grad)
+    x2.grad = None
+    loss1.backward()
+    print("x_grad1 = ", x1.grad)
+    #forward1 backward1
+    prediction1 = ort_model(x1)
+    loss1 = prediction1.sum()
+    print("loss1 again = ", loss1)
+    loss1.backward()
+    print("x_grad1 again = ", x1.grad)
+
 def test_forward_call_multiple_positional_arguments():
     device = 'cuda'
 

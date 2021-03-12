@@ -477,6 +477,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   CreateInitialFeeds(feeds);
 
   auto& iter_num_value = *iter_num_mlvalue_.GetMutable<Tensor>()->MutableData<int64_t>();
+  LOGS(context_.Logger(), WARNING) << "context_.GetTerminateFlag()=" << context_.GetTerminateFlag();
 
   while (iter_num_value < max_trip_count_ && *condition_mlvalue_.GetMutable<Tensor>()->MutableData<bool>()) {
     if (iter_num_value != 0) {
