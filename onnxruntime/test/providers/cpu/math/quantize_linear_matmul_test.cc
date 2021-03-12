@@ -214,14 +214,14 @@ struct PrePackTestOp {
         .SinceVersion(10);
 
     const auto& inputs = p_original->inputs();
-    for (int i = 0; i < inputs.size(); i++) {
+    for (int i = 0; i < static_cast<int>(inputs.size()); i++) {
       const auto& in = inputs[i];
       modified.Input(i, in.GetName(), in.GetDescription(), in.GetTypeStr(),
                      in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
     }
 
     const auto& outputs = p_original->outputs();
-    for (int oi = 0; oi < outputs.size(); oi++) {
+    for (int oi = 0; oi < static_cast<int>(outputs.size()); oi++) {
       const auto& out = outputs[oi];
       modified.Output(oi, out.GetName(), out.GetDescription(), out.GetTypeStr(),
                       out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());

@@ -25,13 +25,35 @@ ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(IN_A);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
-
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), packed_b_ ? b_shape_ : b->Shape()));
-  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
+  const auto* a = ctx->Input<Tensor>(IN_A);
 
+  const uint8_t* b_start;
+  const std::vector<size_t>* b_step;
+  bool b_signed;  // can't modify b_is_signed_, this is a const method
+  std::vector<size_t> all_zeros;
+
+  if (packed_b_) {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
+    b_start = static_cast<uint8_t *>(packed_b_.get());
+    all_zeros.resize(helper.RightOffsets().size(), 0UL);
+    b_step = &all_zeros;
+    b_signed = b_is_signed_;
+  } else {
+    const Tensor* b = ctx->Input<Tensor>(IN_B);
+    if (b == nullptr) {
+      // the framework has checks to ensure this won't happen,
+      // just need this to shutup static analysis. 
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+          "Required input B can not be null!");
+    }
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+    b_start = static_cast<const uint8_t*>(b->DataRaw());
+    b_step = &helper.RightOffsets();
+    b_signed = b->IsDataType<int8_t>();
+  }
+
+  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
@@ -81,18 +103,13 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   gemm_params.ZeroPointB = static_cast<const uint8_t*>(b_offset->DataRaw());
   gemm_params.C = gemm_output;
   gemm_params.ldc = gemm_params.N;
+  gemm_params.BIsPacked = bool(packed_b_);
+  gemm_params.BIsSigned = b_signed;
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
-    if (packed_b_) {
-      gemm_params.B = packed_b_.get();
-      gemm_params.BIsPacked = true;
-      gemm_params.BIsSigned = b_is_signed_;
-    } else {
-      gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i];
-      gemm_params.BIsPacked = false;
-      gemm_params.BIsSigned = b->IsDataType<int8_t>();
-    }
+    gemm_params.B = b_start + (*b_step)[i];
+
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
 
     MlasRequantizeOutput(gemm_output,
