@@ -121,9 +121,7 @@ if [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $ORTMODULE_BUILD = false ]]; then
       ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
     else
-      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage1\/requirements.txt}
-      # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
-      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
+      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/requirements.txt}
     fi
   fi
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then

@@ -1,15 +1,8 @@
 ## Installing ORT Test Dependencies Locally
 
-To install all development test dependencies for ONNX Runtime training for ORTModule, run the below two commands:
+To install all development test dependencies for ONNX Runtime training for ORTModule, run the below command:
 
-
-Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we need a two step process for installing ORTModule dependencies.
-
-1. Install first set of dependencies:
+1. Install ORTModule dependencies through pip:
 
    ```sh
-   pip install -r tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements.txt
-
-2. Install second set of dependencies for ortmodule:
-   ```sh
-   pip install -r tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage2/requirements.txt
+   pip install -r tools/ci_build/github/linux/docker/scripts/training/ortmodule/requirements.txt
