@@ -491,7 +491,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE SgemmTransposePackB16x4Routine =
+        MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
             MlasPlatform.TransposePackB16x4Routine;
 
         while (x >= 4) {
@@ -910,7 +910,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_KERNEL_M1_ROUTINE SgemmKernelM1Routine;
+        MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransB == CblasNoTrans) {
             SgemmKernelM1Routine = MlasPlatform.KernelM1Routine;
@@ -945,7 +945,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_KERNEL_M1_ROUTINE SgemmKernelM1Routine;
+        MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransA == CblasNoTrans) {
             SgemmKernelM1Routine = MlasPlatform.KernelM1TransposeBRoutine;

@@ -1094,7 +1094,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
 #if !defined(MLAS_TARGET_AMD64)
-    static const PMLAS_POOL_FLOAT_KERNEL PoolKernels[];
+    static MLAS_POOL_FLOAT_KERNEL* const PoolKernels[];
 #endif
 
     const MLAS_NCHWC_POOL_WORK_BLOCK* WorkBlock;
@@ -1199,7 +1199,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
 #if !defined(MLAS_TARGET_AMD64)
 
-const PMLAS_POOL_FLOAT_KERNEL MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
+MLAS_POOL_FLOAT_KERNEL* const MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 {
     MlasPoolMaximumFloatKernel,
     MlasPoolAverageExcludePadFloatKernel,
@@ -1307,7 +1307,7 @@ Return Value:
     // reorder the filter tensor in the expected format for the given algorithm.
     //
 
-    PMLAS_THREADED_ROUTINE ThreadedRoutine;
+    MLAS_THREADED_ROUTINE* ThreadedRoutine;
 
     if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&

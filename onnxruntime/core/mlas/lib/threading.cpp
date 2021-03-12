@@ -18,7 +18,7 @@ Abstract:
 
 void
 MlasExecuteThreaded(
-    PMLAS_THREADED_ROUTINE ThreadedRoutine,
+    MLAS_THREADED_ROUTINE* ThreadedRoutine,
     void* Context,
     int32_t Iterations,
     MLAS_THREADPOOL* ThreadPool
