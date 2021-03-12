@@ -336,7 +336,18 @@ class TestBertOptimization(unittest.TestCase):
 
     def test_huggingface_albert_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("albert-base-v1", [0, 0, 0, 0, 0, 0, 25], 1)
+    
+    def test_huggingface_gpt2_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False)
 
+    def test_huggingface_roberta_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False)
+    
+    def test_huggingface_distilbert_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False)
+
+    def test_huggingface_xlm_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False)
 
 if __name__ == '__main__':
     unittest.main()

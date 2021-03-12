@@ -72,7 +72,6 @@ MODELS = {
     "albert-large-v2": (["input_ids"], 12, False, "bert"),
     "albert-xlarge-v2": (["input_ids"], 12, True, "bert"),
     #"albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
-    "albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
     # T5 (use benchmark_t5.py instead)
     # "t5-small": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
     # "t5-base": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
