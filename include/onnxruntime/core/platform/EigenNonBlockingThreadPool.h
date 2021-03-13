@@ -170,6 +170,7 @@ class ThreadPoolProfiler {
   void LogThreadId(int);              //called in child thread to log its id
   void LogRun(int);                   //called in child thread to log num of run
   void LogSpin(int);                  //called in child thread to log num of spinning
+  void LogSteal(int);                 //called in child thread to log num of jobs stolen from sibling threads
   void LogBlock(int);                 //called in child thread to log num of blocking
   std::string DumpChildThreadStat();  //return all child statitics collected so far
 
@@ -177,8 +178,10 @@ class ThreadPoolProfiler {
   static const char* GetEventName(ThreadPoolEvent);
   struct MainThreadStat {
     uint64_t events_[MAX_EVENT] = {};
+    int32_t core_ = -1;
     std::vector<std::ptrdiff_t> blocks_; //block size determined by cost model
     std::vector<onnxruntime::TimePoint> points_;
+    void LogCore();
     void LogBlockSize(std::ptrdiff_t);
     void LogStart();
     void LogEnd(ThreadPoolEvent);
@@ -192,8 +195,9 @@ class ThreadPoolProfiler {
     std::thread::id thread_id_;
     uint32_t num_run_ = 0;
     uint32_t num_spin_ = 0;
+    uint32_t num_steal_ = 0;
     uint32_t num_block_ = 0;
-    int32_t core_ = -1; //core that the thread run on recently
+    int32_t core_ = -1; //core that the child thread is running on
   };
   std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
   std::string threal_pool_name_;
@@ -1319,8 +1323,14 @@ int CurrentThreadId() const EIGEN_FINAL {
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             profiler_.LogSpin(thread_id);
-            t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
-            onnxruntime::concurrency::SpinPause();
+            if ((i + 1) % steal_count == 0) {
+              t = TrySteal();
+              if (t) {
+                profiler_.LogSteal(thread_id);
+              }
+            } else {
+              t = q.PopFront();
+            }
           }
           SetGoodWorkerHint(thread_id, false);
 
