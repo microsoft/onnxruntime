@@ -698,7 +698,6 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   return Status::OK();
 }
 
-
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 6239)
@@ -956,7 +955,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     void* sparse_data = sparse_data_storage.get();
     size_t element_size = 0;
     // We want to this list to match the one used below in DenseTensorToSparseTensorProto()
-    MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(type);
+    MLTypeCallDispatcher<float, double, MLFloat16, BFloat16,
+                         int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+        type_disp(type);
     ORT_RETURN_IF_ERROR(
         (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
 
@@ -980,6 +981,17 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
         break;
       }
+      case 2: {
+        auto dense_data_span = gsl::make_span<uint16_t>(static_cast<uint16_t*>(dense_data), n_dense_elements);
+        status = CopySparseData<uint16_t>(
+            n_sparse_elements,
+            indices, dims,
+            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+              dense_data_span[to_idx] = static_cast<const uint16_t*>(sparse_data)[from_idx];
+            });
+
+        break;
+      }
       case 4: {
         auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
         status = CopySparseData<uint32_t>(
@@ -991,6 +1003,17 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
         break;
       }
+      case 8: {
+        auto dense_data_span = gsl::make_span<uint64_t>(static_cast<uint64_t*>(dense_data), n_dense_elements);
+        status = CopySparseData<uint64_t>(
+            n_sparse_elements,
+            indices, dims,
+            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+              dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
+            });
+        break;
+      }
+
       default:
         ORT_THROW(false, "BUG! Report to onnxruntime team.");
     }
@@ -1041,13 +1064,30 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
   }
 }
 
+// Here we are not using tolerance for FP types since these dense tensors were
+// created from sparse initializers where zeros were absolute
 template <typename T>
-bool IsZero(const void* p) {
+inline bool IsZero(const void* p) {
   return (static_cast<T>(0) == *reinterpret_cast<const T*>(p));
 }
 
+namespace sparse_internal {
+static const BFloat16 bfloat16_zero(0.f);
+static const MLFloat16 mlfloat16_zero(0.f);
+}  // namespace sparse_internal
+
+template<>
+bool IsZero<BFloat16>(const void* p) {
+  return (sparse_internal::bfloat16_zero == *reinterpret_cast<const BFloat16*>(p));
+}
+
+template <>
+bool IsZero<MLFloat16>(const void* p) {
+  return (sparse_internal::mlfloat16_zero == *reinterpret_cast<const MLFloat16*>(p));
+}
+
 template <typename T>
-void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
+inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
   reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
 }
 
@@ -1081,7 +1121,10 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   std::unique_ptr<uint8_t[]> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data, tensor_bytes_size));
   size_t element_size = 0;
-  MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(data_type);
+  // We want this type list to match the one above in SparseTensorProtoToDenseTensorProto
+  MLTypeCallDispatcher<float, double, MLFloat16, BFloat16,
+                       int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+      type_disp(data_type);
   ORT_RETURN_IF_ERROR(
       (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
 
@@ -1092,10 +1135,66 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                       IsZero<uint8_t>, CopyElement<uint8_t>, values, indices);
       break;
     }
+    case 2: {
+      // bytes
+      switch (data_type) {
+        case TensorProto_DataType_FLOAT16: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<BFloat16>, CopyElement<uint16_t>, values, indices);
+          break;
+        }
+        case TensorProto_DataType_BFLOAT16: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<MLFloat16>, CopyElement<uint16_t>, values, indices);
+          break;
+        }
+        case TensorProto_DataType_INT16:
+        case TensorProto_DataType_UINT16: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<uint16_t>, CopyElement<uint16_t>, values, indices);
+          break;
+        }
+        default:
+          ORT_THROW(false, "BUG! Report to onnxruntime team.");
+          break;
+      }
+      break;
+    }
     case 4: {
-      // float
-      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                      IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
+      switch (data_type) {
+        case TensorProto_DataType_FLOAT:
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<float>, CopyElement<uint32_t>, values, indices);
+          break;
+        case TensorProto_DataType_INT32:
+        case TensorProto_DataType_UINT32: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
+          break;
+        }
+        default:
+          ORT_THROW(false, "BUG! Report to onnxruntime team.");
+          break;
+      }
+      break;
+    }
+    case 8: {
+      switch (data_type) {
+        case TensorProto_DataType_DOUBLE: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<double>, CopyElement<uint64_t>, values, indices);
+          break;
+        }
+        case TensorProto_DataType_INT64:
+        case TensorProto_DataType_UINT64: {
+          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                          IsZero<uint64_t>, CopyElement<uint64_t>, values, indices);
+          break;
+        }
+        default:
+          ORT_THROW(false, "BUG! Report to onnxruntime team.");
+          break;
+      }
       break;
     }
     default:

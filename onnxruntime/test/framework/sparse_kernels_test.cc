@@ -511,12 +511,15 @@ std::vector<std::string> CreateValues<std::string>() {
 }
 */
 
-/* BFloat16 support in the future
 template <>
 std::vector<BFloat16> CreateValues<BFloat16>() {
   return {BFloat16(1.f), BFloat16(2.f), BFloat16(3.f), BFloat16(4.f)};
 }
-*/
+
+template <>
+std::vector<MLFloat16> CreateValues<MLFloat16>() {
+  return {MLFloat16(1.f), MLFloat16(2.f), MLFloat16(3.f), MLFloat16(4.f)};
+}
 
 template <typename T>
 static void CreateTensorWithExternalData(
@@ -621,12 +624,17 @@ static void RawDataWriter(const std::vector<T>& values, TensorProto& tp, TensorP
   tp.set_raw_data(values.data(), values.size() * sizeof(T));
 }
 
-template <typename T>
-static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actual) {
+int64_t ActualSize(const TensorProto& actual) {
   int64_t actual_size = 1;
   for (const auto dim : actual.dims()) {
     actual_size *= dim;
   }
+  return actual_size;
+}
+
+template <typename T>
+static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actual) {
+  int64_t actual_size = ActualSize(actual);
 
   const T* raw_data = reinterpret_cast<const T*>(actual.raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
@@ -634,13 +642,9 @@ static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actua
   EXPECT_THAT(actual_span, testing::ContainerEq(expected));
 }
 
-/* For BFloat16 support in the future.
 template <>
-void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, const TensorProto& actual) {
-  int64_t actual_size = 1;
-  for (const auto dim : actual.dims()) {
-    actual_size *= dim;
-  }
+void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, const TensorProto& actual) {
+  int64_t actual_size = ActualSize(actual);
 
   auto expected = expected_bfloat.as_span<const uint16_t>();
   const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
@@ -648,7 +652,17 @@ void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, const T
 
   EXPECT_THAT(actual_span, testing::ContainerEq(expected));
 }
-*/
+
+template <>
+void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, const TensorProto& actual) {
+  int64_t actual_size = ActualSize(actual);
+
+  auto expected = expected_bfloat.as_span<const uint16_t>();
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
+  auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
+
+  EXPECT_THAT(actual_span, testing::ContainerEq(expected));
+}
 
 TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
   TestConversion<float>(
@@ -657,6 +671,73 @@ TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
         tp.mutable_float_data()->Add(values.cbegin(), values.cend());
       },
       RawDataChecker<float>);
+
+  TestConversion<double>(
+      [](const std::vector<double>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_DOUBLE);
+        tp.mutable_double_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<double>);
+
+  TestConversion<BFloat16>(
+      [](const std::vector<BFloat16>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_BFLOAT16);
+        for (auto v : values) {
+          tp.mutable_int32_data()->Add(v.val);
+        }
+      },
+      RawDataChecker<BFloat16>);
+
+  TestConversion<MLFloat16>(
+      [](const std::vector<MLFloat16>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_FLOAT16);
+        for (auto v : values) {
+          tp.mutable_int32_data()->Add(v.val);
+        }
+      },
+      RawDataChecker<MLFloat16>);
+
+  TestConversion<int16_t>(
+      [](const std::vector<int16_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_INT16);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<int16_t>);
+
+  TestConversion<uint16_t>(
+      [](const std::vector<uint16_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_UINT16);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<uint16_t>);
+
+  TestConversion<int32_t>(
+      [](const std::vector<int32_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_INT32);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<int32_t>);
+
+  TestConversion<uint32_t>(
+      [](const std::vector<uint32_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_UINT32);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<uint32_t>);
+
+  TestConversion<int64_t>(
+      [](const std::vector<int64_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_INT64);
+        tp.mutable_int64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<int64_t>);
+
+  TestConversion<uint64_t>(
+      [](const std::vector<uint64_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_UINT64);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<uint64_t>);
 
   TestConversion<int8_t>(
       [](const std::vector<int8_t>& values, TensorProto& tp) {
@@ -673,11 +754,12 @@ TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
 
   // Test constant node conversion for SparseTensor with external data
   PathString tensor_filename(ORT_TSTR("tensor_XXXXXX"));
-  TestConversion<float>(true,
-                        [&tensor_filename](const std::vector<float>& values, TensorProto& tp) {
-                          CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, values, tensor_filename, tp);
-                        },
-                        RawDataChecker<float>);
+  TestConversion<float>(
+      true,
+      [&tensor_filename](const std::vector<float>& values, TensorProto& tp) {
+        CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, values, tensor_filename, tp);
+      },
+      RawDataChecker<float>);
   DeleteFileFromDisk(tensor_filename.c_str());
 }
 
@@ -696,12 +778,16 @@ std::vector<std::string> CreateSparseValues<std::string>() {
 }
 */
 
-/* BFloat16 support in the future
 template <>
 std::vector<BFloat16> CreateSparseValues<BFloat16>() {
   return {BFloat16(0.f), BFloat16(2.f), BFloat16(3.f), BFloat16(0.f)};
 }
-*/
+
+template <>
+std::vector<MLFloat16> CreateSparseValues<MLFloat16>() {
+  return {MLFloat16(0.f), MLFloat16(2.f), MLFloat16(3.f), MLFloat16(0.f)};
+}
+
 
 template <typename T>
 TensorProto CreateDenseTensor(std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
@@ -717,14 +803,19 @@ TensorProto CreateDenseTensor(std::function<void(const std::vector<T>& values, T
   return result;
 }
 
-template <typename T>
-static void RawSparseDataChecker(gsl::span<const T> expected_values,
-                                 gsl::span<const int64_t> expected_indicies,
-                                 const SparseTensorProto& actual) {
+int64_t ActualSize(const SparseTensorProto& actual) {
   int64_t actual_size = 1;
   for (const auto dim : actual.values().dims()) {
     actual_size *= dim;
   }
+  return actual_size;
+}
+
+template <typename T>
+static void RawSparseDataChecker(gsl::span<const T> expected_values,
+                                 gsl::span<const int64_t> expected_indicies,
+                                 const SparseTensorProto& actual) {
+  int64_t actual_size = ActualSize(actual);
 
   const T* raw_data = reinterpret_cast<const T*>(actual.values().raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
@@ -737,15 +828,12 @@ static void RawSparseDataChecker(gsl::span<const T> expected_values,
   EXPECT_THAT(actual_indicies, testing::ContainerEq(expected_indicies));
 }
 
-/* When we support BFloat16
+
 template <>
 void RawSparseDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat,
                                     gsl::span<const int64_t> expected_indicies,
                                     const SparseTensorProto& actual) {
-  int64_t actual_size = 1;
-  for (const auto dim : actual.values().dims()) {
-    actual_size *= dim;
-  }
+  int64_t actual_size = ActualSize(actual);
 
   static_assert(sizeof(uint16_t) == sizeof(BFloat16), "Expecting equal sizes");
   auto expected = expected_bfloat.as_span<const uint16_t>();
@@ -758,7 +846,24 @@ void RawSparseDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat,
   auto actual_indicies = gsl::make_span<const int64_t>(actual.indices().int64_data().data(), actual.indices().int64_data_size());
   EXPECT_THAT(actual_indicies, testing::ContainerEq(expected_indicies));
 }
-*/
+
+template <>
+void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
+                                    gsl::span<const int64_t> expected_indicies,
+                                    const SparseTensorProto& actual) {
+  int64_t actual_size = ActualSize(actual);
+
+  static_assert(sizeof(uint16_t) == sizeof(MLFloat16), "Expecting equal sizes");
+  auto expected = expected_bfloat.as_span<const uint16_t>();
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.values().raw_data().data());
+  auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
+
+  EXPECT_THAT(actual_span, testing::ContainerEq(expected));
+  // Check indicies
+  EXPECT_THAT(actual.indices().data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  auto actual_indicies = gsl::make_span<const int64_t>(actual.indices().int64_data().data(), actual.indices().int64_data_size());
+  EXPECT_THAT(actual_indicies, testing::ContainerEq(expected_indicies));
+}
 
 template <typename T>
 static void TestDenseToSparseConversion(
@@ -792,6 +897,82 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
       },
       RawSparseDataChecker<float>);
 
+  TestDenseToSparseConversion<double>(
+      [](const std::vector<double>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_DOUBLE);
+        tp.set_name("dense_double");
+        tp.mutable_double_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<double>);
+
+  TestDenseToSparseConversion<BFloat16>(
+      [](const std::vector<BFloat16>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_BFLOAT16);
+        tp.set_name("dense_bfloat16");
+        for(auto v : values) {
+          tp.mutable_int32_data()->Add(v.val);
+        }
+      },
+      RawSparseDataChecker<BFloat16>);
+
+  TestDenseToSparseConversion<MLFloat16>(
+      [](const std::vector<MLFloat16>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_FLOAT16);
+        tp.set_name("dense_float16");
+        for (auto v : values) {
+          tp.mutable_int32_data()->Add(v.val);
+        }
+      },
+      RawSparseDataChecker<MLFloat16>);
+
+  TestDenseToSparseConversion<int16_t>(
+      [](const std::vector<int16_t>& values, TensorProto& tp) {
+        tp.set_name("dense_int16");
+        tp.set_data_type(TensorProto_DataType_INT16);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<int16_t>);
+
+  TestDenseToSparseConversion<uint16_t>(
+      [](const std::vector<uint16_t>& values, TensorProto& tp) {
+        tp.set_name("dense_uint16");
+        tp.set_data_type(TensorProto_DataType_UINT16);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<uint16_t>);
+
+  TestDenseToSparseConversion<uint32_t>(
+      [](const std::vector<uint32_t>& values, TensorProto& tp) {
+        tp.set_name("dense_uint32");
+        tp.set_data_type(TensorProto_DataType_UINT32);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<uint32_t>);
+
+  TestDenseToSparseConversion<int64_t>(
+      [](const std::vector<int64_t>& values, TensorProto& tp) {
+        tp.set_name("dense_int64");
+        tp.set_data_type(TensorProto_DataType_INT64);
+        tp.mutable_int64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<int64_t>);
+
+  TestDenseToSparseConversion<uint64_t>(
+      [](const std::vector<uint64_t>& values, TensorProto& tp) {
+        tp.set_name("dense_uint64");
+        tp.set_data_type(TensorProto_DataType_UINT64);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<uint64_t>);
+
+  TestDenseToSparseConversion<uint16_t>(
+      [](const std::vector<uint16_t>& values, TensorProto& tp) {
+        tp.set_name("dense_uint16");
+        tp.set_data_type(TensorProto_DataType_UINT16);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<uint16_t>);
+
   TestDenseToSparseConversion<int8_t>(
       [](const std::vector<int8_t>& values, TensorProto& tp) {
         tp.set_name("dense_int8");
@@ -808,7 +989,7 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
       RawSparseDataChecker<uint8_t>);
 }
 
-#endif // !ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
 
 }  // namespace test
 }  // namespace onnxruntime
