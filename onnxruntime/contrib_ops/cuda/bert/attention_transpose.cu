@@ -84,7 +84,7 @@ bool LaunchTransCtx(cudaStream_t stream,
     const int H = head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= 1) {
+    if (H * num_heads <= 1024) {
       const dim3 block(H, num_heads, 1);
       TransposeCtx<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
@@ -92,7 +92,7 @@ bool LaunchTransCtx(cudaStream_t stream,
       TransposeCtxLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else {
-    if (head_size * num_heads <= 1) {
+    if (head_size * num_heads <= 1024) {
       const dim3 block(head_size, num_heads, 1);
       TransposeCtx<float><<<grid, block, 0, stream>>>(head_size, input, output);
     } else {
