@@ -941,6 +941,14 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
       },
       RawSparseDataChecker<uint16_t>);
 
+  TestDenseToSparseConversion<int32_t>(
+      [](const std::vector<int32_t>& values, TensorProto& tp) {
+        tp.set_name("dense_int32");
+        tp.set_data_type(TensorProto_DataType_INT32);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawSparseDataChecker<int32_t>);
+
   TestDenseToSparseConversion<uint32_t>(
       [](const std::vector<uint32_t>& values, TensorProto& tp) {
         tp.set_name("dense_uint32");
@@ -964,14 +972,6 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
         tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
       },
       RawSparseDataChecker<uint64_t>);
-
-  TestDenseToSparseConversion<uint16_t>(
-      [](const std::vector<uint16_t>& values, TensorProto& tp) {
-        tp.set_name("dense_uint16");
-        tp.set_data_type(TensorProto_DataType_UINT16);
-        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
-      },
-      RawSparseDataChecker<uint16_t>);
 
   TestDenseToSparseConversion<int8_t>(
       [](const std::vector<int8_t>& values, TensorProto& tp) {
