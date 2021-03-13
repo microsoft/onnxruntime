@@ -249,16 +249,6 @@ stages:
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
 
-      - script: |
-          sudo apt-get update
-          sudo apt-get install python3-pip python-dev
-
-      - script: |
-          pip install twine
-        displayName: 'pip install twine'
-        condition: succeededOrFailed()
-        timeoutInMinutes: 20
-
       - task: CmdLine@2
         inputs:
           script: |
@@ -297,16 +287,22 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - task: TwineAuthenticate@1
-        inputs:
-          pythonUploadServiceConnection: 'ortgpunightlytraining'
-        displayName: 'TwineAuthenticate ortgpunightlytraining'
+      - script: |
+          sudo apt-get update
+          sudo apt-get install python3-pip python-dev
         condition: succeededOrFailed()
-        timeoutInMinutes: 20
+        displayName: 'sudo apt-get install python3-pip python-dev'
 
       - script: |
           python3 -m pip install twine
         displayName: 'python3 -m pip install twine'
+        condition: succeededOrFailed()
+        timeoutInMinutes: 20
+
+      - task: TwineAuthenticate@1
+        inputs:
+          pythonUploadServiceConnection: 'ortgpunightlytraining'
+        displayName: 'TwineAuthenticate ortgpunightlytraining'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
