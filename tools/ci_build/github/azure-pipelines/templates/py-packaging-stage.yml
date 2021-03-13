@@ -300,8 +300,8 @@ stages:
         timeoutInMinutes: 20
 
       - script: |
-          twine upload --username $(ortpypitrainingnightlyusername) --password $(ortpypitrainingnightlypassword) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
-        displayName: 'twine upload --username $(ortpypitrainingnightlyusername) --password ??? $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+          python3 -m twine upload --username $(ortpypitrainingnightlyusername) --password $(ortpypitrainingnightlypassword) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload --username $(ortpypitrainingnightlyusername) --password ??? $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
