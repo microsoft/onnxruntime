@@ -3,21 +3,22 @@
 # Licensed under the MIT License.
 
 import argparse
-import glob
 import os
 import pathlib
-import re
 
 import onnxruntime as ort
 
 
-def _create_config_file_from_ort_models(model_path: pathlib.Path, enable_type_reduction: bool):
-    filename = 'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config'
-    config_file_path = model_path.joinpath(filename)
+def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path):
+    assert onnx_model_path.is_file() and onnx_model_path.match("*.onnx")
+    return onnx_model_path.with_suffix(".ort")
 
-    print("Creating configuration file for operators required by ORT format models in {}.".format(config_file_path))
+
+def _create_config_file_from_ort_models(model_path_or_dir: pathlib.Path, enable_type_reduction: bool):
     from util.ort_format_model import create_config_from_models
-    create_config_from_models(model_path, config_file_path, enable_type_reduction)
+    # config file will be saved at default location in model directory
+    create_config_from_models(model_path_or_dir=str(model_path_or_dir),
+                              enable_type_reduction=enable_type_reduction)
 
 
 def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
@@ -33,12 +34,16 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
     return so
 
 
-def _convert(model_path: pathlib.Path, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool,
+def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
-    models = glob.glob(os.path.join(model_path, '**', '*.onnx'), recursive=True)
+    models = []
+    if model_path_or_dir.is_file() and model_path_or_dir.match("*.onnx"):
+        models.append(model_path_or_dir)
+    elif model_path_or_dir.is_dir():
+        models.extend(model_path_or_dir.rglob("*.onnx"))
 
     if len(models) == 0:
-        raise ValueError("No .onnx files were found in " + model_path)
+        raise ValueError("No .onnx files were found in '{}'".format(model_path_or_dir))
 
     providers = ['CPUExecutionProvider']
     if use_nnapi:
@@ -48,28 +53,28 @@ def _convert(model_path: pathlib.Path, optimization_level: ort.GraphOptimization
     for model in models:
         # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
         # of this script
-        if re.match(r'.*\.optimized\.onnx$', model, flags=re.IGNORECASE):
-            print('Ignoring ' + model)
+        if model.match("*.optimized.onnx"):
+            print("Ignoring '{}'".format(model))
             continue
 
         # create .ort file in same dir as original onnx model
-        ort_target_path = re.sub(r'\.onnx$', '.ort', model)
+        ort_target_path = _onnx_model_path_to_ort_model_path(model)
 
         if create_optimized_onnx_model:
             # Create an ONNX file with the same optimizations that will be used for the ORT format file.
             # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
-            optimized_target_path = re.sub(r'\.onnx$', '.optimized.onnx', model, flags=re.IGNORECASE)
+            optimized_target_path = model.with_suffix(".optimized.onnx")
             so = _create_session_options(optimization_level, optimized_target_path, custom_op_library)
 
             print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
-            _ = ort.InferenceSession(model, sess_options=so, providers=providers)
+            _ = ort.InferenceSession(str(model), sess_options=so, providers=providers)
 
         # Load ONNX model, optimize, and save to ORT format
         so = _create_session_options(optimization_level, ort_target_path, custom_op_library)
         so.add_session_config_entry('session.save_model_format', 'ORT')
 
         print("Converting optimized ONNX model to ORT format model {}".format(ort_target_path))
-        _ = ort.InferenceSession(model, sess_options=so, providers=providers)
+        _ = ort.InferenceSession(str(model), sess_options=so, providers=providers)
 
         # orig_size = os.path.getsize(onnx_target_path)
         # new_size = os.path.getsize(ort_target_path)
@@ -132,8 +137,8 @@ def parse_args():
                         help='Save the optimized version of each ONNX model. '
                              'This will have the same optimizations applied as the ORT format model.')
 
-    parser.add_argument('model_path', type=pathlib.Path,
-                        help='Provide path to directory containing ONNX model/s to convert. '
+    parser.add_argument('model_path_or_dir', type=pathlib.Path,
+                        help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
                              'All files with a .onnx extension, including in subdirectories, will be processed.')
 
     return parser.parse_args()
@@ -142,18 +147,20 @@ def parse_args():
 def main():
     args = parse_args()
 
-    model_path = args.model_path.resolve()
+    model_path_or_dir = args.model_path_or_dir.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
-    if not model_path.is_dir():
-        raise FileNotFoundError('Model path {} is not a directory.'.format(model_path))
+    if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
+        raise FileNotFoundError("Model path '{}' is not a file or directory.".format(model_path_or_dir))
 
     if custom_op_library and not custom_op_library.is_file():
         raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
 
     optimization_level = _get_optimization_level(args.optimization_level)
-    _convert(model_path, optimization_level, args.use_nnapi, custom_op_library, args.save_optimized_onnx_model)
-    _create_config_file_from_ort_models(model_path, args.enable_type_reduction)
+    _convert(model_path_or_dir, optimization_level, args.use_nnapi, custom_op_library, args.save_optimized_onnx_model)
+    ort_model_path_or_dir = \
+        model_path_or_dir if model_path_or_dir.is_dir() else _onnx_model_path_to_ort_model_path(model_path_or_dir)
+    _create_config_file_from_ort_models(ort_model_path_or_dir, args.enable_type_reduction)
 
 
 if __name__ == '__main__':
