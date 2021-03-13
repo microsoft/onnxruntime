@@ -307,14 +307,14 @@ stages:
         timeoutInMinutes: 20
 
       - script: |
-          python3 -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/*.whl
-        displayName: 'python3 -m twine upload --repository testpypi $(Build.ArtifactStagingDirectory)/*.whl'
+          python3 -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload --repository testpypi $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
       - script: |
-          python -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/*.whl
-        displayName: 'python -m twine upload --repository testpypi $(Build.ArtifactStagingDirectory)/*.whl'
+          python -m twine upload --verbose --repository-url https://test.pypi.org/legacy/ --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python -m twine upload --repository testpypi $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
