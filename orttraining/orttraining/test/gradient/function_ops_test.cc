@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <sstream>
 
 #include "gtest/gtest.h"
 #include "core/graph/model.h"
@@ -27,6 +28,22 @@ static ONNX_NAMESPACE::TypeProto TensorType(int32_t elem_type, std::vector<int64
   auto* shape = typeProto.mutable_tensor_type()->mutable_shape();
   for (auto dim : dims)
     shape->add_dim()->set_dim_value(dim);
+  return typeProto;
+}
+
+static ONNX_NAMESPACE::TypeProto TensorType(int32_t elem_type, std::vector<std::string> dims) {
+  ONNX_NAMESPACE::TypeProto typeProto;
+  typeProto.mutable_tensor_type()->set_elem_type(elem_type);
+  auto* shape = typeProto.mutable_tensor_type()->mutable_shape();
+  for (auto dim : dims) {
+    uint64_t dimval;
+    std::istringstream s(dim);
+    if (s >> dimval) {
+      shape->add_dim()->set_dim_value(dimval);
+    } else {
+      shape->add_dim()->set_dim_param(dim);
+    }
+  }
   return typeProto;
 }
 
@@ -92,8 +109,8 @@ struct FunctionTestCase {
 
   FunctionTestCase(const char* _opname) : opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
-  void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data) {
-    auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
+  void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape = {}) {
+    auto arg_type = (symshape.size() > 0) ? TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, symshape) : TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
     input_args.emplace_back(input_name, &arg_type);
 
     OrtValue ort_value;
@@ -185,6 +202,21 @@ TEST(SoftmaxGradExpansionTest, PositiveAxis) {
 TEST(SoftmaxGradExpansionTest, 3D) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2, 2});
+  testCase.RunTest();
+}
+
+TEST(SoftmaxGradExpansionTest, SymbolicShape) {
+  FunctionTestCase testCase("SoftmaxGrad");
+  std::vector<int64_t> shape{3, 2, 2};
+  std::vector<std::string> sym_shape{"BatchSize", "SeqSize", "2"};
+  int size = 12;
+  std::vector<float> value(size);
+  for (int64_t i = 0; i < size; i++)
+    value[i] = float(i);
+
+  testCase.AddInput("dY", shape, value, sym_shape);
+  testCase.AddInput("Y", shape, value, sym_shape);
+  testCase.AddOutput("dX");
   testCase.RunTest();
 }
 
