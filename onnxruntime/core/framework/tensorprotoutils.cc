@@ -967,58 +967,60 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     // but using const_cast makes it more obvious we're doing something ugly.
     // C++17 add non-const data() where we could remove const_cast
     std::string dense_data_storage(n_dense_elements * element_size, 0);
-    void* dense_data = const_cast<char*>(dense_data_storage.data());
+    if (n_sparse_elements > 0) {
+      void* dense_data = const_cast<char*>(dense_data_storage.data());
 
-    switch (element_size) {
-      case 1: {
-        auto dense_data_span = gsl::make_span<uint8_t>(static_cast<uint8_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint8_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
-            });
+      switch (element_size) {
+        case 1: {
+          auto dense_data_span = gsl::make_span<uint8_t>(static_cast<uint8_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint8_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+              });
 
-        break;
+          break;
+        }
+        case 2: {
+          auto dense_data_span = gsl::make_span<uint16_t>(static_cast<uint16_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint16_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint16_t*>(sparse_data)[from_idx];
+              });
+
+          break;
+        }
+        case 4: {
+          auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint32_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
+              });
+
+          break;
+        }
+        case 8: {
+          auto dense_data_span = gsl::make_span<uint64_t>(static_cast<uint64_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint64_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
+              });
+          break;
+        }
+
+        default:
+          ORT_THROW(false, "BUG! Report to onnxruntime team.");
       }
-      case 2: {
-        auto dense_data_span = gsl::make_span<uint16_t>(static_cast<uint16_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint16_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint16_t*>(sparse_data)[from_idx];
-            });
 
-        break;
-      }
-      case 4: {
-        auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint32_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
-            });
-
-        break;
-      }
-      case 8: {
-        auto dense_data_span = gsl::make_span<uint64_t>(static_cast<uint64_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint64_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
-            });
-        break;
-      }
-
-      default:
-        ORT_THROW(false, "BUG! Report to onnxruntime team.");
+      ORT_RETURN_IF_ERROR(status);
     }
-
-    ORT_RETURN_IF_ERROR(status);
     dense.set_raw_data(std::move(dense_data_storage));
 
   } else {
