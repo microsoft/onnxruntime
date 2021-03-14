@@ -55,6 +55,7 @@ ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_
 
 ThreadPoolProfiler::~ThreadPoolProfiler() {
   enabled_ = false;
+  child_thread_stats_.reset();
 }
 
 void ThreadPoolProfiler::Start() {
