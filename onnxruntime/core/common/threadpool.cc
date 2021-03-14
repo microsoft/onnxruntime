@@ -38,13 +38,13 @@ namespace concurrency {
 thread_local ThreadPoolProfiler::MainThreadStat ThreadPoolProfiler::main_thread_stat_;
 
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads,
-                                       const CHAR_TYPE* threal_pool_name) : num_threads_(num_threads),
+                                       const CHAR_TYPE* threal_pool_name) : num_threads_(num_threads)/*,
                                                                             child_thread_stats_(new ChildThreadStat[num_threads],
                                                                                                 [](ThreadPoolProfiler::ChildThreadStat* stat) {
                                                                                                   if (stat) {
                                                                                                     delete[] stat;
                                                                                                   }
-                                                                                                }) {
+                                                                                                }) */{
   if (threal_pool_name) {
 #ifdef _WIN32
     using convert_type = std::codecvt_utf8<wchar_t>;
