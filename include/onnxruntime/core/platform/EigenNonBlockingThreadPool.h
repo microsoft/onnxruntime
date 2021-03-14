@@ -130,6 +130,12 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#ifdef _WIN32
+using CHAR_TYPE = wchar_t;
+#else
+using CHAR_TYPE = char;
+#endif
+
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
@@ -151,28 +157,50 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler() = default;
-  ~ThreadPoolProfiler() = default;
+  ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name);
+  ~ThreadPoolProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
-  void Start();                          //start profiling
-  std::string Stop();                    //stop profiling and return collected numbers
-  void LogStart();                       //record the starting time point
-  void LogEnd(ThreadPoolEvent);          //calculate and save the time elapsed from last start point
-  void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
+  void Start();                  //called by executor to start profiling
+  std::string Stop();            //called by executor to stop profiling and return collected numbers
+  void LogStart();               //called in main thread to record the starting time point
+  void LogEnd(ThreadPoolEvent);  //called in main thread to calculate and save the time elapsed from last start point
+  void LogEndAndStart(ThreadPoolEvent);
+  void LogCoreAndBlock(std::ptrdiff_t block_size);  //called in main thread to log core and block size for task breakdown
+  void LogThreadId(int thread_idx);                 //called in child thread to log its id
+  void LogRun(int thread_idx);                      //called in child thread to log num of run
+  void LogSpin(int thread_idx);                     //called in child thread to log num of spinning
+  void LogSteal(int thread_idx);                    //called in child thread to log num of jobs stolen from sibling threads
+  void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
+  std::string DumpChildThreadStat();                //return all child statitics collected so far
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
-  struct PerThreadNumber {
+  struct MainThreadStat {
     uint64_t events_[MAX_EVENT] = {};
+    int32_t core_ = -1;
+    std::vector<std::ptrdiff_t> blocks_;  //block size determined by cost model
     std::vector<onnxruntime::TimePoint> points_;
+    void LogCore();
+    void LogBlockSize(std::ptrdiff_t block_size);
     void LogStart();
     void LogEnd(ThreadPoolEvent);
     void LogEndAndStart(ThreadPoolEvent);
     std::string Reset();
   };
-  std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
-  OrtMutex mutex_;
+  bool enabled_ = false;
+  thread_local static MainThreadStat main_thread_stat_;
+  int num_threads_;
+  struct ChildThreadStat {
+    std::thread::id thread_id_;
+    uint64_t num_run_ = 0;
+    uint64_t num_spin_ = 0;
+    uint64_t num_steal_ = 0;
+    uint64_t num_block_ = 0;
+    int32_t core_ = -1;  //core that the child thread is running on
+  };
+  std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
+  std::string threal_pool_name_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
@@ -225,7 +253,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [0,k) where k<=n.
   virtual void RunInParallelSection(ThreadPoolParallelSection &ps,
                                     std::function<void(unsigned idx)> fn,
-                                    unsigned n) = 0;
+                                    unsigned n, std::ptrdiff_t block_size) = 0;
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
@@ -242,7 +270,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // [ Note that this 20% overhead is more than paid for when we have
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
-                             unsigned n) = 0;
+                             unsigned n, std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling()  = 0;
   virtual std::string StopProfiling() = 0;
 };
@@ -653,14 +681,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
-#ifdef _WIN32
-  using CHAR_TYPE = wchar_t;
-#else
-  using CHAR_TYPE = char;
-#endif
+
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
-      : env_(env),
+      : profiler_(num_threads, name),
+        env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
@@ -983,7 +1008,8 @@ void SummonWorkers(PerThread &pt,
 
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
-                          unsigned n) override {
+                          unsigned n, std::ptrdiff_t block_size) override {
+  profiler_.LogCoreAndBlock(block_size);
   profiler_.LogStart();
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1031,7 +1057,8 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
 
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  profiler_.LogCoreAndBlock(block_size);
   profiler_.LogStart();
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
@@ -1284,6 +1311,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     const int steal_count = spin_count/100;
 
     SetDenormalAsZero(set_denormal_as_zero_);
+    profiler_.LogThreadId(thread_id);
 
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
@@ -1295,7 +1323,15 @@ int CurrentThreadId() const EIGEN_FINAL {
 
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
-            t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
+            profiler_.LogSpin(thread_id);
+            if ((i + 1) % steal_count == 0) {
+              t = TrySteal();
+              if (t) {
+                profiler_.LogSteal(thread_id);
+              }
+            } else {
+              t = q.PopFront();
+            }
             onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
@@ -1345,6 +1381,9 @@ int CurrentThreadId() const EIGEN_FINAL {
                         }
                       }
                     }
+                    if (should_block) {
+                      profiler_.LogBlock(thread_id); 
+                    }
                     return should_block;
                   },
                   // Post-block update (executed only if we blocked)
@@ -1356,6 +1395,7 @@ int CurrentThreadId() const EIGEN_FINAL {
         }
         if (t) {
           td.SetActive();
+          profiler_.LogRun(thread_id);
           t();
           td.SetSpinning();
         }

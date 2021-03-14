@@ -572,6 +572,13 @@ class InferenceSession {
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.
+#ifdef _WIN32
+  std::wstring thread_pool_name_;
+  std::wstring inter_thread_pool_name_;
+#else
+  std::string thread_pool_name_;
+  std::string inter_thread_pool_name_;
+#endif
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 

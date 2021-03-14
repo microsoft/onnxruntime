@@ -285,7 +285,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      node_name_for_profiling + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
-
+      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
@@ -294,7 +294,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
-      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
     }
 
     Status compute_status;
@@ -372,7 +371,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"output_size", std::to_string(total_output_sizes)},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-
       sync_time_begin = session_state.Profiler().StartTime();
     }
 

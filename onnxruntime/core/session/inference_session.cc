@@ -233,9 +233,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
       OrtThreadPoolParams to = session_options_.intra_op_param;
-      if (to.name == nullptr) {
-        to.name = ORT_TSTR("intra-op");
+#ifdef _WIN32
+      std::wstringstream ss;
+#else
+      std::stringstream ss;
+#endif
+      if (to.name) {
+        ss << to.name << "-";
       }
+      ss << "session-" << session_id_ << ORT_TSTR("-intra-op");
+      thread_pool_name_ = ss.str();
+      to.name = thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
@@ -251,8 +259,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       // we set thread affinity.
       to.auto_set_affinity =
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-      if (to.name == nullptr)
-        to.name = ORT_TSTR("intra-op");
+#ifdef _WIN32
+      std::wstringstream ss;
+#else
+      std::stringstream ss;
+#endif
+      if (to.name) {
+        ss << to.name << "-";
+      }
+      ss << "session-" << session_id_ << ORT_TSTR("-inter-op");
+      inter_thread_pool_name_ = ss.str();
+      to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
