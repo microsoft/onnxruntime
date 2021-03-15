@@ -30,9 +30,9 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
  bool vpu_status = false;
  bool import_blob_status = false;
+ std::string model_blob_name;
 #ifndef _WIN32
   std::ifstream blob_path;
-  std::string model_blob_name;
   if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
         std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
         std::string model_name= global_context_.onnx_model_path_name.substr(model_index+1);
@@ -118,7 +118,7 @@ if ((global_context_.use_compiled_network == true && import_blob_status == false
       ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    if(global_context_.use_compiled_network) {
+    if(global_context_.use_compiled_network && hw_target == "MYRIAD") {
       LOGS_DEFAULT(INFO) << log_tag << "Dumping the compiled blob for this model into the directory 'ov_compiled_blobs'";
       std::ofstream compiled_blob_dump{"ov_compiled_blobs/" + model_blob_name};
       exe_network_.Export(compiled_blob_dump);
