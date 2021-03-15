@@ -209,18 +209,18 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Floor", V_2020_4,{"All"}});
   no_dimension_supported_.push_back({"Where", V_2021_2,{"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2,{"All"}});
-  no_dimension_supported_.push_back({"ArgMin", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Max", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Add", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Less", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Greater", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Clip", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Resize", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Equal", V_2021_2,{"Myriad"}});
-  no_dimension_supported_.push_back({"Reshape", V_2021_3,{"Myriad"}});
-  no_dimension_supported_.push_back({"Ceil", V_2021_3,{"Myriad"}});
-  no_dimension_supported_.push_back({"Loop", V_2021_3,{"Myriad"}});
-  no_dimension_supported_.push_back({"ReduceMin", V_2021_3,{"Myriad"}});
+  no_dimension_supported_.push_back({"ArgMin", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Max", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Add", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Less", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Greater", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Clip", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Resize", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Equal", V_2021_2,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Reshape", V_2021_3,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Ceil", V_2021_3,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"Loop", V_2021_3,{"MYRIAD"}});
+  no_dimension_supported_.push_back({"ReduceMin", V_2021_3,{"MYRIAD"}});
 
 
 
@@ -230,8 +230,8 @@ void DataOps::populate_op_mode_supported() {
   subgraph_supported_.push_back({"Cast", V_2020_4,{"All"}});
   subgraph_supported_.push_back({"Concat", V_2020_4,{"All"}});
   subgraph_supported_.push_back({"Gather", V_2020_4,{"All"}});
-  subgraph_supported_.push_back({"Div", V_2020_4,{"Myriad"}});
-  subgraph_supported_.push_back({"Sub", V_2020_4,{"Myriad"}});
+  subgraph_supported_.push_back({"Div", V_2020_4,{"MYRIAD"}});
+  subgraph_supported_.push_back({"Sub", V_2020_4,{"MYRIAD"}});
   subgraph_supported_.push_back({"Identity", V_2021_1,{"CPU"}});
   subgraph_supported_.push_back({"Div", V_2021_1,{"CPU"}});
   subgraph_supported_.push_back({"Sub", V_2021_1,{"CPU"}});
