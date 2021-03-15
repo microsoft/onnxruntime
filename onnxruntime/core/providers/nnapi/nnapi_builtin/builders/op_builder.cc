@@ -2256,6 +2256,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // We don't really use ROI here, so add them to skipped list
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
+
   // We will still add scales to the skipped list even sizes are present
   // since there is no use of it, we will not process it later
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
