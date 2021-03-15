@@ -139,6 +139,31 @@ using CHAR_TYPE = char;
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
+// Align to avoid false sharing with prior fields.  If required,
+// alignment or padding must be added subsequently to avoid false
+// sharing with later fields.  Note that:
+//
+// - The __x86_64__ value is twice the line size (64 bytes).  This
+//   accounts for 2-line prefetch behavior on some cores.
+//
+// - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
+//   definition of ThreadPoolParallelSection uses naive padding
+//   because C++11 does not support alignment constraints on
+//   allocation or expose stdlib.h aligned_alloc.  C++17 introduces
+//   support for aligned allocation which we could use here.
+
+#if defined(__x86_64__)
+#define ORT_FALSE_SHARING_BYTES 128
+#else
+#define ORT_FALSE_SHARING_BYTES 64
+#endif
+
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)
+
+struct PaddingToAvoidFalseSharing {
+  char padding[ORT_FALSE_SHARING_BYTES];
+};
+
 /* Usage:
 1. In executor, call Start() before profiling and Stop() to get profiled numbers;
 2. Inside thread pool, call LogStart() before interested section and LogEnd... after to log elapsed time;
@@ -169,7 +194,8 @@ class ThreadPoolProfiler {
   void LogCoreAndBlock(std::ptrdiff_t block_size);  //called in main thread to log core and block size for task breakdown
   void LogThreadId(int thread_idx);                 //called in child thread to log its id
   void LogRun(int thread_idx);                      //called in child thread to log num of run
-  void LogSpin(int thread_idx);                     //called in child thread to log num of spinning
+  void LogCore(int thread_idx);                     //called in child thread to log the core that the child thread is running on
+  void LogSpin(int thread_idx, uint64_t spin);      //called in child thread to log num of spinning
   void LogSteal(int thread_idx);                    //called in child thread to log num of jobs stolen from sibling threads
   void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
   std::string DumpChildThreadStat();                //return all child statitics collected so far
@@ -189,7 +215,7 @@ class ThreadPoolProfiler {
     std::string Reset();
   };
   bool enabled_ = false;
-  MainThreadStat& GetMainThreadStat();
+  MainThreadStat& GetMainThreadStat(); //return thread local stat
   int num_threads_;
   struct ChildThreadStat {
     std::thread::id thread_id_;
@@ -197,35 +223,12 @@ class ThreadPoolProfiler {
     uint64_t num_spin_ = 0;
     uint64_t num_steal_ = 0;
     uint64_t num_block_ = 0;
+    onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;  //core that the child thread is running on
+    PaddingToAvoidFalseSharing padding_; //to prevent false sharing
   };
   std::vector<ChildThreadStat> child_thread_stats_;
   std::string threal_pool_name_;
-};
-
-// Align to avoid false sharing with prior fields.  If required,
-// alignment or padding must be added subsequently to avoid false
-// sharing with later fields.  Note that:
-//
-// - The __x86_64__ value is twice the line size (64 bytes).  This
-//   accounts for 2-line prefetch behavior on some cores.
-//
-// - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
-//   definition of ThreadPoolParallelSection uses naive padding
-//   because C++11 does not support alignment constraints on
-//   allocation or expose stdlib.h aligned_alloc.  C++17 introduces
-//   support for aligned allocation which we could use here.
-
-#if defined(__x86_64__)
-#define ORT_FALSE_SHARING_BYTES 128
-#else
-#define ORT_FALSE_SHARING_BYTES 64
-#endif
-
-#define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)
-
-struct PaddingToAvoidFalseSharing {
-  char padding[ORT_FALSE_SHARING_BYTES];
 };
 
 // Extended Eigen thread pool interface, avoiding the need to modify
@@ -1322,8 +1325,8 @@ int CurrentThreadId() const EIGEN_FINAL {
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
-          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
-            profiler_.LogSpin(thread_id);
+          int i = 0;
+          for (; i < spin_count && !t && !cancelled_ && !done_; i++) {
             if ((i + 1) % steal_count == 0) {
               t = TrySteal();
               if (t) {
@@ -1334,6 +1337,7 @@ int CurrentThreadId() const EIGEN_FINAL {
             }
             onnxruntime::concurrency::SpinPause();
           }
+          profiler_.LogSpin(thread_id, i);
           SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
@@ -1397,6 +1401,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           td.SetActive();
           profiler_.LogRun(thread_id);
           t();
+          profiler_.LogCore(thread_id);
           td.SetSpinning();
         }
       }
