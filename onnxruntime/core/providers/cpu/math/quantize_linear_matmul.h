@@ -17,18 +17,18 @@ class QLinearMatMul : public MatMulIntegerBase {
    * @brief Give each input a name, should be consistent with doc spec in
    * Operators.md
   */
-  enum InputID : int {
+  enum InputTensors : int {
     IN_A = 0,
-    IN_Ascale = 1,
-    IN_Azero = 2,
+    IN_A_SCALE = 1,
+    IN_A_ZERO_POINT = 2,
     IN_B = 3,
-    IN_Bscale = 4,
-    IN_Bzero = 5,
-    IN_Yscale = 6,
-    IN_Yzero = 7
+    IN_B_SCALE = 4,
+    IN_B_ZERO_POINT = 5,
+    IN_Y_SCALE = 6,
+    IN_Y_ZERO_POINT = 7
   };
 
-  enum OutputID : int {
+  enum OutputTensors : int {
     OUT_Y = 0
   };
 

@@ -195,7 +195,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
 }
 
 /**
- * @brief Extend QLinearMatMul for verifing prepacking behavior 
+ * @brief Extend QLinearMatMul for verifying prepacking behavior 
 */
 struct PrePackTestOp {
   // TODO!! use template and macro to extract a common utility out of this
