@@ -5,7 +5,6 @@
 import argparse
 import op_registration_utils
 import os
-import re
 import shutil
 import sys
 import typing
@@ -19,74 +18,24 @@ ort_tools_py_path = os.path.abspath(os.path.join(ort_root, 'tools', 'python'))
 sys.path.append(ort_tools_py_path)
 
 from util import parse_config  # noqa
-from util.ort_format_model.operator_type_usage_processors import OperatorTypeUsageManager  # noqa
+from util.ort_format_model.operator_type_usage_processors import OpTypeImplFilterInterface  # noqa
 
 log = get_logger("reduce_op_kernels")
 
 
-# valid C++ scalar types that can be specified as globally allowed types
-_valid_allowed_types = {
-    "bool",
-    "uint8_t", "uint16_t", "uint32_t", "uint64_t",
-    "int8_t", "int16_t", "int32_t", "int64_t",
-    "MLFloat16", "BFloat16",  # in onnxruntime namespace
-    "float", "double",
-    "string",  # in std namespace
-}
-
-
-def _validated_globally_allowed_types(globally_allowed_types: typing.Collection[str]) -> typing.Set[str]:
-    '''Return a valid set of globally allowed types.'''
-    # ensure globally_allowed_types is a set
-    if not isinstance(globally_allowed_types, set):
-        globally_allowed_types = set(globally_allowed_types)
-
-    if not globally_allowed_types <= _valid_allowed_types:
-        raise ValueError(
-            "Globally allowed types must be a subset of valid allowed types. Actual: {}, valid: {}".format(
-                globally_allowed_types, sorted(_valid_allowed_types)))
-
-    return globally_allowed_types
-
-
-def _type_re_from_globally_allowed_types(globally_allowed_types: typing.Set[str]) -> typing.re.Pattern:
-    '''Return a regular expression to match type registration strings to a set of globally allowed types.'''
-    # to keep a registration, the type should match patterns like:
-    # 1. T0
-    # 2. T0_T1_T2
-    # where Ti is a member of globally_allowed_types and multiple Ti's are delimited by "_"
-    # this covers both the common case (1) and special cases like OneHot registration (2)
-    allowed_type_subpattern = \
-        "(?:" + "|".join(re.escape(allowed_type) for allowed_type in sorted(globally_allowed_types)) + ")"
-    return re.compile("^{0}(?:_{0})*$".format(allowed_type_subpattern))
-
-
 class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcessor):
     '''Registration processor that excludes registrations and writes the result to an output file.'''
-    def __init__(self, required_ops: dict, op_type_usage_manager: typing.Optional[OperatorTypeUsageManager],
-                 globally_allowed_types: typing.Optional[typing.Set[str]], output_file: str):
+    def __init__(self, required_ops: typing.Optional[dict],
+                 op_type_impl_filter: typing.Optional[OpTypeImplFilterInterface],
+                 output_file: str):
         self._required_ops = required_ops
-
-        if op_type_usage_manager is not None and globally_allowed_types is not None:
-            raise ValueError("At most one of op_type_usage_manager and globally_allowed_types may be provided.")
-
-        self._op_type_usage_manager = op_type_usage_manager
-
-        self._enable_all_ops = globally_allowed_types is not None and not required_ops
-        if self._enable_all_ops:
-            log.info("No required ops were specified but globally allowed types were specified. "
-                     "Globally allowed types will be used to exclude op implementations.")
-
-        self._globally_allowed_types_re = \
-            _type_re_from_globally_allowed_types(globally_allowed_types) \
-            if globally_allowed_types is not None else None
-
+        self._op_type_impl_filter = op_type_impl_filter
         self._output_file = output_file
 
     def _is_op_required(self, domain: str, operator: str,
                         start_version: int, end_version: typing.Optional[int]) -> typing.Tuple[bool, str]:
-        '''See if an op should be excluded because it is not required.'''
-        if self._enable_all_ops:
+        '''See if an op is required.'''
+        if self._required_ops is None:
             return True
 
         if domain not in self._required_ops:
@@ -116,17 +65,10 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
                 exclude = True
                 reason = "Entire op is not required."
 
-            if not exclude and type is not None:
-                if self._op_type_usage_manager is not None:
-                    if not self._op_type_usage_manager.is_typed_registration_needed(domain, operator, type):
-                        exclude = True
-                        reason = "Specific typed registration is not required."
-
-                elif self._globally_allowed_types_re is not None:
-                    if not self._globally_allowed_types_re.match(type):
-                        exclude = True
-                        reason = "Specific typed registration does not contain globally allowed types."
-
+            if not exclude and type is not None and self._op_type_impl_filter is not None:
+                if not self._op_type_impl_filter.is_typed_registration_needed(domain, operator, type):
+                    exclude = True
+                    reason = "Specific typed registration is not required."
         else:
             log.warning('Keeping {} registration from unknown domain: {}'
                         .format(registration_identifier, constant_for_domain))
@@ -152,9 +94,8 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
 
 def _process_provider_registrations(
         ort_root: str, use_cuda: bool,
-        required_ops: dict,
-        op_type_usage_manager: typing.Optional[OperatorTypeUsageManager],
-        globally_allowed_types: typing.Optional[typing.Set[str]]):
+        required_ops: typing.Optional[dict],
+        op_type_impl_filter: typing.Optional[OpTypeImplFilterInterface]):
     '''Rewrite provider registration files.'''
     kernel_registration_files = op_registration_utils.get_kernel_registration_files(ort_root, use_cuda)
 
@@ -169,8 +110,7 @@ def _process_provider_registrations(
 
         # read from backup and overwrite original with commented out lines for any kernels that are not required
         with open(kernel_registration_file, 'w') as file_to_write:
-            processor = _ExcludingRegistrationProcessor(
-                required_ops, op_type_usage_manager, globally_allowed_types, file_to_write)
+            processor = _ExcludingRegistrationProcessor(required_ops, op_type_impl_filter, file_to_write)
 
             op_registration_utils.process_kernel_registration_file(backup_path, processor)
 
@@ -231,20 +171,11 @@ def reduce_ops(config_path: str, enable_type_reduction: bool = False, use_cuda: 
     :param enable_type_reduction: Whether per operator type reduction is enabled
     :param use_cuda: Whether to reduce op kernels for the CUDA provider
     '''
-    required_ops, op_type_usage_manager, globally_allowed_types = parse_config(config_path, enable_type_reduction)
+    required_ops, op_type_impl_filter = parse_config(config_path, enable_type_reduction)
 
-    if globally_allowed_types is not None:
-        globally_allowed_types = _validated_globally_allowed_types(globally_allowed_types)
+    _process_provider_registrations(ort_root, use_cuda, required_ops, op_type_impl_filter)
 
-    _process_provider_registrations(ort_root, use_cuda, required_ops, op_type_usage_manager, globally_allowed_types)
-
-    if op_type_usage_manager is not None:
-        type_control_cpp_code = op_type_usage_manager.get_cpp_entries()
-    elif globally_allowed_types is not None:
-        type_control_cpp_code = ["ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({});".format(
-            ", ".join(sorted(globally_allowed_types)))]
-    else:
-        type_control_cpp_code = []
+    type_control_cpp_code = op_type_impl_filter.get_cpp_entries() if op_type_impl_filter is not None else []
 
     _insert_type_control_cpp_code(ort_root, type_control_cpp_code)
 

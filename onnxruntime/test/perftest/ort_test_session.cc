@@ -8,6 +8,7 @@
 #ifdef _WIN32
 #define strdup _strdup
 #endif
+extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
@@ -162,6 +163,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions rocm_options{
+        0,
+        0,
+        std::numeric_limits<size_t>::max(),
+        0};
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
+#else
+    ORT_THROW("ROCM is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
@@ -201,6 +213,24 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
   if (performance_test_config.run_config.set_denormal_as_zero)
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
+  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
 
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
@@ -233,7 +263,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1
+      // free dimensions are treated as 1 if not overriden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

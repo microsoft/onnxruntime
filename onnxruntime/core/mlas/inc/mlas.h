@@ -61,10 +61,6 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
-#endif
-
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
@@ -273,41 +269,29 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
-    );
+struct MLAS_GEMM_U8X8_PARAMETERS {
+    size_t M = 0;
+    size_t N = 0;
+    size_t K = 0;
+    const uint8_t* A = nullptr;
+    size_t lda = 0;
+    uint8_t ZeroPointA = 0;
+    const void* B = 0;
+    size_t ldb = 0;
+    const uint8_t* ZeroPointB = nullptr;
+    bool BIsPacked = false;
+    bool BIsSigned = false;
+    bool PerColumnZeroPoints = false;
+    int32_t* C = nullptr;
+    size_t ldc = 0;
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
+};
 
 void
 MLASCALL
 MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const void* PackedB,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //

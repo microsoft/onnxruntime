@@ -75,6 +75,7 @@ stages:
           Repository: onnxruntimecpubuild
 
       - task: CmdLine@2
+        displayName: 'Build Python Wheel'
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -105,48 +106,9 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)'
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-      - template: clean-agent-build-directory-step.yml
-
-    - job: Linux_py_Wheels_openmp
-      timeoutInMinutes: 90
-      workspace:
-        clean: all
-      pool: Linux-CPU
-      strategy:
-        matrix:
-          Python36:
-            PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - template: set-python-manylinux-variables-step.yml
-
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuild
 
       - task: CmdLine@2
+        displayName: 'Build Python Documentation'
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -158,32 +120,19 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
-              -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               onnxruntimecpubuild \
-                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --use_openmp \
-                  --enable_onnx_tests \
-                  --wheel_name_suffix=openmp \
-                  ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                bash /onnxruntime/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ $(Build.SourcesDirectory) $(Build.BinariesDirectory)
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
+          Contents: '*.zip'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
           ArtifactName: onnxruntime
 
@@ -192,6 +141,7 @@ stages:
           condition: 'succeeded'
 
       - template: clean-agent-build-directory-step.yml
+
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
@@ -471,183 +421,6 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-    - job: Windows_py_Wheels_openmp
-      pool: 'Win-CPU-2021'
-      strategy:
-        matrix:
-          Python36:
-            PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-      variables:
-        MsbuildArguments: '-maxcpucount'
-        OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-        EnvSetupScript: setup_env.bat
-        buildArch: x64
-        setVcvars: true
-        BuildConfig: 'Release'
-        GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-      timeoutInMinutes: 120
-      workspace:
-        clean: all
-
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - template: telemetry-steps.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: 'x64'
-
-      - template: set-nightly-build-option-variable-step.yml
-
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
-
-      - script: |
-          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Install python modules'
-
-      - powershell: |
-          $Env:USE_MSVC_STATIC_RUNTIME=1
-          $Env:ONNX_ML=1
-          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-          python setup.py bdist_wheel
-          python -m pip uninstall -y onnx -qq
-          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-        displayName: 'Install ONNX'
-
-      - task: PythonScript@0
-        displayName: 'BUILD'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --enable_lto
-            --disable_rtti
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
-            --enable_pybind
-            --use_openmp
-            --enable_onnx_tests
-            ${{ parameters.build_py_parameters }}
-            --parallel
-            $(TelemetryOption)
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      # Esrp signing
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
-          Pattern: '*.pyd,*.dll'
-
-      - task: PythonScript@0
-        displayName: 'Build wheel'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=openmp'
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - script: |
-          rename *.whl *.zip
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-        displayName: 'Rename file extension for codesign validation'
-
-      - task: DeleteFiles@1
-        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          Contents: |
-            **/*.obj
-            **/*.pdb
-            **/*.dll
-      
-      - task: PythonScript@0
-        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --enable_lto
-            --disable_rtti
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
-            --enable_pybind
-            --use_openmp
-            --enable_onnx_tests
-            --update
-            --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
-            ${{ parameters.build_py_parameters }}
-            --parallel
-            $(TelemetryOption)
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      - task: SDLNativeRules@2
-        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          userProvideBuildInfo: msBuildInfo
-          msBuildVersion: 16.0
-          msBuildArchitecture: x64
-          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-        continueOnError: true
-
-      - task: TSAUpload@1
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-        displayName: 'TSA Upload'
-        inputs:
-          tsaVersion: TsaV2
-          codeBaseName: 'onnxruntime_master'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**\*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - job: Windows_py_GPU_Wheels
       workspace:
@@ -814,6 +587,7 @@ stages:
         inputs:
           tsaVersion: TsaV2
           codeBaseName: 'onnxruntime_master'
+        continueOnError: true
 
       - template: component-governance-component-detection-steps.yml
         parameters:
@@ -881,63 +655,6 @@ stages:
         parameters:
           condition: 'succeeded'
 
-    - job: MacOS_py_Wheels_openmp
-      workspace:
-        clean: all
-      pool:
-        vmImage: 'macOS-10.14'
-      strategy:
-        matrix:
-          Python36:
-            PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - task: UsePythonVersion@0
-        displayName: 'Use Python'
-        inputs:
-          versionSpec: $(PythonVersion)
-
-      - script: |
-          set -e
-          pushd .
-          cd $(Build.SourcesDirectory)/cmake/external/protobuf
-          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
-          make -j$(getconf _NPROCESSORS_ONLN)
-          make install
-          popd
-          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
-          export ONNX_ML=1
-          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          brew install libomp
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }} --wheel_name_suffix=openmp
-        displayName: 'Command Line Script'
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
     - job: Linux_ARM_py_Wheels

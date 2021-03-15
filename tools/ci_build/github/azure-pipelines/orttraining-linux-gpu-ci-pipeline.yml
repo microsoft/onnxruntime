@@ -7,7 +7,7 @@ jobs:
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
-      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory)
       -x "
       --enable_training
       --config $(buildConfig)
