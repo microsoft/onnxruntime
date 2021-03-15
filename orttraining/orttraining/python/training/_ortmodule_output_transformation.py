@@ -134,7 +134,9 @@ def get_flattened_output_module(original_module):
         def _flatten_output(output, flat_output):
             # Recursively traverse over the output and populate the flat_output with torch.Tensors
 
-            if isinstance(output, torch.Tensor):
+            if output is None:
+                return
+            elif isinstance(output, torch.Tensor):
                 flat_output.append(output)
             elif isinstance(output, abc.Sequence):
                 for value in output:
