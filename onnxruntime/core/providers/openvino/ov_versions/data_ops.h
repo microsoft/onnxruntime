@@ -9,7 +9,8 @@ using VarianceFunc = std::function<bool(const Node*, const Provider_InitializedT
 enum versionNum{ 
   V_2020_4,
   V_2021_1,
-  V_2021_2
+  V_2021_2,
+  V_2021_3
 };
 
 using VersionNum = enum versionNum;
@@ -63,7 +64,7 @@ public:
 
   virtual std::vector<NodeIndex> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
   virtual bool IsOpSupportedOnlyInModel(std::string name);
-  virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
+  virtual bool SpecialConditionForClusterSizeOne(const Node* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);
   virtual bool InsertNode(const Node* node, const std::string& name);
   VersionNum GetVersion() const { return version_id_; }

@@ -34,8 +34,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2021_1, device_type_);
   } else if (version_param == "V_2020_4") {
     data_ops_ = new DataOps(graph_viewer_, V_2020_4, device_type_);
+  } else if (version_param == "V_2021_3") {
+    data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
   }
 }
 
@@ -91,7 +93,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
         return result;
       //If reshape is not an intermediate node, shape needs to be an initializer
-      if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
+      if(data_ops_->SpecialConditionForClusterSizeOne(node)) {
         return result;
       }
     }
@@ -157,7 +159,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           if (IsOpSupportedOnlyInModel(node->OpType()))
             continue;
           //If reshape is not an intermediate node, shape needs to be an initializer
-          if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node))
+          if(data_ops_->SpecialConditionForClusterSizeOne(node))
             continue;
         }
       }  
