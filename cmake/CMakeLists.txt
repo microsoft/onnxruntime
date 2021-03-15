@@ -30,10 +30,6 @@ set (CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convenient
-# On the other hand it does not allow some others.
-# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -153,10 +149,10 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
 function(set_msvc_c_cpp_compiler_warning_level warning_level)
   if (NOT "${warning_level}" MATCHES "^[0-4]$")
-    message(FATAL_ERROR "Expected warning_level of 0-4, got '${warning_level}'.")
+    message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
   endif()
 
-  if (MSVC)
+  if(MSVC)
     set(warning_flag "/W${warning_level}")
     get_property(opts DIRECTORY PROPERTY COMPILE_OPTIONS)
     # only match the generator expression added by this function
@@ -166,6 +162,7 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
   endif()
 endfunction()
 
+# set default MSVC warning level to 3 for external dependencies
 set_msvc_c_cpp_compiler_warning_level(3)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
@@ -557,7 +554,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   if(NOT TARGET GTest::gtest)
     message("Use gtest from submodule")
     # gtest and gmock
+    set_msvc_c_cpp_compiler_warning_level(4)
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
+    set_msvc_c_cpp_compiler_warning_level(3)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
@@ -983,7 +982,9 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+set_msvc_c_cpp_compiler_warning_level(4)
 add_subdirectory(external/flatbuffers EXCLUDE_FROM_ALL)
+set_msvc_c_cpp_compiler_warning_level(3)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES flatbuffers)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES flatbuffers)
 
@@ -993,6 +994,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
 endif()
 
 #Adjust warning flags
+if(onnxruntime_USE_CUDA)
+  set_msvc_c_cpp_compiler_warning_level(3)
+else()
+  set_msvc_c_cpp_compiler_warning_level(4)
+endif()
 if (WIN32)
     set(ORT_WARNING_FLAGS)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
@@ -1051,11 +1057,6 @@ if (WIN32)
       string(APPEND CMAKE_CXX_FLAGS " ${ORT_FLAG}")
       string(APPEND CMAKE_C_FLAGS " ${ORT_FLAG}")
     endforeach()
-    if(onnxruntime_USE_CUDA)
-      set_msvc_c_cpp_compiler_warning_level(3)
-    else()
-      set_msvc_c_cpp_compiler_warning_level(4)
-    endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning

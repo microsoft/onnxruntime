@@ -319,7 +319,9 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
