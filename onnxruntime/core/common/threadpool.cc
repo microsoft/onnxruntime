@@ -35,11 +35,9 @@ namespace onnxruntime {
 
 namespace concurrency {
 
-thread_local ThreadPoolProfiler::MainThreadStat ThreadPoolProfiler::main_thread_stat_;
-
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
     num_threads_(num_threads) {
-  child_thread_stats_.reset(new ChildThreadStat[num_threads]);
+  child_thread_stats_.assign(num_threads, {});
   if (threal_pool_name) {
 #ifdef _WIN32
     using convert_type = std::codecvt_utf8<wchar_t>;
@@ -61,13 +59,18 @@ void ThreadPoolProfiler::Start() {
   enabled_ = true;
 }
 
+ThreadPoolProfiler::MainThreadStat& ThreadPoolProfiler::GetMainThreadStat() {
+  static thread_local MainThreadStat main_thread_stat_;
+  return main_thread_stat_;
+}
+
 std::string ThreadPoolProfiler::Stop() {
   ORT_ENFORCE(enabled_, "Profiler not started yet");
   std::stringstream ss;
   ss << "{\"main_thread\": {"
      << "\"thread_pool_name\": \""
      << threal_pool_name_ << "\", "
-     << main_thread_stat_.Reset()
+     << GetMainThreadStat().Reset()
      << "}, \"sub_threads\": {"
      << DumpChildThreadStat()
      << "}}";
@@ -76,26 +79,26 @@ std::string ThreadPoolProfiler::Stop() {
 
 void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
   if (enabled_) {
-    main_thread_stat_.LogCore();
-    main_thread_stat_.LogBlockSize(block_size);
+    GetMainThreadStat().LogCore();
+    GetMainThreadStat().LogBlockSize(block_size);
   }
 }
 
 void ThreadPoolProfiler::LogStart() {
   if (enabled_) {
-    main_thread_stat_.LogStart();
+    GetMainThreadStat().LogStart();
   }
 }
 
 void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
   if (enabled_) {
-    main_thread_stat_.LogEnd(evt);
+    GetMainThreadStat().LogEnd(evt);
   }
 }
 
 void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   if (enabled_) {
-    main_thread_stat_.LogEndAndStart(evt);
+    GetMainThreadStat().LogEndAndStart(evt);
   }
 }
 

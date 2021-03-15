@@ -189,7 +189,7 @@ class ThreadPoolProfiler {
     std::string Reset();
   };
   bool enabled_ = false;
-  thread_local static MainThreadStat main_thread_stat_;
+  MainThreadStat& GetMainThreadStat();
   int num_threads_;
   struct ChildThreadStat {
     std::thread::id thread_id_;
@@ -199,7 +199,7 @@ class ThreadPoolProfiler {
     uint64_t num_block_ = 0;
     int32_t core_ = -1;  //core that the child thread is running on
   };
-  std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
+  std::vector<ChildThreadStat> child_thread_stats_;
   std::string threal_pool_name_;
 };
 

@@ -239,9 +239,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       std::stringstream ss;
 #endif
       if (to.name) {
-        ss << to.name << "-";
+        ss << to.name << ORT_TSTR("-");
       }
-      ss << "session-" << session_id_ << ORT_TSTR("-intra-op");
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
       thread_pool_name_ = ss.str();
       to.name = thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
@@ -265,9 +265,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       std::stringstream ss;
 #endif
       if (to.name) {
-        ss << to.name << "-";
+        ss << to.name << ORT_TSTR("-");
       }
-      ss << "session-" << session_id_ << ORT_TSTR("-inter-op");
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
       inter_thread_pool_name_ = ss.str();
       to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
