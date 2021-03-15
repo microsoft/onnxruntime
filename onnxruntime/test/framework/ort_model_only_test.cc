@@ -375,7 +375,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
 // test loading ORT format model with sparse initializers
 TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sparse_initializer_handling.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
