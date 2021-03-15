@@ -17,6 +17,13 @@ class QDQOperatorTransformer {
   QDQOperatorTransformer(Node& node, Graph& graph) : node_(node), graph_(graph) {}
   virtual ~QDQOperatorTransformer() {}
   virtual bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) = 0;
+  /* Determine whether to keep node_ itself or not.
+     For operators that support int8, keep node_ and only change its input and output.
+     Otherwise, node_ will be removed and replaced by a QLinear* version.
+  */
+  virtual bool KeepNode() const {
+    return false;
+  }
 
  protected:
   Node& node_;
@@ -122,6 +129,28 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
   }
 };
 
+class QDQSimpleTransformer : public QDQOperatorTransformer {
+ public:
+  QDQSimpleTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
+
+  bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
+    if (parents.size() != 1 || children.size() != 1) {
+      return false;
+    }
+
+    graph_.RemoveEdge(parents[0]->Index(), node_.Index(), 0, 0);
+    graph_.RemoveEdge(node_.Index(), children[0]->Index(), 0, 0);
+
+    node_.MutableInputDefs()[0] = graph_.GetNode(parents[0]->Index())->MutableInputDefs()[0];
+    node_.MutableOutputDefs()[0] = graph_.GetNode(children[0]->Index())->MutableOutputDefs()[0];
+    return true;
+  }
+
+  bool KeepNode() const override {
+    return true;
+  }
+};
+
 class QDQTransformerImpl {
  public:
   QDQTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
@@ -149,9 +178,11 @@ class QDQTransformerImpl {
       if (op_trans->Transform(parents, children)) {
         for (auto parent_node : parents) {
           dq_output_edges_count_[parent_node]--;
+        }
 
-          UpdateNodesToRemove(parents);
-          UpdateNodesToRemove(children);
+        UpdateNodesToRemove(parents);
+        UpdateNodesToRemove(children);
+        if (!op_trans->KeepNode()) {
           nodes_to_remove_.insert(node.Index());
         }
       }
@@ -173,6 +204,10 @@ class QDQTransformerImpl {
       return std::make_unique<QDQAddTransformer>(node, graph_);
     } else if (node.OpType() == "MatMul") {
       return std::make_unique<QDQMatMulTransformer>(node, graph_);
+    } else if (node.OpType() == "MaxPool") {
+      return std::make_unique<QDQSimpleTransformer>(node, graph_);
+    } else if (node.OpType() == "Reshape") {
+      return std::make_unique<QDQSimpleTransformer>(node, graph_);
     }
     return std::unique_ptr<QDQOperatorTransformer>();
   }

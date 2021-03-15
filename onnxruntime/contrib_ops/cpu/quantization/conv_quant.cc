@@ -44,10 +44,8 @@ class ConvIntegerToFloat : public OpKernel {
 
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   BufferUniquePtr packed_W_buffer_;
   size_t packed_W_size_;
-#endif
   BufferUniquePtr reordered_W_buffer_;
   bool is_W_signed_;
   bool is_W_packed_;
@@ -484,39 +482,25 @@ Status ConvIntegerToFloat::Compute(OpKernelContext* context) const {
             worker_gemm_input = input_data + output_start * kernel_dim;
           }
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+          MLAS_GEMM_U8X8_PARAMETERS gemm_params;
+          gemm_params.M = static_cast<size_t>(output_count);
+          gemm_params.N = static_cast<size_t>(group_output_channels);
+          gemm_params.K = static_cast<size_t>(kernel_dim);
+          gemm_params.A = worker_gemm_input;
+          gemm_params.lda = static_cast<size_t>(kernel_dim);
+          gemm_params.ZeroPointA = X_zero_point_value;
           if (packed_W_buffer_) {
-            MlasGemm(
-                static_cast<size_t>(output_count),
-                static_cast<size_t>(group_output_channels),
-                static_cast<size_t>(kernel_dim),
-                worker_gemm_input,
-                static_cast<size_t>(kernel_dim),
-                X_zero_point_value,
-                static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-                W_zero_point_value,
-                is_W_signed,
-                worker_gemm_output + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                nullptr);
-          } else
-#endif
-          {
-            MlasGemm(
-                static_cast<size_t>(output_count),
-                static_cast<size_t>(group_output_channels),
-                static_cast<size_t>(kernel_dim),
-                worker_gemm_input,
-                static_cast<size_t>(kernel_dim),
-                X_zero_point_value,
-                reordered_W + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                W_zero_point_value,
-                is_W_signed,
-                worker_gemm_output + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                nullptr);
+            gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+            gemm_params.BIsPacked = true;
+          } else {
+            gemm_params.B = reordered_W + group_id * group_output_channels,
+            gemm_params.ldb = static_cast<size_t>(M);
           }
+          gemm_params.ZeroPointB = &W_zero_point_value;
+          gemm_params.BIsSigned = is_W_signed;
+          gemm_params.C = worker_gemm_output + group_id * group_output_channels;
+          gemm_params.ldc = static_cast<size_t>(M);
+          MlasGemm(&gemm_params, nullptr);
         }
       }
 

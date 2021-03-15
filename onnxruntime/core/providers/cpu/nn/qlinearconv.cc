@@ -13,6 +13,77 @@
 
 namespace onnxruntime {
 
+struct ConvAttributesInFlight {
+  ConvAttributesInFlight(const ConvAttributes& conv_attrs,
+                         const TensorShape& X_shape,
+                         const TensorShape& W_shape,
+                         bool channel_last) : group(conv_attrs.group),
+                                              pads(conv_attrs.pads),
+                                              dilations(conv_attrs.dilations),
+                                              strides(conv_attrs.strides),
+                                              channels_last_(channel_last) {
+    N = X_shape[0];
+    M = W_shape[0];
+
+    std::vector<int64_t> kernel_shape_dims;
+    conv_attrs.ComputeKernelShape(W_shape, kernel_shape_dims);
+    kernel_rank = kernel_shape_dims.size();
+
+    C = X_shape[channels_last_ ? 1 + kernel_rank : 1];
+
+    if (pads.empty()) {
+      pads.resize(kernel_rank * 2, 0);
+    }
+
+    if (dilations.empty()) {
+      dilations.resize(kernel_rank, 1);
+    }
+
+    if (strides.empty()) {
+      strides.resize(kernel_rank, 1);
+    }
+
+    std::vector<int64_t> Y_dims({N});
+    if (!channels_last_) {
+      Y_dims.push_back(M);
+    }
+
+    const size_t spatial_dim_start = channels_last_ ? 1 : 2;
+    const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
+    input_shape = X_shape.Slice(spatial_dim_start, spatial_dim_end);
+    ORT_ENFORCE(conv_attrs.InferOutputShape(input_shape, kernel_shape_dims, strides, dilations, pads, Y_dims).IsOK());
+    if (channels_last_) {
+      Y_dims.push_back(M);
+    }
+
+    Y_shape = TensorShape(std::move(Y_dims));
+    output_shape = Y_shape.Slice(spatial_dim_start, spatial_dim_end);
+
+    input_image_size = input_shape.Size();
+    output_image_size = output_shape.Size();
+
+    kernel_shape = TensorShape(std::move(kernel_shape_dims));
+    kernel_size = TensorShape(kernel_shape).Size();
+  }
+
+  int64_t M;
+  int64_t N;
+  int64_t C;
+  int64_t group;
+  bool channels_last_;
+  size_t kernel_rank;
+  int64_t input_image_size;
+  int64_t output_image_size;
+  int64_t kernel_size;
+  std::vector<int64_t> pads;
+  std::vector<int64_t> dilations;
+  std::vector<int64_t> strides;
+  TensorShape kernel_shape;
+  TensorShape input_shape;
+  TensorShape output_shape;
+  TensorShape Y_shape;
+};
+
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info),
@@ -39,6 +110,51 @@ class QLinearConv : public OpKernel {
         }
       }
     }
+  }
+
+  Status CheckAndGetZeroPoint(const Tensor* X_zero_point,
+                              const Tensor* W_zero_point,
+                              const Tensor* Y_zero_point,
+                              const ConvAttributesInFlight& conv_attrs,
+                              uint8_t& X_zero_point_value,
+                              uint8_t& Y_zero_point_value,
+                              uint8_t& W_zero_point_value) const;
+
+  Status CheckAndGetScale(const Tensor* X_scale,
+                          const Tensor* W_scale,
+                          const Tensor* Y_scale,
+                          const ConvAttributesInFlight& conv_attrs,
+                          float& X_scale_value,
+                          float& Y_scale_value,
+                          std::vector<float>& output_scales) const;
+
+  int ComputeMaxThreadCount(const ConvAttributesInFlight& conv_attrs,
+                            int64_t group_output_channels,
+                            int64_t kernel_dim) const {
+    // Replicate the logic from MlasGemmU8X8Schedule to control the number of
+    // worker threads used for the convolution.
+    int32_t maximum_thread_count;
+    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+      maximum_thread_count = 64;
+    } else {
+      maximum_thread_count = 16;
+    }
+    constexpr double thread_complexity = static_cast<double>(64 * 1024);
+
+    const double complexity = static_cast<double>(conv_attrs.output_image_size) *
+                              static_cast<double>(group_output_channels) *
+                              static_cast<double>(kernel_dim);
+
+    int32_t thread_count = maximum_thread_count;
+    if (complexity < thread_complexity * maximum_thread_count) {
+      thread_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
+    }
+    if (thread_count > conv_attrs.output_image_size) {
+      // Ensure that every thread produces at least one output.
+      thread_count = static_cast<int32_t>(conv_attrs.output_image_size);
+    }
+
+    return thread_count;
   }
 
   ConvAttributes conv_attrs_;
@@ -159,31 +275,31 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   return Status::OK();
 }
 
-Status QLinearConv::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(3);
-  const auto& W_shape = W ? W->Shape() : W_shape_;
-  const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
+Status QLinearConv::CheckAndGetZeroPoint(const Tensor* X_zero_point,
+                                         const Tensor* W_zero_point,
+                                         const Tensor* Y_zero_point,
+                                         const ConvAttributesInFlight& conv_attrs,
+                                         uint8_t& X_zero_point_value,
+                                         uint8_t& Y_zero_point_value,
+                                         uint8_t& W_zero_point_value) const {
+  // check zero point
+  if (!IsScalarOr1ElementVector(X_zero_point)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : input zero point must be a scalar or 1D tensor of size 1");
+  }
 
-  const int64_t N = X->Shape()[0];
-  const int64_t M = W_shape[0];
+  X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
 
-  // validate offsets
-  const Tensor* X_zero_point = context->Input<Tensor>(2);
-  const Tensor* W_zero_point = context->Input<Tensor>(5);
-  const Tensor* Y_zero_point = context->Input<Tensor>(7);
-  ORT_ENFORCE(IsScalarOr1ElementVector(X_zero_point),
-              "QLinearConv : input zero point must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(Y_zero_point),
-              "QLinearConv : result zero point must be a scalar or 1D tensor of size 1");
+  if (Y_zero_point) {
+    if (!IsScalarOr1ElementVector(Y_zero_point)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : result zero point must be a scalar or 1D tensor of size 1");
+    }
 
-  auto X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
-  auto Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
+    Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
+  }
 
-  uint8_t W_zero_point_value;
   const auto& W_zero_point_shape = W_zero_point->Shape();
   if (W_zero_point_shape.NumDimensions() == 0 ||
-      (W_zero_point_shape.NumDimensions() == 1 && (W_zero_point_shape[0] == 1 || W_zero_point_shape[0] == M))) {
+      (W_zero_point_shape.NumDimensions() == 1 && (W_zero_point_shape[0] == 1 || W_zero_point_shape[0] == conv_attrs.M))) {
     const int64_t W_zero_point_size = W_zero_point_shape.Size();
     const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
     W_zero_point_value = W_zero_point_data[0];
@@ -196,78 +312,85 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter zero point shape invalid");
   }
 
-  // validate scale
-  const Tensor* X_scale = context->Input<Tensor>(1);
-  const Tensor* W_scale = context->Input<Tensor>(4);
-  const Tensor* Y_scale = context->Input<Tensor>(6);
-  ORT_ENFORCE(IsScalarOr1ElementVector(X_scale),
-              "QLinearConv : input scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(Y_scale),
-              "QLinearConv : result scale must be a scalar or 1D tensor of size 1");
+  return Status::OK();
+}
 
-  auto X_scale_value = *(X_scale->template Data<float>());
-  auto Y_scale_value = *(Y_scale->template Data<float>());
+Status QLinearConv::CheckAndGetScale(const Tensor* X_scale,
+                                     const Tensor* W_scale,
+                                     const Tensor* Y_scale,
+                                     const ConvAttributesInFlight& conv_attrs,
+                                     float& X_scale_value,
+                                     float& Y_scale_value,
+                                     std::vector<float>& output_scales) const {
+  if (!IsScalarOr1ElementVector(X_scale)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "QLinearConv : input scale must be a scalar or 1D tensor of size 1");
+  }
 
-  std::vector<float> output_scales;
+  X_scale_value = *(X_scale->template Data<float>());
+
+  if (Y_scale) {
+    if (!IsScalarOr1ElementVector(Y_scale)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "QLinearConv : result scale must be a scalar or 1D tensor of size 1");
+    }
+    Y_scale_value = *(Y_scale->template Data<float>());
+  }
   const auto& W_scale_shape = W_scale->Shape();
   if (W_scale_shape.NumDimensions() == 0 ||
-      (W_scale_shape.NumDimensions() == 1 && (W_scale_shape[0] == 1 || W_scale_shape[0] == M))) {
+      (W_scale_shape.NumDimensions() == 1 && (W_scale_shape[0] == 1 || W_scale_shape[0] == conv_attrs.M))) {
     const int64_t W_scale_size = W_scale_shape.Size();
     const auto* W_scale_data = W_scale->template Data<float>();
     output_scales.resize(static_cast<size_t>(W_scale_size));
     for (int64_t i = 0; i < W_scale_size; i++) {
-      output_scales[i] = (X_scale_value * W_scale_data[i] / Y_scale_value);
+      output_scales[i] = Y_scale ? (X_scale_value * W_scale_data[i] / Y_scale_value) : X_scale_value * W_scale_data[i];
     }
-  } else {
+  }
+
+  else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QLinearConv : filter scale shape invalid");
   }
 
+  return Status::OK();
+}
+
+Status QLinearConv::Compute(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(3);
+  const auto& W_shape = W ? W->Shape() : W_shape_;
+  const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
+
+  ConvAttributesInFlight conv_attrs(conv_attrs_, X->Shape(), W_shape, channels_last_);
+
+  // validate offsets
+  const Tensor* X_zero_point = context->Input<Tensor>(2);
+  const Tensor* W_zero_point = context->Input<Tensor>(5);
+  const Tensor* Y_zero_point = context->Input<Tensor>(7);
+  uint8_t X_zero_point_value = 0;
+  uint8_t Y_zero_point_value = 0;
+  uint8_t W_zero_point_value = 0;
+  CheckAndGetZeroPoint(X_zero_point, W_zero_point, Y_zero_point, conv_attrs,
+                       X_zero_point_value, Y_zero_point_value, W_zero_point_value);
+
+  // validate scale
+  const Tensor* X_scale = context->Input<Tensor>(1);
+  const Tensor* W_scale = context->Input<Tensor>(4);
+  const Tensor* Y_scale = context->Input<Tensor>(6);
+
+  float X_scale_value = 1.f;
+  float Y_scale_value = 1.f;
+  std::vector<float> output_scales;
+  CheckAndGetScale(X_scale, W_scale, Y_scale, conv_attrs,
+                   X_scale_value, Y_scale_value, output_scales);
+
   const Tensor* B = context->Input<Tensor>(8);
 
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
-
-  std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
-
-  const size_t kernel_rank = kernel_shape.size();
-
-  std::vector<int64_t> pads(conv_attrs_.pads);
-  if (pads.empty()) {
-    pads.resize(kernel_rank * 2, 0);
-  }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
-  if (dilations.empty()) {
-    dilations.resize(kernel_rank, 1);
-  }
-  std::vector<int64_t> strides(conv_attrs_.strides);
-  if (strides.empty()) {
-    strides.resize(kernel_rank, 1);
-  }
-
-  const int64_t C = X->Shape()[channels_last_ ? 1 + kernel_rank : 1];
-  const size_t spatial_dim_start = channels_last_ ? 1 : 2;
-  const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
-
-  std::vector<int64_t> Y_dims({N});
-  if (!channels_last_) {
-    Y_dims.push_back(M);
-  }
-  TensorShape input_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
-  if (channels_last_) {
-    Y_dims.push_back(M);
-  }
-  Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  TensorShape output_shape = Y->Shape().Slice(spatial_dim_start, spatial_dim_end);
+  Tensor* Y = context->Output(0, conv_attrs.Y_shape);
 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
-
-  const int64_t input_image_size = input_shape.Size();
-  const int64_t output_image_size = output_shape.Size();
-  const int64_t kernel_size = TensorShape(kernel_shape).Size();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -286,15 +409,15 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       ReorderFilter(
           static_cast<const uint8_t*>(W->DataRaw()),
           reordered_W,
-          static_cast<size_t>(M),
+          static_cast<size_t>(conv_attrs.M),
           static_cast<size_t>(W_shape[1]),
-          static_cast<size_t>(kernel_size));
+          static_cast<size_t>(conv_attrs.kernel_size));
     }
   }
 
-  int64_t group_count = conv_attrs_.group;
+  int64_t group_count = conv_attrs.group;
   int64_t group_input_channels = W_shape[1];
-  int64_t group_output_channels = M / group_count;
+  int64_t group_output_channels = conv_attrs.M / group_count;
 
   // Test for depthwise convolution.
   const bool is_depthwise_conv = (reordered_W != nullptr && group_input_channels == 1 && group_output_channels == 1);
@@ -306,10 +429,10 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     group_count = 1;
   }
 
-  const int64_t X_offset = C * input_image_size;
-  const int64_t Y_offset = M * output_image_size;
-  const int64_t kernel_dim = group_input_channels * kernel_size;
-  const int64_t col_buffer_size = kernel_dim * output_image_size;
+  const int64_t X_offset = conv_attrs.C * conv_attrs.input_image_size;
+  const int64_t Y_offset = conv_attrs.M * conv_attrs.output_image_size;
+  const int64_t kernel_dim = group_input_channels * conv_attrs.kernel_size;
+  const int64_t col_buffer_size = kernel_dim * conv_attrs.output_image_size;
 
   // Use an intermediate int32_t buffer for the GEMM computation before
   // requantizing to the output type.
@@ -338,44 +461,22 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   if (is_depthwise_conv) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * kernel_size * output_image_size);
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * conv_attrs.kernel_size * conv_attrs.output_image_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-    padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
-  } else if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+    padding_data.resize(static_cast<size_t>(conv_attrs.C), X_zero_point_value);
+  } else if (conv_attrs.kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     // Pointwise convolutions can use the original input tensor in place,
     // otherwise a temporary buffer is required for the im2col transform.
-    int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
+    int64_t group_col_buffer_size = (conv_attrs.kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * group_col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
   }
 
-  // Replicate the logic from MlasGemmU8X8Schedule to control the number of
-  // worker threads used for the convolution.
-  int32_t maximum_thread_count;
-  if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-    maximum_thread_count = 64;
-  } else {
-    maximum_thread_count = 16;
-  }
-  constexpr double thread_complexity = static_cast<double>(64 * 1024);
-
-  const double complexity = static_cast<double>(output_image_size) *
-                            static_cast<double>(group_output_channels) *
-                            static_cast<double>(kernel_dim);
-
-  int32_t thread_count = maximum_thread_count;
-  if (complexity < thread_complexity * maximum_thread_count) {
-    thread_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
-  }
-  if (thread_count > output_image_size) {
-    // Ensure that every thread produces at least one output.
-    thread_count = static_cast<int32_t>(output_image_size);
-  }
-
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+  int32_t thread_count = ComputeMaxThreadCount(conv_attrs, group_output_channels, kernel_dim);
   thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 
-  for (int64_t image_id = 0; image_id < N; ++image_id) {
+  for (int64_t image_id = 0; image_id < conv_attrs.N; ++image_id) {
     const auto* input_data = Xdata;
     auto* output_data = Ydata;
 
@@ -384,52 +485,52 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       MlasTranspose(
           Xdata,
           static_cast<uint8_t*>(transpose_input_buffer.get()),
-          static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(conv_attrs.C),
+          static_cast<size_t>(conv_attrs.input_image_size));
       input_data = static_cast<uint8_t*>(transpose_input_buffer.get());
       output_data = static_cast<uint8_t*>(transpose_output_buffer.get());
     }
 
     // Threaded implementation of ND convolution is not yet supported, so
     // prepare all im2col transformations here.
-    if (!is_depthwise_conv && col_buffer && kernel_rank > 2) {
+    if (!is_depthwise_conv && col_buffer && conv_attrs.kernel_rank > 2) {
       for (int64_t group_id = 0; group_id < group_count; ++group_id) {
         math::Im2col<uint8_t, StorageOrder::NHWC>()(
             input_data + group_id * group_input_channels,
             group_input_channels,
-            C,
-            input_shape.GetDims().data(),
-            output_shape.GetDims().data(),
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int64_t>(kernel_rank),
+            conv_attrs.C,
+            conv_attrs.input_shape.GetDims().data(),
+            conv_attrs.output_shape.GetDims().data(),
+            conv_attrs.kernel_shape.GetDims().data(),
+            conv_attrs.strides.data(),
+            conv_attrs.dilations.data(),
+            conv_attrs.pads.data(),
+            static_cast<int64_t>(conv_attrs.kernel_rank),
             static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
             X_zero_point_value);
       }
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
+      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(conv_attrs.output_image_size));
       int64_t output_start = static_cast<int64_t>(work.start);
       int64_t output_count = static_cast<int64_t>(work.end - work.start);
 
-      auto* worker_gemm_output = gemm_output + output_start * M;
-      auto* worker_requantize_output = output_data + output_start * M;
+      auto* worker_gemm_output = gemm_output + output_start * conv_attrs.M;
+      auto* worker_requantize_output = output_data + output_start * conv_attrs.M;
 
       if (is_depthwise_conv) {
-        auto* worker_col_buffer = static_cast<uint8_t const**>(col_buffer.get()) + output_start * kernel_size;
+        auto* worker_col_buffer = static_cast<uint8_t const**>(col_buffer.get()) + output_start * conv_attrs.kernel_size;
         math::Im2col<uint8_t, StorageOrder::NHWC>()(
             input_data,
-            C,
-            input_shape.GetDims().data(),
-            output_shape.GetDims().data(),
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<ptrdiff_t>(kernel_rank),
+            conv_attrs.C,
+            conv_attrs.input_shape.GetDims().data(),
+            conv_attrs.output_shape.GetDims().data(),
+            conv_attrs.kernel_shape.GetDims().data(),
+            conv_attrs.strides.data(),
+            conv_attrs.dilations.data(),
+            conv_attrs.pads.data(),
+            static_cast<ptrdiff_t>(conv_attrs.kernel_rank),
             output_start,
             output_count,
             worker_col_buffer,
@@ -441,9 +542,9 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             W_zero_point_value,
             is_W_signed,
             worker_gemm_output,
-            static_cast<size_t>(M),
+            static_cast<size_t>(conv_attrs.M),
             static_cast<size_t>(output_count),
-            static_cast<size_t>(kernel_size));
+            static_cast<size_t>(conv_attrs.kernel_size));
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
           // Prepare the im2col transformation or use the input buffer directly for
@@ -451,42 +552,42 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           const uint8_t* worker_gemm_input;
           if (col_buffer) {
             auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
-            if (kernel_rank == 2) {
+            if (conv_attrs.kernel_rank == 2) {
               math::Im2col<uint8_t, StorageOrder::NHWC>()(
                   input_data + group_id * group_input_channels,
                   group_input_channels,
-                  C,
-                  input_shape[0],
-                  input_shape[1],
-                  kernel_shape[0],
-                  kernel_shape[1],
-                  dilations[0],
-                  dilations[1],
-                  pads[0],
-                  pads[1],
-                  strides[0],
-                  strides[1],
-                  output_shape[1],
+                  conv_attrs.C,
+                  conv_attrs.input_shape[0],
+                  conv_attrs.input_shape[1],
+                  conv_attrs.kernel_shape[0],
+                  conv_attrs.kernel_shape[1],
+                  conv_attrs.dilations[0],
+                  conv_attrs.dilations[1],
+                  conv_attrs.pads[0],
+                  conv_attrs.pads[1],
+                  conv_attrs.strides[0],
+                  conv_attrs.strides[1],
+                  conv_attrs.output_shape[1],
                   output_start,
                   output_count,
                   worker_col_buffer,
                   X_zero_point_value);
-            } else if (kernel_rank == 1) {
+            } else if (conv_attrs.kernel_rank == 1) {
               math::Im2col<uint8_t, StorageOrder::NHWC>()(
                   input_data + group_id * group_input_channels,
                   group_input_channels,
-                  C,
+                  conv_attrs.C,
                   1,
-                  input_shape[0],
+                  conv_attrs.input_shape[0],
                   1,
-                  kernel_shape[0],
+                  conv_attrs.kernel_shape[0],
                   1,
-                  dilations[0],
+                  conv_attrs.dilations[0],
                   0,
-                  pads[0],
+                  conv_attrs.pads[0],
                   1,
-                  strides[0],
-                  output_shape[0],
+                  conv_attrs.strides[0],
+                  conv_attrs.output_shape[0],
                   output_start,
                   output_count,
                   worker_col_buffer,
@@ -512,12 +613,12 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             gemm_params.BIsPacked = true;
           } else {
             gemm_params.B = reordered_W + group_id * group_output_channels,
-            gemm_params.ldb = static_cast<size_t>(M);
+            gemm_params.ldb = static_cast<size_t>(conv_attrs.M);
           }
           gemm_params.ZeroPointB = &W_zero_point_value;
           gemm_params.BIsSigned = is_W_signed;
           gemm_params.C = worker_gemm_output + group_id * group_output_channels;
-          gemm_params.ldc = static_cast<size_t>(M);
+          gemm_params.ldc = static_cast<size_t>(conv_attrs.M);
           MlasGemm(&gemm_params, nullptr);
         }
       }
@@ -527,7 +628,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           worker_requantize_output,
           Bdata,
           static_cast<size_t>(output_count),
-          static_cast<size_t>(M),
+          static_cast<size_t>(conv_attrs.M),
           output_scales.data(),
           output_scales.size() > 1,
           Y_zero_point_value);
@@ -540,8 +641,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       MlasTranspose(
           output_data,
           Ydata,
-          static_cast<size_t>(output_image_size),
-          static_cast<size_t>(M));
+          static_cast<size_t>(conv_attrs.output_image_size),
+          static_cast<size_t>(conv_attrs.M));
     }
 
     Xdata += X_offset;
