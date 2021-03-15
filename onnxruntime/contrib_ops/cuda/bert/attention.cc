@@ -39,7 +39,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past));
+
+  auto& device_prop = GetDeviceProp();
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past, device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
   const auto& shape = input->Shape();
@@ -52,7 +54,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int hidden_size = static_cast<int>(bias_shape[0]) / 3;
 
   int head_size = hidden_size / num_heads_;
- 
+
   std::vector<int64_t> output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
@@ -77,7 +79,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
-  auto& device_prop = GetDeviceProp();
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
