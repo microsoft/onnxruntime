@@ -32,7 +32,7 @@ class MatMul<float> final : public OpKernel {
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
 
-  // For FusedMatMul and TransposeMatMul contrib ops
+  // For FusedMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;

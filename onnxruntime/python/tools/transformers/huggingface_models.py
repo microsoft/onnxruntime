@@ -9,16 +9,6 @@ MODEL_CLASSES = [
     'AutoModel', 'AutoModelWithLMHead', 'AutoModelForSequenceClassification', 'AutoModelForQuestionAnswering'
 ]
 
-# List of models that require external data saving for onnx export but do not require it when saving optimized onnx model
-# Very few models in the huggingface list require it for both: albert-xxlarge-v1, albert-xxlarge-v2
-# TODO: most of the models in the below exempt list having runtime issues when saving these optimized onnx models
-# using external data format. Need to address the issue in the future
-EXEMPT_MODELS = [
-    "gpt2-large", "gpt2-xl", "xlm-mlm-en-2048", "xlm-mlm-17-1280", "xlm-mlm-100-1280", "ctrl", "albert-xlarge-v1",
-    "albert-xlarge-v2", "t5-large", "t5-3b", "t5-11b", "xlm-roberta-large", "microsoft/DialoGPT-large",
-    "facebook/mbart-large-en-ro"
-]
-
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
 # Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
 MODELS = {
@@ -105,4 +95,14 @@ MODELS = {
     # Longformer (use benchmark_longformer.py instead)
     #"allenai/longformer-base-4096": (["input_ids"], 12, False, "bert"),
     #"allenai/longformer-large-4096": (["input_ids"], 12, False, "bert"),
+    # MBart
+    "facebook/mbart-large-cc25": (["input_ids"], 11, True, "bert"),
+    "facebook/mbart-large-en-ro": (["input_ids"], 11, True, "bert"),
+    # Layoutlm
+    "microsoft/layoutlm-base-uncased": (["input_ids"], 11, False, "bert"),
+    "microsoft/layoutlm-large-uncased": (["input_ids"], 11, False, "bert"),
+    # Squeezebert
+    "squeezebert/squeezebert-uncased": (["input_ids"], 11, False, "bert"),
+    "squeezebert/squeezebert-mnli": (["input_ids"], 11, False, "bert"),
+    "squeezebert/squeezebert-mnli-headless": (["input_ids"], 11, False, "bert"),
 }

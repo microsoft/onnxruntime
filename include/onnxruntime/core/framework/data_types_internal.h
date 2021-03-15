@@ -13,9 +13,11 @@
 #include "boost/mp11.hpp"
 
 #include "core/common/common.h"
+#ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
+#endif
 
 namespace onnxruntime {
 namespace utils {
@@ -342,7 +344,7 @@ class MLTypeCallDispatcher {
    * @tparam Fn The function object template.
    * @tparam Args The argument types.
    */
-  template <template <typename> class Fn, typename... Args>
+  template <template <typename...> class Fn, typename... Args>
   void Invoke(Args&&... args) const {
     InvokeWithLeadingTemplateArgs<Fn, TypeList<>>(std::forward<Args>(args)...);
   }
@@ -382,7 +384,7 @@ class MLTypeCallDispatcher {
    * @tparam Fn The function object template.
    * @tparam Args The argument types.
    */
-  template <class Ret, template <typename> class Fn, typename... Args>
+  template <class Ret, template <typename...> class Fn, typename... Args>
   Ret InvokeRet(Args&&... args) const {
     return InvokeRetWithUnsupportedPolicy<
         Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>>(
@@ -399,7 +401,7 @@ class MLTypeCallDispatcher {
    *         for an example.
    * @tparam Args The argument types.
    */
-  template <class Ret, template <typename> class Fn, class UnsupportedPolicy, typename... Args>
+  template <class Ret, template <typename...> class Fn, class UnsupportedPolicy, typename... Args>
   Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
 

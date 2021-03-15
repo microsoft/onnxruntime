@@ -248,6 +248,8 @@ ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ c
 
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_OpenVINO,
                     _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* options);
@@ -259,4 +261,6 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT,
                     _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
 ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
 ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
+ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
 }  // namespace OrtApis
