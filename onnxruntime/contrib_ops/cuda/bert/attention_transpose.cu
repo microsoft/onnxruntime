@@ -78,25 +78,25 @@ __global__ void TransposeCtxLarge(const int H, const T* input, T* output) {
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output) {
+                    const int max_threads_per_block, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeCtx<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else {
-    if (head_size * num_heads <= 1024) {
+    if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       TransposeCtx<float><<<grid, block, 0, stream>>>(head_size, input, output);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<float><<<grid, block, 0, stream>>>(head_size, input, output);
     }
   }
@@ -105,36 +105,36 @@ bool LaunchTransCtx(cudaStream_t stream,
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output) {
+                    const int max_threads_per_block, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeCtx<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
     half2* output2 = reinterpret_cast<half2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeCtx<half2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<half2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel.
-    if (head_size * num_heads <= 1024) {
+    if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       TransposeCtx<half><<<grid, block, 0, stream>>>(head_size, input, output);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<half><<<grid, block, 0, stream>>>(head_size, input, output);
     }
   }
@@ -169,7 +169,7 @@ __global__ void TransposeQKV(const int H, const T* input, T* output) {
 
 template <typename T>
 __global__ void TransposeQKVLarge(const int H, const T* input, T* output) {
-  // // Use when (H*)*num_heads > 1024
+  // Use when (H*)*num_heads > 1024
 
   // Input:  BxSx3xNxH
   // Output: 3xBxNxSxH
@@ -198,25 +198,25 @@ __global__ void TransposeQKVLarge(const int H, const T* input, T* output) {
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output) {
+                    const int max_threads_per_block, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, 3);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeQKV<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else {
-    if (head_size * num_heads <= 1024) {
+    if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       TransposeQKV<float><<<grid, block, 0, stream>>>(head_size, input, output);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float><<<grid, block, 0, stream>>>(head_size, input, output);
     }
 
@@ -226,36 +226,36 @@ bool LaunchTransQkv(cudaStream_t stream,
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output) {
+                    const int max_threads_per_block, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, 3);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeQKV<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
     half2* output2 = reinterpret_cast<half2*>(output);
-    if (H * num_heads <= 1024) {
+    if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       TransposeQKV<half2><<<grid, block, 0, stream>>>(H, input2, output2);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<half2><<<grid, block, 0, stream>>>(H, input2, output2);
     }
   } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel..
-    if (head_size * num_heads <= 1024) {
+    if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       TransposeQKV<half><<<grid, block, 0, stream>>>(head_size, input, output);
     } else {
-      const dim3 block(1024 / num_heads, num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<half><<<grid, block, 0, stream>>>(head_size, input, output);
     }
   }
