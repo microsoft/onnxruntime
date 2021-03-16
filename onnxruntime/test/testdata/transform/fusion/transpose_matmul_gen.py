@@ -155,10 +155,10 @@ def gen_transpose_fusion_with_cast(model_path):
 
     nodes = [transpose_0, cast_0, cast_1, matmul_0]
 
-    input_0 = helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [3, 2, 'K', 'M'])
-    input_1 = helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [3, 2, 'K', 'N'])
+    input_0 = helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [3, 2, 'N', 'N'])
+    input_1 = helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [3, 2, 'N', 'N'])
     inputs = [input_0, input_1]
-    output_0 = helper.make_tensor_value_info("output_0", TensorProto.FLOAT16, [3, 2, 'M', 'N'])
+    output_0 = helper.make_tensor_value_info("output_0", TensorProto.FLOAT16, [3, 2, 'N', 'N'])
     outputs = [output_0]
 
     save(model_path + "0.onnx", nodes, inputs, outputs, [])
@@ -184,9 +184,6 @@ def gen_transpose_fusion_with_cast(model_path):
     cast_0.output[0] = "transposed_casted_input_0"
     matmul_0.input[0] = cast_0.output[0]
     nodes = [transpose_0, cast_0, transpose_1, cast_1, matmul_0]
-    # Modify the shape of input_1 to account for transposition
-    dim = input_1.type.tensor_type.shape.dim
-    dim[2].dim_param, dim[3].dim_param = dim[3].dim_param, dim[2].dim_param
     save(model_path + "2.onnx", nodes, inputs, outputs, [])
 
     # Create a second MatMul node using the outputs from the same Cast nodes as before
@@ -197,7 +194,7 @@ def gen_transpose_fusion_with_cast(model_path):
             ["output_1"],
             "MatMul_1"))
     outputs.append(helper.make_tensor_value_info(
-            "output_1", TensorProto.FLOAT16, [3, 2, 'M', 'N']))
+            "output_1", TensorProto.FLOAT16, [3, 2, 'N', 'N']))
     save(model_path + "3.onnx", nodes, inputs, outputs, [])
 
 gen_transpose_fusion_with_cast(
