@@ -4,6 +4,7 @@ scikit-learn
 skl2onnx
 sphinx
 sphinx-gallery
+sphinxcontrib.imagesvg
 pyquickhelper
 sphinxcontrib.imagesvg
 tensorflow
