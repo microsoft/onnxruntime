@@ -122,7 +122,7 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
 
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
-  if (transpose == nullptr || cast->GetOutputEdgesCount() != 1 || transpose->GetOutputEdgesCount() != 1) {
+  if (transpose == nullptr || transpose->GetOutputEdgesCount() != 1) {
     return nullptr;
   }
   NodeArg* cast_output = cast->MutableOutputDefs()[0];
