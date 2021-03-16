@@ -63,17 +63,6 @@ wrapper {
 	gradleVersion = '6.1.1'
 }
 
-spotless {
-	java {
-		removeUnusedImports()
-		googleJavaFormat()
-	}
-	format 'gradle', {
-		target '**/*.gradle'
-		trimTrailingWhitespace()
-		indentWithTabs()
-	}
-}
 
 compileJava {
 	dependsOn spotlessJava
