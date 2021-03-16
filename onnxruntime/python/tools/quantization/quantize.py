@@ -146,7 +146,9 @@ def quantize_static(model_input,
                     nodes_to_exclude=[],
                     optimize_model=True,
                     use_external_data_format=False,
-                    calibrate_method=CalibrationMethod.MinMax):
+                    calibrate_method=CalibrationMethod.MinMax,
+                    symmetrize_activations=None,
+                    symmetrize_weights=None):
 
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -174,16 +176,26 @@ def quantize_static(model_input,
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
     :param optimize_model: optimize model before quantization.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
+    :param use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     :param calibrate_method: 
         Current calibration methods supported are MinMax and Entropy. 
         Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
+    :param symmetrize_activations: symmetrize calibration data for activations.
+         If left unspecified, symmetrization will be enabled if activation_type
+         is set to QuantType.QInt8 and disabled otherwise.
+    :param symmetrize_weights: symmetrize calibration data for weights. 
+         If left unspecified, symmetrization will be enabled if weight_type
+         is set to QuantType.QInt8 and disabled otherwise.
     '''
 
-    if activation_type != QuantType.QUInt8:
-        raise ValueError("Static quantization only support uint8 for activation now.")
-
     mode = QuantizationMode.QLinearOps
+
+    # Set default behavior for symmetrization if not specified based on
+    # quantization data type (signed vs unsigned)
+    if symmetrize_activations is None:
+        symmetrize_activations = True if activation_type==QuantType.QInt8 else False
+    if symmetrize_weights is None:
+        symmetrize_weights = True if weight_type==QuantType.QInt8 else False
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
@@ -206,7 +218,9 @@ def quantize_static(model_input,
             tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
-            op_types_to_quantize)
+            op_types_to_quantize,
+            symmetrize_activations,
+            symmetrize_weights)
     else:
         quantizer = QDQQuantizer(
             model,
@@ -219,7 +233,9 @@ def quantize_static(model_input,
             tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
-            op_types_to_quantize)
+            op_types_to_quantize,
+            symmetrize_activations,
+            symmetrize_weights)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
