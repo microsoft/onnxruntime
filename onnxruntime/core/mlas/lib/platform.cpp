@@ -229,8 +229,8 @@ Return Value:
                 this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
                 this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 this->ComputeExpF32Kernel = MlasComputeExpF32KernelFma3;
-                this->LogisticKernelRoutine = MlasLogisticKernelFma3;
-                this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->LogisticKernelRoutine = MlasComputeLogisticF32KernelFma3;
+                this->TanhKernelRoutine = MlasComputeTanhF32KernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
