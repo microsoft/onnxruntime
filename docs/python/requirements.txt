@@ -1,6 +1,7 @@
 sphinx
 sphinx-gallery
+sphinxcontrib.imagesvg
 pyquickhelper
 tensorflow
-tensorflow-onnx
-
+tf2onnx
+skl2onnx
