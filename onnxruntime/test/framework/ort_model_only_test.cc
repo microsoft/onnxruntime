@@ -248,7 +248,6 @@ We could take steps to handle this scenario in a full build, but for consistency
 on any ORT format model.
 */
 TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
-  // we have tests that use a pre-created minst.onnx.ort, so make the naming for the unit test generated file clearer
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
