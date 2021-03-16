@@ -232,6 +232,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
+      bool allow_intra_op_spinning =
+          session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.intra_op_param;
       if (to.name == nullptr) {
         to.name = ORT_TSTR("intra-op");
@@ -242,10 +244,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.auto_set_affinity = to.thread_pool_size == 0 &&
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
+      to.allow_spinning = allow_intra_op_spinning;
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
+      bool allow_inter_op_spinning = 
+          session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
@@ -254,6 +259,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
       to.set_denormal_as_zero = set_denormal_as_zero;
+      to.allow_spinning = allow_inter_op_spinning;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {

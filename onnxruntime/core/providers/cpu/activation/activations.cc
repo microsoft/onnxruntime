@@ -56,6 +56,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, double);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(Celu, 12);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, double);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
@@ -64,6 +65,7 @@ namespace functors {
 template <typename T>
 Status ElementWiseRangedTransform<T>::Create(const std::string& type, const NodeAttributes& attributes,
                                              std::unique_ptr<ElementWiseRangedTransform<T>>& out) {
+  CREATE_ELE_KERNEL(Celu);
   CREATE_ELE_KERNEL(Elu);
   CREATE_ELE_KERNEL(HardSigmoid);
   CREATE_ELE_KERNEL(LeakyRelu);

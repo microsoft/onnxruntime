@@ -96,7 +96,8 @@ function(AddTest)
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
-      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
+      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES"
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
 
     xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET}
       ${TEST_SRC_DIR}/xctest/ortxctest.m
@@ -120,7 +121,8 @@ function(AddTest)
       MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
-      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION})
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
@@ -317,7 +319,9 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -814,9 +818,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs 
-          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
-          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+  set(onnxruntime_perf_test_libs
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)

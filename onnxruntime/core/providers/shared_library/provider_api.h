@@ -7,7 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#define PROVIDER_BRIDGE_PROVIDER 1
+#define SHARED_PROVIDER 1
 
 #include <vector>
 #include <string>
@@ -16,9 +16,11 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -67,6 +69,7 @@ struct DataTransferManager;
 struct IDataTransfer;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
+struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;
 struct KernelRegistry;
@@ -80,7 +83,11 @@ struct NodeArg;
 struct NodeAttributes;
 struct OpKernelContext;
 struct OpKernelInfo;
+struct PrimitiveDataTypeBase;
 struct Tensor;
+
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -147,6 +154,8 @@ enum OperatorStatus : int {
 
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
 
@@ -185,18 +194,6 @@ enum CUDAStreamType : int {
   kTotalCudaStreams,
 };
 
-class DataTypeImpl {
- public:
-  virtual ~DataTypeImpl() = default;
-
-  template <typename T>
-  static MLDataType GetType();
-  template <typename elemT>
-  static MLDataType GetTensorType();
-
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
-};
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
@@ -233,23 +230,6 @@ constexpr T roundUpPow2(T a) {
 }  // namespace math
 
 }  // namespace onnxruntime
-
-#define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
-  provider##_##name##_##domain##_ver##ver
-
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                                              \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                                   \
-  template <>                                                                                                                           \
-  Provider_KernelCreateInfo                                                                                                             \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                                               \
-    return Provider_KernelCreateInfo(                                                                                                   \
-        builder.SetName(#name)                                                                                                          \
-            .SetDomain(domain)                                                                                                          \
-            .SinceVersion(ver)                                                                                                          \
-            .Provider(provider)                                                                                                         \
-            .Build(),                                                                                                                   \
-        static_cast<Provider_KernelCreatePtrFn>([](const OpKernelInfo& info) -> Provider_OpKernel* { return new __VA_ARGS__(info); })); \
-  }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)

@@ -15,44 +15,57 @@ namespace onnxruntime {
 // Supported types for operators that have type reduction enabled
 namespace op_kernel_type_control {
 // Max
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
-                                          float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
+                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
+                                         int64_t);
 
 // Min
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12,
-                                          Input, 0, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
+                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
+                                         int64_t);
+
+// Mod
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0,
+                                                   float, double, int64_t, uint64_t, int32_t, uint32_t,
+                                                   int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
 
 // Pow
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
 
 // Pow 12 and later has separate Base and Exponent types.
 // To reduce templatization we choose to support a subset of types for the base and exponent.
 // This gives us 16 permutations.
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                          Input, 0, int32_t, int64_t, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
-                                          Input, 1, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                        Input, 0, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                        Input, 1, int32_t, int64_t, float, double);
 }  // namespace op_kernel_type_control
 
 //
 // reduce the supported type lists to what's allowed in this build
 //
-using Max8Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
-using Max12Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
+using Max8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
+using Max12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 using EnabledMax8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
 using EnabledMax12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 
-using Min8Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
-using Min12Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
+using Min8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
+using Min12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 using EnabledMin8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
 using EnabledMin12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 
-using Pow7Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
-using Pow12BaseTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0);
-using Pow12ExpTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1);
+using ModTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
+using EnabledModTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
+
+using Pow7Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
+using Pow12BaseTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0);
+using Pow12ExpTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1);
 using EnabledPow7Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
 using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
                                                                   Pow, 12, Input, 0);
@@ -1487,33 +1500,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mod,
     10,
     12,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<int16_t>(),
-                                            DataTypeImpl::GetTensorType<uint16_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
+            BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Mod,
     13,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<int16_t>(),
-                                            DataTypeImpl::GetTensorType<uint16_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
+            BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
 namespace mod_internal {
@@ -1601,7 +1602,7 @@ void BroadCastMod(OpKernelContext* context) {
   UntypedBroadcastTwo(*context, funcs);
 }
 
-void BroadCastMFloat16FMod(OpKernelContext* context) {
+void BroadCastMLFloat16FMod(OpKernelContext* context) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         const auto X = per_iter_bh.ScalarInput0<MLFloat16>();
@@ -1639,9 +1640,12 @@ void BroadCastMFloat16FMod(OpKernelContext* context) {
   UntypedBroadcastTwo(*context, funcs);
 }
 
-// Generic implementation of Mod kernel
+template <class T, typename Enable = void>
+struct CallModImpl;
+
+// Generic implementation of Mod kernel, non-floating point types
 template <class T>
-struct CallModImpl {
+struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>::type> {
   void operator()(bool fmod, OpKernelContext* ctx) const {
     if (fmod) {
       BroadCastFMod<T>(ctx);
@@ -1651,32 +1655,32 @@ struct CallModImpl {
   }
 };
 
+// Generic implementation of Mod kernel, floating point types
+template <class T>
+struct CallModImpl<T, typename std::enable_if<std::is_floating_point<T>::value, void>::type> {
+  void operator()(bool fmod, OpKernelContext* ctx) const {
+    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
+    BroadCastFMod<T>(ctx);
+  }
+};
+
+// MLFloat16 implementation of Mod kernel
+template <>
+struct CallModImpl<MLFloat16> {
+  void operator()(bool fmod, OpKernelContext* ctx) const {
+    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
+    BroadCastMLFloat16FMod(ctx);
+  }
+};
+
 }  // namespace mod_internal
 
 Status Mod::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
-  auto dt_type = X.GetElementType();
+  const auto dt_type = X.GetElementType();
 
-  switch (dt_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      mod_internal::BroadCastFMod<float>(context);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      mod_internal::BroadCastFMod<double>(context);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-      mod_internal::BroadCastMFloat16FMod(context);
-      break;
-    default:
-      utils::MLTypeCallDispatcher<uint8_t, int8_t, uint16_t, int16_t,
-                                   uint32_t, int32_t, uint64_t, int64_t>
-          t_disp(dt_type);
-      t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);
-      break;
-  }
+  utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
+  t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);
 
   return Status::OK();
 }

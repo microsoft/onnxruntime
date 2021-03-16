@@ -92,7 +92,7 @@ template <typename T>
 using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <>
-Status Gemm<float>::Compute(OpKernelContext* ctx, const Provider_OpKernel_Base&) const {
+Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   const auto X = ctx->Input<Tensor>(0);
   const auto W = ctx->Input<Tensor>(1);
   const auto B = ctx->Input<Tensor>(2);

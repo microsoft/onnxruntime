@@ -2,25 +2,35 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/split.h"
-#include "core/providers/common.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 
 #include "gsl/gsl"
 
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
+    float, int32_t, int64_t, uint8_t, std::string);
+}
+
+using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
+using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 11 starts to support Neg Axis.
@@ -29,12 +39,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 13 starts to supports 'split' as optional input.
@@ -42,12 +48,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Split,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<uint8_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
@@ -94,6 +96,7 @@ Status Split::Compute(OpKernelContext* context) const {
 
   Status status;
 
+  // Note: The non-string implementations can probably be based on data type size.
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
   else if (input.IsDataType<int32_t>())
@@ -123,6 +126,10 @@ inline void copy_data<std::string>(const std::string* src, std::string* dst, siz
 
 template <typename T>
 Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
+  if (!utils::HasType<EnabledSplitDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   auto& input_shape = input.Shape();
   auto num_outputs = context.OutputCount();
   int64_t axis = axis_;
