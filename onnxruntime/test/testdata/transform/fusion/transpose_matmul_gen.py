@@ -160,10 +160,10 @@ def gen_transpose_fusion_with_cast(model_path):
     inputs = [input_0, input_1]
     output_0 = helper.make_tensor_value_info("output_0", TensorProto.FLOAT16, [3, 2, 'N', 'N'])
     outputs = [output_0]
-
+    # Testcase0: First input of MatMul is transposed
     save(model_path + "0.onnx", nodes, inputs, outputs, [])
 
-    # Re-arragne nodes so that the transpose is on second input of matmul
+    # Testcase1: Re-arragne nodes so that the transpose is on second input of matmul
     transpose_1 = helper.make_node(
                "Transpose",
                ["input_1"],
@@ -179,14 +179,14 @@ def gen_transpose_fusion_with_cast(model_path):
     nodes = [cast_0, transpose_1, cast_1, matmul_0]
     save(model_path + "1.onnx", nodes, inputs, outputs, [])
 
-    # Create an example with two Cast-ed Transpose-ed inputs feeding a MatMul
+    # Testcase2: Create an example with two Cast-ed Transpose-ed inputs feeding a MatMul
     cast_0.input[0] = "transposed_input_0"
     cast_0.output[0] = "transposed_casted_input_0"
     matmul_0.input[0] = cast_0.output[0]
     nodes = [transpose_0, cast_0, transpose_1, cast_1, matmul_0]
     save(model_path + "2.onnx", nodes, inputs, outputs, [])
 
-    # Create a second MatMul node using the outputs from the same Cast nodes as before
+    # Testcase3: Create a second MatMul node using the outputs from the same Cast nodes as before
     # with each Cast node feeding more than one node.
     nodes.append(helper.make_node(
             "MatMul",
@@ -196,6 +196,18 @@ def gen_transpose_fusion_with_cast(model_path):
     outputs.append(helper.make_tensor_value_info(
             "output_1", TensorProto.FLOAT16, [3, 2, 'N', 'N']))
     save(model_path + "3.onnx", nodes, inputs, outputs, [])
+
+    # Testcase4: The second MatMul uses transposed inputs without cast.
+    nodes.pop()
+    outputs.pop()
+    nodes.append(helper.make_node(
+            "MatMul",
+            ["transposed_input_0", "transposed_input_1"],
+            ["output_1"],
+            "MatMul_1"))
+    outputs.append(helper.make_tensor_value_info(
+            "output_1", TensorProto.FLOAT, [3, 2, 'N', 'N']))
+    save(model_path + "4.onnx", nodes, inputs, outputs, [])
 
 gen_transpose_fusion_with_cast(
     "transpose_cast_matmul_4d_fusion")
