@@ -5,15 +5,6 @@
 #
 # Configuration file for the Sphinx documentation builder.
 
-# -- Path setup --------------------------------------------------------------
-
-import os
-import sys
-
-# ORTModule source-code folder
-sys.path.insert(0, os.path.abspath(os.path.join('..','..','..','..','orttraining','orttraining','python','training')))
-print(os.path.abspath(os.path.join('..','..','..','..','orttraining','orttraining','python','training')))
-
 # -- Project information -----------------------------------------------------
 
 project = 'ORTModule'
