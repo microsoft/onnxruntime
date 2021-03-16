@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/murmurhash3.h"
-#include "gsl/gsl"
 
+#include <algorithm>
 #include <unordered_set>
 #include <string>
+
+#include "gsl/gsl"
+
+#include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
 namespace {
