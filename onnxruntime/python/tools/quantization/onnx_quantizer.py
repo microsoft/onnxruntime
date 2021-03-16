@@ -605,7 +605,7 @@ class ONNXQuantizer:
         # Update packed weight, zero point, and scale initializers
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
-                                                               qType, self.symmetrize_weights,
+                                                               qType, self.is_weight_symmetric,
                                                                self.reduce_range and reduce_range)
         q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
         q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
@@ -738,7 +738,7 @@ class ONNXQuantizer:
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax,
                                                                 qmin, qmax,
-                                                                self.symmetrize_activations)
+                                                                self.is_activation_symmetric)
 
         return quantization_params
 
