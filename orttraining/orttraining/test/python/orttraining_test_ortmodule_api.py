@@ -1303,6 +1303,7 @@ def test_forward_returns_none_type_as_output():
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetNoneTypeOutput(D_in, D_out).to(device)
+    model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
     output = model(x)
 
