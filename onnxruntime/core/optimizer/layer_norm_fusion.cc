@@ -430,48 +430,52 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
     nodes_to_remove.push_back(div_node);
 
-    const NodeArg* p_div_input = div_node.MutableInputDefs()[0];
-    const NodeArg* p_pow_input = pow_node.MutableInputDefs()[0];
+    const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
+    const Node* p_div_input_node = graph_utils::GetInputNode(div_node, 0);
 
-    if (p_div_input == nullptr || p_pow_input == nullptr) {
+    if (p_pow_input_node == nullptr || p_div_input_node == nullptr) {
       continue;
     }
     bool cast_1_present = false;
     int64_t cast_1_to_attr;
     // check if there are Casts as input to the Pow and Div
-    if (p_div_input != p_pow_input) {
-      Node& pow_input = *graph.GetNode(pow_node.InputNodesBegin()->Index());
-      Node& div_input = *graph.GetNode(div_node.InputNodesBegin()->Index());
+    if (p_div_input_node != p_pow_input_node) {
+      Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
+      Node& div_input_node = *graph.GetNode(p_div_input_node->Index());
 
       // Input to Pow must be a Cast
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_input, "Cast", {9, 13}) ||
-          pow_input.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-          !optimizer_utils::CheckOutputEdges(graph, pow_input, 1)) {
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) ||
+          pow_input_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+          !optimizer_utils::CheckOutputEdges(graph, pow_input_node, 1)) {
         continue;
       }
       // Input to Div must be a Cast
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_input, "Cast", {9, 13}) ||
-          div_input.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-          !optimizer_utils::CheckOutputEdges(graph, div_input, 1)) {
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_input_node, "Cast", {9, 13}) ||
+          div_input_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+          !optimizer_utils::CheckOutputEdges(graph, div_input_node, 1)) {
         continue;
       }
       // Both Casts must have same input
-      const NodeArg* p_dcast_input = div_input.MutableInputDefs()[0];
-      const NodeArg* p_pcast_input = pow_input.MutableInputDefs()[0];
+      const NodeArg* p_dcast_input = div_input_node.MutableInputDefs()[0];
+      const NodeArg* p_pcast_input = pow_input_node.MutableInputDefs()[0];
       if (p_dcast_input == nullptr || p_pcast_input == nullptr || p_dcast_input != p_pcast_input) {
         continue;
       }
       // Both Casts must have same "to" attribute
-      int64_t dcast_to, pcast_to;
-      const onnxruntime::NodeAttributes& dcast_attributes = div_input.GetAttributes();
+      int64_t dcast_to, pcast_to = 1;
+      const onnxruntime::NodeAttributes& dcast_attributes = div_input_node.GetAttributes();
       NodeAttributes::const_iterator dcast_to_attr = dcast_attributes.find("to");
       if (dcast_to_attr != dcast_attributes.end()) {
         dcast_to = static_cast<int64_t>(dcast_to_attr->second.i());
+      } else {
+        continue;
       }
-      const onnxruntime::NodeAttributes& pcast_attributes = pow_input.GetAttributes();
+      const onnxruntime::NodeAttributes& pcast_attributes = pow_input_node.GetAttributes();
       NodeAttributes::const_iterator pcast_to_attr = pcast_attributes.find("to");
       if (pcast_to_attr != pcast_attributes.end()) {
         pcast_to = static_cast<int64_t>(pcast_to_attr->second.i());
+      } else {
+        continue;
       }
       if (dcast_to != pcast_to) {
         continue;
@@ -480,7 +484,27 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       // keep the Cast that's the Pow's input, we can remove the div's input Cast
       cast_1_present = true;
       cast_1_to_attr = pcast_to;
-      nodes_to_remove.push_back(div_input);
+      nodes_to_remove.push_back(div_input_node);
+    } else {
+      Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
+
+      // Input to Pow is a Cast
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
+          pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
+          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
+        int64_t pcast_to;
+        const onnxruntime::NodeAttributes& pcast_attributes = pow_input_node.GetAttributes();
+        NodeAttributes::const_iterator pcast_to_attr = pcast_attributes.find("to");
+        if (pcast_to_attr != pcast_attributes.end()) {
+          pcast_to = static_cast<int64_t>(pcast_to_attr->second.i());
+        } else {
+          continue;
+        }
+
+        // keep the Cast that's the Pow's input, we can remove the div's input Cast
+        cast_1_present = true;
+        cast_1_to_attr = pcast_to;
+      }
     }
 
     // div --> mul or div --> cast --> mul
@@ -489,6 +513,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13})) {
       p_cast_2 = next_node;
       next_node = graph.GetNode(p_cast_2->OutputNodesBegin()->Index());
+      nodes_to_remove.push_back(*p_cast_2);
     }
 
     Node& mul_node = *next_node;
@@ -550,6 +575,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         cast_node.AddAttribute("to", cast_1_to_attr);
         cast_node.SetExecutionProviderType(pow_node.GetExecutionProviderType());
         layer_norm_input_defs.push_back(casted_scale);
+      } else {
+        layer_norm_input_defs.push_back(scale);
       }
     } else {
       layer_norm_input_defs.push_back(scale);
@@ -575,13 +602,21 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
     if (p_cast_2 != nullptr) {
-      Node& cast_2 = *graph.GetNode(p_cast_2->Index());
       const ONNX_NAMESPACE::TypeProto* casted_type = DataTypeImpl::TensorTypeFromONNXEnum(cast_1_to_attr)->GetTypeProto();
       NodeArg* LN_output = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("layer_norm_out"), casted_type);
       layer_norm_node.MutableOutputDefs().push_back(LN_output);
-      std::vector<NodeArg*> cast_2_inputs = cast_2.MutableInputDefs();
-      cast_2_inputs[0] = LN_output;
-      graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node, cast_2);
+
+      Node& cast_ln_node = graph.AddNode(graph.GenerateNodeName("Cast"), 
+                                        "Cast", 
+                                        "cast output of layer norm", 
+                                        {LN_output}, 
+                                        {});
+                                        
+      auto cast_2_to_attr = p_cast_2->GetAttributes().find("to")->second.i();
+      cast_ln_node.AddAttribute("to", cast_2_to_attr);
+      cast_ln_node.SetExecutionProviderType(pow_node.GetExecutionProviderType());
+      
+      graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node, cast_ln_node);
     } else {
       // move input edges to add (first in list) across to the layer_norm_node.
       // move output definitions and output edges from mul_node (last in list) to layer_norm_node.

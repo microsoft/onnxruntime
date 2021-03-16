@@ -2948,14 +2948,13 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  Model::Save(*p_model, "fusion/fused_simplified_layer_norm_with_casts.onnx");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["Casts"] == 3);
+  ASSERT_TRUE(op_to_count["Cast"] == 3);
   ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
 
   for (const Node& node : graph.Nodes()) {
