@@ -475,27 +475,44 @@ void addObjectMethodsForTraining(py::module& m) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
-py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
+  py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](PyInferenceSession * session) {
+      .def(py::init([](PyInferenceSession* session) {
         return onnxruntime::make_unique<TrainingAgent>(session->GetSessionHandle());
       }))
       .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
         std::vector<OrtValue> module_outputs;
         int64_t run_id;
-        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id);
+        int32_t token_id;
+        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id, token_id);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
-        return py::make_tuple(module_outputs, run_id);
+        return py::make_tuple(module_outputs, run_id, token_id);
       })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
-        Status status = agent->RunBackward(run_id, backward_output_grads);
+      .def("resume_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& resume_inputs, int64_t run_id) -> py::tuple {
+        std::vector<OrtValue> module_outputs;
+        int32_t token_id;
+        Status status = agent->ResumeForward(run_id, resume_inputs, module_outputs, token_id);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        return py::make_tuple(module_outputs, run_id, token_id);
       })
-      ;
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> py::tuple {
+        std::vector<OrtValue> module_outputs;
+        Status status = agent->RunBackward(run_id, backward_output_grads, module_outputs, token_id);
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        return py::make_tuple(module_outputs, run_id, token_id);
+      })
+      .def("resume_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& resumed_inputs, int64_t run_id) -> py::tuple {
+        std::vector<OrtValue> module_outputs;
+        Status status = agent->RunBackward(run_id, resumed_inputs, module_outputs, token_id);
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        return py::make_tuple(module_outputs, run_id, token_id);
+      });
 
   py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
       m, "ModuleGradientGraphBuilderConfiguration",
@@ -507,7 +524,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
                      &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
   py::class_<TrainingGraphInfo> training_graph_info(m, "TrainingGraphInfo",
-                                                R"pbdoc(The information of split graphs for frontend.)pbdoc");
+                                                    R"pbdoc(The information of split graphs for frontend.)pbdoc");
   training_graph_info.def(py::init())
       .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)

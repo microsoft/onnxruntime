@@ -17,5 +17,14 @@ ONNX_OPERATOR_KERNEL_EX(
         .ExternalOutputs(),
     onnxruntime::contrib::YieldOp);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Hole,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .ExternalOutputs(),
+    onnxruntime::contrib::Hole);
 }  // namespace cuda
 }  // namespace onnxruntime

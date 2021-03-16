@@ -58,16 +58,34 @@ class TrainingAgent(object):
 
     def run_forward(self, iobinding, run_options):
         """
-         Compute the forward subgraph until it hits the Yield Op.
+         Compute the forward subgraph until it hits the Yield or Hole Op.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
          :param run_options: See :class:`onnxruntime.RunOptions`.
         """
-        ortvalues, run_id = self._training_agent.run_forward(iobinding._iobinding, run_options)
-        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id
+        ortvalues, run_id, token_id = self._training_agent.run_forward(iobinding._iobinding, run_options)
+        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id, token_id
+
+    def resume_forward(self, resume_inputs, run_id):
+        """
+         Compute the forward subgraph until it hits the Yield or Hole Op.
+         :param iobinding: the iobinding object that has graph inputs/outputs bind.
+         :param run_options: See :class:`onnxruntime.RunOptions`.
+        """
+        ortvalues, run_id, token_id = self._training_agent.resume_forward(resume_inputs, run_id)
+        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id, token_id
 
     def run_backward(self, backward_output_grads, run_id):
         """
          Resume executing the backward subgraph starting from Yield Op.
          :param backward_output_grads: Output gradients for backward.
         """
-        self._training_agent.run_backward([ortvalue._ortvalue for ortvalue in backward_output_grads], run_id)
+        ortvalues, run_id, token_id = self._training_agent.run_backward(backward_output_grads, run_id)
+        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id, token_id
+
+    def resume_backward(self, resume_inputs, run_id):
+        """
+         Resume executing the backward subgraph starting from Yield Op.
+         :param backward_output_grads: Output gradients for backward.
+        """
+        ortvalues, run_id, token_id = self._training_agent.run_backward(resume_inputs, run_id)
+        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id, token_id

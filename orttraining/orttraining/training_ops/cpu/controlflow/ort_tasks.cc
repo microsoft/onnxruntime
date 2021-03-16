@@ -19,16 +19,26 @@ void OrtTasks::RemoveTask(int64_t run_id) {
   bg_tasks_.erase(iter);
 }
 
-void OrtTasks::SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs) {
+void OrtTasks::SetKernelOutputs(Status s, int32_t token_id, const std::vector<OrtValue>& forward_outputs) {
   int64_t run_id = hasher_(std::this_thread::get_id());
 
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = bg_tasks_.find(run_id);
   ORT_ENFORCE(iter != bg_tasks_.end());
-  iter->second->forward_output_promise_.set_value(std::make_pair(s, forward_outputs));
+  iter->second->forward_output_promise_.set_value(ForwardReturnType{s, token_id, forward_outputs});
 }
 
-ForwardReturnType OrtTasks::WaitForForwardOutputs(int64_t run_id) {
+void OrtTasks::CompleteTask(Status s, int32_t token_id) {
+  int64_t run_id = hasher_(std::this_thread::get_id());
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto iter = bg_tasks_.find(run_id);
+  ORT_ENFORCE(iter != bg_tasks_.end());
+  const auto& values = iter->second->forward_output_promise_.get_future().get().values;
+  iter->second->forward_output_promise_.set_value(ForwardReturnType{s, token_id, values});
+}
+
+ForwardReturnType OrtTasks::WaitForKernelOutputs(int64_t run_id) {
   OrtTasks::Task* task;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -39,7 +49,7 @@ ForwardReturnType OrtTasks::WaitForForwardOutputs(int64_t run_id) {
   return task->forward_output_future_.get();
 }
 
-bool OrtTasks::ForwardOutputsIsValid() {
+bool OrtTasks::KernelOutputsIsValid() {
   int64_t run_id = hasher_(std::this_thread::get_id());
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -48,14 +58,14 @@ bool OrtTasks::ForwardOutputsIsValid() {
   return iter->second->forward_output_future_.valid();
 }
 
-void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs, bool terminate) {
+void OrtTasks::SetExternalKernelOutputs(int64_t run_id, int32_t token_id, const std::vector<OrtValue>& backward_inputs, bool terminate) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = bg_tasks_.find(run_id);
   ORT_ENFORCE(iter != bg_tasks_.end());
-  iter->second->backward_input_promise_.set_value(std::make_pair(terminate, backward_inputs));
+  iter->second->backward_input_promise_.set_value(BackwardReturnType{terminate, token_id, backward_inputs});
 }
 
-BackwardReturnType OrtTasks::WaitForBackwardInputs() {
+BackwardReturnType OrtTasks::WaitForExternalKernelOutputs() {
   int64_t run_id = hasher_(std::this_thread::get_id());
   OrtTasks::Task* task;
   {

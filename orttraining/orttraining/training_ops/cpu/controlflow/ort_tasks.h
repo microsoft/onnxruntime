@@ -9,12 +9,37 @@
 #include <mutex>
 #include <future>
 
-
 namespace onnxruntime {
 namespace contrib {
 
-typedef std::pair<Status, std::vector<OrtValue>> ForwardReturnType;
-typedef std::pair<bool, std::vector<OrtValue>> BackwardReturnType;
+struct ForwardReturnType {
+  Status status;
+  int32_t token_id;
+  std::vector<OrtValue> values;
+};
+
+struct BackwardReturnType {
+  bool terminate;
+  int32_t token_id;
+  std::vector<OrtValue> values;
+};
+
+// TOken IDs are added to events to keep trace of the different
+// reasons for passing control between ORT and Python.  They should
+// probably just be a debugging aid, with shared knowledge of the
+// model being used to keep the pieces in sync.  Currently the
+// proof-of-concept uses the values to dispatch to different code
+// paths.
+//
+// These numbers must match ortmodule.py.  In addition,
+// ORTModule.max_id must be <= the difference between successive
+// values here.  For instance, if we assign IDs [0,100) to custom
+// autograd functions then we need a range [100,200) for the tokens
+// returned between TOKEN_HOLE_FORWARD and TOKEN_YIELD_END_FORWARD.
+static constexpr int TOKEN_HOLE_FORWARD = 100;
+static constexpr int TOKEN_YIELD_END_FORWARD = 200;
+static constexpr int TOKEN_HOLE_BACKWARD = 300;
+static constexpr int TOKEN_END_BACKWARD = 400;
 
 class OrtTasks final {
  public:
@@ -26,16 +51,18 @@ class OrtTasks final {
   void CreateBackgroundTask(int64_t run_id);
   void RemoveTask(int64_t run_id);
 
-  void SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs);
-  ForwardReturnType WaitForForwardOutputs(int64_t run_id);
-  bool ForwardOutputsIsValid();
+  void SetKernelOutputs(Status s, int32_t token_id, const std::vector<OrtValue>& forward_outputs);
+  ForwardReturnType WaitForKernelOutputs(int64_t run_id);
+  bool KernelOutputsIsValid();
 
-  void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs, bool terminate);
-  BackwardReturnType WaitForBackwardInputs();
+  void SetExternalKernelOutputs(int64_t run_id, int32_t token_id, const std::vector<OrtValue>& backward_inputs, bool terminate);
+  BackwardReturnType WaitForExternalKernelOutputs();
 
   void SetStatus(const Status& status);
   Status WaitForStatus(int64_t run_id);
   bool TaskIsCompleted(int64_t run_id);
+
+  void CompleteTask(Status s, int32_t token_id);
 
  private:
   OrtTasks() = default;

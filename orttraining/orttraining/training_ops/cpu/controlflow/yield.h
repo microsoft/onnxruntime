@@ -21,5 +21,11 @@ class YieldOp final : public OpKernel {
   std::vector<int64_t> full_shape_outputs_;
 };
 
+class Hole final : public OpKernel {
+ public:
+  Hole(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

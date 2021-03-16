@@ -82,7 +82,30 @@ def _load_torch_allocator_cpp_extension(verbosity):
                         functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'],
                         verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
+class CustomFnModule(torch.nn.Module):
+    def __init__(self, custom_fn):
+        super(CustomFnModule, self).__init__()
+        self.custom_fn = custom_fn
+
+    def forward(self, input):
+        return self.custom_fn.apply(input)
+
 class ORTModule(torch.nn.Module):
+
+    # Mapping from IDs used in com.microsoft::Hole objects to
+    # definitions for nn.Modules containing the custom autograd
+    # functions required
+    next_id = 0
+    max_id = 100 
+    custom_fns = {}
+    @classmethod
+    def register_custom_fn(cls, fn):
+        assert issubclass(fn, torch.autograd.Function)
+        id = cls.next_id
+        cls.next_id = cls.next_id + 1
+        cls.custom_fns[id] = CustomFnModule(fn)
+        print("id:", id, " -> ", fn)
+        return id
 
     def __init__(self, module):
         assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
