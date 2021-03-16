@@ -195,6 +195,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   
       // Get Output tensors
       LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+      std::cout << "Inference successful" << std::endl;
       //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
       inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG

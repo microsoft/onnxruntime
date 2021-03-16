@@ -293,6 +293,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     }
   }
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+  std::cout << "Inference successful" << std::endl;
 }
 
 }  // namespace openvino_ep
