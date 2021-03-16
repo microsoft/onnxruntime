@@ -10,7 +10,7 @@ jobs:
       addToPath: true
       architecture: 'x64'
 
-  - script: python -m pip install tools/ci_build/github/python_checks/requirements.txt
+  - script: python -m pip install -r tools/ci_build/github/python_checks/requirements.txt
     displayName: "Install requirements"
 
   - script: python -m flake8 --config .flake8
