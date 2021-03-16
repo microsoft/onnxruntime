@@ -16,6 +16,7 @@ from onnx import numpy_helper
 from perf_utils import *
 import pprint
 import time
+import pandas as pd
 from float16 import *
 
 debug = False
@@ -173,10 +174,20 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
 def track_ep_memory(ep): 
      return trt in ep or cuda in ep or standalone_trt in ep
 
-def get_max_memory(mem_file): 
-    import pandas as pd
+def get_trtexec_pid(df, python_pid): 
+    for pid in df['pid'].tolist(): 
+        if pid != python_pid: 
+            return pid
+
+def get_max_memory(mem_file, trtexec): 
     df = pd.read_csv(mem_file)
-    max_mem = max(df.iloc[:,0].map(lambda x:x.strip(' MiB')).astype(int))
+    pid = df['pid'].iloc[0]
+    
+    if trtexec: 
+        pid = get_trtexec_pid(df, pid) 
+    
+    mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
+    max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
 
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
@@ -197,14 +208,15 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
 
         try:
             if args.track_memory and track_ep_memory(ep): 
+
                 mem_file = './temp.csv'
-                p = subprocess.Popen(["nvidia-smi", "--query-gpu=memory.used", "--format=csv", "-l", "1", "-f", mem_file])
+                p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
                 
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-                
+               
                 p.terminate()
                 p.wait()
-                mem_usage = get_max_memory(mem_file) 
+                mem_usage = get_max_memory(mem_file, False) 
                 os.remove(mem_file)
             else: 
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
@@ -1008,8 +1020,22 @@ def run_onnxruntime(args, models):
                     
                 # get standalone TensorRT perf
                 if trt in ep and args.trtexec:
-                    result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                    ep = standalone_trt_fp16 if fp16 else standalone_trt
+                    
+                    if args.track_memory: 
+                        mem_file = './temp.csv'
+                        p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
+                        
+                        result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                        p.terminate()
+                        p.wait()
+                        mem_usage = get_max_memory(mem_file, True)
+                        if result and mem_usage: 
+                            result["memory"] = mem_usage
+                        os.remove(mem_file)
+                        ep = standalone_trt_fp16 if fp16 else standalone_trt
+                    else: 
+                        result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+
                 else: 
                     result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                 
@@ -1019,8 +1045,8 @@ def run_onnxruntime(args, models):
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
                     if "memory" in result: 
-                        mem_mb = result.pop("memory")
-                        latency_result[ep]["memory"] = mem_mb
+                        mem_usage = result.pop("memory")
+                        latency_result[ep]["memory"] = mem_usage
 
                     if not args.trtexec: # skip standalone
                         success_results.append(result)

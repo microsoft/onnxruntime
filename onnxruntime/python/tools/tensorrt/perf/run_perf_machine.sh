@@ -20,7 +20,7 @@ fi
 
 if [ $OPTION == "many-models" ]
 then 
-    MODEL_PATH=/usr/share/mount/many-models
+    MODEL_PATH=/home/hcsuser/mount/many-models
 fi 
 
 if [ $OPTION == "partner-models" ]
