@@ -1401,7 +1401,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           td.SetActive();
           profiler_.LogRun(thread_id);
           t();
-          //profiler_.LogCore(thread_id);
+          profiler_.LogCore(thread_id);
           td.SetSpinning();
         }
       }
