@@ -329,7 +329,7 @@ with open(requirements_path) as f:
 
 # Setup
 setup(
-    name=package_name,
+        name=package_name,
     version=version_number,
     description='ONNX Runtime is a runtime accelerator for Machine Learning models',
     long_description=long_description,
