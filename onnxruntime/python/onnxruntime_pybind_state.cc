@@ -1354,7 +1354,6 @@ void addObjectMethods(py::module& m, Environment& env) {
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
         auto status = io_binding->Get()->BindInput(name, ml_value);
-        // LOGS_DEFAULT(WARNING) << "input " << name << "->" << &ml_value;
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
         }
@@ -1410,7 +1409,6 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
         auto status = io_binding->Get()->BindOutput(name, device);
-        //LOGS_DEFAULT(WARNING) << "output " << name << "->" << device.ToString();
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
         }
@@ -1429,9 +1427,6 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
       .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<OrtValue>& {
         return io_binding->Get()->GetOutputs();
-      })
-      .def("get_output_names", [](SessionIOBinding* io_binding) -> std::vector<std::string>& {
-        return io_binding->Get()->GetOutputNames();
       })
       .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();

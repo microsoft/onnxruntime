@@ -37,9 +37,6 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
                                device_id=_utils.get_device_index(device))
-        #print("output name=", value_info.name, " device=",_utils.get_device_index(device))
-    #output_names = io_binding.get_output_names()
-    #print(output_names)
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -154,7 +151,6 @@ class ORTModule(torch.nn.Module):
                     # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
                     training_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
-                    print("run_options.terminate=", run_options.terminate)
                     
                     # Use IO binding
                     _create_iobinding(training_io_binding, inputs, self._onnx_training, self._device)
@@ -164,6 +160,7 @@ class ORTModule(torch.nn.Module):
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
                     ctx.training_io_binding = training_io_binding
+                    ctx.run_options = run_options
 
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
@@ -179,6 +176,9 @@ class ORTModule(torch.nn.Module):
                 def backward(ctx, *grad_outputs):
                     '''Performs backward pass based on grad wrt module output
                     '''
+                    # Use IO binding
+                    # Push user output grads to ONNX backend.
+                    backward_grad_output_ortvalue = []
 
                     # Assert that the grad_outputs and model device match
                     _check_same_device(self._device, "Input argument to backward", *grad_outputs)

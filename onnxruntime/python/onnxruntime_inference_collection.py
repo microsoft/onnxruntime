@@ -428,18 +428,6 @@ class IOBinding:
 
         return returned_ortvalues
 
-    def get_output_names(self):
-        '''
-        Returns the get_output_names  from the Run() that preceded the call.
-        The data buffer of the obtained OrtValues may not reside on CPU memory
-        '''
-        return_values = []
-
-        for name in self._iobinding.get_output_names():
-            return_values.append(name)
-
-        return return_values
-
     def copy_outputs_to_cpu(self):
         '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
         return self._iobinding.copy_outputs_to_cpu()

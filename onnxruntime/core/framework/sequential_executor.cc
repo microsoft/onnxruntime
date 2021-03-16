@@ -187,9 +187,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
-  LOGS(logger, WARNING) << "outside for loop terminate_flag_=" << terminate_flag_;
   for (const auto& node_exec_plan : exec_plan_vec) {
-    LOGS(logger, WARNING) << "terminate_flag_=" << terminate_flag_;
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
@@ -426,7 +424,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
-
+  LOGS(logger, WARNING) << "out of exec_plan_vec for loop";
 #ifdef ENABLE_NVTX_PROFILE
   // Make sure forward Range object call Begin and End.
   if (!forward_range.IsBeginCalled()) {

@@ -106,17 +106,9 @@ void IOBinding::ClearOutputs() {
   outputs_device_info_.clear();
 }
 
-std::vector<std::string>& IOBinding::GetOutputNames() { return output_names_; }
+const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
 
-std::vector<OrtValue>& IOBinding::GetOutputs() { 
-  // std::ostringstream ostr;
-  // ostr << "output_names_:";
-  // for (auto name : output_names_) {
-  //   ostr << name << ",";
-  // }
-  // LOGS_DEFAULT(WARNING) << ostr.str();
-  return outputs_; 
-}
+std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
 
 const std::vector<OrtDevice>& IOBinding::GetOutputsDeviceInfo() const {
   return outputs_device_info_;
