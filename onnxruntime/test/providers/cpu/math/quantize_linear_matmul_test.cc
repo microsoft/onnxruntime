@@ -204,7 +204,7 @@ struct PrePackTestOp {
   static constexpr const char* OpDomain = "testing";
 
   static ONNX_NAMESPACE::OpSchema OpSchema() {
-    // Get QLinearMatMul schema from global registry, copy and hack
+    // Mock our own schema, using the existing QLinearMatMul schema as template
     auto p_original = ONNX_NAMESPACE::OpSchemaRegistry::Schema("QLinearMatMul", 10, "");
     ONNX_NAMESPACE::OpSchema modified;
 

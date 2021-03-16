@@ -37,8 +37,8 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   } else {
     const Tensor* b = ctx->Input<Tensor>(IN_B);
     if (b == nullptr) {
-      // the framework has checks to ensure this won't happen,
-      // just need this to shutup static analysis. 
+      // For required input, the framework has checks to ensure this won't happen,
+      // dead code to quiet the compiler warning. 
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
           "Required input B can not be null!");
     }
@@ -102,7 +102,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
-    gemm_params.B = b_data + (gemm_params.BIsPacked ? 0UL : helper.RightOffsets()[i]);
+    gemm_params.B = b_data + helper.RightOffsets()[i];
 
     MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
 
