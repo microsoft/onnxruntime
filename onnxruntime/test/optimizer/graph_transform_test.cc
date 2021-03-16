@@ -847,7 +847,9 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion0.onnx", // Test fusion from the right input
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx" // Test fusion from the left input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx", // Test fusion from the left input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion2.onnx", // Test fusion both from the left and right inputs
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion3.onnx"  // Cast node feeds multiple MalMul nodes.
   };
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
@@ -862,7 +864,7 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
     ASSERT_TRUE(op_to_count["Transpose"] == 0);
     ASSERT_TRUE(op_to_count["MatMul"] == 0);
     ASSERT_TRUE(op_to_count["Cast"] == 2);
-    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
+    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] >= 1);
   }
 }
 

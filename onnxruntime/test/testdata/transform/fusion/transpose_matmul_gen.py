@@ -169,7 +169,6 @@ def gen_transpose_fusion_with_cast(model_path):
     save(model_path + "1.onnx", nodes, inputs, outputs, [])
 
     # Create an example with two Cast-ed Transpose-ed inputs feeding a MatMul
-    # The cast nodes feed two nodes
     node = helper.make_node(
                "Transpose",
                ["input_1"],
@@ -185,6 +184,7 @@ def gen_transpose_fusion_with_cast(model_path):
     save(model_path + "2.onnx", nodes, inputs, outputs, [])
 
     # Create a second MatMul node using the outputs from the same Cast nodes as before
+    # with each Cast node feeding more than one node.
     nodes.append(helper.make_node(
             "MatMul",
             ["transposed_casted_input_0", "transposed_casted_input_1"],
