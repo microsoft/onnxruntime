@@ -93,7 +93,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
         return result;
       //If reshape is not an intermediate node, shape needs to be an initializer
-      if(data_ops_->SpecialConditionForClusterSizeOne(node)) {
+      if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
         return result;
       }
     }
@@ -160,7 +160,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           if (IsOpSupportedOnlyInModel(node->OpType()))
             continue;
           //If reshape is not an intermediate node, shape needs to be an initializer
-          if(data_ops_->SpecialConditionForClusterSizeOne(node))
+          if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node))
             continue;
         }
       }  
