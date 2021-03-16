@@ -40,8 +40,8 @@ class ONNXQuantizer:
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
-        self.symmetrize_activations = False
-        self.symmetrize_weights = False
+        self.symmetrize_activations = symmetrize_activations
+        self.symmetrize_weights = symmetrize_weights
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
