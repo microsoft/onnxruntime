@@ -3,6 +3,8 @@ jobs:
   pool:
     vmImage: 'ubuntu-20.04'
 
+  timeoutInMinutes: 10
+
   steps:
   - task: UsePythonVersion@0
     inputs:
