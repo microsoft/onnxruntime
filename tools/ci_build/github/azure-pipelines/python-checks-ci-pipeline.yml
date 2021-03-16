@@ -1,0 +1,17 @@
+jobs:
+- job: 'PythonCodeChecks'
+  pool:
+    vmImage: 'ubuntu-20.04'
+
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: 'x64'
+
+  - script: python -m pip install tools/ci_build/github/python_checks/requirements.txt
+    displayName: "Install requirements"
+
+  - script: python -m flake8 --config .flake8
+    displayName: "Run Flake8"
