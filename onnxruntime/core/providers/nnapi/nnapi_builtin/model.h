@@ -36,7 +36,7 @@ class Model {
    private:
     // NnApi instance to use. Not owned by this object.
     const NnApi* nnapi_{nullptr};
-    int fd_{0};
+    int fd_{-1};
     size_t byte_size_{0};
     uint8_t* data_ptr_{nullptr};
     ANeuralNetworksMemory* nn_memory_handle_{nullptr};
