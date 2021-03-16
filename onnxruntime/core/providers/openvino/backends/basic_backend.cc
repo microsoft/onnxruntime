@@ -34,6 +34,7 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
 #ifndef _WIN32
   std::ifstream blob_path;
   if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
+    if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
         std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
         std::string model_name= global_context_.onnx_model_path_name.substr(model_index+1);
         std::size_t model_extension_index = model_name.find_last_of(".");
@@ -41,7 +42,7 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
             model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "fully" + ".blob";
         }
         else {
-          model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
+            model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
         }
         blob_path.open("ov_compiled_blobs/" + model_blob_name);
         if (!blob_path.is_open()) {
@@ -50,6 +51,23 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
             LOGS_DEFAULT(INFO) << log_tag << "Device specific Compiled blob already exists for this model";
             vpu_status = true;
         }
+    }
+  }
+
+  //validate const subgraphs
+  if(!openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
+    ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+  #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+    if (const_outputs_map_.size() == subgraph_context_.output_names.size())
+      subgraph_context_.is_constant = true;
+  #endif
+
+  // Loading model to the plugin
+    if (subgraph_context_.is_constant) {
+      LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
+      return;
+    }
   }
 
   if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
