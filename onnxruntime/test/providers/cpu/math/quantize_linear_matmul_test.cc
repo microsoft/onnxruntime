@@ -58,15 +58,15 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   test.AddInput<uint8_t>("a_zero_point", {}, {113});
 
   test.AddInput<int8_t>("T2", {2, 4, 3},
-                         {-43, 51, -34,
-                          60, 26, -17,
-                          0, 63, -55,
-                          47, -29, -31,
+                        {-43, 51, -34,
+                         60, 26, -17,
+                         0, 63, -55,
+                         47, -29, -31,
 
-                          -62, 51, -42,
-                          60, 26, -22,
-                          0, -8, -19,
-                          37, -2, -47});
+                         -62, 51, -42,
+                         60, 26, -22,
+                         0, -8, -19,
+                         37, -2, -47});
 
   test.AddInput<float>("b_scale", {}, {0.00802f});
   test.AddInput<int8_t>("b_zero_point", {}, {-2});
@@ -81,6 +81,76 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
                            160, 101, 134});
 
   test.Run();
+}
+
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
+  auto run_test = [](bool only_t1_not_initializer) {
+    OpTester test("QLinearMatMul", 10);
+    test.AddInput<uint8_t>("T1", {2, 4},
+                           {208, 236, 0, 238,
+                            3, 214, 255, 29});
+
+    test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
+    test.AddInput<uint8_t>("a_zero_point", {}, {113}, only_t1_not_initializer);
+
+    test.AddInput<uint8_t>("T2", {4, 3},
+                           {152, 51, 244,
+                            60, 26, 255,
+                            0, 127, 246,
+                            127, 254, 247},
+                           only_t1_not_initializer);
+
+    test.AddInput<float>("b_scale", {}, {0.00705f}, only_t1_not_initializer);
+    test.AddInput<uint8_t>("b_zero_point", {}, {114}, only_t1_not_initializer);
+
+    test.AddInput<float>("y_scale", {}, {0.0107f}, only_t1_not_initializer);
+    test.AddInput<uint8_t>("y_zero_point", {}, {118}, only_t1_not_initializer);
+    test.AddOutput<uint8_t>("T3", {2, 3},
+                            {168, 115, 255,
+                             1, 66, 151});
+
+    test.Run();
+  };
+
+  run_test(false);
+
+  // NNAPI will require all inputs except T1 to be initializers
+  run_test(true);
+}
+
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
+  auto run_test = [](bool only_t1_not_initializer) {
+    OpTester test("QLinearMatMul", 10);
+    test.AddInput<uint8_t>("T1", {2, 4},
+                           {208, 126, 0, 238,
+                            3, 214, 255, 29});
+
+    test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
+    test.AddInput<uint8_t>("a_zero_point", {}, {113}, only_t1_not_initializer);
+
+    test.AddInput<int8_t>("T2", {4, 3},
+                          {-43, 51, -34,
+                           60, 26, -17,
+                           0, 63, -55,
+                           47, -29, -31},
+                          only_t1_not_initializer);
+
+    test.AddInput<float>("b_scale", {}, {0.00802f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("b_zero_point", {}, {0}, only_t1_not_initializer);
+
+    test.AddInput<float>("y_scale", {}, {0.0123f}, only_t1_not_initializer);
+    test.AddInput<uint8_t>("y_zero_point", {}, {118}, only_t1_not_initializer);
+    test.AddOutput<uint8_t>("T3", {2, 3},
+                            {129, 94, 113,
+                             147, 154, 104});
+
+    test.Run();
+  };
+
+  run_test(false);
+
+  // NNAPI will require all inputs except T1 to be initializers
+  run_test(true);
 }
 
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {

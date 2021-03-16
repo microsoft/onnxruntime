@@ -21,9 +21,6 @@ class EyeLike final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  template <typename T>
-  Status ComputeImpl(OpKernelContext* context, const Tensor* T1) const;
-
   bool has_dtype_;
   int64_t dtype_;
   int64_t k_;

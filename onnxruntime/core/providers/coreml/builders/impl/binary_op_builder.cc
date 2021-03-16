@@ -28,7 +28,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
-  const auto input_defs(node.InputDefs());
+  const auto& input_defs(node.InputDefs());
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
