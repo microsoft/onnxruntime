@@ -389,7 +389,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 if add_before_layernorm is not None:
                     normalize_node = add_before_layernorm
                 else:
-                    return
+                    continue
             parent = self.get_parent(normalize_node, 1)
             if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
                 parent = self.get_parent(normalize_node, 0)

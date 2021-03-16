@@ -181,6 +181,11 @@ class FusionAttention(Fusion):
         assert qb.shape == kb.shape == vb.shape
         assert np.prod(qb.shape) == out_size
 
+        if out_size != hidden_size:
+            logger.debug(
+                f"Shape for weights of Q is {in_size, out_size}, which does not match hidden_size={hidden_size}")
+            return None
+
         qkv_bias = np.stack((qb, kb, vb), axis=0)
         attention_node_name = self.model.create_node_name('Attention')
 
