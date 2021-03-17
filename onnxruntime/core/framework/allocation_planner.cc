@@ -299,6 +299,7 @@ class PlannerImpl {
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
+            ORT_ENFORCE(original != -1, "Could not find buffer corresponding to input: " + p_input_arg->Name());
             if (1 == UseCount(original)) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
