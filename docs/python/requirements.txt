@@ -1,3 +1,4 @@
+matplotlib
 sphinx
 sphinx-gallery
 pyquickhelper

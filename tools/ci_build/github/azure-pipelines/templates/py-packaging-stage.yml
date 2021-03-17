@@ -129,6 +129,7 @@ stages:
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs'
+          Contents: '**'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: PublishBuildArtifacts@1
