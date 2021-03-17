@@ -1,6 +1,7 @@
 autopep8
 matplotlib
 scikit-learn
+skl2onnx
 sphinx
 sphinx-gallery
 pyquickhelper
