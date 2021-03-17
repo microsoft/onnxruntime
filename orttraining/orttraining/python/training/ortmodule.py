@@ -148,7 +148,8 @@ class ORTModule(torch.nn.Module):
                     _check_same_device(self._device, "Input argument to forward", *inputs)
 
                     # training_io_binding and run_options are per InferenceSession call
-                    # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
+                    # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes,
+                    #   expecially the backward graph outputs.
                     training_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
                     
@@ -160,6 +161,7 @@ class ORTModule(torch.nn.Module):
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
                     ctx.training_io_binding = training_io_binding
+                    # run_options needs to be added to ctx to keep the reference count, otherwise it will be destroyed after forward()
                     ctx.run_options = run_options
 
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
@@ -176,9 +178,6 @@ class ORTModule(torch.nn.Module):
                 def backward(ctx, *grad_outputs):
                     '''Performs backward pass based on grad wrt module output
                     '''
-                    # Use IO binding
-                    # Push user output grads to ONNX backend.
-                    backward_grad_output_ortvalue = []
 
                     # Assert that the grad_outputs and model device match
                     _check_same_device(self._device, "Input argument to backward", *grad_outputs)
@@ -220,8 +219,6 @@ class ORTModule(torch.nn.Module):
                     # Append gradients of initializer to results
                     results += [_ort_output_to_torch_tensor(backward_output) 
                                 for backward_output in backward_outputs[num_user_input_grads:]]
-                    #output_names = training_io_binding.get_output_names()
-                    #print(output_names)
                     # The OrtValue has a shared_ptr to the data. At this point there are two shared_ptrs to the data, one through the 
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
                     # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
@@ -276,8 +273,7 @@ class ORTModule(torch.nn.Module):
         # Training model
         self._onnx_training = None
         self._training_session = None
-        self._run_options = None
-        
+
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
 
@@ -343,8 +339,6 @@ class ORTModule(torch.nn.Module):
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
 
-        # Use this global run_options for now
-        self._run_options = C.RunOptions()
     def _build_training_graph(self, *inputs, **kwargs):
         if self._use_static_shape:
             self._module_gradient_graph_builder.build(self._current_input_shape)

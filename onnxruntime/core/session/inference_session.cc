@@ -1538,7 +1538,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 
     if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, WARNING) << "Running with tag: " << run_options.run_tag;
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
 
     ++current_num_runs_;

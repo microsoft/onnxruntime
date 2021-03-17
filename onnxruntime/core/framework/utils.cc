@@ -511,7 +511,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  
+
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                                  execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 

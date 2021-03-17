@@ -424,7 +424,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
-  LOGS(logger, WARNING) << "out of exec_plan_vec for loop";
 #ifdef ENABLE_NVTX_PROFILE
   // Make sure forward Range object call Begin and End.
   if (!forward_range.IsBeginCalled()) {
