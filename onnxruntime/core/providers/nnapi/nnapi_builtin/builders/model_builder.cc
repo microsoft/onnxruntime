@@ -314,6 +314,10 @@ Status ModelBuilder::RegisterModelInputs() {
               *this, *all_quantized_op_inputs.at(input_name)[0], input_name, scale, zero_point));
           break;
         }
+        // case NNX_NAMESPACE::TensorProto_DataType_INT8:
+        // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
+        // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor, so we do not treat
+        // it as an input here
         default: {
           // TODO: support other type
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
