@@ -109,6 +109,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
+        condition: or (succeeded(), eq(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
