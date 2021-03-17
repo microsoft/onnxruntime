@@ -29,7 +29,9 @@ def populate_user_output_from_schema_and_outputs(output_schema, output_names, ou
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
 
-        if isinstance(user_output, _TensorStub):
+        if user_output is None:
+            return None
+        elif isinstance(user_output, _TensorStub):
             output_idx[0] += 1
             return outputs[output_idx[0]-1]
 
@@ -65,8 +67,10 @@ def populate_user_output_from_schema_and_outputs(output_schema, output_names, ou
 def _extract_output_schema(output):
     """Extract the output schema by replacing every torch.Tensor value with _TensorStub"""
 
+    if output is None:
+        return None
     # Depth first traversal to iterate over the output to replace every tensor with a stub
-    if isinstance(output, torch.Tensor):
+    elif isinstance(output, torch.Tensor):
         return _TensorStub()
 
     if isinstance(output, abc.Sequence):
@@ -94,7 +98,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
     def _populate_output_names_and_dynamic_axes(output, output_names, output_dynamic_axes, output_idx):
         # Depth first traversal to traverse through the entire output collecting output names and dynamic axes
 
-        if isinstance(output, torch.Tensor):
+        if output is None:
+            return
+        elif isinstance(output, torch.Tensor):
             output_name = f'output{output_idx[0]}'
             output_idx[0] += 1
             output_names.append(output_name)
@@ -128,7 +134,9 @@ def get_flattened_output_module(original_module):
         def _flatten_output(output, flat_output):
             # Recursively traverse over the output and populate the flat_output with torch.Tensors
 
-            if isinstance(output, torch.Tensor):
+            if output is None:
+                return
+            elif isinstance(output, torch.Tensor):
                 flat_output.append(output)
             elif isinstance(output, abc.Sequence):
                 for value in output:
