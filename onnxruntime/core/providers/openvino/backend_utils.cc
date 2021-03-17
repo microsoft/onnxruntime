@@ -33,7 +33,7 @@ bool IsDebugEnabled() {
   return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
 #endif
 }
-void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file_name) {
+void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto.SerializeToOstream(outfile);
 }
@@ -46,7 +46,7 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
 #if defined OPENVINO_2020_3
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
@@ -105,7 +105,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypeProto& onnx_type, std::string device) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -134,7 +134,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypePro
   }
 }
 
-void SetIODefs(const Provider_ModelProto& model_proto,
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
                std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
