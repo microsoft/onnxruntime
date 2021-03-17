@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-# This script opens an existing model in onnx format and attemptes to
+# This script opens an existing model in onnx format and attempts to
 # move initializers from model.graph.initializer field to model.graph.sparse_initializer field
 # and convert them into ONNX COO flat index format.
 
@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument('--exclude', required=False, type=str,
                         help='semicolon separated list of initializer names to exclude')
     parser.add_argument('--tolerance', required=False, type=float, default=1e-6,
-                        help='FP tolerance. If not given simple compare to 0')
+                        help='FP absolute tolerance. If not given simple compare to 0')
     parser.add_argument('--sparsity_threshold', required=False,
                         type=float, default=0.5,
                         help='convert to sparse initializers if sparsity is at least this much')

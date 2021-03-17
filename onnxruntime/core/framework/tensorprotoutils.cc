@@ -1073,21 +1073,6 @@ inline bool IsZero(const void* p) {
   return (static_cast<T>(0) == *reinterpret_cast<const T*>(p));
 }
 
-namespace sparse_internal {
-static const BFloat16 bfloat16_zero(0.f);
-static const MLFloat16 mlfloat16_zero(0.f);
-}  // namespace sparse_internal
-
-template<>
-bool IsZero<BFloat16>(const void* p) {
-  return (sparse_internal::bfloat16_zero == *reinterpret_cast<const BFloat16*>(p));
-}
-
-template <>
-bool IsZero<MLFloat16>(const void* p) {
-  return (sparse_internal::mlfloat16_zero == *reinterpret_cast<const MLFloat16*>(p));
-}
-
 template <typename T>
 inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
   reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
@@ -1132,75 +1117,29 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
   switch (element_size) {
     case 1: {
-      // bytes
       SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
                       IsZero<uint8_t>, CopyElement<uint8_t>, values, indices);
       break;
     }
     case 2: {
-      // bytes
-      switch (data_type) {
-        case TensorProto_DataType_FLOAT16: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<BFloat16>, CopyElement<uint16_t>, values, indices);
-          break;
-        }
-        case TensorProto_DataType_BFLOAT16: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<MLFloat16>, CopyElement<uint16_t>, values, indices);
-          break;
-        }
-        case TensorProto_DataType_INT16:
-        case TensorProto_DataType_UINT16: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<uint16_t>, CopyElement<uint16_t>, values, indices);
-          break;
-        }
-        default:
-          ORT_THROW(false, "BUG! Report to onnxruntime team.");
-          break;
-      }
+      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                      IsZero<uint16_t>, CopyElement<uint16_t>, values, indices);
       break;
     }
     case 4: {
-      switch (data_type) {
-        case TensorProto_DataType_FLOAT:
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<float>, CopyElement<uint32_t>, values, indices);
-          break;
-        case TensorProto_DataType_INT32:
-        case TensorProto_DataType_UINT32: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
-          break;
-        }
-        default:
-          ORT_THROW(false, "BUG! Report to onnxruntime team.");
-          break;
-      }
+      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                      IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
       break;
     }
     case 8: {
-      switch (data_type) {
-        case TensorProto_DataType_DOUBLE: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<double>, CopyElement<uint64_t>, values, indices);
-          break;
-        }
-        case TensorProto_DataType_INT64:
-        case TensorProto_DataType_UINT64: {
-          SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
-                          IsZero<uint64_t>, CopyElement<uint64_t>, values, indices);
-          break;
-        }
-        default:
-          ORT_THROW(false, "BUG! Report to onnxruntime team.");
-          break;
-      }
+      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                      IsZero<uint64_t>, CopyElement<uint64_t>, values, indices);
       break;
     }
     default:
-      ORT_THROW(false, "BUG! Report to onnxruntime team.");
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
+                                           ::onnxruntime::common::FAIL,
+                                           ::onnxruntime::MakeString(ORT_WHERE.ToString(), " BUG! Report to onnxruntime team."));
   }
 
   // Fix up shapes
