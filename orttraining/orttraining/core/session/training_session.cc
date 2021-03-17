@@ -1002,6 +1002,16 @@ static Status UpdateWeightsBeforeSaving(
   return Status::OK();
 }
 
+Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri, 
+                                                     const std::string& external_file_name, 
+                                                     size_t initializer_size_threshold) {
+  // Delete the old files before saving.
+  std::remove(ToMBString(model_uri).c_str());
+  std::remove(external_file_name.c_str());
+
+  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
+}
+
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
   std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)

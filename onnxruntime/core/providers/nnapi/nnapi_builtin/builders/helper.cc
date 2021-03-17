@@ -64,6 +64,8 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
     return QLinearOpType::QLinearAdd;
   else if (op_type == "QLinearSigmoid")
     return QLinearOpType::QLinearSigmoid;
+  else if (op_type == "QLinearAveragePool")
+    return QLinearOpType::QLinearAveragePool;
 
   return QLinearOpType::Unknown;
 }
@@ -98,6 +100,21 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
   return qlinear_op_type == QLinearOpType::QLinearConv ||
          qlinear_op_type == QLinearOpType::QLinearMatMul ||
          qlinear_op_type == QLinearOpType::QLinearAdd;
+}
+
+bool HasValidUnaryOpQuantizedInputs(const Node& node) {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 bool HasValidBinaryOpQuantizedInputs(const Node& node) {
