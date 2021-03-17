@@ -109,6 +109,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -121,14 +122,15 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                bash /onnxruntime/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ $(Build.SourcesDirectory) $(Build.BinariesDirectory)
+                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: '*.zip'
+          SourceFolder: '$(Build.BinariesDirectory)/docs/html'
+          Contents: '**'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: PublishBuildArtifacts@1
