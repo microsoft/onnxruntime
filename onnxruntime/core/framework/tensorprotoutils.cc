@@ -909,6 +909,7 @@ static Status CopySparseData(size_t n_sparse_elements,
   return status;
 }
 
+namespace conversion_internal {
 struct UnsupportedSparseDataType {
   void operator()(int32_t dt_type, Status& status) const {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
@@ -922,6 +923,10 @@ struct GetElementSize {
     return Status::OK();
   }
 };
+
+using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat16, BFloat16,
+                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
+}  // namespace conversion_internal
 
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
@@ -955,11 +960,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     void* sparse_data = sparse_data_storage.get();
     size_t element_size = 0;
     // We want to this list to match the one used below in DenseTensorToSparseTensorProto()
-    MLTypeCallDispatcher<float, double, MLFloat16, BFloat16,
-                         int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-        type_disp(type);
+    MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(type);
     ORT_RETURN_IF_ERROR(
-        (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
+        (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto. however to actually write to the buffer we have created in the std::string we need
@@ -1016,7 +1019,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         }
 
         default:
-          ORT_THROW(false, "BUG! Report to onnxruntime team.");
+          return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
+                                               ::onnxruntime::common::FAIL,
+                                               ::onnxruntime::MakeString(ORT_WHERE.ToString(), " BUG! Report to onnxruntime team."));
       }
 
       ORT_RETURN_IF_ERROR(status);
@@ -1025,7 +1030,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   } else {
     // No request for std::string
-    UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
+    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
   }
   return status;
 }
@@ -1086,7 +1091,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   const bool is_string_data = dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
   if (is_string_data) {
     Status status{};
-    UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
+    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
     return status;
   }
 
@@ -1109,11 +1114,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data, tensor_bytes_size));
   size_t element_size = 0;
   // We want this type list to match the one above in SparseTensorProtoToDenseTensorProto
-  MLTypeCallDispatcher<float, double, MLFloat16, BFloat16,
-                       int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-      type_disp(data_type);
+  MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(data_type);
   ORT_RETURN_IF_ERROR(
-      (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
+      (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
   switch (element_size) {
     case 1: {
