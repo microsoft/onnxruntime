@@ -11,6 +11,6 @@ ls $3/Release
 echo "----"
 $1/python -m pip install -r $2/docs/python/requirements.txt
 export PYTHONPATH=$3/Release:$PYTHONPATH
-$1/python -m sphinx -j2 -v -T -b html -d $3/docs/_doctrees/html $2/docs/python $3/docs/html
+$1/python -m sphinx -j1 -v -T -b html -d $3/docs/_doctrees/html $2/docs/python $3/docs/html
 $1/python -u $2/tools/doc/rename_folders.py $3/docs/html
 # zip -r $3/python_doc.zip $3/docs/html

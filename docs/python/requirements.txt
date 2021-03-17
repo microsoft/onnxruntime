@@ -1,4 +1,5 @@
 matplotlib
+scikit-learn
 sphinx
 sphinx-gallery
 pyquickhelper
