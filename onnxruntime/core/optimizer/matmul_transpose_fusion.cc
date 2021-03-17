@@ -86,11 +86,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
   }
 }
 
-/* GetTransposeNodeFromCast: Interchange Cast and Transpose nodes in the graph and return Transpose node if possible
-*  Requirements to interchange Cast and Transpose nodes changing the order of the operations.
-*  1. Both Cast and Transpose are one-output nodes (assuming both have one-input only)
-*  2. Transpose only feeds the Cast node (and no other node)
-*  3. Cast only feeds the MalMul node (and no other node)
+/* GetTransposeNodeFromCast: Interchange Cast and Transpose nodes in the graph and return Transpose node if possible.
 *
 *  Transform the following pattern
 *                              |
@@ -118,7 +114,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                              |
 *                              V
 */
-static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
+static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast, std::unordered_map<NodeArg*, size_t>& consumer_count) {
 
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
@@ -159,10 +155,13 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
                                       &transpose->GetAttributes(),
                                       transpose->Domain());
 
+  size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
-  graph_utils::RemoveNodeOutputEdges(graph, *transpose);
   graph.RemoveNode(cast->Index());
-  graph.RemoveNode(transpose->Index());
+  if (consumers == 0) {
+    graph_utils::RemoveNodeOutputEdges(graph, *transpose);
+    graph.RemoveNode(transpose->Index());
+  }
   return &new_transpose;
 }
 
@@ -283,14 +282,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     if (!left) {
       Node* left_node = graph.GetMutableProducerNode(left_input->Name());
       if (left_node && left_node->OpType() == "Cast") {
-          left = GetTransposeNodeFromCast(graph, left_node);
+          left = GetTransposeNodeFromCast(graph, left_node, consumer_count);
       }
     }
 
     if (!right) {
       Node* right_node = graph.GetMutableProducerNode(right_input->Name());
       if (right_node && right_node->OpType() == "Cast") {
-        right = GetTransposeNodeFromCast(graph, right_node);
+        right = GetTransposeNodeFromCast(graph, right_node, consumer_count);
       }
     }
 
