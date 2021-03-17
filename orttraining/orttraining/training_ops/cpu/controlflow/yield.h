@@ -12,13 +12,15 @@ namespace contrib {
 class YieldOp final : public OpKernel {
  public:
   YieldOp(const OpKernelInfo& info) : OpKernel(info) {
+    non_differentiable_outputs_ = info.GetAttrsOrDefault<int64_t>("non_differentiable_outputs");
     ORT_ENFORCE(info.GetAttrs<int64_t>("full_shape_outputs", full_shape_outputs_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  std::vector<int64_t> full_shape_outputs_;
+  std::vector<int64_t> non_differentiable_outputs_{};
+  std::vector<int64_t> full_shape_outputs_{};
 };
 
 }  // namespace contrib

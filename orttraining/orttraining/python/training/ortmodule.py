@@ -176,6 +176,10 @@ class ORTModule(torch.nn.Module):
                     # Push user output grads to ONNX backend.
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
+                        if idx in self._onnx_graphs_info.output_grad_indices_non_differentiable:
+                            assert grad_output is None
+                            continue
+                        
                         if grad_output is None:
                             shape, device, dtype = ctx.output_info[idx]
                             if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:

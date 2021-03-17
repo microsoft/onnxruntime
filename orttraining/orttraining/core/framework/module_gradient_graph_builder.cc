@@ -212,14 +212,27 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     graph_utils::ReplaceDownstreamNodeInput(gradient_graph, *producer_node, producer_node_arg_index, add_node, 0);
   }
 
+  NodeAttributes attributes{};
+
+  // YieldOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
+  const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
+  if (non_differentiable_indices.size() > 0) {
+    ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
+    const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
+    non_differentiable_outputs.set_name(non_differentiable_outputs_name);
+    non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+    for (auto index : non_differentiable_indices) {
+      non_differentiable_outputs.add_ints(index);
+    }
+    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
+  }
+
   // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
   // We need this info to set make TypeAndShapeInferenceFunction work properly.
   ONNX_NAMESPACE::AttributeProto full_shape_outputs;
-  const std::string attribute_name = "full_shape_outputs";
-  full_shape_outputs.set_name(attribute_name);
+  const std::string full_shape_outputs_name = "full_shape_outputs";
+  full_shape_outputs.set_name(full_shape_outputs_name);
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
-
-  const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
 
   std::vector<NodeArg*> yield_input_node_args;
   std::vector<NodeArg*> yield_output_node_args;
@@ -244,8 +257,8 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
     }
   }
+  attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);
 }
