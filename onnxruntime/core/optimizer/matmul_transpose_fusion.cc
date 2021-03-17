@@ -114,7 +114,9 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                              |
 *                              V
 */
-static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast, std::unordered_map<NodeArg*, size_t>& consumer_count) {
+static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast,
+                                      std::unordered_map<NodeArg*, size_t>& consumer_count,
+                                      std::deque<onnxruntime::NodeIndex>& removed_nodes) {
 
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
@@ -159,8 +161,7 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast, std::unordered_m
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
   graph.RemoveNode(cast->Index());
   if (consumers == 0) {
-    graph_utils::RemoveNodeOutputEdges(graph, *transpose);
-    graph.RemoveNode(transpose->Index());
+    removed_nodes.push_front(transpose->Index());
   }
   return &new_transpose;
 }
@@ -282,14 +283,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     if (!left) {
       Node* left_node = graph.GetMutableProducerNode(left_input->Name());
       if (left_node && left_node->OpType() == "Cast") {
-          left = GetTransposeNodeFromCast(graph, left_node, consumer_count);
+        left = GetTransposeNodeFromCast(graph, left_node, consumer_count, removed_nodes);
       }
     }
 
     if (!right) {
       Node* right_node = graph.GetMutableProducerNode(right_input->Name());
       if (right_node && right_node->OpType() == "Cast") {
-        right = GetTransposeNodeFromCast(graph, right_node, consumer_count);
+        right = GetTransposeNodeFromCast(graph, right_node, consumer_count, removed_nodes);
       }
     }
 
