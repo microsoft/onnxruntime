@@ -25,7 +25,7 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
+VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                          GlobalContext& global_context,
                          const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
