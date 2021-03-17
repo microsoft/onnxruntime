@@ -39,7 +39,8 @@ MODEL_CLASSES = {
     "bert": (BertOnnxModel, "pytorch", True),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
-    "gpt2": (Gpt2OnnxModel, "pytorch", True)
+    "gpt2": (Gpt2OnnxModel, "pytorch", True),
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False) # might add a class for GPT2OnnxModel for TF later. 
 }
 
 
