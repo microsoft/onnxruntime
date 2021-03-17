@@ -157,10 +157,8 @@ class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
 class NeuralNetNonDifferentiableOutput(torch.nn.Module):
     def __init__(self, input_size, num_classes):
         super(NeuralNetNonDifferentiableOutput, self).__init__()
-
         self.fc1 = torch.nn.Linear(input_size, num_classes)
         self.relu = torch.nn.ReLU()
-        # self.zero = torch.nn.Parameter(torch.FloatTensor([0.]))
 
     def forward(self, input1):
         out = self.fc1(input1)
