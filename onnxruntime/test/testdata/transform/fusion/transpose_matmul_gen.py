@@ -126,3 +126,49 @@ def gen_with_preserved_transpose(model_path):
 
 gen_with_preserved_transpose(
     "transpose_matmul_2d_fusion_with_preserved_transpose.onnx")
+
+
+def gen_transpose_fusion_with_cast(model_path):
+    nodes = [
+        helper.make_node(
+            "Cast",
+            ["input_1"],
+            ["casted_input_1"],
+            to = 10
+        ),
+        helper.make_node(
+            "Transpose",
+            ["input_0"],
+            ["transposed_input_0"],
+            perm = [0, 1, 3, 2]),
+        helper.make_node(
+            "Cast",
+            ["transposed_input_0"],
+            ["transposed_casted_input_0"],
+            to = 10),
+        helper.make_node(
+            "MatMul",
+            ["transposed_casted_input_0", "casted_input_1"],
+            ["output_0"])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT, [3, 2, 'K', 'M']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT, [3, 2, 'K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output_0", TensorProto.FLOAT16, [3, 2, 'M', 'N'])
+    ]
+
+    save(model_path + "0.onnx", nodes, inputs, outputs, [])
+    # Re-arragne nodes so that the transpose is on left input of matmul
+    nodes = nodes[1:3] + nodes[0:1] + nodes[3:]
+    save(model_path + "1.onnx", nodes, inputs, outputs, [])
+
+
+gen_transpose_fusion_with_cast(
+    "transpose_cast_matmul_4d_fusion")

@@ -42,12 +42,6 @@ MLAS_PLATFORM MlasPlatform;
 MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 //
-// Stores a vector to build a conditional load/store mask for vmaskmovpd.
-//
-
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint64_t MlasMaskMoveAvx64[4], 32) = { 0, 1, 2, 3 };
-
-//
 // Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
 //
 

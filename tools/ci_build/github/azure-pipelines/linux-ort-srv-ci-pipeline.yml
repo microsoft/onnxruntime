@@ -13,11 +13,12 @@ jobs:
       continueOnError: true
       condition: always()
 
-    - task: CmdLine@2
-      displayName: 'Build docker image'
-      inputs:
-        script: docker build --pull -t onnxruntime-server-ubuntu18.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=18.04 --build-arg PYTHON_VERSION=3.5 -f Dockerfile.ubuntu_server .
-        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_server
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=18.04 --build-arg PYTHON_VERSION=3.6"
+        Repository: onnxruntime-server-ubuntu18.04
 
     - task: CmdLine@2
       displayName: 'Run docker image'

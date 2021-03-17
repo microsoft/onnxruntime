@@ -733,9 +733,9 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
-    uint32_t MaximumThreadCount;
+    int32_t MaximumThreadCount;
 #else
-    static constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+    static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -753,19 +753,19 @@ typedef
 void
 (MLAS_THREADED_ROUTINE)(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     );
 
 void
 MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE* ThreadedRoutine,
     void* Context,
-    int32_t Iterations,
+    ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
 
 inline
-int32_t
+ptrdiff_t
 MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
@@ -786,8 +786,8 @@ MlasGetMaximumThreadCount(
 inline
 void
 MlasPartitionWork(
-    int32_t ThreadId,
-    int32_t ThreadCount,
+    ptrdiff_t ThreadId,
+    ptrdiff_t ThreadCount,
     size_t TotalWork,
     size_t* WorkIndex,
     size_t* WorkRemaining
@@ -796,7 +796,7 @@ MlasPartitionWork(
     const size_t WorkPerThread = TotalWork / ThreadCount;
     const size_t WorkPerThreadExtra = TotalWork % ThreadCount;
 
-    if (uint32_t(ThreadId) < WorkPerThreadExtra) {
+    if (size_t(ThreadId) < WorkPerThreadExtra) {
         *WorkIndex = (WorkPerThread + 1) * ThreadId;
         *WorkRemaining = WorkPerThread + 1;
     } else {
