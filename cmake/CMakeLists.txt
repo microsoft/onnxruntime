@@ -1108,6 +1108,9 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
+# DLPack is a header-only dependency
+set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+include_directories(${DLPACK_INCLUDE_DIR})
 
 if(onnxruntime_USE_OPENVINO)
 

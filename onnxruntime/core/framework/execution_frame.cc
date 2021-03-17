@@ -45,6 +45,16 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
   return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
 }
 
+Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
+  }
+
+  all_values_[ort_value_idx] = ort_value;
+  return Status::OK();
+}
+
 // TO DO: make it thread safe
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output

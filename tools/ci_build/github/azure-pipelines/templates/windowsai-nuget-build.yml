@@ -151,7 +151,7 @@ steps:
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
   
-  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false'), eq(parameters.Runtime, 'dynamic')) }}:
+  - ${{ if and(eq(parameters.BuildForStore, 'false'), eq(parameters.Runtime, 'dynamic')) }}:
     - script: |
        xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_scenario.exe $(Build.ArtifactStagingDirectory)\test_artifact\
