@@ -312,7 +312,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       OrtTensorRTProviderOptions tensorrt_options{
           0,
           0,
-          nullptr};
+          nullptr,
+          0,
+          1 << 30,
+          0,
+          0,
+          nullptr,
+          0};
 
       OrtCUDAProviderOptions cuda_options{
           0,
