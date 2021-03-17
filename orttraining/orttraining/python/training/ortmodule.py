@@ -3,7 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _ortmodule_output_transformation
+from . import _utils
+from . import _ortmodule_output_transformation as _ortmodule_io
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
@@ -66,17 +67,16 @@ def _check_same_device(device, argument_str, *args):
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
-# TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-# and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
-# from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
-# is feeded to backward graph as input, it will cause data type mismatch issue during
-# inference session running. We cannot change the from_dlpack() in PyTorch side, so we
-# have to handle this specially, which will introduce a cast here and there is data copied.
-# Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
-# real data type of the inputs in the backeard graph, and perform the cast only necessary.
-
 
 def _ort_output_to_torch_tensor(ort_output):
+    # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+    # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
+    # from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
+    # is feeded to backward graph as input, it will cause data type mismatch issue during
+    # inference session running. We cannot change the from_dlpack() in PyTorch side, so we
+    # have to handle this specially, which will introduce a cast here and there is data copied.
+    # Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
+    # real data type of the inputs in the backeard graph, and perform the cast only necessary.
     tensor = from_dlpack(_ortvalue_to_dlpack(ort_output))
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
@@ -132,9 +132,9 @@ class ORTModule(torch.nn.Module):
                     *inputs, **kwargs)
 
             _, _, input_names_require_grad, new_input_shape = \
-                _ortmodule_output_transformation.parse_inputs_for_onnx_export(
+                _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
-            # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
+            # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
             if input_names_require_grad != self._input_names_require_grad:
                 self._input_names_require_grad = input_names_require_grad
@@ -151,10 +151,10 @@ class ORTModule(torch.nn.Module):
                 self._device = module_device
                 self._create_training_session()
 
-            # Use a custom torch.autograd.Function to associate self.backward_graph as the
-            # gradient implementation for self.forward_graph.
-
             class _ORTModuleFunction(torch.autograd.Function):
+                '''Use a custom torch.autograd.Function to associate self.backward_graph as the
+                gradient implementation for self.forward_graph.'''
+
                 @staticmethod
                 def forward(ctx, *inputs, **kwargs):
                     '''Performs forward pass based on user input and PyTorch initializer
@@ -181,8 +181,10 @@ class ORTModule(torch.nn.Module):
                         forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
 
-                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
-                    # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                    # Disable materializing grads then None object will not be converted
+                    # to a tensor filled with zeros prior to calling backward.
+                    # Also save shape, device and type info to ctx for materializing
+                    # tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
                     ctx.output_info = [
                         (output.shape, output.device, output.dtype) for output in user_outputs]
@@ -242,16 +244,18 @@ class ORTModule(torch.nn.Module):
                     # Append gradients of initializer to results
                     results += [_ort_output_to_torch_tensor(backward_output)
                                 for backward_output in backward_outputs[num_user_input_grads:]]
-                    # The OrtValue has a shared_ptr to the data. At this point there are two shared_ptrs to the data, one through the
+                    # The OrtValue has a shared_ptr to the data.
+                    # At this point there are two shared_ptrs to the data, one through the
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
-                    # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
-                    # on the DLpack tensors, the memory can be freed.
+                    # The following call clears the iobinding output, reducing the use_count to 1,
+                    # so that once torch finishes computation on the DLpack tensors, the memory can be freed.
                     self._training_io_binding.clear_binding_outputs()
                     return tuple(results)
 
-            return _ortmodule_output_transformation.populate_user_output_from_schema_and_outputs(self._original_module_output_schema,
-                                                                                                 self._onnx_graphs_info.user_output_names,
-                                                                                                 _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*inputs, **kwargs)))
+            return _ortmodule_io.populate_user_output_from_schema_and_outputs(
+                self._original_module_output_schema,
+                self._onnx_graphs_info.user_output_names,
+                _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*inputs, **kwargs)))
 
         # Bind the forward method.
         self.forward = _forward.__get__(self)
@@ -274,7 +278,7 @@ class ORTModule(torch.nn.Module):
         self._original_module = module
         # Get the module that flattens the output from the original module into a tuple
         self._flattened_output_module = \
-            _ortmodule_output_transformation.get_flattened_output_module(
+            _ortmodule_io.get_flattened_output_module(
                 self._original_module)
         self._original_module_parameters = signature(
             self._original_module.forward).parameters.values()
@@ -382,7 +386,8 @@ class ORTModule(torch.nn.Module):
         self._run_options = C.RunOptions()
 
         # IO binding
-        # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
+        # TODO: Reuse output buffers as some of output tensors have same shape,
+        #       especially the backward graph outputs.
         self._training_io_binding = self._training_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
@@ -446,10 +451,10 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad, _ = \
-            _ortmodule_output_transformation.parse_inputs_for_onnx_export(
+            _ortmodule_io.parse_inputs_for_onnx_export(
                 self._original_module_parameters, None, *inputs, **kwargs)
         output_names, output_dynamic_axes, self._original_module_output_schema = \
-            _ortmodule_output_transformation.parse_outputs_for_onnx_export_and_extract_output_schema(
+            _ortmodule_io.parse_outputs_for_onnx_export_and_extract_output_schema(
                 self._original_module, inputs, kwargs)
         dynamic_axes.update(output_dynamic_axes)
 
@@ -460,7 +465,7 @@ class ORTModule(torch.nn.Module):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = \
-            _ortmodule_output_transformation.deepcopy_model_input(
+            _ortmodule_io.deepcopy_model_input(
                 *inputs, **kwargs)
 
         try:
