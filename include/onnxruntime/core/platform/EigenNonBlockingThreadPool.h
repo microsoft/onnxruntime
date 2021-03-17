@@ -1325,19 +1325,20 @@ int CurrentThreadId() const EIGEN_FINAL {
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
-          int i = 0;
-          for (; i < spin_count && !t && !cancelled_ && !done_; i++) {
+          //int i = 0;
+          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             if ((i + 1) % steal_count == 0) {
               t = TrySteal();
+              /*
               if (t) {
                 profiler_.LogSteal(thread_id);
-              }
+              }*/
             } else {
               t = q.PopFront();
             }
             onnxruntime::concurrency::SpinPause();
           }
-          profiler_.LogSpin(thread_id, i);
+          //profiler_.LogSpin(thread_id, i);
           SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
@@ -1401,7 +1402,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           td.SetActive();
           profiler_.LogRun(thread_id);
           t();
-          profiler_.LogCore(thread_id);
+          //profiler_.LogCore(thread_id);
           td.SetSpinning();
         }
       }
