@@ -110,7 +110,7 @@ NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_
     for (const Node* node : nodes) {
       int input_index = graph_utils::GetNodeInputIndexFromInputName(*node, name);
       auto it = STOP_GRADIENT_EDGES.find(node->OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(input_index)) {
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(input_index)) {
         continue;
       }
       queue.push_back(node);
@@ -126,9 +126,7 @@ NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_
       const Node& node = edge_it->GetNode();
 
       auto it = STOP_GRADIENT_EDGES.find(node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(edge_it->GetDstArgIndex())) {
-        // LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetSrcArgIndex()
-        //                     << " of node: " << n->Name();
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
         continue;
       }
 
@@ -222,7 +220,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       if (!IsReachable(&next_node)) continue;
 
       auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(edge_it->GetDstArgIndex())) {
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << next_node.Name();
         continue;

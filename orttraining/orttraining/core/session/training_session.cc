@@ -1338,7 +1338,7 @@ bool TrainingSession::IsUntrainable(const Node* node, const std::string& initial
                                     const logging::Logger* logger) {
   auto it = STOP_GRADIENT_EDGES.find(node->OpType());
   if (it != STOP_GRADIENT_EDGES.end()) {
-    for (auto input_idx : it->second.first) {
+    for (auto input_idx : it->second) {
       if (input_idx < node->InputDefs().size() &&
           node->InputDefs()[input_idx]->Name() == initializer_name) {
         if (logger) {
