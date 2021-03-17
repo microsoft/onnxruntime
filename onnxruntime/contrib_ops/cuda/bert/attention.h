@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/common.h"
+//#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
 

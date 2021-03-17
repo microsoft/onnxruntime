@@ -158,6 +158,7 @@ struct ProviderHost {
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
@@ -170,7 +171,6 @@ struct ProviderHost {
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
-  virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual std::vector<std::string> GetStackTrace() = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
@@ -524,8 +524,6 @@ struct ProviderHost {
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
-
-  virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
   virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;
 
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
@@ -612,14 +610,14 @@ struct ProviderHost {
                                               const std::vector<int64_t>& raw_axes,
                                               const std::vector<int64_t>& raw_steps,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
-  virtual void SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
-                                               const Tensor& ends_tensor,
-                                               const Tensor* axes_tensor,
-                                               const Tensor* steps_tensor,
-                                               std::vector<int64_t>& input_starts,
-                                               std::vector<int64_t>& input_ends,
-                                               std::vector<int64_t>& input_axes,
-                                               std::vector<int64_t>& input_steps) = 0;
+  virtual Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
+                                                 const Tensor& ends_tensor,
+                                                 const Tensor* axes_tensor,
+                                                 const Tensor* steps_tensor,
+                                                 std::vector<int64_t>& input_starts,
+                                                 std::vector<int64_t>& input_ends,
+                                                 std::vector<int64_t>& input_axes,
+                                                 std::vector<int64_t>& input_steps) = 0;
   // From cpu/tensor/size.h
   virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;
   // From cpu/tensor/scatter_nd.h
@@ -1027,6 +1025,7 @@ class DataTypeImpl {
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
@@ -1263,7 +1262,6 @@ struct OpKernelInfo {
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInput(this, input_index, constant_input_value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
-  int GetKernelDef_ExecQueueId() const noexcept { return g_host->OpKernelInfo__GetKernelDef_ExecQueueId(this); }
   const KernelDef& GetKernelDef() const { return g_host->OpKernelInfo__GetKernelDef(this); }
 
   uint32_t GetInputCount() const { return g_host->OpKernelInfo__GetInputCount(this); }

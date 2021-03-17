@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #endif

@@ -4,7 +4,7 @@
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"

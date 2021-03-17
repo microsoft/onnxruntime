@@ -9,7 +9,7 @@
 
 //#include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
 

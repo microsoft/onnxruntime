@@ -13,7 +13,7 @@ using namespace ::onnxruntime::cuda;
 template <typename T, bool is_conj>
 class ComplexMul : public BinaryElementwise<ShouldBroadcast> {
  public:
-  ComplexMul(const OpKernelInfo info) : BinaryElementwise{info} {}
+  ComplexMul(const OpKernelInfo& info) : BinaryElementwise{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

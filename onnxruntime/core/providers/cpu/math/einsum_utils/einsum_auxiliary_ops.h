@@ -6,7 +6,7 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/util/math.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"

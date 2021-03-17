@@ -34,7 +34,7 @@ class Memcpy final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef_ExecQueueId());
+    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     return retval;
   }
 };

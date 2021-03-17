@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/status.h"
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/framework/tensor.h"
 #endif
 

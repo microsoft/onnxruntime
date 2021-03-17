@@ -313,10 +313,6 @@ std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
   return g_host->CopyOpKernelInfo(info);
 }
 
-std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
-  return g_host->CopyOpKernelInfo(info);
-}
-
 }  // namespace onnxruntime
 
 #include "core/providers/cpu/tensor/unsqueeze.h"
@@ -342,14 +338,14 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host->SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
-void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
-                                     const Tensor& ends_tensor,
-                                     const Tensor* axes_tensor,
-                                     const Tensor* steps_tensor,
-                                     std::vector<int64_t>& input_starts,
-                                     std::vector<int64_t>& input_ends,
-                                     std::vector<int64_t>& input_axes,
-                                     std::vector<int64_t>& input_steps) { return g_host->SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
+                                       const Tensor& ends_tensor,
+                                       const Tensor* axes_tensor,
+                                       const Tensor* steps_tensor,
+                                       std::vector<int64_t>& input_starts,
+                                       std::vector<int64_t>& input_ends,
+                                       std::vector<int64_t>& input_axes,
+                                       std::vector<int64_t>& input_steps) { return g_host->SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,

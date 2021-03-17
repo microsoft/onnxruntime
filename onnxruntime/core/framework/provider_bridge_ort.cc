@@ -3,6 +3,7 @@
 
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
+void Foo() {}
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
@@ -10,7 +11,6 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/op_kernel_base.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -194,6 +194,10 @@ struct ProviderHostImpl : ProviderHost {
     return Env::Default().GetEnvironmentVar(var_name);
   }
 
+  logging::Logger* LoggingManager_GetDefaultLogger() override {
+    return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
+  }
+
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,
                                                      const std::vector<const KernelRegistry*>& kernel_registries,
@@ -206,19 +210,13 @@ struct ProviderHostImpl : ProviderHost {
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
-  size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
-  const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
-
-  const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
-  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
-  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
-  std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) { return onnxruntime::CopyOpKernelInfo(info); }
   std::vector<std::string> GetStackTrace() override { return onnxruntime::GetStackTrace(); }
   uint16_t math__floatToHalf(float f) override { return math::floatToHalf(f); }
 
@@ -615,8 +613,6 @@ struct ProviderHostImpl : ProviderHost {
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
-
-  const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
   bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
 
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
@@ -706,14 +702,14 @@ struct ProviderHostImpl : ProviderHost {
                                       const std::vector<int64_t>& raw_steps,
                                       SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
 
-  void SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
-                                       const Tensor& ends_tensor,
-                                       const Tensor* axes_tensor,
-                                       const Tensor* steps_tensor,
-                                       std::vector<int64_t>& input_starts,
-                                       std::vector<int64_t>& input_ends,
-                                       std::vector<int64_t>& input_axes,
-                                       std::vector<int64_t>& input_steps) override { SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+  Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
+                                         const Tensor& ends_tensor,
+                                         const Tensor* axes_tensor,
+                                         const Tensor* steps_tensor,
+                                         std::vector<int64_t>& input_starts,
+                                         std::vector<int64_t>& input_ends,
+                                         std::vector<int64_t>& input_axes,
+                                         std::vector<int64_t>& input_steps) override { return SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
   // From cpu/tensor/size.h
   Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Compute(context); }
   // From cpu/tensor/scatter_nd.h

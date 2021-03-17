@@ -6,8 +6,8 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/utils.h"
-#include "core/common/safeint.h"
 #endif
+#include "core/common/safeint.h"
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {
@@ -510,4 +510,3 @@ struct WritableSliceIterator {
 };
 
 }  // namespace onnxruntime
-

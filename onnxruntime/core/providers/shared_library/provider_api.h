@@ -81,6 +81,7 @@ struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
+class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
@@ -163,8 +164,6 @@ enum OperatorStatus : int {
 
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/op_kernel_base.h"
-#include "core/framework/float16.h"
 #include "provider_interfaces.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
@@ -244,6 +243,8 @@ constexpr T roundUpPow2(T a) {
 }
 
 uint16_t floatToHalf(float f);
+
+}  // namespace math
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)

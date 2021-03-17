@@ -3,10 +3,12 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/op_node_proto_helper.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
+#endif
+#include "core/framework/op_node_proto_helper.h"
 
 namespace onnxruntime {
 

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "attention.h"
-#include "core/framework/tensorprotoutils.h"
+//#include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "attention.h"
 #include "attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -22,7 +22,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Attention<T>);
 
@@ -52,7 +52,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int hidden_size = static_cast<int>(bias_shape[0]) / 3;
 
   int head_size = hidden_size / num_heads_;
- 
+
   std::vector<int64_t> output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];

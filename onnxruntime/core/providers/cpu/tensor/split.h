@@ -5,7 +5,7 @@
 
 #include <numeric>
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif
@@ -13,7 +13,7 @@
 namespace onnxruntime {
 
 class SplitBase {
-public:
+ public:
   /*
    * \param num_outputs must >=0
    */

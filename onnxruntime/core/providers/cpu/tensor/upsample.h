@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
 #include <cmath>

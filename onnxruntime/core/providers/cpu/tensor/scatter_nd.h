@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif
@@ -37,7 +37,6 @@ class ScatterNDBase {
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
 
  public:
-
   // Shared between the CPU and CUDA implementation
   static Status ValidateShapes(const TensorShape& input_shape,
                                const TensorShape& indice_shape,

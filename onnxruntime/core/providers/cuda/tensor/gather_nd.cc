@@ -135,7 +135,7 @@ Status GatherNDBase::PrepareCompute(
       ver,                                                                \
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
-      KernelDefBuilder()                                                  \
+      (*KernelDefBuilder::Create())                                       \
           .TypeConstraint("T", GATHER_ND_T_TENSOR_TYPES)                  \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
