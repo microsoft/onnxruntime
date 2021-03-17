@@ -154,6 +154,21 @@ class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
             return torch.mean(self.a) + 3 * y
         return torch.mean(self.a) + x
 
+class NeuralNetNonDifferentiableOutput(torch.nn.Module):
+    def __init__(self, input_size, num_classes):
+        super(NeuralNetNonDifferentiableOutput, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, num_classes)
+        self.relu = torch.nn.ReLU()
+        self.zero = torch.nn.Parameter(torch.FloatTensor([0.]))
+
+    def forward(self, input1):
+        out = self.fc1(input1)
+        out = self.relu(out)
+        mask = torch.gt(out, self.zero)
+        mask = mask.int()
+        return out, mask 
+
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
 @pytest.fixture(autouse=True)
@@ -474,6 +489,27 @@ def test_gradient_correctness():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+
+def test_module_with_non_differential_output():
+    device = 'cuda'
+    N, D_in, D_out = 32, 128, 10
+    pt_model = NeuralNetNonDifferentiableOutput(D_in, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x):
+        prediction, mask = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, mask
+
+    for step in range(10):
+        x = torch.randn(N, D_in, device=device)
+        pt_prediction, pt_mask = run_step(pt_model, x)
+        ort_prediction, ort_mask = run_step(ort_model, x)
+
+        assert torch.allclose(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
 def test_multiple_forward_only_calls():
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -546,8 +582,8 @@ def test_multiple_ortmodules_training():
         pt_prediction1, pt_prediction2 = run_step(pt_model1, pt_model2, x1, x2)
         ort_prediction1, ort_prediction2 = run_step(ort_model1, ort_model2, x1, x2)
 
-        assert torch.allclose(ort_prediction1, pt_prediction1)
-        assert torch.allclose(ort_prediction2, pt_prediction2)
+        assert torch.allclose(ort_prediction1, pt_prediction1, atol=1e-6)
+        assert torch.allclose(ort_prediction2, pt_prediction2, atol=1e-6)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 

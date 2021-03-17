@@ -3,6 +3,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/graph/op.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/schema_registry.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
@@ -58,12 +59,21 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       ORT_THROW(name, " couldn't find the producer node.");
     }
     y_nodes_.insert(node);
+
+    auto y_reachable_node = ReverseBFS({node});
+    for (auto& n : y_reachable_node) {
+      LOGS(logger_, WARNING) << "Reachable nodes from " << name << "are " << n->Name();
+    }
   }
 
   reachable_nodes_ = ReverseBFS(y_nodes_);
 
-  std::string unreachable_nodes;
+  auto forward_reachable_nodes = BFS(x_node_arg_names);
+  for (const Node* node : forward_reachable_nodes) {
+    LOGS(logger_, WARNING) << "Forward Reachable nodes from are " << node->Name();
+  }
 
+  std::string unreachable_nodes;
   // building x_nodes_
   for (const auto& name : x_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -94,6 +104,44 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   }
 }
 
+NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_arg_names) const {
+  std::deque<const Node*> queue;
+  for (const auto& name : x_node_arg_names) {
+    std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
+    for (const Node* node : nodes) {
+      int input_index = graph_utils::GetNodeInputIndexFromInputName(*node, name);
+      auto it = STOP_GRADIENT_EDGES.find(node->OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(input_index)) {
+        continue;
+      }
+      queue.push_back(node);
+    }
+  }
+
+  NodeSet visited(queue.begin(), queue.end());
+  while (!queue.empty()) {
+    const Node* n = queue.front();
+    queue.pop_front();
+
+    for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
+      auto it = STOP_GRADIENT_EDGES.find(n->OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.second.count(edge_it->GetSrcArgIndex())) {
+        // LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetSrcArgIndex()
+        //                     << " of node: " << n->Name();
+        continue;
+      }
+
+      const Node& node = edge_it->GetNode();
+      if (visited.find(&node) == visited.end()) {
+        queue.push_back(&node);
+        visited.insert(&node);
+      }
+    }
+  }
+
+  return visited;
+}
+
 NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
   NodeSet visited(nodes);
   std::deque<const Node*> queue(nodes.begin(), nodes.end());
@@ -105,8 +153,8 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                               << " of node: " << n->Name();
+        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                            << " of node: " << n->Name();
         continue;
       }
 
@@ -174,7 +222,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       if (!IsReachable(&next_node)) continue;
 
       auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << next_node.Name();
         continue;
@@ -213,9 +261,9 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
     if (node_defs.empty()) {
       LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
-                             << node->Name() << " of type " << node->OpType() << "."; 
+                             << node->Name() << " of type " << node->OpType() << ".";
     }
-    
+
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
       for (auto& arg : op_def.output_args) {
