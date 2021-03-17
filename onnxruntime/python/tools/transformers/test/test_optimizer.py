@@ -340,11 +340,34 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
     @pytest.mark.slow
-    def test_bert_base_cased_from_tf(self):
-        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 1)
-        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 2)
-        self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 3)
+    def test_huggingface_bert_base_cased_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 1)
+        self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 2)
+        self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 3)
 
+    @pytest.mark.slow
+    def test_huggingface_distilgpt2_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("distilgpt2", [0, 0, 0, 0, 0, 12, 1], 1)
+
+    @pytest.mark.slow
+    def test_huggingface_albert_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("albert-base-v1", [0, 0, 0, 0, 0, 0, 25], 1)
+    
+    @pytest.mark.slow
+    def test_huggingface_gpt2_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False)
+
+    @pytest.mark.slow
+    def test_huggingface_roberta_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False)
+    
+    @pytest.mark.slow
+    def test_huggingface_distilbert_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False)
+
+    @pytest.mark.slow
+    def test_huggingface_xlm_from_tf2onnx(self):
+        self._test_optimizer_on_tf_model("xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False)
 
 if __name__ == '__main__':
     unittest.main()

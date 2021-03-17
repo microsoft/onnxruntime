@@ -3,6 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from . import _utils
+from . import _ortmodule_output_transformation as _ortmodule_io
+from onnxruntime.training import register_custom_ops_pytorch_exporter
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.capi import _pybind_state as C
+
 import functools
 import io
 import logging
@@ -11,6 +17,7 @@ import onnxruntime
 import torch
 import inspect
 from inspect import signature
+from enum import IntEnum
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
@@ -19,11 +26,6 @@ from torch.utils.cpp_extension import load_inline
 from typing import TypeVar
 T = TypeVar('T', bound='Module')
 
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.training import register_custom_ops_pytorch_exporter
-from . import _utils, _ortmodule_output_transformation
-
 
 ONNX_OPSET_VERSION = 12
 
@@ -31,13 +33,24 @@ ONNX_OPSET_VERSION = 12
 def _ortvalue_to_dlpack(ortvalue):
     return ortvalue._ortvalue.to_dlpack()
 
+
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
+
+
+class Verbosity(IntEnum):
+    VERBOSE = 0
+    INFO = 1
+    WARNING = 2
+    ERROR = 3
+    FATAL = 4
+
 
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
+        io_binding.bind_ortvalue_input(
+            value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -51,21 +64,24 @@ def _check_same_device(device, argument_str, *args):
         if arg is not None and isinstance(arg, torch.Tensor):
             arg_device = torch.device(arg.device)
             if arg_device != device:
-                raise RuntimeError(f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
+                raise RuntimeError(
+                    f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
-# TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-# and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
-# from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
-# is feeded to backward graph as input, it will cause data type mismatch issue during
-# inference session running. We cannot change the from_dlpack() in PyTorch side, so we
-# have to handle this specially, which will introduce a cast here and there is data copied.
-# Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
-# real data type of the inputs in the backeard graph, and perform the cast only necessary.
+
 def _ort_output_to_torch_tensor(ort_output):
+    # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+    # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
+    # from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
+    # is feeded to backward graph as input, it will cause data type mismatch issue during
+    # inference session running. We cannot change the from_dlpack() in PyTorch side, so we
+    # have to handle this specially, which will introduce a cast here and there is data copied.
+    # Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
+    # real data type of the inputs in the backeard graph, and perform the cast only necessary.
     tensor = from_dlpack(_ortvalue_to_dlpack(ort_output))
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
-def _load_torch_allocator_cpp_extension():
+
+def _load_torch_allocator_cpp_extension(verbosity):
     torch_cuda_allocator_addresses_cpp_source = """
     #include <torch/extension.h>
     #include <c10/cuda/CUDACachingAllocator.h>
@@ -78,13 +94,16 @@ def _load_torch_allocator_cpp_extension():
     """
 
     return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
-                        functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'],
-                        verbose=True, with_cuda=True)
+                       functions=['cuda_caching_allocator_raw_alloc_address',
+                                  'cuda_caching_allocator_raw_delete_address'],
+                       verbose=verbosity < Verbosity.WARNING, with_cuda=True)
+
 
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
-        assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
+        assert isinstance(
+            module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
         # Create forward dynamically, so each ORTModule instance will have its own copy.
         # This is needed to be able to copy the forward signatures from the original PyTorch models
@@ -102,17 +121,20 @@ class ORTModule(torch.nn.Module):
 
             # Exporting module to ONNX for the first time
             if not self._onnx_training:
-                device_from_module = _utils.get_device_from_module(self._original_module)
+                device_from_module = _utils.get_device_from_module(
+                    self._original_module)
                 if not self._device or self._device != device_from_module:
                     self._device = device_from_module
                     if not self._device:
-                        raise RuntimeError('A device must be specified in the model or data!')
-                self._get_inference_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
+                        raise RuntimeError(
+                            'A device must be specified in the model or data!')
+                self._get_inference_graph_and_init_gradient_graph_builder(
+                    *inputs, **kwargs)
 
             _, _, input_names_require_grad, new_input_shape = \
-                _ortmodule_output_transformation.parse_inputs_for_onnx_export(
+                _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
-            # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
+            # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
             if input_names_require_grad != self._input_names_require_grad:
                 self._input_names_require_grad = input_names_require_grad
@@ -123,15 +145,16 @@ class ORTModule(torch.nn.Module):
                 self._build_training_graph()
                 self._create_training_session()
 
-            module_device = _utils.get_device_from_module(self._original_module)
+            module_device = _utils.get_device_from_module(
+                self._original_module)
             if self._device != module_device:
                 self._device = module_device
                 self._create_training_session()
 
-
-            # Use a custom torch.autograd.Function to associate self.backward_graph as the
-            # gradient implementation for self.forward_graph.
             class _ORTModuleFunction(torch.autograd.Function):
+                '''Use a custom torch.autograd.Function to associate self.backward_graph as the
+                gradient implementation for self.forward_graph.'''
+
                 @staticmethod
                 def forward(ctx, *inputs, **kwargs):
                     '''Performs forward pass based on user input and PyTorch initializer
@@ -144,23 +167,31 @@ class ORTModule(torch.nn.Module):
                     '''
 
                     # Assert that the input and model device match
-                    _check_same_device(self._device, "Input argument to forward", *inputs)
+                    _check_same_device(
+                        self._device, "Input argument to forward", *inputs)
 
                     # Use IO binding
-                    _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
+                    _create_iobinding(self._training_io_binding,
+                                      inputs, self._onnx_training, self._device)
 
                     # Run and return module outputs.
-                    forward_outputs, run_id = self._training_session.run_forward(self._training_io_binding, self._run_options)
-                    user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+                    forward_outputs, run_id = self._training_session.run_forward(
+                        self._training_io_binding, self._run_options)
+                    user_outputs = tuple(_ort_output_to_torch_tensor(
+                        forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
 
-                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
-                    # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                    # Disable materializing grads then None object will not be converted
+                    # to a tensor filled with zeros prior to calling backward.
+                    # Also save shape, device and type info to ctx for materializing
+                    # tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
-                    ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+                    ctx.output_info = [
+                        (output.shape, output.device, output.dtype) for output in user_outputs]
 
                     # Assert that the outputs and model device match
-                    _check_same_device(self._device, "Output argument from forward", *user_outputs)
+                    _check_same_device(
+                        self._device, "Output argument from forward", *user_outputs)
 
                     return user_outputs
 
@@ -170,7 +201,8 @@ class ORTModule(torch.nn.Module):
                     '''
 
                     # Assert that the grad_outputs and model device match
-                    _check_same_device(self._device, "Input argument to backward", *grad_outputs)
+                    _check_same_device(
+                        self._device, "Input argument to backward", *grad_outputs)
 
                     # Use IO binding
                     # Push user output grads to ONNX backend.
@@ -183,17 +215,21 @@ class ORTModule(torch.nn.Module):
                         if grad_output is None:
                             shape, device, dtype = ctx.output_info[idx]
                             if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:
-                                grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                                grad_output = torch.zeros(
+                                    shape, device=device, dtype=dtype)
                             else:
-                                grad_output = torch.tensor(0., device=device, dtype=dtype)
+                                grad_output = torch.tensor(
+                                    0., device=device, dtype=dtype)
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [_ortvalue_from_dlpack(to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
+                    backward_grad_output_ortvalue = [_ortvalue_from_dlpack(
+                        to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id
-                    self._training_session.run_backward(backward_grad_output_ortvalue, run_id)
+                    self._training_session.run_backward(
+                        backward_grad_output_ortvalue, run_id)
                     backward_outputs = self._training_io_binding.get_outputs()
 
                     # Return input and initializer gradients
@@ -210,25 +246,31 @@ class ORTModule(torch.nn.Module):
                             # Append None to results for each input that did not require grad
                             results.append(None)
                     # Append gradients of initializer to results
-                    results += [_ort_output_to_torch_tensor(backward_output) 
+                    results += [_ort_output_to_torch_tensor(backward_output)
                                 for backward_output in backward_outputs[num_user_input_grads:]]
-                    # The OrtValue has a shared_ptr to the data. At this point there are two shared_ptrs to the data, one through the 
+                    # The OrtValue has a shared_ptr to the data.
+                    # At this point there are two shared_ptrs to the data, one through the
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
-                    # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
-                    # on the DLpack tensors, the memory can be freed.
+                    # The following call clears the iobinding output, reducing the use_count to 1,
+                    # so that once torch finishes computation on the DLpack tensors, the memory can be freed.
                     self._training_io_binding.clear_binding_outputs()
                     return tuple(results)
 
-            return _ortmodule_output_transformation.populate_user_output_from_schema_and_outputs(self._original_module_output_schema,
+            return _ortmodule_io.populate_user_output_from_schema_and_outputs(
+                self._original_module_output_schema,
                 self._onnx_graphs_info.user_output_names,
                 _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*inputs, **kwargs)))
 
         # Bind the forward method.
         self.forward = _forward.__get__(self)
         # Copy the forward signature from the PyTorch module.
-        functools.update_wrapper(self.forward.__func__, module.forward.__func__)
+        functools.update_wrapper(
+            self.forward.__func__, module.forward.__func__)
 
         super(ORTModule, self).__init__()
+
+        # Verbosity for logging
+        self._verbosity = Verbosity.WARNING
 
         # Support contrib OPs
         register_custom_ops_pytorch_exporter.register_custom_op()
@@ -240,13 +282,16 @@ class ORTModule(torch.nn.Module):
         self._original_module = module
         # Get the module that flattens the output from the original module into a tuple
         self._flattened_output_module = \
-            _ortmodule_output_transformation.get_flattened_output_module(self._original_module)
-        self._original_module_parameters = signature(self._original_module.forward).parameters.values()
+            _ortmodule_io.get_flattened_output_module(
+                self._original_module)
+        self._original_module_parameters = signature(
+            self._original_module.forward).parameters.values()
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._original_module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                raise NotImplementedError("The model's forward method has **kwargs parameter which is currently not supported.")
+                raise NotImplementedError(
+                    "The model's forward method has **kwargs parameter which is currently not supported.")
 
         self._onnx_inference = None
         self._is_training = True
@@ -254,8 +299,8 @@ class ORTModule(torch.nn.Module):
         # Related to training graph shape inference
         self._current_input_shape = None
         # default execution order is priority-based for both dynamic/static shape input for now
-        # if we observe benefit of static shape, we can expose this flag to user       
-        self._use_static_shape = False 
+        # if we observe benefit of static shape, we can expose this flag to user
+        self._use_static_shape = False
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
@@ -274,34 +319,42 @@ class ORTModule(torch.nn.Module):
         self._save_onnx_prefix = ''
 
         from torch.utils.cpp_extension import ROCM_HOME
-        self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        self.is_rocm_pytorch = (True if (
+            (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
         # Disable external allocator for ROCM EP since external allocator is not supported yet.
-        self._use_external_cuda_allocator = (False if self.is_rocm_pytorch else True)
+        self._use_external_cuda_allocator = (
+            False if self.is_rocm_pytorch else True)
         if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
+            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension(
+                self._verbosity)
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [p[0] for p in self._flattened_output_module.named_parameters()]
-        onnx_initializer_names = [p.name for p in self._onnx_inference.graph.initializer]
-        initializer_names = [p for p in initializer_names if p in onnx_initializer_names]
+        initializer_names = [p[0]
+                             for p in self._flattened_output_module.named_parameters()]
+        onnx_initializer_names = {
+            p.name for p in self._onnx_inference.graph.initializer}
+        initializer_names = [
+            p for p in initializer_names if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
         grad_builder_config.initializer_names_to_train = initializer_names
         grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
-        self._module_gradient_graph_builder.initialize(self._onnx_inference.SerializeToString(), grad_builder_config)
+        self._module_gradient_graph_builder.initialize(
+            self._onnx_inference.SerializeToString(), grad_builder_config)
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
 
         if self._save_onnx:
-            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
+            onnx.save(self._onnx_inference,
+                      self._save_onnx_prefix + '_inference.onnx')
 
         self._initialize_module_gradient_graph_builder()
 
@@ -310,10 +363,12 @@ class ORTModule(torch.nn.Module):
         provider_options = None
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"])
+            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
+                         "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
             if self._use_external_cuda_allocator:
-                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
+                    self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
@@ -326,7 +381,7 @@ class ORTModule(torch.nn.Module):
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = 2
+        session_options.log_severity_level = int(self._verbosity)
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
@@ -335,19 +390,23 @@ class ORTModule(torch.nn.Module):
         self._run_options = C.RunOptions()
 
         # IO binding
-        # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
+        # TODO: Reuse output buffers as some of output tensors have same shape,
+        #       especially the backward graph outputs.
         self._training_io_binding = self._training_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
         if self._use_static_shape:
-            self._module_gradient_graph_builder.build(self._current_input_shape)
+            self._module_gradient_graph_builder.build(
+                self._current_input_shape)
         else:
             self._module_gradient_graph_builder.build()
-        self._onnx_training = onnx.load_model_from_string(self._module_gradient_graph_builder.get_training_model())
+        self._onnx_training = onnx.load_model_from_string(
+            self._module_gradient_graph_builder.get_training_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
         if self._save_onnx:
-            onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
+            onnx.save(self._onnx_training,
+                      self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
         self._is_training = False
@@ -379,7 +438,8 @@ class ORTModule(torch.nn.Module):
                 result.append(inp)
             else:
                 # TODO: Re-export ONNX if any input from _onnx_graphs_info.user_input_names is None.
-                raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
+                raise RuntimeError(
+                    f'Input is present in ONNX graph but not provided: {name}.')
 
         # Initializers
         for param in self._flattened_output_module.named_parameters():
@@ -395,10 +455,10 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad, _ = \
-            _ortmodule_output_transformation.parse_inputs_for_onnx_export(
+            _ortmodule_io.parse_inputs_for_onnx_export(
                 self._original_module_parameters, None, *inputs, **kwargs)
         output_names, output_dynamic_axes, self._original_module_output_schema = \
-            _ortmodule_output_transformation.parse_outputs_for_onnx_export_and_extract_output_schema(
+            _ortmodule_io.parse_outputs_for_onnx_export_and_extract_output_schema(
                 self._original_module, inputs, kwargs)
         dynamic_axes.update(output_dynamic_axes)
 
@@ -409,20 +469,23 @@ class ORTModule(torch.nn.Module):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = \
-            _ortmodule_output_transformation.deepcopy_model_input(*inputs, **kwargs)
+            _ortmodule_io.deepcopy_model_input(
+                *inputs, **kwargs)
 
         try:
             with torch.no_grad():
                 torch.onnx.export(self._flattened_output_module,
-                                sample_inputs_copy + (sample_kwargs_copy, ),
-                                f,
-                                input_names=input_names,
-                                output_names=output_names,
-                                opset_version=ONNX_OPSET_VERSION,
-                                do_constant_folding=False,
-                                training=torch.onnx.TrainingMode.TRAINING,
-                                dynamic_axes=dynamic_axes)
+                                  sample_inputs_copy + (sample_kwargs_copy, ),
+                                  f,
+                                  input_names=input_names,
+                                  output_names=output_names,
+                                  opset_version=ONNX_OPSET_VERSION,
+                                  do_constant_folding=False,
+                                  training=torch.onnx.TrainingMode.TRAINING,
+                                  dynamic_axes=dynamic_axes,
+                                  verbose=self._verbosity < Verbosity.WARNING)
         except RuntimeError as e:
-            raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+            raise RuntimeError(
+                'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
