@@ -1288,3 +1288,26 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     with pytest.raises(RuntimeError) as runtime_error:
         ort_model(x)
     assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
+
+def test_forward_returns_none_type_as_output():
+    class NeuralNetNoneTypeOutput(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetNoneTypeOutput, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, num_classes)
+            self.relu1 = torch.nn.ReLU()
+
+        def forward(self, input1):
+            out1 = self.fc1(input1)
+            out1 = self.relu1(out1)
+            return {'out': out1, 'none_output': None}
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetNoneTypeOutput(D_in, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    output = model(x)
+
+    assert output['out'] is not None
+    assert output['none_output'] is None
