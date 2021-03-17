@@ -60,8 +60,20 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   // AllGather requires every rank to receive the same amount of data, and
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
+  // See https://github.com/NVIDIA/nccl/issues/413 for more details
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   const int64_t alignment = size * 32;
+
+  if (buffer_size % alignment != 0) {
+    void* padded_end_address = reinterpret_cast<void*>(const_cast<char*>(end_address));
+    size_t dummy_space = kAllocAlignment * 2;
+    std::align(kAllocAlignment, 1, padded_end_address, dummy_space);
+
+    buffer_size = ((buffer_size + alignment - 1) / alignment) * alignment;
+
+    ORT_ENFORCE(start_address + buffer_size <= padded_end_address);
+  }
+
   ORT_ENFORCE(buffer_size % alignment == 0, "NcclAllGather's contiguous buffer is not padded to local_size * 32");
 
   // Calculate the range of inputs this rank will send.
@@ -117,8 +129,19 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   // ReduceScatter requires every rank to receive the same amount of data, and significantly
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
+  // See https://github.com/NVIDIA/nccl/issues/413 for more details
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
   const int64_t alignment = size * 32;
+  if (buffer_size % alignment != 0) {
+    void* padded_end_address = reinterpret_cast<void*>(const_cast<char*>(end_address));
+    size_t dummy_space = kAllocAlignment * 2;
+    std::align(kAllocAlignment, 1, padded_end_address, dummy_space);
+
+    buffer_size = ((buffer_size + alignment - 1) / alignment) * alignment;
+
+    ORT_ENFORCE(start_address + buffer_size <= padded_end_address);
+  }
+
   ORT_ENFORCE(buffer_size % alignment == 0, "NcclReduceScatter's contiguous buffer is not padded to local_size * 32");
 
   // Calculate the range of outputs this rank will receive.

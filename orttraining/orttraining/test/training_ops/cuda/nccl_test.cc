@@ -46,7 +46,8 @@ class NcclKernelTest : public testing::Test {
   int pipeline_parallel_size_;
 };
 
-static void RunNcclAllReduceTest(bool use_fp16, int local_size, int local_rank) {
+static void RunNcclAllReduceTest(const std::vector<std::vector<int64_t>>& tensors_dims, 
+                                 bool use_fp16, int local_size, int local_rank) {
   if (local_size <= 1) return;
 
   RandomValueGenerator random{42};
@@ -54,7 +55,6 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size, int local_rank) 
   test.AddBufferedInputOutput();
   test.SetDeviceId(local_rank);
 
-  const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {128}, {512}, {7, 13}, {1024, 3}};
   for (size_t input_id = 0; input_id < tensors_dims.size(); ++input_id) {
     const std::vector<int64_t>& tensor_dims = tensors_dims[input_id];
 
@@ -80,14 +80,19 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size, int local_rank) 
 }
 
 TEST_F(NcclKernelTest, NcclAllReduce_FP32) {
-  RunNcclAllReduceTest(false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{2, 3}, {128}, {512}, {7, 13}, {1024, 3}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{16}, {6}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{1547}}, false /*use_fp16*/, local_size_, local_rank_);
 }
 
 TEST_F(NcclKernelTest, NcclAllReduce_FP16) {
-  RunNcclAllReduceTest(true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{2, 3}, {128}, {512}, {7, 13}, {1024, 3}}, true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{16}, {6}}, true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllReduceTest({{1547}}, true /*use_fp16*/, local_size_, local_rank_);
 }
 
-static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_rank) {
+static void RunNcclReduceScatterTest(const std::vector<std::vector<int64_t>>& tensors_dims, 
+                                     bool use_fp16, int local_size, int local_rank) {
   if (local_size <= 1) return;
 
   const size_t elem_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
@@ -96,8 +101,6 @@ static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_ra
   OpTester test("NcclReduceScatter", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
   test.SetDeviceId(local_rank);
-
-  const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 
   size_t total_bytes = 0;
   for (auto& tensor_dims : tensors_dims) {
@@ -145,14 +148,19 @@ static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_ra
 }
 
 TEST_F(NcclKernelTest, NcclReduceScatter_FP32) {
-  RunNcclReduceScatterTest(false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{2, 3}, {5, 17}, {512}, {7, 13}, {256}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{15}, {3}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{37}}, false /*use_fp16*/, local_size_, local_rank_);
 }
 
 TEST_F(NcclKernelTest, NcclReduceScatter_FP16) {
-  RunNcclReduceScatterTest(true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{2, 3}, {5, 17}, {512}, {7, 13}, {256}}, true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{15}, {3}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclReduceScatterTest({{73}}, false /*use_fp16*/, local_size_, local_rank_);
 }
 
-static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) {
+static void RunNcclAllGatherTest(const std::vector<std::vector<int64_t>>& tensors_dims, 
+                                 bool use_fp16, int local_size, int local_rank) {
   if (local_size <= 1) return;
 
   const size_t elem_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
@@ -161,8 +169,6 @@ static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) 
   OpTester test("NcclAllGather", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
   test.SetDeviceId(local_rank);
-
-  const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 
   size_t total_bytes = 0;
   for (auto& tensor_dims : tensors_dims) {
@@ -209,11 +215,15 @@ static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) 
 }
 
 TEST_F(NcclKernelTest, NcclAllGather_FP32) {
-  RunNcclAllGatherTest(false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{2, 3}, {5, 17}, {512}, {7, 13}, {256}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{16}, {3}}, false /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{13}}, false /*use_fp16*/, local_size_, local_rank_);
 }
 
 TEST_F(NcclKernelTest, NcclAllGather_FP16) {
-  RunNcclAllGatherTest(true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{2, 3}, {5, 17}, {512}, {7, 13}, {256}}, true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{16}, {3}}, true /*use_fp16*/, local_size_, local_rank_);
+  RunNcclAllGatherTest({{37}}, false /*use_fp16*/, local_size_, local_rank_);
 }
 
 }  // namespace test
