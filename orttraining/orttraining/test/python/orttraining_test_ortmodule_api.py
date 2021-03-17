@@ -160,12 +160,12 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
 
         self.fc1 = torch.nn.Linear(input_size, num_classes)
         self.relu = torch.nn.ReLU()
-        self.zero = torch.nn.Parameter(torch.FloatTensor([0.]))
+        # self.zero = torch.nn.Parameter(torch.FloatTensor([0.]))
 
     def forward(self, input1):
         out = self.fc1(input1)
         out = self.relu(out)
-        mask = torch.gt(out, self.zero)
+        mask = torch.gt(out, 0)
         mask = mask.int()
         return out, mask 
 

@@ -2221,9 +2221,10 @@ Return true if all elements are true and false otherwise.
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
       .Attr("full_shape_outputs", "The indices of the outputs that must have full shape.", AttributeProto::INTS)
+      
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs());
+        // ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs());
         for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i, i);
         }

@@ -166,6 +166,14 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
+  std::unordered_set<std::string> non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
+  for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
+    if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
+      training_graph_info_.output_grad_indices_non_differentiable.emplace_back(i);
+      LOGS(*logger_, WARNING) << "output_grad_indices_non_differentiable: " << i;
+    }
+  }
+
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
   return Status::OK();
 }
@@ -211,6 +219,8 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
   full_shape_outputs.set_name(attribute_name);
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
+  const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
+
   std::vector<NodeArg*> yield_input_node_args;
   std::vector<NodeArg*> yield_output_node_args;
   training_graph_info_.output_grad_indices_require_full_shape.clear();
@@ -228,7 +238,11 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
+      ;
+    } else {
+      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+    }
   }
 
   NodeAttributes attributes({{attribute_name, full_shape_outputs}});

@@ -89,6 +89,10 @@ class GradientGraphBuilder {
 
   Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
+  std::unordered_set<std::string> GetNonDifferentiableYNodeArgNames() const {
+    return non_differentiable_y_node_arg_names_;
+  }
+
  private:
   std::unordered_set<const NodeArg*> y_node_args_;
   std::unordered_set<const NodeArg*> x_node_args_;
@@ -96,6 +100,8 @@ class GradientGraphBuilder {
   NodeSet y_nodes_;
   NodeSet x_nodes_;
   NodeSet reachable_nodes_;
+
+  std::unordered_set<std::string> non_differentiable_y_node_arg_names_;
 
   Graph* graph_;
 
@@ -119,7 +125,6 @@ class GradientGraphBuilder {
   // key: name of the gradient, value: num of gradients pending
   std::unordered_map<std::string, int> pending_;
 
-
   /**
   Perferms a BFS on the graph
   @param Starting nodes arg name for BFS
@@ -139,7 +144,6 @@ class GradientGraphBuilder {
   @param reachable_nodes All the nodes reachable from the 'y_node_args_'
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
-
   Status CheckNodeArgsReachable() const;
 
   /** 

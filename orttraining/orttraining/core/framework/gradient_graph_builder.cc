@@ -37,6 +37,8 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
                                      TransformerLevel::Level2);
 
+  auto forward_reachable_nodes = BFS(x_node_arg_names);
+
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
@@ -52,26 +54,23 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       }
       ORT_THROW("Node arg '", name, "' is not found in the graph. Available output names = ", ss.str());
     }
-    y_node_args_.insert(node_arg);
 
     const Node* node = graph_->GetProducerNode(name);
     if (!node) {
       ORT_THROW(name, " couldn't find the producer node.");
     }
-    y_nodes_.insert(node);
 
-    auto y_reachable_node = ReverseBFS({node});
-    for (auto& n : y_reachable_node) {
-      LOGS(logger_, WARNING) << "Reachable nodes from " << name << "are " << n->Name();
+    if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
+      non_differentiable_y_node_arg_names_.insert(name);
+      LOGS(logger_, WARNING) << "The model weigths and inputs are non-differentiable from " << name << ". "
+                             << "ORT will assume no gradient will be provided for " << name << ".";
+    } else {
+      y_node_args_.insert(node_arg);
+      y_nodes_.insert(node);
     }
   }
 
   reachable_nodes_ = ReverseBFS(y_nodes_);
-
-  auto forward_reachable_nodes = BFS(x_node_arg_names);
-  for (const Node* node : forward_reachable_nodes) {
-    LOGS(logger_, WARNING) << "Forward Reachable nodes from are " << node->Name();
-  }
 
   std::string unreachable_nodes;
   // building x_nodes_
@@ -124,14 +123,15 @@ NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_
     queue.pop_front();
 
     for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
-      auto it = STOP_GRADIENT_EDGES.find(n->OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.second.count(edge_it->GetSrcArgIndex())) {
+      const Node& node = edge_it->GetNode();
+
+      auto it = STOP_GRADIENT_EDGES.find(node.OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.first.count(edge_it->GetDstArgIndex())) {
         // LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetSrcArgIndex()
         //                     << " of node: " << n->Name();
         continue;
       }
 
-      const Node& node = edge_it->GetNode();
       if (visited.find(&node) == visited.end()) {
         queue.push_back(&node);
         visited.insert(&node);
