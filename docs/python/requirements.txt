@@ -1,3 +1,4 @@
+autopep8
 matplotlib
 scikit-learn
 sphinx
