@@ -5,6 +5,8 @@
 echo $1
 echo $2
 echo $3
+ls $3
+find $3 -name ".*_pybind_state.py"
 $1/python -m pip install -r $2/docs/python/requirements.txt
 export PYTHONPATH=$3/Release/Release:$PYTHONPATH
 $1/python -m sphinx -j2 -v -T -b html -d $3/docs/_doctrees/html $2/docs/python $3/docs/html
