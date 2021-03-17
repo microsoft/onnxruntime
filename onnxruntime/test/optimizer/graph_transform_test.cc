@@ -850,8 +850,10 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx", // Test fusion from the left input
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion2.onnx", // Test fusion both from the left and right inputs
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion3.onnx", // Cast nodes feed multiple MatMul nodes.
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion4.onnx", // Cast nodes feed one MatMul node and the Transpose nodes feed another MatMul node.
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion5.onnx"  // One Cast node and one Transpose node feed each MatMul nodes.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion4.onnx", // Cast nodes feed one MatMul node and
+                                                                   // the Transpose nodes feed another MatMul node.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion5.onnx"  // One Cast node and one Transpose node feed each
+                                                                   // MatMul nodes.
   };
   int i = 0;
   for (const auto& model_uri : model_uris) {
