@@ -191,10 +191,11 @@ class ThreadPoolProfiler {
   void LogStart();               //called in main thread to record the starting time point
   void LogEnd(ThreadPoolEvent);  //called in main thread to calculate and save the time elapsed from last start point
   void LogEndAndStart(ThreadPoolEvent);
+  void LogStartAndCoreAndBlock(std::ptrdiff_t block_size);
   void LogCoreAndBlock(std::ptrdiff_t block_size);  //called in main thread to log core and block size for task breakdown
   void LogThreadId(int thread_idx);                 //called in child thread to log its id
   void LogRun(int thread_idx);                      //called in child thread to log num of run
-  void LogCore(int thread_idx);                     //called in child thread to log the core that the child thread is running on
+  //void LogCore(int thread_idx);                     //called in child thread to log the core that the child thread is running on
   void LogSpin(int thread_idx, uint64_t spin);      //called in child thread to log num of spinning
   void LogSteal(int thread_idx);                    //called in child thread to log num of jobs stolen from sibling threads
   void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
@@ -1012,8 +1013,7 @@ void SummonWorkers(PerThread &pt,
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n, std::ptrdiff_t block_size) override {
-  profiler_.LogCoreAndBlock(block_size);
-  profiler_.LogStart();
+  profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
   assert((n > 1) && "Trivial parallel section; should be avoided by caller");
@@ -1061,8 +1061,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // handing off multiple loops to the pool of workers.
 
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
-  profiler_.LogCoreAndBlock(block_size);
-  profiler_.LogStart();
+  profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
@@ -1335,7 +1334,9 @@ int CurrentThreadId() const EIGEN_FINAL {
             } else {
               t = q.PopFront();
             }
-            onnxruntime::concurrency::SpinPause();
+            if (!t) {
+              onnxruntime::concurrency::SpinPause();
+            }
           }
           profiler_.LogSpin(thread_id, i);
           SetGoodWorkerHint(thread_id, false);

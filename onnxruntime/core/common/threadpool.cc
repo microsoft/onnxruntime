@@ -80,10 +80,20 @@ std::string ThreadPoolProfiler::Stop() {
   return ss.str();
 }
 
+void ThreadPoolProfiler::LogStartAndCoreAndBlock(std::ptrdiff_t block_size) {
+  if (enabled_) {
+    MainThreadStat& stat = GetMainThreadStat();
+    stat.LogCore();
+    stat.LogBlockSize(block_size);
+    stat.LogStart();
+  }
+}
+
 void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
   if (enabled_) {
-    GetMainThreadStat().LogCore();
-    GetMainThreadStat().LogBlockSize(block_size);
+    MainThreadStat& stat = GetMainThreadStat();
+    stat.LogCore();
+    stat.LogBlockSize(block_size);
   }
 }
 
@@ -181,9 +191,24 @@ void ThreadPoolProfiler::LogThreadId(int thread_idx) {
 void ThreadPoolProfiler::LogRun(int thread_idx) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_run_++;
+    auto now = Clock::now();
+    if (TimeDiffMicroSeconds(child_thread_stats_[thread_idx].last_logged_point_, now) > 100) {
+#ifdef _WIN32
+      child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
+#elif defined(__APPLE__)
+      uint32_t CPUInfo[4];
+      __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
+      if ((CPUInfo[3] & (1 << 9)) != 0) {
+        child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
+      }
+#else
+      child_thread_stats_[thread_idx].core_ = sched_getcpu();
+#endif
+      child_thread_stats_[thread_idx].last_logged_point_ = now;
+    }
   }
 }
-
+/*
 void ThreadPoolProfiler::LogCore(int thread_idx) {
   if (enabled_) {
     auto now = Clock::now();
@@ -202,7 +227,7 @@ void ThreadPoolProfiler::LogCore(int thread_idx) {
       child_thread_stats_[thread_idx].last_logged_point_ = now;
     }
   }
-}
+}*/
 
 void ThreadPoolProfiler::LogSpin(int thread_idx, uint64_t spin) {
   if (enabled_) {
