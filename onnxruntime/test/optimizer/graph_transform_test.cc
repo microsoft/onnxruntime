@@ -859,6 +859,7 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
     Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph); // Original op count
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
@@ -867,8 +868,8 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["Transpose"] == 0);
     ASSERT_TRUE(op_to_count["MatMul"] == 0);
-    ASSERT_TRUE(op_to_count["Cast"] == 2);
-    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] >= 1);
+    ASSERT_TRUE(op_to_count["Cast"] == orig_op_to_count["Cast"]);
+    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == orig_op_to_count["MatMul"]);
   }
 }
 
