@@ -124,16 +124,24 @@ class ORTModule(torch.nn.Module):
                 self._get_inference_graph_and_init_gradient_graph_builder(
                     *inputs, **kwargs)
 
+            # Flag to indicate whether the gradient_graph needs to be built
+            build_gradient_graph = self._current_input_shape is None
             _, _, input_names_require_grad, new_input_shape = \
                 _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
+            initializer_names_to_train_set = {initializer[0] for initializer in
+                self._flattened_output_module.named_parameters() if initializer[1].requires_grad}
             # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
-            if input_names_require_grad != self._input_names_require_grad:
+            if input_names_require_grad != self._input_names_require_grad or \
+                initializer_names_to_train_set != self._initializer_names_to_train_set:
                 self._input_names_require_grad = input_names_require_grad
+                self._initializer_names_to_train_set = initializer_names_to_train_set
                 self._initialize_module_gradient_graph_builder()
+                # Trigger the rebuilding of the gradient graph
+                build_gradient_graph = True
 
-            if self._current_input_shape is None:
+            if build_gradient_graph:
                 self._current_input_shape = new_input_shape
                 self._build_training_graph()
                 self._create_training_session()
@@ -307,6 +315,7 @@ class ORTModule(torch.nn.Module):
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
+        self._initializer_names_to_train_set = None
 
         # Training model
         self._onnx_training = None
@@ -351,7 +360,7 @@ class ORTModule(torch.nn.Module):
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
         grad_builder_config.initializer_names = initializer_names
-        grad_builder_config.initializer_names_to_train = initializer_names
+        grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
         self._module_gradient_graph_builder.initialize(
