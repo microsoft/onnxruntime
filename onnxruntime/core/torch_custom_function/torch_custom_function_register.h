@@ -14,8 +14,10 @@ class OrtTorchFunctionPool final {
       static OrtTorchFunctionPool instance_;
       return instance_;
   }
-  void RegisterForward(std::string& custom_function_name, pybind11::object forward_fn);
-  void RegisterBackward(std::string& custom_function_name, pybind11::object backward_fn);
+  void RegisterForward(const std::string& custom_function_name, pybind11::object forward_fn);
+  void RegisterBackward(const std::string& custom_function_name, pybind11::object backward_fn);
+  pybind11::object GetForward(const std::string& custom_function_name);
+  pybind11::object GetBackward(const std::string& custom_function_name);
 
  private:
   OrtTorchFunctionPool() = default;
