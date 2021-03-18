@@ -31,8 +31,10 @@ void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& 
         case ENOENT:
           status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(model_uri),
                                    " failed. File doesn't exist");
+          break;
         case EINVAL:
           status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(model_uri), " failed");
+          break;
         default:
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
