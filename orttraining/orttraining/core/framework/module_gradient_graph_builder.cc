@@ -22,15 +22,15 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
   config_ = config;
 
   // Handle original model inputs, outputs and trainable initializers.
-  // We need to move the trainable initializers to graph inputs and keep the order in config,
-  // it's possible that the graph already has some trainable initializers in graph inputs,
-  // so we need to NOT assign these trainable initializers to the user inputs list.
+  // We need to move all the initializers to graph inputs and keep the order in config,
+  // it's possible that the graph already has some initializers in graph inputs,
+  // so we need to NOT assign these initializers to the user inputs list.
   Graph& graph = model_->MainGraph();
-  std::unordered_set<std::string> initializer_names_to_train_set(config.initializer_names_to_train.begin(),
-                                                                 config.initializer_names_to_train.end());
+  std::unordered_set<std::string> initializer_names(config.initializer_names.begin(),
+                                                    config.initializer_names.end());
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   for (auto& node_arg : graph_inputs) {
-    if (initializer_names_to_train_set.find(node_arg->Name()) == initializer_names_to_train_set.end()) {
+    if (initializer_names.find(node_arg->Name()) == initializer_names.end()) {
       training_graph_info_.user_input_names.emplace_back(node_arg->Name());
     }
   }
@@ -42,14 +42,16 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
 
   training_graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
                                                          config.initializer_names_to_train.end());
+  training_graph_info_.initializer_names.assign(config.initializer_names.begin(),
+                                                config.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : training_graph_info_.user_input_names) {
     input_args.emplace_back(graph.GetNodeArg(input_name));
   }
 
-  // Remove the training initializers from the graph and move them to graph inputs.
-  for (const auto& initializer_name : training_graph_info_.initializer_names_to_train) {
+  // Remove all the initializers from the graph and move them to graph inputs.
+  for (const auto& initializer_name : training_graph_info_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
     ORT_ENFORCE(node_arg != nullptr);
     input_args.emplace_back(node_arg);

@@ -16,6 +16,8 @@ namespace training {
  * The training configuration options.
  */
 struct ModuleGradientGraphBuilderConfiguration {
+  // The names of the weights.
+  std::vector<std::string> initializer_names{};
   // The names of the weights to train.
   std::vector<std::string> initializer_names_to_train{};
   // The names of inputs that require gradient.
@@ -35,6 +37,8 @@ struct TrainingGraphInfo {
   std::vector<std::string> user_input_names{};
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
   std::unordered_map<std::string, std::string> user_input_grad_names{};
+  // All initializers (trainable as well as non trainable).
+  std::vector<std::string> initializer_names{};
   // Trainable initializers.
   std::vector<std::string> initializer_names_to_train{};
   // Trainable initializer grad names, ordered according to initializer_names_to_train.

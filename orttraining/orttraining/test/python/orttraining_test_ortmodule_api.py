@@ -1404,3 +1404,41 @@ def test_uint8_input_and_output():
 
     assert y1 is not None
     assert y2 is not None and y2.dtype == torch.uint8
+
+def test_model_partially_requires_grad():
+    class NeuralNetPartialNoGradModel(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetPartialNoGradModel, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size).requires_grad_(False)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, model_input):
+            out = None
+            out = self.relu(self.fc1(model_input))
+            out = self.fc2(out)
+            return out
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPartialNoGradModel(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+
+    # Make sure no exception is raised
+    output = model(x)
+
+    loss = torch.sum(output)
+    loss.backward()
+
+def test_model_wrapped_inside_torch_no_grad():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+
+    # Make sure no exception is raised
+    with torch.no_grad():
+        output = model(x)

@@ -107,7 +107,9 @@ class ORTModule(torch.nn.Module):
             Finally, we instantiate the ONNX Runtime InferenceSession.
             '''
             # TODO: using pytorch for evaluation for now. We will use ORT for evaluation later.
-            if not self._is_training:
+            # TODO: If the model is being executed with the gradient disabled (inside torch.no_grad() context for example),
+            # leverage pytorch model for now.
+            if not self._is_training or not torch.is_grad_enabled():
                 return self._original_module(*inputs, **kwargs)
 
             # Exporting module to ONNX for the first time
@@ -238,9 +240,17 @@ class ORTModule(torch.nn.Module):
                             # input_name is not found in the self._input_names_require_grad list
                             # Append None to results for each input that did not require grad
                             results.append(None)
+
                     # Append gradients of initializer to results
-                    results += [_ortvalue_to_torch_tensor(backward_output)
-                                for backward_output in backward_outputs[num_user_input_grads:]]
+                    # Go over each initializer, check if it required grad and append to results accordingly
+                    initializer_index = 0
+                    for inititializer_name in self._onnx_graphs_info.initializer_names:
+                        if inititializer_name in self._onnx_graphs_info.initializer_names_to_train:
+                            results.append(_ortvalue_to_torch_tensor(backward_outputs[num_user_input_grads+initializer_index]))
+                            initializer_index += 1
+                        else:
+                            results.append(None)
+
                     # The OrtValue has a shared_ptr to the data.
                     # At this point there are two shared_ptrs to the data, one through the
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
@@ -329,13 +339,18 @@ class ORTModule(torch.nn.Module):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [p[0]
                              for p in self._flattened_output_module.named_parameters()]
+        initializer_names_to_train = []
+        if torch.is_grad_enabled():
+            initializer_names_to_train = [p[0]
+                for p in self._flattened_output_module.named_parameters() if p[1].requires_grad]
         onnx_initializer_names = {
             p.name for p in self._onnx_inference.graph.initializer}
-        initializer_names = [
-            p for p in initializer_names if p in onnx_initializer_names]
+        initializer_names_to_train = [
+            p for p in initializer_names_to_train if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
+        grad_builder_config.initializer_names = initializer_names
         grad_builder_config.initializer_names_to_train = initializer_names
         grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
