@@ -170,7 +170,6 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
       training_graph_info_.output_grad_indices_non_differentiable.emplace_back(i);
-      LOGS(*logger_, WARNING) << "output_grad_indices_non_differentiable: " << i;
     }
   }
 
