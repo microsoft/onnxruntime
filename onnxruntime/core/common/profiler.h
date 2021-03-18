@@ -134,6 +134,7 @@ class Profiler {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;
 #endif
+
 };
 
 }  // namespace profiling

@@ -79,6 +79,12 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
+if (onnxruntime_USE_CUDA)
+  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
+  target_link_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
+  target_link_libraries(onnxruntime_common cupti)
+endif()
+
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
