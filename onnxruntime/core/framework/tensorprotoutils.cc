@@ -1019,10 +1019,10 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         }
 
         default:
-          return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
-                                               ::onnxruntime::common::FAIL,
-                                               ::onnxruntime::MakeString(ORT_WHERE.ToString(), " BUG! Report to onnxruntime team."));
-      }
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 " BUG! Report to onnxruntime team. element_size of: ",
+                                 element_size, " is not supported.", " type: ", type);
+     }
 
       ORT_RETURN_IF_ERROR(status);
     }
@@ -1140,9 +1140,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
       break;
     }
     default:
-      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
-                                           ::onnxruntime::common::FAIL,
-                                           ::onnxruntime::MakeString(ORT_WHERE.ToString(), " BUG! Report to onnxruntime team."));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             " BUG! Report to onnxruntime team. element_size of: ",
+                             element_size, " is not supported.", " data_type: ", data_type);
   }
 
   // Fix up shapes
