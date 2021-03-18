@@ -12,6 +12,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/session/environment.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 #ifdef __GNUC__

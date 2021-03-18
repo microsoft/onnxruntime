@@ -811,7 +811,10 @@ set(onnxruntime_eager_mode_libs
         nsync_cpp
         ${CMAKE_DL_LIBS}
         )
-target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads)
+if(onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+endif()
+target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
 
 #perf test runner
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
