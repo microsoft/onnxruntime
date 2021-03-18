@@ -171,7 +171,7 @@ if __name__ == '__main__':
     is_onnx_model_zoo_yolov3 = False 
 
     # TensorRT EP INT8 settings
-    os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"  # Enable FP16 precision
+    os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"  # Enable FP16 precision
     os.environ["ORT_TENSORRT_INT8_ENABLE"] = "1"  # Enable INT8 precision
     os.environ["ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME"] = "calibration.flatbuffers"  # Calibration table name
     os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"  # Enable engine caching
