@@ -227,7 +227,7 @@ void ThreadPoolProfiler::LogCore(int thread_idx) {
       child_thread_stats_[thread_idx].last_logged_point_ = now;
     }
   }
-}*/
+}
 
 void ThreadPoolProfiler::LogSpin(int thread_idx, uint64_t spin) {
   if (enabled_) {
@@ -245,16 +245,16 @@ void ThreadPoolProfiler::LogBlock(int thread_idx) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_block_++;
   }
-}
+}*/
 
 std::string ThreadPoolProfiler::DumpChildThreadStat() {
   std::stringstream ss;
   for (int i = 0; i < num_threads_; ++i) {
     ss << "\"" << child_thread_stats_[i].thread_id_ << "\": {"
        << "\"num_run\":" << child_thread_stats_[i].num_run_ << ", "
-       << "\"num_spin\":" << child_thread_stats_[i].num_spin_ << ", "
-       << "\"num_steal\":" << child_thread_stats_[i].num_steal_ << ", "
-       << "\"num_block\":" << child_thread_stats_[i].num_block_ << ", "
+       //<< "\"num_spin\":" << child_thread_stats_[i].num_spin_ << ", "
+       //<< "\"num_steal\":" << child_thread_stats_[i].num_steal_ << ", "
+       //<< "\"num_block\":" << child_thread_stats_[i].num_block_ << ", "
        << "\"core\":" << child_thread_stats_[i].core_ << "}"
        << (i == num_threads_ - 1 ? "" : ",");
   }

@@ -196,10 +196,10 @@ class ThreadPoolProfiler {
   void LogThreadId(int thread_idx);                 //called in child thread to log its id
   void LogRun(int thread_idx);                      //called in child thread to log num of run
   //void LogCore(int thread_idx);                     //called in child thread to log the core that the child thread is running on
-  void LogSpin(int thread_idx, uint64_t spin);      //called in child thread to log num of spinning
-  void LogSteal(int thread_idx);                    //called in child thread to log num of jobs stolen from sibling threads
-  void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
-  std::string DumpChildThreadStat();                //return all child statitics collected so far
+  //void LogSpin(int thread_idx, uint64_t spin);      //called in child thread to log num of spinning
+  //void LogSteal(int thread_idx);                    //called in child thread to log num of jobs stolen from sibling threads
+  //void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
+  std::string DumpChildThreadStat();  //return all child statitics collected so far
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
@@ -221,9 +221,9 @@ class ThreadPoolProfiler {
   struct ChildThreadStat {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
-    uint64_t num_spin_ = 0;
-    uint64_t num_steal_ = 0;
-    uint64_t num_block_ = 0;
+    //uint64_t num_spin_ = 0;
+    //uint64_t num_steal_ = 0;
+    //uint64_t num_block_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;  //core that the child thread is running on
     PaddingToAvoidFalseSharing padding_; //to prevent false sharing
@@ -1324,6 +1324,11 @@ int CurrentThreadId() const EIGEN_FINAL {
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
+          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
+            t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
+            onnxruntime::concurrency::SpinPause();
+          }
+          /*
           int i = 0;
           for (; i < spin_count && !t && !cancelled_ && !done_; i++) {
             if ((i + 1) % steal_count == 0) {
@@ -1339,6 +1344,7 @@ int CurrentThreadId() const EIGEN_FINAL {
             }
           }
           profiler_.LogSpin(thread_id, i);
+          */
           SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
@@ -1386,9 +1392,10 @@ int CurrentThreadId() const EIGEN_FINAL {
                         }
                       }
                     }
+                    /*
                     if (should_block) {
                       profiler_.LogBlock(thread_id); 
-                    }
+                    }*/
                     return should_block;
                   },
                   // Post-block update (executed only if we blocked)
