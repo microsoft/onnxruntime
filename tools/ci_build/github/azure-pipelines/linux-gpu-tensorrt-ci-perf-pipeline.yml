@@ -40,4 +40,4 @@ jobs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result'
 
-    # - template: templates/clean-agent-build-directory-step.yml
+    - template: templates/clean-agent-build-directory-step.yml
