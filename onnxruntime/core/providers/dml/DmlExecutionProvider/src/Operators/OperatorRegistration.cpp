@@ -544,8 +544,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      9,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported|DmlGraphSupport::Prefer64BitTensorsDirectly|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
-    {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported|DmlGraphSupport::Prefer64BitTensorsDirectly|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
+    {REG_INFO(      7,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported)},
+    {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
