@@ -336,7 +336,7 @@ def _create_operator_type_usage_processors():
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
                                   'Relu', 'Resize', 'RoiAlign', 'Round',
-                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt',
+                                  'Shrink', 'Sigmoid', 'Sign', 'Sin', 'Softmax', 'Split', 'SplitToSequence', 'Sqrt',
                                   'Tanh', 'Tile', 'TopK', 'Transpose',
                                   'Where']
 
