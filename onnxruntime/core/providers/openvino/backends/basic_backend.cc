@@ -31,9 +31,8 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
  bool vpu_status = false;
  bool import_blob_status = false;
  std::string model_blob_name;
-#ifndef _WIN32
-  std::ifstream blob_path;
-  if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
+ std::ifstream blob_path;
+ if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
         std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
         std::string model_name= global_context_.onnx_model_path_name.substr(model_index+1);
@@ -70,9 +69,18 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
     }
   }
 
+  char* compiled_blob_path = nullptr;
   if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
-    auto blob = std::getenv("OV_BLOB_PATH");
-    std::ifstream compiled_blob_path{blob};
+  #ifdef _WIN32
+		size_t env_name_len = 0;
+		char* env_name = nullptr;
+		if (_dupenv_s(&env_name, &env_name_len, "OV_BLOB_PATH") == 0 && env_name != nullptr) {
+			compiled_blob_path = env_name;
+			free(env_name);
+		}
+	#else
+		compiled_blob_path = std::getenv("OV_BLOB_PATH");
+	#endif
     try {
       if(vpu_status == true) {
         LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
@@ -89,7 +97,6 @@ BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
     import_blob_status = true;
     LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
   }
-#endif
 
 if ((global_context_.use_compiled_network == true && import_blob_status == false) || vpu_status == false) {
   if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
