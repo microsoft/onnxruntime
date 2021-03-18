@@ -64,9 +64,9 @@ class ModuleGradientGraphBuilder {
   Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
 
   /**
-   * Build the gradient graph and split it to forward and backward graphs.
+   * Build the gradient graph.
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
-   * @return The status of the gradient graph building and forward/backward graphs splitting.
+   * @return The status of the gradient graph building.
    */
   Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
@@ -77,8 +77,8 @@ class ModuleGradientGraphBuilder {
   std::string GetGradientModel() const;
 
   /**
-   * Get the split graphs information.
-   * @return The split graphs information.
+   * Get the training graphs information.
+   * @return The training graphs information.
    */
   TrainingGraphInfo GetTrainingGraphInfo() const { return training_graph_info_; }
 
