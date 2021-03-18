@@ -128,6 +128,8 @@ if (onnxruntime_ENABLE_TRAINING)
   list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
 endif()
 
+list(APPEND onnxruntime_pybind11_state_libs onnxruntime_torch_custom_function)
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
