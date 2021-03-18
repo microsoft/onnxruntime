@@ -501,6 +501,12 @@ class OrtValue:
         '''
         return self._ortvalue.data_ptr()
 
+    def ortvalue_ptr(self):
+        '''
+        Returns the address of the first element in the OrtValue's data buffer
+        '''
+        return self._ortvalue.ortvalue_ptr()
+
     def device_name(self):
         '''
         Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda

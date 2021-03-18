@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#include "python/dlpack/dlpack_converter.h"
+#ifdef ENABLE_TRAINING
+#include "core/util/dlpack_convertor.h"
 
 namespace onnxruntime {
 namespace python {
@@ -181,11 +181,7 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
   int64_t running_size = 1;
   for (int i = tensor.ndim - 1; i >= 0; i--) {
-    if (tensor.shape[i] == 0) {
-      return true;
-    }
-
-    if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
+    if (tensor.strides[i] != running_size) {
       return false;
     }
 
@@ -197,17 +193,16 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-// This function returns a pointer to DLManagedTensor constructed from an OrtValue
-// The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
-// When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
+// This function returns a shared_ptr to memory managed DLpack tensor
+// constructed out of OrtValue.
+DLManagedTensor* OrtValueToDlpack(const OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
-  Tensor& tensor = *ort_value.GetMutable<Tensor>();
+  const Tensor& tensor = ort_value.Get<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
   ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
-  ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
+  ort_dlmanaged_tensor->tensor.dl_tensor.data = const_cast<void*>(tensor.DataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.ctx = GetDlpackContext(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
@@ -218,12 +213,12 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   return &(ort_dlmanaged_tensor->tensor);
 }
 
-OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
+OrtValue DlpackToOrtValue(const DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.ctx);
   MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
-  std::function<void(void*)> deleter = [dlpack](void*) { dlpack->deleter((dlpack)); };
+  std::function<void(void*)> deleter = [dlpack](void*) { dlpack->deleter(const_cast<DLManagedTensor*>(dlpack)); };
   OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
@@ -236,3 +231,4 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
 }  // namespace python
 }  // namespace onnxruntime
+#endif

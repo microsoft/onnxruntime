@@ -28,7 +28,7 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack/dlpack_converter.h"
+#include "core/util/dlpack_convertor.h"
 #endif
 
 // execution provider factory creator headers
@@ -1431,6 +1431,10 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         // Should cover x86 and x64 platforms
         return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
+      })
+      .def("ortvalue_ptr", [](OrtValue* ml_value) -> int64_t {
+        // Should cover x86 and x64 platforms
+        return reinterpret_cast<int64_t>(ml_value);
       })
       .def("device_name", [](OrtValue* ml_value) -> std::string {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
