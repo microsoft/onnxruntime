@@ -376,7 +376,7 @@ void RegisterTrainingOpSchemas() {
             // nodes: {outputs, op, inputs, attributes}
 
             // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
-            std::vector<FunctionBodyHelper::NodeDef> body{                
+            std::vector<FunctionBodyHelper::NodeDef> body{
                 FunctionBodyHelper::Const<int64_t>("one", 1),
                 FunctionBodyHelper::Const<int64_t>("k", axis),
                 {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
@@ -398,7 +398,12 @@ void RegisterTrainingOpSchemas() {
             body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
             body.push_back({{"c"}, "Sub", {"dY", "b"}});
             body.push_back({{"dX"}, "Mul", {"Y", "c"}});
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body);
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
