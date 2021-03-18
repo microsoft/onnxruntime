@@ -7,15 +7,15 @@
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0,
     ConstantOfShapeDefaultOutputTypes);
 }
 
 namespace {
 
-using SupportedOutputTypes =
-    ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using OutputTypes =
+    ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
         kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0);
 
 using EnabledOutputTypes =
@@ -70,7 +70,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<SupportedOutputTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<OutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledOutputTypes>()),
     ConstantOfShape);
 
