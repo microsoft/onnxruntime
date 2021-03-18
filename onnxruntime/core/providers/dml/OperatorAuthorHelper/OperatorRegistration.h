@@ -233,6 +233,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceSumSquare = 11;
         static const int sc_sinceVer_Resize = 11;
         static const int sc_sinceVer_Round = 11;
+        static const int sc_sinceVer_DynamicQuantizeLinear = 11;
         static const int sc_sinceVer_Scan = 11;
         static const int sc_sinceVer_Scatter = 11; // Deprecated alias
         static const int sc_sinceVer_ScatterElements = 11;
@@ -277,6 +278,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_QuantizeLinear = 1;
         static const int sc_sinceVer_DequantizeLinear = 1;
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
+        static const int sc_sinceVer_QLinearAdd = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

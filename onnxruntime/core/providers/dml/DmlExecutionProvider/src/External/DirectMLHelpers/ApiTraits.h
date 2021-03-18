@@ -898,6 +898,18 @@ struct OperatorDescTraits<DML_GATHER_ND1_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
@@ -1744,6 +1756,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND1>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR>
+{
+    using DescType = DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD>
+{
+    using DescType = DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -2116,6 +2140,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_GATHER_ND1:
         return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR:
+        return std::invoke(std::forward<Visitor>(visitor), DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2288,6 +2316,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ADAM_OPTIMIZER: return "DML_OPERATOR_ADAM_OPTIMIZER";
     case DML_OPERATOR_ROI_ALIGN: return "DML_OPERATOR_ROI_ALIGN";
     case DML_OPERATOR_GATHER_ND1: return "DML_OPERATOR_GATHER_ND1";
+    case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR: return "DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR";
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD";
     default:
         assert(false);
         return "<unknown>";
