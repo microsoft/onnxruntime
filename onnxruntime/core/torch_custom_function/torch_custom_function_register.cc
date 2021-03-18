@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace python {
 
 void OrtTorchFunctionPool::RegisterForward(
-    std::string& custom_function_name,
+    const std::string& custom_function_name,
     pybind11::object forward_fn) {
   // This should be "apply" of
   // class custom_function_name(autograd.Function):
@@ -23,7 +23,7 @@ void OrtTorchFunctionPool::RegisterForward(
 }
 
 void OrtTorchFunctionPool::RegisterBackward(
-    std::string& custom_function_name,
+    const std::string& custom_function_name,
     pybind11::object backward_fn) {
   // This should be "backward" of
   // class custom_function_name(autograd.Function):
@@ -37,6 +37,16 @@ void OrtTorchFunctionPool::RegisterBackward(
   //   backward_fn = custom_function_name.backward
   backward_pool[custom_function_name] = backward_fn;
 }
+
+pybind11::object OrtTorchFunctionPool::GetForward(
+    const std::string& custom_function_name) {
+  return forward_pool.at(custom_function_name);
+};
+
+pybind11::object OrtTorchFunctionPool::GetBackward(
+    const std::string& custom_function_name) {
+  return backward_pool.at(custom_function_name);
+};
 
 }  // namespace python
 }  // namespace onnxruntime
