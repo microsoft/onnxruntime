@@ -299,9 +299,13 @@ stages:
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
+      - task: TwineAuthenticate@1
+        inputs:
+          artifactFeed: 'ort-gpu-nightly-training-feed'
+
       - script: |
-          python3 -m twine upload --username $(ortpypitrainingnightlyusername) --password $(ortpypitrainingnightlypassword) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
-        displayName: 'python3 -m twine upload --username $(ortpypitrainingnightlyusername) --password ??? $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+          python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
