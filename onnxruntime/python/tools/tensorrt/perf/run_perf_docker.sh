@@ -19,7 +19,7 @@ VOLUME=$MACHINE_PERF_DIR:$DOCKER_PERF_DIR
 # Add Remaining Variables
 if [ $OPTION == "onnx-zoo-models" ]
 then 
-    MODEL_PATH=model.json
+    MODEL_PATH=model_list.json
 fi 
 
 if [ $OPTION == "many-models" ]

@@ -52,6 +52,7 @@ trt_native_fp16_gain = 'EP_Native_TRT_fp16_gain(%)'
 FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
+MEMORY_FILE = './temp_memory.csv'
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running native trt")
@@ -190,6 +191,17 @@ def get_max_memory(mem_file, trtexec):
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
 
+def start_memory_tracking(mem_file): 
+    p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
+    return p
+
+def end_memory_tracking(p, mem_file): 
+    p.terminate()
+    p.wait()
+    mem_usage = get_max_memory(mem_file, False) 
+    os.remove(mem_file)
+    return mem_usage
+
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
     runtimes = []
     if args.input_data == "random":
@@ -209,15 +221,9 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         try:
             if args.track_memory and track_ep_memory(ep): 
 
-                mem_file = './temp.csv'
-                p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
-                
+                p = start_memory_tracking(MEMORY_FILE)            
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-               
-                p.terminate()
-                p.wait()
-                mem_usage = get_max_memory(mem_file, False) 
-                os.remove(mem_file)
+                mem_usage = end_memory_tracking(p, MEMORY_FILE)
             else: 
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
 
@@ -1022,16 +1028,13 @@ def run_onnxruntime(args, models):
                 if trt in ep and args.trtexec:
                     
                     if args.track_memory: 
-                        mem_file = './temp.csv'
                         p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
                         
+                        p = start_memory_tracking(MEMORY_FILE)            
                         result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                        p.terminate()
-                        p.wait()
-                        mem_usage = get_max_memory(mem_file, True)
+                        mem_usage = end_memory_tracking(p, MEMORY_FILE)
                         if result and mem_usage: 
                             result["memory"] = mem_usage
-                        os.remove(mem_file)
                         ep = standalone_trt_fp16 if fp16 else standalone_trt
                     else: 
                         result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
@@ -1307,6 +1310,8 @@ def output_latency(results, csv_filename):
                         "Standalone TRT fp32 \nmean (ms)",
                         "Standalone TRT fp32 \n90th percentile (ms)",
                         "Standalone TRT fp32 \nmemory usage (MiB)",
+                        "TRT v CUDA EP fp32 \ngain (mean) (%)",
+                        "EP v Native TRT fp32 \ngain (mean) (%)",
                         "CUDA fp16 \nmean (ms)",
                         "CUDA fp16 \n90th percentile (ms)",
                         "CUDA EP fp16 \nmemory usage (MiB)",
@@ -1316,9 +1321,7 @@ def output_latency(results, csv_filename):
                         "Standalone TRT fp16 \nmean (ms)",
                         "Standalone TRT fp16 \n90th percentile (ms)",
                         "Standalone TRT fp16 \nmemory usage (MiB)",
-                        "TRT v CUDA EP \ngain (mean) (%)",
                         "TRT v CUDA EP fp16 \ngain (mean) (%)", 
-                        "EP v Native TRT \ngain (mean) (%)",
                         "EP v Native TRT fp16 \ngain (mean) (%)"]
         csv_writer = csv.writer(csv_file)
 
@@ -1418,6 +1421,8 @@ def output_latency(results, csv_filename):
                    standalone_trt_average,
                    standalone_trt_90_percentile,
                    standalone_trt_memory,
+                   value[trt_cuda_gain] if trt_cuda_gain in value else "  ",
+                   value[trt_native_gain] if trt_native_gain in value else "  ",
                    cuda_fp16_average,
                    cuda_fp16_90_percentile,
                    cuda_fp16_memory,
@@ -1427,9 +1432,7 @@ def output_latency(results, csv_filename):
                    standalone_trt_fp16_average,
                    standalone_trt_fp16_90_percentile,
                    standalone_trt_fp16_memory,
-                   value[trt_cuda_gain] if trt_cuda_gain in value else "  ",
                    value[trt_cuda_fp16_gain] if trt_cuda_fp16_gain in value else "  ",
-                   value[trt_native_gain] if trt_native_gain in value else "  ",
                    value[trt_native_fp16_gain] if trt_native_fp16_gain in value else "  "
                    ]
             csv_writer.writerow(row)
