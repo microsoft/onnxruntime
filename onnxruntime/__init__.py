@@ -13,7 +13,8 @@ __author__ = "Microsoft"
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
     NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
-    OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator
+    OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator, \
+    register_custom_torch_function_forward, register_custom_torch_function_backward
 
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 from onnxruntime.capi import onnxruntime_validation

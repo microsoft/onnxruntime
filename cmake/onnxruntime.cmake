@@ -157,7 +157,9 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  include(pybind11)
+  include(onnxruntime_torch_custom_function)
+  target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop onnxruntime_torch_custom_function)
 endif()
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})

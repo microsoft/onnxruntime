@@ -39,6 +39,7 @@
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
+#include "core/torch_custom_function/torch_custom_function_register.h"
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
@@ -940,6 +941,14 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def("register_custom_torch_function_forward", [](std::string name, py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForward(name, obj);
+  });
+  m.def("register_custom_torch_function_backward", [](std::string name, py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackward(name, obj);
+  });
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
