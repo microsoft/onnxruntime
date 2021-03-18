@@ -155,17 +155,21 @@ class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
         return torch.mean(self.a) + x
 
 class NeuralNetNonDifferentiableOutput(torch.nn.Module):
-    def __init__(self, input_size, num_classes):
+    def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetNonDifferentiableOutput, self).__init__()
-        self.fc1 = torch.nn.Linear(input_size, num_classes)
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
     def forward(self, input1):
         out = self.fc1(input1)
-        out = self.relu(out)
+        out1 = self.relu(out)
+        out2 = self.fc2(out1)
         mask = torch.gt(out, 0)
-        mask = mask.int()
-        return out, mask 
+        mask = mask.long()      # TODO: Casting from bool to float or int will cause the UT failure
+                                # True is casted to 1065353216 for Cast(from=bool, to=int), whereas pytorch would give 1
+                                # True is casted to -1 for Cast(from=bool, to=float), where as pytorch would give 1.0f
+        return out1, mask, out2     # intentionally place the non-differentialble output in the middle
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
@@ -487,25 +491,26 @@ def test_gradient_correctness():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
-
 def test_module_with_non_differential_output():
     device = 'cuda'
-    N, D_in, D_out = 32, 128, 10
-    pt_model = NeuralNetNonDifferentiableOutput(D_in, D_out).to(device)
+    N, D_in, H, D_out = 32, 128, 64, 10
+    pt_model = NeuralNetNonDifferentiableOutput(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
-        prediction, mask = model(x)
-        loss = prediction.sum()
+        prediction1, mask, prediction2 = model(x)
+        loss = prediction2.sum()
         loss.backward()
-        return prediction, mask
+        return prediction1, mask, prediction2
 
     for step in range(10):
         x = torch.randn(N, D_in, device=device)
-        pt_prediction, pt_mask = run_step(pt_model, x)
-        ort_prediction, ort_mask = run_step(ort_model, x)
+        pt_prediction1, pt_mask, pt_prediction2 = run_step(pt_model, x)
+        ort_prediction1, ort_mask, ort_prediction2 = run_step(ort_model, x)
 
-        # assert torch.allclose(ort_prediction, pt_prediction)
+        assert torch.allclose(ort_prediction1, pt_prediction1)
+        assert torch.allclose(ort_prediction2, pt_prediction2)
+        assert torch.allclose(ort_mask, pt_mask)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_forward_only_calls():
