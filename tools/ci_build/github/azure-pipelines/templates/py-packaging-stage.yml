@@ -302,8 +302,8 @@ stages:
           artifactFeed: 'ort-gpu-nightly-training-feed'
 
       - script: |
-          python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password (aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
-        displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password (aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+          python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password $(aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password $(aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         timeoutInMinutes: 20
 
       - template: component-governance-component-detection-steps.yml
