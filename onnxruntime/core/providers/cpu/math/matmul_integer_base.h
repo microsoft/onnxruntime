@@ -11,11 +11,11 @@ class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override {
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
     is_packed = false;
 
     // only pack Matrix B
-    if (param.input_idx == 1) {
+    if (param.input_idx == GetBIdx()) {
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
@@ -44,6 +44,11 @@ class MatMulIntegerBase : public OpKernel {
   }
 
  protected:
+  /**
+   * @return input index of Matrix B, the weight tensor 
+  */
+  virtual int GetBIdx() = 0;
+
   bool b_is_signed_{true};
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;

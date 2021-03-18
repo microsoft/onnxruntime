@@ -1,0 +1,55 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
+
+  timeoutInMinutes: 120
+  pool: 'Linux-Multi-GPU-V100'
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/run-docker-build-steps.yml
+    parameters:
+      RunDockerBuildArgs: |
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -t onnxruntime_ortmodule_distributed_tests_image \
+        -x " \
+          --config RelWithDebInfo \
+          --enable_training \
+          --update --build \
+          --build_wheel \
+          " \
+        -m \
+        -u
+      DisplayName: 'Build'
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+    displayName: 'Mount MNIST'
+    condition: succeededOrFailed()
+
+    # Entry point for all ORTModule distributed tests
+    # Refer to orttraining/orttraining/test/python/how_to_add_ortmodule_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /mnist:/mnist \
+        onnxruntime_ortmodule_distributed_tests_image \
+          /build/RelWithDebInfo/launch_test.py \
+            --cmd_line_with_args "python orttraining_ortmodule_distributed_tests.py --mnist /mnist" \
+            --cwd /build/RelWithDebInfo \
+    displayName: 'Run orttraining_ortmodule_distributed_tests.py'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 30
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - template: templates/clean-agent-build-directory-step.yml
