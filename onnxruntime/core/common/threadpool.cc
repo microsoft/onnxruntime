@@ -80,7 +80,7 @@ std::string ThreadPoolProfiler::Stop() {
   return ss.str();
 }
 
-void ThreadPoolProfiler::LogStartAndCoreAndBlock(std::ptrdiff_t block_size) {
+inline void ThreadPoolProfiler::LogStartAndCoreAndBlock(std::ptrdiff_t block_size) {
   if (enabled_) {
     MainThreadStat& stat = GetMainThreadStat();
     stat.LogCore();
@@ -89,7 +89,7 @@ void ThreadPoolProfiler::LogStartAndCoreAndBlock(std::ptrdiff_t block_size) {
   }
 }
 
-void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
+inline void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
   if (enabled_) {
     MainThreadStat& stat = GetMainThreadStat();
     stat.LogCore();
@@ -97,19 +97,19 @@ void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
   }
 }
 
-void ThreadPoolProfiler::LogStart() {
+inline void ThreadPoolProfiler::LogStart() {
   if (enabled_) {
     GetMainThreadStat().LogStart();
   }
 }
 
-void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
+inline void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
   if (enabled_) {
     GetMainThreadStat().LogEnd(evt);
   }
 }
 
-void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
+inline void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   if (enabled_) {
     GetMainThreadStat().LogEndAndStart(evt);
   }
@@ -184,11 +184,11 @@ const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) {
   }
 }
 
-void ThreadPoolProfiler::LogThreadId(int thread_idx) {
+inline void ThreadPoolProfiler::LogThreadId(int thread_idx) {
   child_thread_stats_[thread_idx].thread_id_ = std::this_thread::get_id();
 }
 
-void ThreadPoolProfiler::LogRun(int thread_idx) {
+inline void ThreadPoolProfiler::LogRun(int thread_idx) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_run_++;
     auto now = Clock::now();
@@ -208,53 +208,26 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
     }
   }
 }
-/*
-void ThreadPoolProfiler::LogCore(int thread_idx) {
-  if (enabled_) {
-    auto now = Clock::now();
-    if (TimeDiffMicroSeconds(now, child_thread_stats_[thread_idx].last_logged_point_) > 1000) {
-#ifdef _WIN32
-      child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
-#elif defined(__APPLE__)
-      uint32_t CPUInfo[4];
-      __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
-      if ((CPUInfo[3] & (1 << 9)) != 0) {
-        child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
-      }
-#else
-      child_thread_stats_[thread_idx].core_ = sched_getcpu();
-#endif
-      child_thread_stats_[thread_idx].last_logged_point_ = now;
-    }
-  }
-}
 
-void ThreadPoolProfiler::LogSpin(int thread_idx, uint64_t spin) {
+inline void ThreadPoolProfiler::LogSpin(int thread_idx, uint64_t spin) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_spin_ += spin;
   }
 }
- 
-void ThreadPoolProfiler::LogSteal(int thread_idx) {
-  if (enabled_) {
-    child_thread_stats_[thread_idx].num_steal_++;
-  }
-}
 
-void ThreadPoolProfiler::LogBlock(int thread_idx) {
+inline void ThreadPoolProfiler::LogBlock(int thread_idx) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_block_++;
   }
-}*/
+}
 
 std::string ThreadPoolProfiler::DumpChildThreadStat() {
   std::stringstream ss;
   for (int i = 0; i < num_threads_; ++i) {
     ss << "\"" << child_thread_stats_[i].thread_id_ << "\": {"
        << "\"num_run\":" << child_thread_stats_[i].num_run_ << ", "
-       //<< "\"num_spin\":" << child_thread_stats_[i].num_spin_ << ", "
-       //<< "\"num_steal\":" << child_thread_stats_[i].num_steal_ << ", "
-       //<< "\"num_block\":" << child_thread_stats_[i].num_block_ << ", "
+       << "\"num_spin\":" << child_thread_stats_[i].num_spin_ << ", "
+       << "\"num_block\":" << child_thread_stats_[i].num_block_ << ", "
        << "\"core\":" << child_thread_stats_[i].core_ << "}"
        << (i == num_threads_ - 1 ? "" : ",");
   }
