@@ -290,13 +290,11 @@ stages:
       - script: |
           sudo apt-get update
           sudo apt-get install python3-pip python-dev
-        condition: succeededOrFailed()
         displayName: 'sudo apt-get install python3-pip python-dev'
 
       - script: |
           python3 -m pip install twine keyring artifacts-keyring
         displayName: 'python3 -m pip install twine keyring artifacts-keyring'
-        condition: succeededOrFailed()
         timeoutInMinutes: 20
 
       - task: TwineAuthenticate@1
@@ -304,9 +302,8 @@ stages:
           artifactFeed: 'ort-gpu-nightly-training-feed'
 
       - script: |
-          python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
-        displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
-        condition: succeededOrFailed()
+          python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password (aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed --username $(ortpypitrainingnightlyusername) --password (aiinfrapypifeedpassword) --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         timeoutInMinutes: 20
 
       - template: component-governance-component-detection-steps.yml
