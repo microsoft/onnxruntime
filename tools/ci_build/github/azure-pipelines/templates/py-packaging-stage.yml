@@ -294,8 +294,8 @@ stages:
         displayName: 'sudo apt-get install python3-pip python-dev'
 
       - script: |
-          python3 -m pip install twine
-        displayName: 'python3 -m pip install twine'
+          python3 -m pip install twine keyring artifacts-keyring
+        displayName: 'python3 -m pip install twine keyring artifacts-keyring'
         condition: succeededOrFailed()
         timeoutInMinutes: 20
 
