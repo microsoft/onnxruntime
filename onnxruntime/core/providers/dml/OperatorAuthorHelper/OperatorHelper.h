@@ -1565,6 +1565,8 @@ using ShapeInferenceHelper_Identity = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
+using ShapeInferenceHelper_QLinearAdd = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_DynamicQuantizeLinear = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Cast = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MemcpyFromHost = GetOutputShapeAsInputShapeHelper;
