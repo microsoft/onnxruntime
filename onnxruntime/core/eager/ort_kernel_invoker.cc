@@ -62,10 +62,13 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   auto& node = graph.AddNode("node1", op_name, "eager mode node", input_args, output_args, attributes, domain);
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
-  node.SetExecutionProviderType(kCpuExecutionProvider);
+  if (!execution_provider_) {
+    ORT_THROW("Execution provider is nullptr");
+  }
+
+  node.SetExecutionProviderType(execution_provider_->Type());
   std::vector<const Node*> frame_nodes{&node};
-  if (!execution_provider_)
-    std::cout << "NULL ptr EP" << std::endl;
+
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
