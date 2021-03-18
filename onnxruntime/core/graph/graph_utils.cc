@@ -556,6 +556,21 @@ const Node* FirstChildByType(const Node& node, const std::string& child_type) {
   return nullptr;
 }
 
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
+  // find children and sort them by source argument index
+  std::vector<const Node*> children(node.GetOutputEdgesCount(), nullptr);
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(child_type) == 0) {
+      children[it->GetSrcArgIndex()] = &(it->GetNode());
+    }
+  }
+
+  // remove unmatched nodes
+  children.erase(std::remove(children.begin(), children.end(), nullptr), children.end());
+
+  return children;
+}
+
 const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
@@ -563,6 +578,20 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
     }
   }
   return nullptr;
+}
+
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
+  // find parents and sort them by destination argument index
+  std::vector<const Node*> parents(node.GetInputEdgesCount(), nullptr);
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(parent_type) == 0) {
+      parents[it->GetDstArgIndex()] = &(it->GetNode());
+    }
+  }
+
+  // remove unmatched nodes
+  parents.erase(std::remove(parents.begin(), parents.end(), nullptr), parents.end());
+  return parents;
 }
 
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
