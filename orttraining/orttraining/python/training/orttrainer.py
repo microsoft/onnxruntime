@@ -193,8 +193,11 @@ class ORTTrainer(object):
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
 
-        from torch.utils.cpp_extension import ROCM_HOME
-        self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        try:
+            from torch.utils.cpp_extension import ROCM_HOME
+            self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        except ImportError:
+            self.is_rocm_pytorch = False
 
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
