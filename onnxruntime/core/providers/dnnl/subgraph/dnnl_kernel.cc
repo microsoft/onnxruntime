@@ -39,7 +39,7 @@ dnnl::memory::format_tag DnnlKernel::GetSourceFormat(int dim_size) {
       break;
     }
     case 3: {
-      source_format = dnnl::memory::format_tag::ntc;
+      source_format = dnnl::memory::format_tag::ncw;
       break;
     }
     case 4: {

@@ -280,7 +280,7 @@ class InferenceSession(Session):
             self._create_inference_session(providers, provider_options)
         except RuntimeError:
             if self._enable_fallback:
-                print("EP Error using {}".format(self._providers))
+                print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
