@@ -158,7 +158,6 @@ target_link_libraries(onnxruntime PRIVATE
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(pybind11)
-  include(onnxruntime_torch_custom_function)
   target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop onnxruntime_torch_custom_function)
 endif()
 
