@@ -195,8 +195,6 @@ class ThreadPoolProfiler {
   void LogCoreAndBlock(std::ptrdiff_t block_size);  //called in main thread to log core and block size for task breakdown
   void LogThreadId(int thread_idx);                 //called in child thread to log its id
   void LogRun(int thread_idx);                      //called in child thread to log num of run
-  void LogSpin(int thread_idx, uint64_t spin);      //called in child thread to log num of spinning
-  void LogBlock(int thread_idx);                    //called in child thread to log num of blocking
   std::string DumpChildThreadStat();                //return all child statitics collected so far
 
  private:
@@ -219,8 +217,6 @@ class ThreadPoolProfiler {
   struct ChildThreadStat {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
-    uint64_t num_spin_ = 0;
-    uint64_t num_block_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;  //core that the child thread is running on
     PaddingToAvoidFalseSharing padding_; //to prevent false sharing
@@ -1321,12 +1317,10 @@ int CurrentThreadId() const EIGEN_FINAL {
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
-          int i = 0;
-          for (; i < spin_count && !t && !cancelled_ && !done_; i++) {
+          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
-          profiler_.LogSpin(thread_id, i);
           SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
@@ -1373,9 +1367,6 @@ int CurrentThreadId() const EIGEN_FINAL {
                           should_exit = true;
                         }
                       }
-                    }
-                    if (should_block) {
-                      profiler_.LogBlock(thread_id); 
                     }
                     return should_block;
                   },
