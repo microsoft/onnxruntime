@@ -20,6 +20,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       next_allocation_id_(1),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk) {
+  name_ = std::string(device_allocator_->Info().name);
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
@@ -42,6 +43,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                         << BinNumToSize(0) << " to " << BinNumToSize(kNumBins - 1);
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
+    LOGS_DEFAULT(VERBOSE) << "Bin " << b << " max chunk size " << BinNumToSize(b);
     new (BinFromIndex(b)) Bin(this, bin_size);
     ORT_ENFORCE(BinForSize(bin_size) == BinFromIndex(b));
     ORT_ENFORCE(BinForSize(bin_size + 255) == BinFromIndex(b));
@@ -277,8 +279,8 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     return ptr;
   }
 
-  LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
-                     << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
+  std::string per_thread = std::string(device_allocator_->per_thread_);
+  LOGS_DEFAULT(INFO) << "Extending BFCArena for " << name_ << per_thread << ". bin_num:" << bin_num << " bytes:" << num_bytes << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
   auto status = Extend(rounded_bytes);

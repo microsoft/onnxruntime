@@ -106,6 +106,7 @@ class BFCArena : public IArenaAllocator {
   using BinNum = int;
   static const int kInvalidBinNum = -1;
   static const int kNumBins = 21;
+  std::string name_;
 
   // Chunks point to memory.  Their prev/next pointers form a
   // doubly-linked list of addresses sorted by base address that

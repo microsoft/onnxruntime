@@ -35,8 +35,10 @@ using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 class IAllocator {
  public:
-  IAllocator(const OrtMemoryInfo& info) : memory_info_(info) {}
+  IAllocator(const OrtMemoryInfo& info, const char* per_thread = "NOT PER THREAD") : memory_info_(info), per_thread_(per_thread) {}
   virtual ~IAllocator() = default;
+  const char* per_thread_ = "NOT PER THREAD";
+
   /**
   @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
   */

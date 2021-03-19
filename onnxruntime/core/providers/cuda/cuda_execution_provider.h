@@ -81,7 +81,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
+                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, bool is_per_thread = false);
 
  private:
   CUDAExecutionProviderInfo info_;

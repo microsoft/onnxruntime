@@ -60,11 +60,11 @@ ONNX_OPERATOR_KERNEL_EX(
 }  // namespace cuda
 
 AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info) {
+                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info, bool is_per_thread) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
-        [external_allocator_info](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free);
+        [external_allocator_info, is_per_thread](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAExternalAllocator>(id, is_per_thread ? "PerThread" : CUDA, external_allocator_info.alloc, external_allocator_info.free);
         },
         device_id,
         false);
@@ -73,8 +73,8 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
   } else {
     AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+        [is_per_thread](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA, is_per_thread ? "PER THREAD" : "NOT PER THREAD");
         },
         device_id,
         true,
@@ -99,7 +99,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
   // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateCudaAllocator(device_id, cuda_mem_limit, arena_extend_strategy, external_allocator_info);
+  allocator_ = CreateCudaAllocator(device_id, cuda_mem_limit, arena_extend_strategy, external_allocator_info, true);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -2046,7 +2046,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   // Used to allocate CUDA device memory
   auto cuda_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
   if (nullptr == cuda_alloc) {
-    cuda_alloc = CreateCudaAllocator(info_.device_id, info_.cuda_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+    cuda_alloc = CreateCudaAllocator(info_.device_id, info_.cuda_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, false);
     allocator_manager->InsertAllocator(cuda_alloc);
   }
   TryInsertAllocator(cuda_alloc);

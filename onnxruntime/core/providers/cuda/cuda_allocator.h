@@ -9,11 +9,12 @@ namespace onnxruntime {
 
 class CUDAAllocator : public IAllocator {
  public:
-  CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
+  CUDAAllocator(OrtDevice::DeviceId device_id, const char* name, const char* per_thread = "NOT PER THREAD")
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                          device_id, OrtMemTypeDefault)) {}
+                          device_id, OrtMemTypeDefault),
+            per_thread) { per_thread_ = per_thread; }
   void* Alloc(size_t size) override;
   void Free(void* p) override;
   FencePtr CreateFence(const SessionState* session_state) override;
@@ -21,6 +22,7 @@ class CUDAAllocator : public IAllocator {
  private:
   void CheckDevice(bool throw_when_fail) const;
   void SetDevice(bool throw_when_fail) const;
+  const char* per_thread_ = "NOT PER THREAD";
 };
 
 class CUDAExternalAllocator : public CUDAAllocator {
