@@ -9,3 +9,5 @@ sphinx_rtd_theme
 pyquickhelper
 tensorflow
 tf2onnx
+pandas
+pydot

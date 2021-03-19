@@ -129,9 +129,9 @@ stages:
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/docs/html'
+          SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
           Contents: '**'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/inference_html_doc'
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
@@ -306,9 +306,9 @@ stages:
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/docs/html'
+          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
