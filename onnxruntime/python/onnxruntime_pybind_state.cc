@@ -208,6 +208,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t coreml_flags);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -513,7 +514,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
             }
-          } else if (option.first == "trt_fp16_enable") {	
+          } else if (option.first == "trt_fp16_enable") {
             if (option.second == "True" || option.second == "true") {
               params.trt_fp16_enable = true;
             } else if (option.second == "False" || option.second == "false") {
@@ -572,7 +573,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -679,6 +680,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
+#endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+#if !defined(__APPLE__)
+      LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
+#endif
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
 #endif
     } else {
       // unknown provider
@@ -925,6 +933,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
 #ifdef USE_RKNPU
             onnxruntime::CreateExecutionProviderFactory_Rknpu(),
+#endif
+#ifdef USE_COREML
+            onnxruntime::CreateExecutionProviderFactory_CoreML(0),
 #endif
         };
 
@@ -1873,8 +1884,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-      ;
+      });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
