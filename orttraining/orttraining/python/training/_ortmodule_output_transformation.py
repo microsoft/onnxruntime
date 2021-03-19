@@ -1,6 +1,7 @@
 from collections import abc
 import copy
 import functools
+import inspect
 import torch
 import warnings
 
@@ -28,7 +29,9 @@ def populate_user_output_from_schema_and_outputs(output_schema, output_names, ou
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
 
-        if isinstance(user_output, _TensorStub):
+        if user_output is None:
+            return None
+        elif isinstance(user_output, _TensorStub):
             output_idx[0] += 1
             return outputs[output_idx[0]-1]
 
@@ -64,8 +67,10 @@ def populate_user_output_from_schema_and_outputs(output_schema, output_names, ou
 def _extract_output_schema(output):
     """Extract the output schema by replacing every torch.Tensor value with _TensorStub"""
 
+    if output is None:
+        return None
     # Depth first traversal to iterate over the output to replace every tensor with a stub
-    if isinstance(output, torch.Tensor):
+    elif isinstance(output, torch.Tensor):
         return _TensorStub()
 
     if isinstance(output, abc.Sequence):
@@ -93,7 +98,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
     def _populate_output_names_and_dynamic_axes(output, output_names, output_dynamic_axes, output_idx):
         # Depth first traversal to traverse through the entire output collecting output names and dynamic axes
 
-        if isinstance(output, torch.Tensor):
+        if output is None:
+            return
+        elif isinstance(output, torch.Tensor):
             output_name = f'output{output_idx[0]}'
             output_idx[0] += 1
             output_names.append(output_name)
@@ -127,7 +134,9 @@ def get_flattened_output_module(original_module):
         def _flatten_output(output, flat_output):
             # Recursively traverse over the output and populate the flat_output with torch.Tensors
 
-            if isinstance(output, torch.Tensor):
+            if output is None:
+                return
+            elif isinstance(output, torch.Tensor):
                 flat_output.append(output)
             elif isinstance(output, abc.Sequence):
                 for value in output:
@@ -159,7 +168,7 @@ def get_flattened_output_module(original_module):
 
     return FlattenedOutputModule(original_module)
 
-def parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs):
+def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kwargs):
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
@@ -171,23 +180,44 @@ def parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs)
     input_names_require_grad = []
     input_shape = []
 
-    for input_idx, name in enumerate(all_input_names):
-        inp = None
-        if input_idx < len(inputs) and inputs[input_idx] is not None:
-            inp = inputs[input_idx]
-        elif name in kwargs and kwargs[name] is not None:
-            inp = kwargs[name]
-        if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-            if inp.requires_grad:
-                # input_names_require_grad holds all input tensors that have requires_grad
-                input_names_require_grad.append(name)
+    for input_idx, input_parameter in enumerate(all_input_parameters):
+        if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+            # Looking at VAR_POSITIONAL parameter (*args) in the original forward method.
+            # All the rest positional inputs go into this parameter.
+            var_positional_idx = 0
+            for i in range(input_idx, len(inputs)):
+                name = f'var_positional_{input_parameter.name}{var_positional_idx}'
+                var_positional_idx += 1
+                inp = inputs[i]
+                if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+                    if inp.requires_grad:
+                        # input_names_require_grad holds all input tensors that have requires_grad
+                        input_names_require_grad.append(name)
 
-            input_names.append(name)
-            dynamic_axes[name] = {}
-            for dim_idx in range(len(inp.shape)):
-                dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+                    input_names.append(name)
+                    dynamic_axes[name] = {}
+                    for dim_idx in range(len(inp.shape)):
+                        dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
 
-            input_shape.append(list(inp.size()))
+                    input_shape.append(list(inp.size()))
+        else:
+            name = input_parameter.name
+            inp = None
+            if input_idx < len(inputs) and inputs[input_idx] is not None:
+                inp = inputs[input_idx]
+            elif name in kwargs and kwargs[name] is not None:
+                inp = kwargs[name]
+            if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+                if inp.requires_grad:
+                    # input_names_require_grad holds all input tensors that have requires_grad
+                    input_names_require_grad.append(name)
+
+                input_names.append(name)
+                dynamic_axes[name] = {}
+                for dim_idx in range(len(inp.shape)):
+                    dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+
+                input_shape.append(list(inp.size()))
     return input_names, dynamic_axes, input_names_require_grad, input_shape
 
 def parse_outputs_for_onnx_export_and_extract_output_schema(module, inputs, kwargs):

@@ -505,9 +505,9 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("use_invertible_layernorm_grad",
                      &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
-  py::class_<TrainingGraphInfo> split_graphs_info(m, "TrainingGraphInfo",
+  py::class_<TrainingGraphInfo> training_graph_info(m, "TrainingGraphInfo",
                                                 R"pbdoc(The information of split graphs for frontend.)pbdoc");
-  split_graphs_info.def(py::init())
+  training_graph_info.def(py::init())
       .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
       .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)

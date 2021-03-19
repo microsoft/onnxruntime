@@ -83,6 +83,21 @@ class NeuralNetMultiplePositionalArguments(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsVarKeyword, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2, **kwargs):
+        model_input = input1 + input2
+        out = self.fc1(model_input)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
 class NeuralNetPositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetPositionalArguments, self).__init__()
@@ -218,18 +233,38 @@ def test_forward_call_multiple_positional_arguments():
     output = ort_model(x, y)
     assert output is not None
 
-# TODO: Re-enable after "Support models with dynamically defined inputs" done.
-# def test_forward_call_positional_arguments():
-#     device = 'cuda'
+def test_forward_call_multiple_positional_arguments_var_keyword():
+    device = 'cuda'
 
-#     N, D_in, H, D_out = 64, 784, 500, 10
-#     model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-#     model = ORTModule(model)
-#     args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
 
-#     # Make sure model runs without any exception
-#     output = model(*args)
-#     assert output is not None
+    # TODO: remove exception check and uncomment the rest of the test when
+    # PyTorch ONNX exporter supports **kwargs.
+    with pytest.raises(NotImplementedError) as runtime_error:
+        ort_model = ORTModule(model)
+    assert '**kwargs' in str(runtime_error.value)
+
+    # # Check that the original forward signature is preserved.
+    # assert signature(model.forward) == signature(ort_model.forward)
+    # x = torch.randn(N, D_in, device=device)
+    # y = torch.randn(N, D_in, device=device)
+
+    # # Make sure model runs without any exception
+    # output = ort_model(x, y)
+    # assert output is not None
+
+def test_forward_call_positional_arguments():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    model = ORTModule(model)
+    args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+
+    # Make sure model runs without any exception
+    output = model(*args)
+    assert output is not None
 
 def test_forward_call_keyword_arguments():
     device = 'cuda'
@@ -599,9 +634,9 @@ def test_mixed_nnmodule_ortmodules_training():
         pt_p1, pt_p2, pt_p3 = run_step(pt_model1, pt_model2, pt_model3, x1, x2)
         ort_p1, ort_p2, ort_p3 = run_step(ort_model1, ort_model2, ort_model3, x1, x2)
 
-        assert torch.allclose(ort_p1, pt_p1)
-        assert torch.allclose(ort_p2, pt_p2)
-        # assert torch.allclose(ort_p3, pt_p3)    # TODO: this assert is failing, need to investigate!!
+        assert torch.allclose(ort_p1, pt_p1, atol=1e-06)
+        assert torch.allclose(ort_p2, pt_p2, atol=1e-06)
+        assert torch.allclose(ort_p3, pt_p3, atol=1e-06)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
@@ -686,7 +721,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     pt_y1 = run_step0(pt_model, pt_x1, pt_x2)
     ort_y1 = run_step0(ort_model, ort_x1, ort_x2)
 
-    #assert torch.allclose(pt_y1, ort_y1)   # TODO: this assert is failing, need to investigate!!
+    assert torch.allclose(pt_y1, ort_y1, atol=1e-06)
     assert torch.allclose(ort_x1.grad, pt_x1.grad)
     assert torch.allclose(ort_x2.grad, pt_x2.grad)
     # backward() is from y1, so grad of fc2.weight and fc2.bias will not be calculated.
@@ -701,7 +736,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     pt_y2 = run_step1(pt_model, pt_x1, pt_x2)
     ort_y2 = run_step1(ort_model, ort_x1, ort_x2)
 
-    #assert torch.allclose(pt_y2, ort_y2)   # TODO: this assert is failing, need to investigate!!
+    assert torch.allclose(pt_y2, ort_y2, atol=1e-06)
     assert torch.allclose(ort_x1.grad, pt_x1.grad)
     assert torch.allclose(ort_x2.grad, pt_x2.grad)
     # backward() is from y2, so grad of fc1.weight and fc1.bias will not be calculated.
@@ -729,8 +764,8 @@ def test_loss_combines_two_outputs_with_dependency(device):
     pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
     ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
 
-    #assert torch.allclose(pt_y1, ort_y1)   # TODO: this assert is failing, need to investigate!!
-    #assert torch.allclose(pt_y2, ort_y2)   # TODO: this assert is failing, need to investigate!!
+    assert torch.allclose(pt_y1, ort_y1, atol=1e-06)
+    assert torch.allclose(pt_y2, ort_y2, atol=1e-06)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 @pytest.mark.parametrize("x1_requires_grad, x2_requires_grad", [(True, True), (True, False), (False, False), (False, True)])
@@ -757,8 +792,8 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
     ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
 
-    # assert torch.allclose(ort_y1, pt_y1)  # TODO: this assert is failing, need to investigate!!
-    # assert torch.allclose(ort_y2, pt_y2)  # TODO: this assert is failing, need to investigate!!
+    assert torch.allclose(ort_y1, pt_y1, atol=1e-06)
+    assert torch.allclose(ort_y2, pt_y2, atol=1e-06)
     assert not x1_requires_grad or ort_x1.grad is not None
     assert not x2_requires_grad or ort_x2.grad is not None
     assert not x1_requires_grad or torch.allclose(ort_x1.grad, pt_x1.grad)
@@ -1251,3 +1286,26 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     with pytest.raises(RuntimeError) as runtime_error:
         ort_model(x)
     assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
+
+def test_forward_returns_none_type_as_output():
+    class NeuralNetNoneTypeOutput(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetNoneTypeOutput, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, num_classes)
+            self.relu1 = torch.nn.ReLU()
+
+        def forward(self, input1):
+            out1 = self.fc1(input1)
+            out1 = self.relu1(out1)
+            return {'out': out1, 'none_output': None}
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetNoneTypeOutput(D_in, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    output = model(x)
+
+    assert output['out'] is not None
+    assert output['none_output'] is None
