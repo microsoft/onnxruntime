@@ -4,7 +4,15 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
-  - script: brew install coreutils ninja
+  - task: UsePythonVersion@0
+    # Use python 3.8 to avoid build some of the required packages
+    displayName: Use Python 3.8
+    inputs:
+      versionSpec: 3.8
+
+  - script: |
+      brew install coreutils ninja
+      python3 -m pip install -r 'tools/ci_build/github/linux/docker/scripts/requirements.txt'
     displayName: Install coreutils and ninja
 
   - script: |
