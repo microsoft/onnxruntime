@@ -132,6 +132,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"ReduceSumSquare", V_2020_4,{"CPU", "MYRIAD"}},
     {"Relu", V_2020_4,{"All"}},
     {"Resize", V_2020_4,{"CPU"}},
+    {"Resize", V_2021_3,{"MYRIAD"}},
     {"Reshape", V_2020_4,{"All"}},
     {"RoiAlign", V_2021_1,{"All"}},
     {"Round", V_2021_2,{"MYRIAD"}},
