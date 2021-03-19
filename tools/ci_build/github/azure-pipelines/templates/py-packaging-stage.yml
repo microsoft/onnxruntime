@@ -302,7 +302,7 @@ stages:
           artifactFeed: 'lotus/ort-gpu-nightly-training-feed'
 
       - script: |
-          python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+          python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
         displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         timeoutInMinutes: 20
 
