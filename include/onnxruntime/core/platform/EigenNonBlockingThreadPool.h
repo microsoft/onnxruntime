@@ -962,7 +962,7 @@ void SummonWorkers(PerThread &pt,
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    profiler_.LogStart();
+    //profiler_.LogStart();
 
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
@@ -994,7 +994,7 @@ void SummonWorkers(PerThread &pt,
         td.EnsureAwake();
       }
     }
-    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+    //profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
 }
 
@@ -1005,8 +1005,8 @@ void SummonWorkers(PerThread &pt,
 
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
-                          unsigned n, std::ptrdiff_t block_size) override {
-  profiler_.LogStartAndCoreAndBlock(block_size);
+                          unsigned n, std::ptrdiff_t /*block_size*/) override {
+  //profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
   assert((n > 1) && "Trivial parallel section; should be avoided by caller");
@@ -1035,26 +1035,26 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+  //profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   loop.fn(0);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
+  //profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+  //profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
 
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
-  profiler_.LogStartAndCoreAndBlock(block_size);
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t /*block_size*/) override {
+  //profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
@@ -1064,18 +1064,18 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+  //profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   fn(0);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
+  //profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
-  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+  //profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
 void Cancel() override {
