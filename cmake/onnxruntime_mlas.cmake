@@ -54,36 +54,7 @@ if(MSVC)
       )
       list(APPEND mlas_platform_srcs ${obj_filename})
     endforeach()
-  elseif(onnxruntime_target_platform STREQUAL "ARM64EC")
-    set(mlas_platform_preprocess_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64ec/QgemmU8X8KernelNeon.asm
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64ec/QgemmU8X8KernelUdot.asm
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64ec/SgemmKernelNeon.asm
-    )
-
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(ARMASM_FLAGS "-g")
-    else()
-      set(ARMASM_FLAGS "")
-    endif()
-
-    # Run the C precompiler on each input before the assembler.
-    foreach(asm_filename ${mlas_platform_preprocess_srcs})
-      get_filename_component(asm_filename_base ${asm_filename} NAME_WLE)
-      set(preprocess_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.i)
-      set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/${asm_filename_base}.obj)
-      add_custom_command(
-        OUTPUT ${obj_filename}
-          COMMAND
-              cl.exe /arm64EC /P ${asm_filename} /Fi${preprocess_filename}
-          COMMAND
-              armasm64.exe -machine ARM64EC ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
-        DEPENDS ${asm_filename}
-        BYPRODUCTS ${preprocess_filename}
-      )
-      list(APPEND mlas_platform_srcs ${obj_filename})
-    endforeach()
-  elseif(onnxruntime_target_platform STREQUAL "ARM")
+  elseif((onnxruntime_target_platform STREQUAL "ARM") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
