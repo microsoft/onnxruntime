@@ -297,7 +297,7 @@ stages:
     - job: Windows_py_Wheels
       pool: 'Win-CPU-2021'
       strategy:
-        matrix:'
+        matrix:
           Python38:
             PythonVersion: '3.8'
       variables:
