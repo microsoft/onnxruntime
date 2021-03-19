@@ -15,5 +15,6 @@ jobs:
       --parallel \
       --build_shared_lib \
       --config Debug \
-      --use_coreml
+      --use_coreml \
+      --enable_pybind
     displayName: CoreML EP, Build and Test on macOS
