@@ -83,7 +83,7 @@ Return Value:
 
 --*/
 
-        NESTED_ENTRY MlasGemmU8X8KernelUdot
+        NESTED_ENTRY A64NAME(MlasGemmU8X8KernelUdot)
 
         PROLOG_SAVE_REG_PAIR d8,d9,#-32!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
@@ -582,6 +582,6 @@ StoreOutputPartial1AddModeM1
         st1     {v16.s}[0],[x2]
         b       ExitKernelM1
 
-        NESTED_END MlasGemmU8X8KernelUdot
+        NESTED_END A64NAME(MlasGemmU8X8KernelUdot)
 
         END
