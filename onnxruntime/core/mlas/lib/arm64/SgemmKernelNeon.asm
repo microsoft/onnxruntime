@@ -446,7 +446,7 @@ $Mode.OutputRemaining1x$Rows.Block
         MACRO
         SgemmKernelNeonFunction $Mode
 
-        NESTED_ENTRY A64NAME(MlasSgemmKernel$Mode)
+        NESTED_ENTRY MlasSgemmKernel$Mode
 
         PROLOG_SAVE_REG_PAIR d8,d9,#-32!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
