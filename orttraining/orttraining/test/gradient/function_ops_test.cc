@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <memory>
 
 #include "gtest/gtest.h"
 #include "core/graph/model.h"
@@ -21,6 +22,14 @@ namespace onnxruntime {
 namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
+
+static void RegisterSchemas() {
+  static bool registered = false;
+  if (!registered) {
+    onnxruntime::training::RegisterTrainingOpSchemas();
+    registered = true;
+  }
+}
 
 static ONNX_NAMESPACE::TypeProto TensorType(int32_t elem_type, std::vector<int64_t> dims) {
   ONNX_NAMESPACE::TypeProto typeProto;
@@ -107,6 +116,8 @@ struct FunctionTestCase {
   NodeAttributes attributes;
   std::unique_ptr<IExecutionProvider> provider;
 
+  std::unordered_map<std::string, int> opsets;
+
   FunctionTestCase(const char* _opname) : opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
   void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape = {}) {
@@ -145,21 +156,38 @@ struct FunctionTestCase {
     return graph.AddNode("fncallnode", opname, "function call node", input_arg_ptrs, output_arg_ptrs, &attributes, onnxruntime::kMSDomain);
   }
 
-  void RunTest() {
-    onnxruntime::training::RegisterTrainingOpSchemas();
-    onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
-    onnxruntime::Graph& graph = model.MainGraph();
+  std::unique_ptr<Model> CreateModel(bool inline_call = false) {
+    RegisterSchemas();
+    if (opsets.size() == 0) {
+      // Default opsets
+      opsets[kOnnxDomain] = 13;
+      opsets[kMSDomain] = 1;
+    }
 
+    std::unique_ptr<Model> model(new Model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                                           opsets, {}, DefaultLoggingManager().DefaultLogger()));
+
+    onnxruntime::Graph& graph = model->MainGraph();
     auto& call_node = AddCallNodeTo(graph);
-    ASSERT_TRUE(graph.Resolve().IsOK());
 
-    auto results1 = Run(model, input_value_map, output_names);
+    auto status = graph.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-    // Now, inline function body, and run it.
-    graph.InlineFunction(call_node);
-    ASSERT_TRUE(graph.Resolve().IsOK());
+    if (inline_call) {
+      graph.InlineFunction(call_node);
+      status = graph.Resolve();
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
 
-    auto results2 = Run(model, input_value_map, output_names);
+    return model;
+  }
+
+  void RunTest() {
+    auto model1 = CreateModel(false);
+    auto results1 = Run(*model1, input_value_map, output_names);
+
+    auto model2 = CreateModel(true);
+    auto results2 = Run(*model2, input_value_map, output_names);
 
     AssertEqual(results1, results2);
   }
@@ -218,6 +246,30 @@ TEST(SoftmaxGradExpansionTest, SymbolicShape) {
   testCase.AddInput("Y", shape, value, sym_shape);
   testCase.AddOutput("dX");
   testCase.RunTest();
+}
+
+// Test (unexpanded) versions for both opset 12 and opset 13 models to ensure
+// function-schema does not impact handling of opset 12 models. The current
+// expansion requires opset 13, and no expansion should happen in opset 12
+// models. Test is required since ORT currently generates function-expansion
+// even when op is dispatched to a kernel.
+
+TEST(SoftmaxGradExpansionTest, OpsetTest) {
+  FunctionTestCase testCase("SoftmaxGrad");
+  testCase.opsets[kOnnxDomain] = 12;
+  testCase.opsets[kMSDomain] = 1;
+  InitSoftmaxGradTestCase(testCase, {3, 2, 2});
+
+  auto model1 = testCase.CreateModel();
+  auto results1 = onnxruntime::test::Run(*model1, testCase.input_value_map, testCase.output_names);
+
+  testCase.opsets[kOnnxDomain] = 13;
+  testCase.opsets[kMSDomain] = 1;
+
+  auto model2 = testCase.CreateModel();
+  auto results2 = onnxruntime::test::Run(*model1, testCase.input_value_map, testCase.output_names);
+
+  AssertEqual(results1, results2);
 }
 
 }  // namespace test

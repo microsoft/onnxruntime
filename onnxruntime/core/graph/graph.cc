@@ -2386,6 +2386,14 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
+    // Check function's opset requirements are compatible with model's opset.
+    auto& graphImports = DomainToVersionMap();
+    for (const auto& fn_import : onnx_function_proto.opset_import()) {
+      auto it = graphImports.find(fn_import.domain());
+      if ((it != graphImports.end()) && (it->second != fn_import.version()))
+        return; // Incompatible. Do not use this function expansion.
+    }
+
     auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
                                                                         logger_);
 
