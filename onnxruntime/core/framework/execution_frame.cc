@@ -25,7 +25,7 @@ namespace onnxruntime {
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
-                                 const std::vector<int>& fetch_mlvalue_idxs)
+                                 std::vector<int>& fetch_mlvalue_idxs)
     : node_index_info_(node_index_info),
       all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
       fetch_mlvalue_idxs_(fetch_mlvalue_idxs) {
@@ -189,7 +189,29 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   }
 }
 
-Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
+void IExecutionFrame::UpdateFeedAndFetches(const std::vector<int>& feed_mlvalue_idxs,
+                                           const std::vector<OrtValue>& feeds,
+                                           std::vector<int>& fetch_mlvalue_idxs,
+                                           const std::vector<OrtValue>& fetches) {
+  if (!fetches.empty()) {
+    fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
+
+    auto num_fetches = fetch_mlvalue_idxs_.size();
+
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      int ort_value_idx = fetch_mlvalue_idxs_[idx];
+      all_values_[ort_value_idx] = fetches[idx];
+    }
+  }
+
+  for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
+    int ort_value_idx = feed_mlvalue_idxs[idx];
+    // we are sharing the underline tensor/object for MLValue
+    all_values_[ort_value_idx] = feeds[idx];
+  }
+}
+
+Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches, bool release) {
   auto num_fetches = fetch_mlvalue_idxs_.size();
 
   if (fetches.empty()) {
@@ -204,13 +226,17 @@ Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
   }
 
   for (size_t idx = 0; idx < num_fetches; ++idx) {
-    fetches[idx] = GetMLValue(fetch_mlvalue_idxs_[idx]);
+    if (release) {
+      GetMLValue(fetch_mlvalue_idxs_[idx], fetches[idx]);
+    } else {
+      fetches[idx] = GetMLValue(fetch_mlvalue_idxs_[idx]);
+    }
   }
 
   return Status::OK();
 }
 
-bool IExecutionFrame::IsOutput(int ort_value_idx) const {
+bool IExecutionFrame::IsOutput(int ort_value_idx) {
   return std::find(fetch_mlvalue_idxs_.begin(), fetch_mlvalue_idxs_.end(), ort_value_idx) != fetch_mlvalue_idxs_.end();
 }
 
@@ -218,7 +244,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
-    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
+    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), const_cast<std::vector<int>&>(fetch_mlvalue_idxs)),
+      program_counter_(0),
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {

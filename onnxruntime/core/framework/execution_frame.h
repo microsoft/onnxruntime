@@ -31,7 +31,7 @@ class IExecutionFrame {
   // initialized until the derived class is constructed.
   IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info,
-                  const std::vector<int>& fetch_mlvalue_idxs);
+                  std::vector<int>& fetch_mlvalue_idxs);
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
@@ -39,6 +39,11 @@ class IExecutionFrame {
 
  public:
   virtual ~IExecutionFrame();
+
+  void UpdateFeedAndFetches(const std::vector<int>& feed_mlvalue_idxs,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<int>& fetch_mlvalue_idxs,
+                            const std::vector<OrtValue>& fetches);
 
   // Get the index for the first entry of the given node.
   int GetNodeOffset(NodeIndex index) const {
@@ -66,7 +71,7 @@ class IExecutionFrame {
    * write the output values to the 'fetches' vector
    * Don't access the values after SessionState is destroyed 
    */
-  Status GetOutputs(std::vector<OrtValue>& fetches);
+  Status GetOutputs(std::vector<OrtValue>& fetches, bool release = false);
 
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
@@ -81,7 +86,7 @@ class IExecutionFrame {
   virtual Status ReleaseMLValueImpl(int ort_value_idx);
 
   // returns true if the ort_value_idx is an output from the graph
-  bool IsOutput(int ort_value_idx) const;
+  bool IsOutput(int ort_value_idx);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
@@ -89,6 +94,12 @@ class IExecutionFrame {
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
+  }
+
+  void GetMLValue(int ort_value_index, OrtValue& fetch) {
+    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
+    fetch = all_values_[ort_value_index];
+    all_values_[ort_value_index] = OrtValue();
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
@@ -107,7 +118,7 @@ class IExecutionFrame {
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
-  const std::vector<int> fetch_mlvalue_idxs_;
+  std::vector<int> fetch_mlvalue_idxs_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {
@@ -161,6 +172,8 @@ class ExecutionFrame final : public IExecutionFrame {
     //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
+
+  size_t program_counter_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);

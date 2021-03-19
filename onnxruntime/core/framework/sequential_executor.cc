@@ -14,6 +14,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/session/inference_session.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -68,10 +69,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << tensor.DataType()->Size()
-                         << "\n";
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
 #endif
       total_output_sizes += tensor_size;
     }
@@ -125,8 +126,70 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                   const logging::Logger& logger) {
+                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                   const logging::Logger& logger,
+                                   int64_t& run_id) {
+  const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
+  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+  const auto exec_plan_size = exec_plan_vec.size();
+  if (run_id == DEFAULT_RUN_ID) {
+    ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+    return Execute(session_state, feeds, fetch_mlvalue_idxs, fetches, logger, frame, 0, exec_plan_size);
+  } else {
+    // Partial graph execution frame management code.
+    ExecutionFrame* frame;
+    std::map<int64_t, std::unique_ptr<onnxruntime::ExecutionFrame>>::iterator it;
+    if (run_id == DEFAULT_PARTIAL_RUN_ID) {
+      auto p_frame = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+                                                              fetch_allocators, session_state);
+
+      frame = p_frame.get();
+      std::lock_guard<OrtMutex> lock(session_state.graph_runs_lock_);
+      it = session_state.graph_runs_.insert(std::make_pair(session_state.graph_runs_counter_, std::move(p_frame))).first;
+      run_id = session_state.graph_runs_counter_;
+      // REVIEW(mzs): May be reuse counters and prevent a potential overflow?
+      session_state.graph_runs_counter_ += 1;
+    } else {
+      ORT_ENFORCE(run_id >= 0);
+
+      it = session_state.graph_runs_.find(run_id);
+
+      ORT_ENFORCE(it != session_state.graph_runs_.end());
+
+      (it->second)->UpdateFeedAndFetches(feed_mlvalue_idxs, feeds, const_cast<std::vector<int>&>(fetch_mlvalue_idxs), fetches);
+      frame = (it->second).get();
+    }
+
+    // Determine partial graph execution start and end nodes.
+    // REVIEW(codemzs): Ideally these should be determined just by looking at fetches but we can make that 
+    // optimization after the first commit. That will also get rid of the need for an "explicit" operator to indicate 
+    // partial graph execution cut point, this will require some thinking on making sure the control flow of execution order
+    // is correct, i.e backward pass follows forward pass.
+    size_t program_counter_end;
+    for (program_counter_end = frame->program_counter_;
+         (program_counter_end < exec_plan_size) &&
+         (session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "YieldOp");
+         program_counter_end += 1);
+
+    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, fetches, logger, *frame,
+                                frame->program_counter_, program_counter_end));
+
+    frame->program_counter_ = program_counter_end + 1;
+
+    // Release the frame upon the completion of "full" graph execution.
+    if (frame->program_counter_ == exec_plan_size) {
+      std::lock_guard<OrtMutex> lock(session_state.graph_runs_lock_);
+      session_state.graph_runs_.erase(it);
+    }
+
+    return Status::OK();
+  }
+}
+
+Status SequentialExecutor::Execute(const SessionState& session_state,
+                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches, const logging::Logger& logger,
+                                   ExecutionFrame& frame, size_t program_counter_start, size_t program_counter_end) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -139,10 +202,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
   const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
+
   to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
@@ -158,6 +221,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
+  VLOGS(logger, 1) << "Executing from: " << program_counter_start;
+  VLOGS(logger, 1) << "Executing until but not including: " << program_counter_end;
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
@@ -188,7 +253,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       profile::Color::Black);
 #endif
 
-  for (const auto& node_exec_plan : exec_plan_vec) {
+  for (size_t program_counter = program_counter_start; program_counter < program_counter_end; program_counter += 1) {
+    const auto& node_exec_plan = exec_plan_vec[program_counter];
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
@@ -445,7 +511,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches, true));
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

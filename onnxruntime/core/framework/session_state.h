@@ -34,6 +34,7 @@
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
+#include "core/framework/execution_frame.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -87,7 +88,8 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false)
-      : graph_(graph),
+      : graph_runs_counter_(0),
+        graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
         profiler_(profiler),
@@ -293,6 +295,10 @@ class SessionState {
   SessionState* Parent() {
     return parent_;
   }
+
+  mutable OrtMutex graph_runs_lock_;
+  mutable std::map<int64_t, std::unique_ptr<ExecutionFrame>> graph_runs_;
+  mutable int64_t graph_runs_counter_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
