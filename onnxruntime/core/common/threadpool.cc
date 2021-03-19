@@ -192,8 +192,8 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
   if (enabled_) {
     child_thread_stats_[thread_idx].num_run_++;
     auto now = Clock::now();
-    if (child_thread_stats_[thread_idx].core_< 0 ||
-        TimeDiffMicroSeconds(child_thread_stats_[thread_idx].last_logged_point_, now) > 100) {
+    if (child_thread_stats_[thread_idx].core_ < 0 ||
+        TimeDiffMicroSeconds(child_thread_stats_[thread_idx].last_logged_point_, now) > 10000) {
 #ifdef _WIN32
       child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
 #elif defined(__APPLE__)
@@ -214,8 +214,8 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
   std::stringstream ss;
   for (int i = 0; i < num_threads_; ++i) {
     ss << "\"" << child_thread_stats_[i].thread_id_ << "\": {"
-       << "\"num_run\":" << child_thread_stats_[i].num_run_ << ", "
-       << "\"core\":" << child_thread_stats_[i].core_ << "}"
+       << "\"num_run\": " << child_thread_stats_[i].num_run_ << ", "
+       << "\"core\": " << child_thread_stats_[i].core_ << "}"
        << (i == num_threads_ - 1 ? "" : ",");
   }
   return ss.str();
