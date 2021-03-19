@@ -2,18 +2,12 @@
 // Licensed under the MIT License.
 
 #include <random>
-#include "core/graph/model.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/environment.h"
-#include "core/session/inference_session.h"
-#include "test/compare_ortvalue.h"
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "test/util/include/inference_session_wrapper.h"
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
+
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace test {

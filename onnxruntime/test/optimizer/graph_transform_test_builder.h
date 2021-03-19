@@ -10,8 +10,11 @@
 #include "core/graph/graph.h"
 #include "core/framework/framework_common.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/graph/onnx_protobuf.h"
+#include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 namespace test {
