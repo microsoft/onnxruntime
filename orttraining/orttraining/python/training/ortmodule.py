@@ -32,6 +32,7 @@ ONNX_OPSET_VERSION = 12
 
 
 def _ortvalue_to_dlpack(ortvalue):
+    return ortvalue._ortvalue.to_dlpack()
 
 
 def _ortvalue_from_dlpack(dlpack_tensor):
@@ -47,6 +48,7 @@ class Verbosity(IntEnum):
 
 def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
     for idx, value_info in enumerate(model.graph.input):
+        io_binding.bind_ortvalue_input(
             value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
 
     for output_name in outputs:
@@ -56,11 +58,8 @@ def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
 def _create_backward_iobinding(io_binding, inputs, model, device, input_names):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, name in enumerate(input_names):
-        io_binding.bind_input(name + "_grad", inputs[idx].device.type,
-                              _utils.get_device_index(inputs[idx].device),
-                              _utils.dtype_torch_to_numpy(inputs[idx].dtype),
-                              list(inputs[idx].size()),
-                              inputs[idx].data_ptr())
+        io_binding.bind_ortvalue_input(
+            name + "_grad", _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
