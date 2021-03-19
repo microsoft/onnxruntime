@@ -85,7 +85,7 @@ std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(cons
 // For optimizer, probably no need to pass feed_mlvalue_idxs, feeds to initialize IExecutionFrame.
 // If needed, the parameters of OptimizerExecutionFrame ctor can be changed later.
 OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info, const std::vector<int>& fetch_mlvalue_idxs)
-    : IExecutionFrame(info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo(), fetch_mlvalue_idxs),
+    : IExecutionFrame(info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo(), const_cast<std::vector<int>&>(fetch_mlvalue_idxs)),
       info_(info) {
   Init(std::vector<int>(), std::vector<OrtValue>(), info.GetInitializers(), std::vector<OrtValue>());
 }

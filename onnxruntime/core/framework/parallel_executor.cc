@@ -30,8 +30,12 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
 Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                  const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
-                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                 const logging::Logger& logger) {
+                                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                 const logging::Logger& logger,
+                                 int64_t& run_id) {
+  
+  ORT_ENFORCE(run_id == -2);
+
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {

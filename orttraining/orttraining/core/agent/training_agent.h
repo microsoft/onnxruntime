@@ -24,18 +24,11 @@ class TrainingAgent {
     explicit TrainingAgent(InferenceSession* session);
     virtual ~TrainingAgent();
     // For ORTModule.forward()
-    virtual common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
-                                               std::vector<OrtValue>& user_outputs,
-                                               int64_t& run_id) ORT_MUST_USE_RESULT;
+    virtual common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding, int64_t& run_id) ORT_MUST_USE_RESULT;
     // For ORTModule.backward()
-    common::Status RunBackward(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
+    common::Status RunBackward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding, int64_t run_id) ORT_MUST_USE_RESULT;
     void CancelPendingBackwardRun(int64_t run_id);
-
   private:
-    // mutex for accessing bg_threads_
-    std::mutex bg_threads_mutex_;
-    // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
-    std::unordered_map<int64_t, std::thread> bg_threads_;
     // TrainingAgent runs on a InferenceSession under the hood
     InferenceSession* inference_session_;
 };
