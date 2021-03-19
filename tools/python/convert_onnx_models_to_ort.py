@@ -5,12 +5,19 @@
 import argparse
 import os
 import pathlib
+import typing
 
 import onnxruntime as ort
 
 
+def _path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix: str):
+    if not isinstance(path, str):
+        path = str(path)
+    return path.casefold().endswith(suffix.casefold())
+
+
 def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path):
-    assert onnx_model_path.is_file() and onnx_model_path.match("*.onnx")
+    assert onnx_model_path.is_file() and _path_match_suffix_ignore_case(onnx_model_path, ".onnx")
     return onnx_model_path.with_suffix(".ort")
 
 
@@ -48,10 +55,13 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
 def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
     models = []
-    if model_path_or_dir.is_file() and model_path_or_dir.match("*.onnx"):
+    if model_path_or_dir.is_file() and _path_match_suffix_ignore_case(model_path_or_dir, ".onnx"):
         models.append(model_path_or_dir)
     elif model_path_or_dir.is_dir():
-        models.extend(model_path_or_dir.rglob("*.onnx"))
+        for root, _, files in os.walk(model_path_or_dir):
+            for file in files:
+                if _path_match_suffix_ignore_case(file, ".onnx"):
+                    models.append(pathlib.Path(root, file))
 
     if len(models) == 0:
         raise ValueError("No .onnx files were found in '{}'".format(model_path_or_dir))
@@ -64,7 +74,7 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptim
     for model in models:
         # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
         # of this script
-        if model.match("*.optimized.onnx"):
+        if _path_match_suffix_ignore_case(model, ".optimized.onnx"):
             print("Ignoring '{}'".format(model))
             continue
 
