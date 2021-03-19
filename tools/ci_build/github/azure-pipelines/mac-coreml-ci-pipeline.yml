@@ -1,28 +1,5 @@
 jobs:
-- job: CoreML_CI
-  pool:
-    vmImage: 'macOS-10.15'
-  timeoutInMinutes: 120
-  steps:
-  - task: UsePythonVersion@0
-    # Use python 3.8 to avoid build some of the required packages
-    displayName: Use Python 3.8
-    inputs:
-      versionSpec: 3.8
-
-  - script: |
-      brew install coreutils ninja
-      python3 -m pip install numpy
-    displayName: Install coreutils and ninja
-
-  - script: |
-      python3 tools/ci_build/build.py \
-      --build_dir build \
-      --skip_submodule_sync \
-      --cmake_generator=Ninja \
-      --parallel \
-      --build_shared_lib \
-      --config Debug \
-      --use_coreml \
-      --enable_pybind
-    displayName: CoreML EP, Build and Test on macOS
+- template: templates/mac-ci.yml
+  parameters:
+    DoNugetPack: 'false'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib  --config Debug --use_coreml'
