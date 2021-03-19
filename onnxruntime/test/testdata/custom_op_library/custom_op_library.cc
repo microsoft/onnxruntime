@@ -228,9 +228,11 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     return status;
   }
 
+#ifdef USE_CUDA
   if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpOneCuda)) {
     return status;
   }
+#endif
 
   if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpTwo)) {
     return status;
