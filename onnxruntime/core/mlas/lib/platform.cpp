@@ -332,7 +332,7 @@ Return Value:
 
 #endif // MLAS_TARGET_AMD64_IX86
 
-#if defined(MLAS_TARGET_ARM64) && !defined(_M_ARM64EC)
+#if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 

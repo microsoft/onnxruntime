@@ -68,7 +68,7 @@ MlasGemmU8X8GetDispatch(
     }
 #elif defined(MLAS_SSE2_INTRINSICS)
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchSse;
-#elif defined(MLAS_NEON64_INTRINSICS) && !defined(_M_ARM64EC)
+#elif defined(MLAS_NEON64_INTRINSICS)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
 #elif defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER)
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
@@ -1405,7 +1405,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
 
 #endif
 
-#if (defined(MLAS_NEON64_INTRINSICS) && !defined(_M_ARM64EC)) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
+#if defined(MLAS_NEON64_INTRINSICS) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
 
 //
 // Define the prototypes of the NEON routines written in assembly.
@@ -1740,7 +1740,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
         uint32x2_t RowSumsLow = vpadd_u32(vget_high_u32(RowSums), vget_low_u32(RowSums));
         RowSumsLow = vpadd_u32(RowSumsLow, RowSumsLow);
         vst1_lane_u32(reinterpret_cast<uint32_t*>(RowSumBuffer), RowSumsLow, 0);
-#elif defined(_M_ARM64) || defined(_M_ARM64EC)
+#elif defined(_M_ARM64)
         // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
         // as VS2019 added new intrinsics to make the operation work. Also, not
         // all build environments using VS2019 have the up-to-date arm64_neon.h,
@@ -1902,7 +1902,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
 
 #endif
 
-#if defined(MLAS_NEON64_INTRINSICS) && !defined(_M_ARM64EC)
+#if defined(MLAS_NEON64_INTRINSICS)
 
 //
 // Define the prototypes of the NEON UDOT routines written in assembly.
@@ -2227,7 +2227,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
             RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
         }
 
-#if defined(_M_ARM64) || defined(_M_ARM64EC)
+#if defined(_M_ARM64)
         // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
         // as VS2019 added new intrinsics to make the operation work. Also, not
         // all build environments using VS2019 have the up-to-date arm64_neon.h,

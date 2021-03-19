@@ -43,10 +43,10 @@ Abstract:
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
 #define MLAS_TARGET_AMD64_IX86
 #endif
-#if defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__aarch64__)
+#if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(__arm__)
+#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
