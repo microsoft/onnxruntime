@@ -608,6 +608,11 @@ bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
   return (DegreeOfParallelism(tp) != 1);
 }
 
+// Temporary control over maximum DoP for experiments
+static bool checked_max_dop = false;
+static bool set_max_dop = false;
+static int max_dop = 0;
+  
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
   // When using OpenMP, omp_get_num_threads() returns the number of threads in the
@@ -619,15 +624,33 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #else
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
+  int dop = 1;
   if (tp) {
     if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
+      dop = ((tp->NumThreads() + 1)) * TaskGranularityFactor;
     } else {
-      return ((tp->NumThreads() + 1));
+      dop = ((tp->NumThreads() + 1));
     }
-  } else {
-    return 1;
   }
+  // Temporary external control over maximum DoP for experimenting
+  // with multiple concurrent requests.  If adopted, we should
+  // distinguish this control over the number of threads that will be
+  // used from the TaskGranularityFactor that controls the numbre of
+  // work items that will be created.
+  if (!checked_max_dop) {
+    if (IsEnvVarDefined("ORT_MAX_DOP")) {
+      auto e = GetEnv("ORT_MAX_DOP");
+      if ((max_dop = atoi(e.get())) != 0) {
+        ::std::cerr << "Setting max DoP " << max_dop << "\n";
+        set_max_dop = true;
+      }
+    }
+    checked_max_dop = true;
+  }
+  if (set_max_dop) {
+    dop = ::std::min(dop, max_dop);
+  }
+  return dop;    
 #endif
 }
 

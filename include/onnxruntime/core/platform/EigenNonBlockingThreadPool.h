@@ -10,6 +10,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
+#include <iostream>
+#include <sched.h>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -135,6 +137,62 @@ using CHAR_TYPE = wchar_t;
 #else
 using CHAR_TYPE = char;
 #endif
+
+// Temp experimental control over the "sticky" worker thread
+// allocation feature.  This access to environment variables should be
+// removed if merging the feature.
+
+static std::unique_ptr<char[]> GetEnv(const char* var) {
+  char* val = nullptr;
+#if _MSC_VER
+  size_t len;
+  
+  if (_dupenv_s(&val, &len, var)) {
+    // Something went wrong, just return nullptr.
+    return nullptr;
+  }
+#else
+  val = getenv(var);
+#endif  // _MSC_VER
+  
+  if (val == nullptr) {
+    return nullptr;
+  }
+  
+  // On windows, we will have to explicitly free val. Instead of returning val
+  // to its caller and make distinguish between windows and linux, we return
+  // a unique_ptr, and it will be destroyed automatically after the caller
+  // completes.
+  size_t len_val = strlen(val) + 1;
+  auto p = onnxruntime::make_unique<char[]>(len_val);
+  // use explicit loop to get ride of VC's warning on unsafe copy
+  for (size_t i = 0; i < len_val; ++i) {
+    p[i] = val[i];
+  }
+  return p;
+}
+ 
+static bool IsEnvVarDefined(const char* var) {
+  auto val = GetEnv(var);
+  return val != nullptr;
+}
+  
+static bool USE_STICKY_WORKER_ASSIGNMENT = false;
+
+// Additional profiling of the number of tasks that are not run
+// immediately, and the number of times that a task is stolen.  [ Will
+// be subsumed by Randy's prototyping, but experimenting here in a
+// branch forked at an earlier point for experiments. ]
+  
+static std::atomic<uint64_t> tasks_queued;
+static std::atomic<uint64_t> tasks_stolen;
+static std::atomic<uint64_t> used_preferred;
+static std::atomic<uint64_t> refreshed_preferred;
+
+// Sticky worker assignment
+// ------------------------
+ 
+static std::atomic<unsigned> next_worker;
 
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
@@ -438,7 +496,7 @@ class RunQueue {
   // submitted from different threads.
   //
   // If the queue is full, returns w, otherwise returns default-constructed work.
-  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
+  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_empty) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
@@ -447,6 +505,7 @@ class RunQueue {
     if (s != ElemState::kEmpty ||
         !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return w;
+    was_empty = (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
     e.w = std::move(w);
@@ -718,6 +777,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         done_(false),
         cancelled_(false) {
 
+    if (IsEnvVarDefined("ORT_STICKY")) {
+      auto e = GetEnv("ORT_STICKY");
+      if (atoi(e.get())) {
+        ::std::cerr << "Running with sticky flag set\n";
+        USE_STICKY_WORKER_ASSIGNMENT = true;
+      }
+    }
+
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -760,6 +827,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+
+    ::std::cerr << "Basic stats: " <<
+        " sticky=" << (USE_STICKY_WORKER_ASSIGNMENT ? "true" : "false") <<
+        " tasks_stolen=" << tasks_stolen <<
+        " tasks_queued=" << tasks_queued <<
+        " used_preferred=" << used_preferred <<
+        " refreshed_preferred=" << refreshed_preferred <<
+        "\n";
   }
 
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed
@@ -980,6 +1055,9 @@ void SummonWorkers(PerThread &pt,
   // ("n" here) refer to the total parallelism including the main
   // thread.  Hence we consider the number of existing tasks + 1.
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  int stats_tasks_queued = 0;
+  int stats_used_preferred = 0;
+  int stats_refreshed_preferred = 0;
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
 
@@ -987,21 +1065,41 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    std::vector<int> pref;
+    if (USE_STICKY_WORKER_ASSIGNMENT) {
+      pref = pt.preferred_workers;
+      pt.preferred_workers.clear();
+    } else {
+      GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    }
     profiler_.LogStart();
-
+    
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
       int q_idx;
-      if (i < good_hints.size()) {
-        q_idx = good_hints[i];
-      } else {
-        auto alt_i = i - static_cast<unsigned>(good_hints.size());
-        if (alt_i < alt_hints.size()) {
-          q_idx = alt_hints[alt_i];
+      unsigned idx = current_dop + i - 1;
+      if (USE_STICKY_WORKER_ASSIGNMENT) {
+        // Sticky worker assignment: use our own stats of which
+        // workers previously started work without queuing.
+        if (idx < pref.size()) {
+          q_idx = pref[idx];
         } else {
-          q_idx = Rand(&pt.rand) % num_threads_;
+          q_idx = (next_worker++ % num_threads_);
+          stats_refreshed_preferred++;
+        }
+      } else {
+        // Ordering worker assignment: pick up hints of which threads
+        // are likely to be good targets to push work
+        if (i < good_hints.size()) {
+          q_idx = good_hints[i];
+        } else {
+          auto alt_i = i - static_cast<unsigned>(good_hints.size());
+          if (alt_i < alt_hints.size()) {
+            q_idx = alt_hints[alt_i];
+          } else {
+            q_idx = Rand(&pt.rand) % num_threads_;
+          }
         }
       }
 
@@ -1014,14 +1112,39 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      bool was_empty = false;
+      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx, was_empty);
+      if (was_empty) {
+        if (USE_STICKY_WORKER_ASSIGNMENT) {
+          pt.preferred_workers.push_back(q_idx);
+          stats_used_preferred++;
+        }
+      } else {
+        stats_tasks_queued++;
+      }
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
+
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+
+    // Retain any prior "preferred worker" stats if our current loop
+    // did not require all of them.
+    if (USE_STICKY_WORKER_ASSIGNMENT) {
+      if (extra_needed < pref.size()) {
+        for (auto i = extra_needed; i < pref.size(); i++) {
+          pt.preferred_workers.push_back(pref[i]);
+        }
+      }
+    }
   }
+
+  // Merge per-thread stats to global atomics
+  tasks_queued += stats_tasks_queued;
+  used_preferred += stats_used_preferred;
+  refreshed_preferred += stats_refreshed_preferred;
 }
 
 // Run a single parallel loop in an existing parallel section.  This
@@ -1102,6 +1225,20 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   // revoked).
   EndParallelSectionInternal(*pt, ps);
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+
+  // Periodically dump the set of preferred workers for this thread.
+  // This lets us check that we are tending to allocate distinct sets
+  // of workers where possible.
+  /*if (USE_STICKY_WORKER_ASSIGNMENT) {
+    static int ctr =0;
+    auto my_thread_id = std::this_thread::get_id();
+    ctr++;
+    if (ctr % 1000 == 0) {
+      ::std::cerr << my_thread_id << " --> ";
+      for (unsigned j = 0;j<pt->preferred_workers.size();j++) { ::std::cerr << pt->preferred_workers[j] << " "; }
+      ::std::cerr <<"\n";
+    }
+    }*/
 }
 
 void Cancel() override {
@@ -1181,14 +1318,22 @@ int CurrentThreadId() const EIGEN_FINAL {
     constexpr PerThread() : pool(nullptr) {
     }
     ThreadPoolTempl* pool;            // Parent pool, or null for normal threads.
+    bool initialized{false};          // Non-trivial initialization ran (e.g. for RNG)
     uint64_t rand{0};                 // Random generator state.
     int thread_id{-1};                // Worker thread index in pool.
     Tag tag{};                        // Work item tag used to identify this thread.
     bool leading_par_section{false};  // Leading a parallel section (used only for asserts)
+
+    // When this thread is entering a parallel section, it will
+    // initially push work to this set of workers.  The aim is to
+    // retain cache state within the workers, and to reduce the number
+    // of times that the work-stealing code paths are used for
+    // rebalancing.
+    std::vector<int> preferred_workers;
   };
 
-  static_assert(std::is_trivially_destructible<PerThread>::value,
-                "Per-thread state should be trivially destructible");
+  //  static_assert(std::is_trivially_destructible<PerThread>::value,
+  //                "Per-thread state should be trivially destructible");
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {
@@ -1321,11 +1466,12 @@ int CurrentThreadId() const EIGEN_FINAL {
     Queue& q = td.queue;
     bool should_exit = false;
     pt->pool = this;
-    pt->rand = GlobalThreadIdHash();
     pt->thread_id = thread_id;
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
-    SetGoodWorkerHint(thread_id, true /* Is good */);
+    if (!USE_STICKY_WORKER_ASSIGNMENT) {
+      SetGoodWorkerHint(thread_id, true /* Is good */);
+    }
 
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
@@ -1342,12 +1488,23 @@ int CurrentThreadId() const EIGEN_FINAL {
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
 
-          SetGoodWorkerHint(thread_id, true);
+          if (!USE_STICKY_WORKER_ASSIGNMENT) {
+            SetGoodWorkerHint(thread_id, true);
+          }
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
-            t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
+            if (((i+1)%steal_count == 0)) {
+              t = TrySteal();
+              if (t) {
+                tasks_stolen++;
+              }
+            } else {
+              t = q.PopFront();
+            }
             onnxruntime::concurrency::SpinPause();
           }
-          SetGoodWorkerHint(thread_id, false);
+          if (!USE_STICKY_WORKER_ASSIGNMENT) {
+            SetGoodWorkerHint(thread_id, false);
+          }
 
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
@@ -1490,6 +1647,10 @@ int CurrentThreadId() const EIGEN_FINAL {
   static EIGEN_STRONG_INLINE PerThread* GetPerThread() {
     static thread_local PerThread per_thread_;
     PerThread* pt = &per_thread_;
+    if (!pt->initialized) {
+      pt->rand = GlobalThreadIdHash();
+      pt->initialized = true;
+    }
     return pt;
   }
 
