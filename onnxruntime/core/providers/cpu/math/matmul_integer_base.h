@@ -11,7 +11,7 @@ class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
+  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override {
     is_packed = false;
 
     // only pack Matrix B
