@@ -37,7 +37,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
                                      TransformerLevel::Level2);
 
-  auto forward_reachable_nodes = BFS(x_node_arg_names);
+  auto forward_reachable_nodes = BFSWithStopGradient(x_node_arg_names);
 
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -62,15 +62,15 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
     if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
       non_differentiable_y_node_arg_names_.insert(name);
-      LOGS(logger_, WARNING) << "The model weigths and inputs are non-differentiable from " << name << ". "
-                             << "ORT will assume no gradient will be provided for " << name << ".";
+      LOGS(logger_, INFO) << "The model weights and inputs are non-differentiable from " << name << ". "
+                          << "ORT will assume no gradient will be provided for " << name << ".";
     } else {
       y_node_args_.insert(node_arg);
       y_nodes_.insert(node);
     }
   }
 
-  reachable_nodes_ = ReverseBFS(y_nodes_);
+  reachable_nodes_ = ReverseBFSWithStopGradient(y_nodes_);
 
   std::string unreachable_nodes;
   // building x_nodes_
@@ -103,7 +103,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   }
 }
 
-NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_arg_names) const {
+NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const {
   std::deque<const Node*> queue;
   for (const auto& name : x_node_arg_names) {
     std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
@@ -140,7 +140,7 @@ NodeSet GradientGraphBuilder::BFS(const std::unordered_set<std::string>& x_node_
   return visited;
 }
 
-NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
+NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) const {
   NodeSet visited(nodes);
   std::deque<const Node*> queue(nodes.begin(), nodes.end());
 

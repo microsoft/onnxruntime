@@ -209,7 +209,9 @@ class ORTModule(torch.nn.Module):
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
                         if idx in self._onnx_graphs_info.output_grad_indices_non_differentiable:
-                            assert grad_output is None
+                            assert grad_output is None, "ORT found the {}-th module output '{}' is non-differentiable according to the onnx graph. " \
+                                                        "However, the gradient value is still provided by torch's autograd engine." \
+                                                        .format(idx, self._onnx_graphs_info.user_output_names[idx]) 
                             continue
                         
                         if grad_output is None:

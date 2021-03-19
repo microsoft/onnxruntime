@@ -166,7 +166,7 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
-  std::unordered_set<std::string> non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
+  const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
   for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
       training_graph_info_.output_grad_indices_non_differentiable.emplace_back(i);

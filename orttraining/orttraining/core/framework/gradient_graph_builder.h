@@ -88,7 +88,7 @@ class GradientGraphBuilder {
 
   Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
-  std::unordered_set<std::string> GetNonDifferentiableYNodeArgNames() const {
+  const std::unordered_set<std::string>& GetNonDifferentiableYNodeArgNames() const {
     return non_differentiable_y_node_arg_names_;
   }
 
@@ -125,18 +125,22 @@ class GradientGraphBuilder {
   std::unordered_map<std::string, int> pending_;
 
   /**
-  Perferms a BFS on the graph
+  Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain
+  It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
+  The resulting node set contains all the nodes that are differentiable wrt the x_node_args
   @param Starting nodes arg name for BFS
   @returns All the nodes visited during BFS
   */
-  NodeSet BFS(const std::unordered_set<std::string>& x_node_arg_names) const;
+  NodeSet BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const;
 
   /**
-  Perferms a ReverseBFS on the graph
+  Perferms a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
+  It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
+  The resulting node set contains all the nodes that are differentiable wrt the input nodes
   @param Starting nodes for ReverseBFS
   @returns All the nodes visited during ReverseBFS
   */
-  NodeSet ReverseBFS(const NodeSet& nodes) const;
+  NodeSet ReverseBFSWithStopGradient(const NodeSet& nodes) const;
 
   /**
   Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative

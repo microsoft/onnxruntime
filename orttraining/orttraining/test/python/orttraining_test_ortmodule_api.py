@@ -172,7 +172,7 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
         mask2 = torch.lt(out2, 0.02)
         mask2 = mask2.long()
         
-        return out1, mask1, out2, mask2     # intentionally place the non-differentialble output in the middle
+        return out1, mask1, out2, mask2     # intentionally place the non-differentiable output in the middle
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
