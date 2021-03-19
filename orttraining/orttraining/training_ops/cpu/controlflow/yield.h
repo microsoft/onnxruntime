@@ -18,16 +18,16 @@ class YieldOp final : public OpKernel {
     std::vector<int64_t> non_differentiable_outputs = info.GetAttrsOrDefault<int64_t>("non_differentiable_outputs");
     ORT_ENFORCE(num_inputs == num_outputs + non_differentiable_outputs.size());
     non_differentiable_outputs_.resize(num_inputs, false);
-    for (auto idx : non_differentiable_outputs) {
-      ORT_ENFORCE(idx < num_inputs);
+    for (int64_t idx : non_differentiable_outputs) {
+      ORT_ENFORCE(static_cast<size_t>(idx) < num_inputs);
       non_differentiable_outputs_[idx] = true;
     }
 
     std::vector<int64_t> full_shape_outputs;
     ORT_ENFORCE(info.GetAttrs<int64_t>("full_shape_outputs", full_shape_outputs).IsOK());
     full_shape_outputs_.resize(num_inputs, false);
-    for (auto idx : full_shape_outputs) {
-      ORT_ENFORCE(idx < num_inputs);
+    for (int64_t idx : full_shape_outputs) {
+      ORT_ENFORCE(static_cast<size_t>(idx) < num_inputs);
       full_shape_outputs_[idx] = true;
     }
   }
