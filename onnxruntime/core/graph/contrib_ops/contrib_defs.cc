@@ -1169,6 +1169,22 @@ value at X[t][n] >= seqLengths[n].
       .SetDoc(R"DOC(
 Sample echo operator.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "ETA", "input", "T")
+      .Input(1, "W", "input", "T")
+      .Input(2, "G", "input", "T")
+      .Output(0, "NW", "output", "T")
+      .Output(1, "NG", "output", "T")
+      .TypeConstraint(
+          "T",
+          ONNX_NAMESPACE::OpSchema::all_numeric_types(),
+          "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetDoc(R"DOC(
+SGDOptimizer operator.)DOC");
+
   // register schemas for more operators here
   ONNX_CONTRIB_OPERATOR_SCHEMA(MaxpoolWithMask)
       .SetDomain(kMSDomain)
