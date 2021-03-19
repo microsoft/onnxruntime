@@ -17,6 +17,9 @@ class QDQConvTransformer : public QDQOperatorTransformer {
       return false;
     }
 
+    FillQDQOptionalZeroPoint(parents);
+    FillQDQOptionalZeroPoint(children);
+
     std::vector<NodeArg*> input_defs(graph_.GetNode(parents[0]->Index())->MutableInputDefs());
     Node* weight = graph_.GetNode(parents[1]->Index());
     input_defs.insert(input_defs.end(), weight->MutableInputDefs().begin(), weight->MutableInputDefs().end());

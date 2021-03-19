@@ -17,6 +17,9 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
       return false;
     }
 
+    FillQDQOptionalZeroPoint(parents);
+    FillQDQOptionalZeroPoint(children);
+
     graph_.RemoveEdge(parents[0]->Index(), node_.Index(), 0, 0);
     graph_.RemoveEdge(node_.Index(), children[0]->Index(), 0, 0);
 

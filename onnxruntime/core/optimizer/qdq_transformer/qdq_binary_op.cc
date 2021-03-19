@@ -16,6 +16,10 @@ class QDQBinaryOpTransformer : public QDQOperatorTransformer {
     if (children.size() != 1 || parents.size() != 2) {
       return false;
     }
+
+    FillQDQOptionalZeroPoint(parents);
+    FillQDQOptionalZeroPoint(children);
+
     std::vector<NodeArg*> input_defs(graph_.GetNode(parents[0]->Index())->MutableInputDefs());
     Node* b = graph_.GetNode(parents[1]->Index());
     input_defs.insert(input_defs.end(), b->MutableInputDefs().begin(), b->MutableInputDefs().end());

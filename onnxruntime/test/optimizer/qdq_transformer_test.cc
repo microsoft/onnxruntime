@@ -27,10 +27,21 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp) {
   return dq_output;
 }
 
+template <typename T>
+typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
+AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale) {
+  auto* q_output = builder.MakeIntermediate();
+  auto* dq_output = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode(q_input, scale, q_output);
+  builder.AddDequantizeLinearNode<T>(q_output, scale, dq_output);
+  return dq_output;
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 
 TEST(QDQTransformerTests, Conv) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+  // TODO: enable fully use_default_zp tests after fixing inference bug in QuantizeLinear
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, bool use_default_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -40,7 +51,13 @@ TEST(QDQTransformerTests, Conv) {
 
       auto* dq_w_output = builder.MakeIntermediate();
       auto* dq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
-      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+
+      if (use_default_zp) {
+        builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, dq_w_output);
+      } else {
+        builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      }
+
       builder.AddConvNode(dq_output, dq_w_output, conv_output);
       builder.AddQuantizeLinearNode<uint8_t>(conv_output, .0039f, 135, output_arg);
     };
@@ -56,9 +73,12 @@ TEST(QDQTransformerTests, Conv) {
   };
 
   // Test the basic case of a single 1D/2D/3D convolution.
-  test_case({1, 12, 37}, {32, 12, 5});
-  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
-  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+  test_case({1, 12, 37}, {32, 12, 5}, true);
+  test_case({1, 12, 37}, {32, 12, 5}, false);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, true);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, false);
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, true);
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, false);
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape) {

@@ -3,9 +3,14 @@
 
 #pragma once
 
-#include<vector>
+#include <vector>
+
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
+
+constexpr char* QOPTypeName = "QuantizeLinear";
+constexpr char* DQOPTypeName = "DequantizeLinear";
 
 class Node;
 class Graph;
@@ -24,8 +29,13 @@ class QDQOperatorTransformer {
     return false;
   }
 
+  void FillQDQOptionalZeroPoint(const std::vector<const Node*>& parents);
+
  protected:
   Node& node_;
   Graph& graph_;
+
+  static const ONNX_NAMESPACE::TensorProto optional_zero_point_int8_;
+  static const ONNX_NAMESPACE::TensorProto optional_zero_point_uint8_;
 };
 }  // namespace onnxruntime

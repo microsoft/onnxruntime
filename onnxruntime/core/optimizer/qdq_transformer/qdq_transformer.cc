@@ -20,13 +20,12 @@ class QDQTransformerImpl {
 
   void Transform(Node& node) {
     // extract DequantizeLinear from parents and QuantizeLinear in children
-    std::vector<const Node*> parents = graph_utils::FindParentsByType(node, "DequantizeLinear");
+    std::vector<const Node*> parents = graph_utils::FindParentsByType(node, DQOPTypeName);
+    std::vector<const Node*> children = graph_utils::FindChildrenByType(node, QOPTypeName);
 
-    if (parents.size() == 0 || parents.size() != node.GetInputEdgesCount()) {
+    if (parents.size() == 0) {
       return;
     }
-
-    std::vector<const Node*> children = graph_utils::FindChildrenByType(node, "QuantizeLinear");
 
     // track dq output edges count
     for (auto parent_node : parents) {
