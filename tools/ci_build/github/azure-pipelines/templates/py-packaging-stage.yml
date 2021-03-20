@@ -306,6 +306,10 @@ stages:
         displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         timeoutInMinutes: 20
 
+      - task: TwineAuthenticate@1
+        inputs:
+          artifactFeed: 'lotus/ort-gpu-nightly-training-feed'
+
       - template: component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
