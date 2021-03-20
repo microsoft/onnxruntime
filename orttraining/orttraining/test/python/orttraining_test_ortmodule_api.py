@@ -165,14 +165,14 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
         out = self.fc1(input1)
         out1 = self.relu(out)
         out2 = self.fc2(out1)
-        mask1 = torch.gt(out1, 0.01)
-        mask1 = mask1.long()    # TODO: Casting from bool to float or int will cause the UT failure
-                                # True is casted to 1065353216 for Cast(from=bool, to=int), whereas pytorch would give 1
-                                # True is casted to -1 for Cast(from=bool, to=float), where as pytorch would give 1.0f
-        mask2 = torch.lt(out2, 0.02)
-        mask2 = mask2.long()
+        loss = out2.sum()
+
+        # mask_bool = torch.eq(out, 0.0)            # TODO: bool type is not supported with to_dlpack yet. 
+        mask_int64 = torch.eq(out, 0.0).long()
+        mask_int = torch.gt(out1, 0.01).int()
+        mask_float = torch.lt(out2, -0.02).float()
         
-        return out1, mask1, out2, mask2     # intentionally place the non-differentiable output in the middle
+        return loss, mask_int64, mask_int, out1, out2, mask_float     # intentionally place the non-differentiable output in the middle
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
@@ -501,22 +501,18 @@ def test_module_with_non_differential_output():
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
-        prediction1, mask1, prediction2, mask2 = model(x)
-        loss = prediction2.sum()
+        forward_outputs = model(x)
+        loss = forward_outputs[0]
         loss.backward()
-        return prediction1, mask1, prediction2, mask2
+        return forward_outputs
 
     for step in range(10):
         x = torch.randn(N, D_in, device=device)
-        pt_prediction1, pt_mask1, pt_prediction2, pt_mask2 = run_step(pt_model, x)
-        ort_prediction1, ort_mask1, ort_prediction2, ort_mask2 = run_step(ort_model, x)
+        pt_outputs = run_step(pt_model, x)
+        ort_outputs = run_step(ort_model, x)
 
-        # assert torch.allclose(ort_prediction1, pt_prediction1)   # TODO: this is failing, need to investigate!
-                                                                   # This will be no reproducible if we change the model forward to 
-                                                                   # mask1 = torch.gt(out, 0.01)
-        assert torch.allclose(ort_prediction2, pt_prediction2)
-        assert torch.allclose(ort_mask1, pt_mask1)
-        assert torch.allclose(ort_mask2, pt_mask2)
+        for pt_out, ort_out in zip(pt_outputs, ort_outputs):
+            assert torch.allclose(pt_out, ort_out, atol=1e-6)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_forward_only_calls():
@@ -596,7 +592,6 @@ def test_multiple_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
-''' flaky test. Temporarily DISABLED for further investigation - hard to repro locally
 def test_multiple_ortmodules_common_backbone_training():
     device = 'cuda'
     N, D_in, H, D_out = 32, 64, 128, 64
@@ -632,7 +627,6 @@ def test_multiple_ortmodules_common_backbone_training():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
-'''
 
 def test_multiple_chained_ortmodules_training():
     device = 'cuda'
@@ -732,7 +726,7 @@ def test_bert_inputs_with_dynamic_shape():
         pt_p = run_step(pt_model, x, y, z)
         ort_p = run_step(ort_model, x, y, z)
 
-        assert torch.allclose(ort_p, pt_p, atol=1e-02)      # TODO: this assert is failing with smaller tolerance, need to investigate!!
+        assert torch.allclose(ort_p, pt_p, atol=1e-06)
         # _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)  #TODO - enable this check after the investigation
 
 

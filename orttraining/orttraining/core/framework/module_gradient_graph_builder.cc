@@ -266,6 +266,7 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
   // Adjust gradient graph outputs by the following order:
   // 1. user input grads if required, with same order of user inputs,
   // 2. trainable initailizer grads, with same order of trainable initializers.
+  // 3. module forward outputs, in the same order defined in original module
   Graph& gradient_graph = gradient_model_->MainGraph();
   const std::vector<const NodeArg*>& gradient_graph_outputs = gradient_graph.GetOutputs();
   std::unordered_map<std::string, const NodeArg*> gradient_output_arg_map;
@@ -296,6 +297,11 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
                 "Trainable initializer grad is not found on gradient graph.");
     training_graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
     new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
+  }
+
+  // Add module forward outputs to graph outputs.
+  for (const std::string& name : training_graph_info_.user_output_names) {
+    new_output_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
   gradient_graph.SetOutputs(new_output_args);

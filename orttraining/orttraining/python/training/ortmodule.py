@@ -236,6 +236,7 @@ class ORTModule(torch.nn.Module):
 
                     # Return input and initializer gradients
                     num_user_input_grads = len(self._input_names_require_grad)
+                    num_weigthts_to_train = len(self._onnx_graphs_info.initializer_grad_names_to_train)
 
                     results = []
                     for input_name in self._onnx_graphs_info.user_input_names:
@@ -249,7 +250,8 @@ class ORTModule(torch.nn.Module):
                             results.append(None)
                     # Append gradients of initializer to results
                     results += [_ort_output_to_torch_tensor(backward_output)
-                                for backward_output in backward_outputs[num_user_input_grads:]]
+                                for backward_output in 
+                                    backward_outputs[num_user_input_grads: num_user_input_grads + num_weigthts_to_train]]
                     # The OrtValue has a shared_ptr to the data.
                     # At this point there are two shared_ptrs to the data, one through the
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
