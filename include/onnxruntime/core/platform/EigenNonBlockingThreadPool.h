@@ -11,7 +11,7 @@
 
 #include <type_traits>
 #include <iostream>
-#include <sched.h>
+#include <sstream>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -184,10 +184,13 @@ static bool USE_STICKY_WORKER_ASSIGNMENT = false;
 // be subsumed by Randy's prototyping, but experimenting here in a
 // branch forked at an earlier point for experiments. ]
   
-static std::atomic<uint64_t> tasks_queued;
+static std::atomic<uint64_t> tasks_ready;
 static std::atomic<uint64_t> tasks_stolen;
+static std::atomic<uint64_t> tasks_stolen_on_wake;
 static std::atomic<uint64_t> used_preferred;
 static std::atomic<uint64_t> refreshed_preferred;
+static std::atomic<uint64_t> extra_wakeup;
+static std::atomic<int> next_id;
 
 // Sticky worker assignment
 // ------------------------
@@ -496,7 +499,7 @@ class RunQueue {
   // submitted from different threads.
   //
   // If the queue is full, returns w, otherwise returns default-constructed work.
-  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_empty) {
+  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_ready) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
@@ -505,7 +508,7 @@ class RunQueue {
     if (s != ElemState::kEmpty ||
         !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return w;
-    was_empty = (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
+    was_ready &= (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
     e.w = std::move(w);
@@ -784,6 +787,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         USE_STICKY_WORKER_ASSIGNMENT = true;
       }
     }
+    ::std::cerr << "Starting " << num_threads_ << " worker threads\n";
 
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
@@ -831,9 +835,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     ::std::cerr << "Basic stats: " <<
         " sticky=" << (USE_STICKY_WORKER_ASSIGNMENT ? "true" : "false") <<
         " tasks_stolen=" << tasks_stolen <<
-        " tasks_queued=" << tasks_queued <<
+        " tasks_stolen_on_wake=" << tasks_stolen_on_wake <<
+        " worker_ready=" << tasks_ready <<
         " used_preferred=" << used_preferred <<
         " refreshed_preferred=" << refreshed_preferred <<
+        " extra_wakeup=" << extra_wakeup <<
         "\n";
   }
 
@@ -1035,6 +1041,10 @@ void SummonWorkers(PerThread &pt,
                    ThreadPoolParallelSection &ps,
                    unsigned n,
                    const std::function<void(unsigned)> &worker_fn) {
+  if (pt.main_thread_id==-1) {
+    pt.main_thread_id = next_id++;
+  }
+  
   // Wrap the user's worker function with one that allocates a unique
   // worker index for the loop, and synchronizes (as the last step)
   // with the exit path in EndParallelSection.  In principle we could
@@ -1055,37 +1065,64 @@ void SummonWorkers(PerThread &pt,
   // ("n" here) refer to the total parallelism including the main
   // thread.  Hence we consider the number of existing tasks + 1.
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
-  int stats_tasks_queued = 0;
+  int stats_tasks_ready = 0;
   int stats_used_preferred = 0;
   int stats_refreshed_preferred = 0;
+  int stats_extra_wakeup = 0;
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
 
+    //......................................................................
+    //
+    // Current scheme: use per-worker hints of which are waiting to
+    // receive work.  Obtain a set of "good" hints (workers spinning)
+    // and "alternate" hints (non-overlapping, workers not spinning).
+    //
     // Obtain hints for which worker threads to push the tasks to.
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    std::vector<int> pref;
-    if (USE_STICKY_WORKER_ASSIGNMENT) {
-      pref = pt.preferred_workers;
-      pt.preferred_workers.clear();
-    } else {
+
+    //......................................................................
+    //
+    // Experimental scheme: use per-main-thread hints of workers that
+    // accepted work last time when spinning.  Re-use these workers,
+    // and fill other gaps in the "preferred" vector with round-robin
+    // allocation of workers (aiming to avoid concurrent main threads
+    // targeting the same worker).
+    std::vector<int> &preferred_workers = pt.preferred_workers;
+    unsigned num_preferred = preferred_workers.size();
+    bool was_preferred = false;
+
+    if (!USE_STICKY_WORKER_ASSIGNMENT) {
       GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
     }
     profiler_.LogStart();
+
+    //    ::std::stringstream tmp;
+    //    tmp << pt.main_thread_id << " -";
     
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
       int q_idx;
+
+      // Worker thread number in our team, starting from 0 (i.e., not
+      // including the main thread).
       unsigned idx = current_dop + i - 1;
+      
       if (USE_STICKY_WORKER_ASSIGNMENT) {
         // Sticky worker assignment: use our own stats of which
         // workers previously started work without queuing.
-        if (idx < pref.size()) {
-          q_idx = pref[idx];
+        if (idx < num_preferred) {
+          // Re-use hint from preferred workers
+          q_idx = preferred_workers[idx];
+          was_preferred = true;
         } else {
+          // Pick new hint, round-robin.  For simplicity we don't
+          // attempt to avoid duplicates.
           q_idx = (next_worker++ % num_threads_);
+          preferred_workers.push_back(q_idx);
           stats_refreshed_preferred++;
         }
       } else {
@@ -1102,6 +1139,7 @@ void SummonWorkers(PerThread &pt,
           }
         }
       }
+      //      tmp << " " << q_idx;
 
       // If the worker's queue accepts the task, then record it in
       // the vector of tasks that we will need to synchronize with on
@@ -1112,37 +1150,45 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      bool was_empty = false;
-      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx, was_empty);
-      if (was_empty) {
+      bool was_ready = worker_data_[q_idx].GetStatus() != WorkerData::ThreadStatus::Active;
+      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx, was_ready);
+      if (was_ready) {
         if (USE_STICKY_WORKER_ASSIGNMENT) {
-          pt.preferred_workers.push_back(q_idx);
-          stats_used_preferred++;
+          if (was_preferred) {
+            stats_used_preferred++;
+          }
         }
+        stats_tasks_ready ++;
       } else {
-        stats_tasks_queued++;
+        if (USE_STICKY_WORKER_ASSIGNMENT) {
+          // Preferred worker was busy, replace hint for next round.
+          int next_q = (next_worker++ % num_threads_);
+          preferred_workers[idx] = next_q;
+        }
       }
-      if (!t) {
+      if (!t) { // Queue accepted task
         ps.tasks.push_back({q_idx, w_idx});
-        td.EnsureAwake();
+        if (was_ready) {
+          td.EnsureAwake();
+        } else {
+          stats_extra_wakeup++;
+          worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
+        }
       }
     }
-
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
 
-    // Retain any prior "preferred worker" stats if our current loop
-    // did not require all of them.
-    if (USE_STICKY_WORKER_ASSIGNMENT) {
-      if (extra_needed < pref.size()) {
-        for (auto i = extra_needed; i < pref.size(); i++) {
-          pt.preferred_workers.push_back(pref[i]);
-        }
-      }
-    }
+    //    static thread_local int ctr;
+    //    ctr++;
+    //    if ((ctr%1000) == 0) {
+    //      tmp << " of " << num_threads_ << "\n";
+    //      ::std::cerr << tmp.str();
+    //    }
   }
 
   // Merge per-thread stats to global atomics
-  tasks_queued += stats_tasks_queued;
+  extra_wakeup += stats_extra_wakeup;
+  tasks_ready += stats_tasks_ready;
   used_preferred += stats_used_preferred;
   refreshed_preferred += stats_refreshed_preferred;
 }
@@ -1330,6 +1376,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     // of times that the work-stealing code paths are used for
     // rebalancing.
     std::vector<int> preferred_workers;
+    int main_thread_id = -1;
   };
 
   //  static_assert(std::is_trivially_destructible<PerThread>::value,
@@ -1557,6 +1604,16 @@ int CurrentThreadId() const EIGEN_FINAL {
                   [&]() {
                     blocked_--;
                   });
+
+              if (!t) {
+                t = q.PopFront();
+              }
+              if (!t) {
+                t = TrySteal();
+                if (t) {
+                  tasks_stolen_on_wake++;
+                }
+              }
             }
           }
         }
@@ -1649,6 +1706,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     PerThread* pt = &per_thread_;
     if (!pt->initialized) {
       pt->rand = GlobalThreadIdHash();
+      pt->main_thread_id = -1;
       pt->initialized = true;
     }
     return pt;
