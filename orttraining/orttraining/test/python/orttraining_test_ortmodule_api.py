@@ -1311,3 +1311,51 @@ def test_forward_returns_none_type_as_output():
 
     assert output['out'] is not None
     assert output['none_output'] is None
+
+def test_bool_input_and_output():
+    class NeuralNetBoolInputOutput(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetBoolInputOutput, self).__init__()
+            self.fc = torch.nn.Linear(input_size, num_classes)
+            self.relu = torch.nn.ReLU()
+
+        def forward(self, condition, x1, x2):
+            out1 = self.relu(self.fc(torch.where(condition, x1, x2)))
+            out2 = torch.tensor(out1).to(torch.bool)
+            return out1, out2
+
+    device = 'cuda'
+    N, D_in, D_out = 64, 784, 10
+    model = NeuralNetBoolInputOutput(D_in, D_out).to(device)
+    model = ORTModule(model)
+    condition = torch.randint(2, (N, D_in), dtype=torch.bool, device=device)
+    x1 = torch.randn(N, D_in, device=device)
+    x2 = torch.randn(N, D_in, device=device)
+    y1, y2 = model(condition, x1, x2)
+
+    assert y1 is not None
+    assert y2 is not None and y2.dtype == torch.bool
+
+def test_uint8_input_and_output():
+    class NeuralNetUInt8InputOutput(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetUInt8InputOutput, self).__init__()
+            self.fc = torch.nn.Linear(input_size, num_classes)
+            self.relu = torch.nn.ReLU()
+
+        def forward(self, mask, x1, x2):
+            out1 = self.relu(self.fc(torch.where(mask == 1, x1, x2)))
+            out2 = torch.tensor(out1).to(torch.uint8)
+            return out1, out2
+
+    device = 'cuda'
+    N, D_in, D_out = 64, 784, 10
+    model = NeuralNetUInt8InputOutput(D_in, D_out).to(device)
+    model = ORTModule(model)
+    condition = torch.randint(2, (N, D_in), dtype=torch.uint8, device=device)
+    x1 = torch.randn(N, D_in, device=device)
+    x2 = torch.randn(N, D_in, device=device)
+    y1, y2 = model(condition, x1, x2)
+
+    assert y1 is not None
+    assert y2 is not None and y2.dtype == torch.uint8
