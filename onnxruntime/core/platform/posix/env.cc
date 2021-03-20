@@ -137,6 +137,8 @@ class PosixThread : public EnvThread {
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
       CPU_SET(thread_options.affinity[index], &cpuset);
+      //      CPU_SET(index*2/*thread_options.affinity[index]*/, &cpuset);
+      //      ::std::cerr << "Pinning " << index << "\n";
       s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
       if (s != 0)
         ORT_THROW("pthread_setaffinity_np failed");
