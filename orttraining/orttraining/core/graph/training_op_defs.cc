@@ -425,7 +425,7 @@ void RegisterTrainingOpSchemas() {
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
-      .Output(1, "dW", "Gradient of W", "T")
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
