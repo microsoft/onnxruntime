@@ -15,6 +15,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 #include "core/platform/threadpool.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -34,7 +35,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
                                  const logging::Logger& logger,
                                  int64_t& run_id) {
   
-  ORT_ENFORCE(run_id == -2);
+  ORT_ENFORCE(run_id == DEFAULT_RUN_ID);
 
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();

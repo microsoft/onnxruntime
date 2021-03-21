@@ -447,7 +447,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, int64_t& run_id, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
-  std::unique_ptr<ExecutionFrame> p_frame;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {

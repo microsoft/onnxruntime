@@ -63,7 +63,7 @@ def _create_backward_iobinding(io_binding, inputs, model, device, input_names):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, name in enumerate(input_names):
         io_binding.bind_ortvalue_input(
-            name + "_grad", _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
+            name + "_grad", _ortvalue_from_torch_tensor(inputs[idx]))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -218,8 +218,6 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [_ortvalue_from_torch_tensor(
-                        grad_output) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id

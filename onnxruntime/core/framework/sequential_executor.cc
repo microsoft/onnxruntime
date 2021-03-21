@@ -146,6 +146,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       frame = p_frame.get();
       std::lock_guard<OrtMutex> lock(session_state.graph_runs_lock_);
       it = session_state.graph_runs_.insert(std::make_pair(session_state.graph_runs_counter_, std::move(p_frame))).first;
+      ORT_ENFORCE(run_id < INT64_MAX);
       run_id = session_state.graph_runs_counter_;
       // REVIEW(mzs): May be reuse counters and prevent a potential overflow?
       session_state.graph_runs_counter_ += 1;

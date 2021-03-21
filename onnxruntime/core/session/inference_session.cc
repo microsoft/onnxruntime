@@ -1734,7 +1734,7 @@ common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBin
   ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryPattern() == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryReuse() == false);
-  ORT_ENFORCE(run_id >= -1);
+  ORT_ENFORCE(run_id >= DEFAULT_PARTIAL_RUN_ID);
   return RunCore(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                  &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), run_id);
 }
