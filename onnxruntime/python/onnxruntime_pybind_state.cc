@@ -1518,7 +1518,7 @@ Serialized model format will default to ONNX unless:
 )pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
-      .def_readwrite("enable_mem_reuse, &PySessionOptions::enable_mem_reuse,
+      .def_readwrite("enable_mem_reuse", &PySessionOptions::enable_mem_reuse,
                      R"pbdoc(Enable the memory reuse optimization. Default is true.)pbdoc")
       .def_readwrite("logid", &PySessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
