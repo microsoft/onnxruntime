@@ -64,6 +64,8 @@ struct SessionOptions {
   // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
+  bool enable_mem_reuse = true;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.

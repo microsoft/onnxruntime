@@ -1178,7 +1178,8 @@ common::Status InferenceSession::Initialize() {
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute);
+        session_options_.use_deterministic_compute,
+        session_options_.enable_mem_reuse);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -1732,8 +1733,8 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t& run_id) {
   ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryPattern() == false);
+  ORT_ENFORCE(session_state_->GetEnableMemoryReuse() == false);
   ORT_ENFORCE(run_id >= -1);
-
   return RunCore(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                  &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), run_id);
 }

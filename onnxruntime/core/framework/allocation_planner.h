@@ -30,13 +30,16 @@ class ISequentialPlannerContext {
   virtual bool IsParallelExecutionEnabled() const { return false; }
 
   virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
+
+  virtual bool GetEnableMemoryReuse() const { return true; }
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order)
+  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order, bool enable_memory_reuse)
       : execution_mode_(execution_mode),
-        exection_order_(execution_order) {
+        exection_order_(execution_order),
+        enable_memory_reuse_(enable_memory_reuse) {
   }
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
@@ -47,9 +50,12 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 
   ExecutionOrder GetExecutionOrder() const override { return exection_order_; }
 
+  bool GetEnableMemoryReuse() const override { return enable_memory_reuse_; }
+
  private:
   ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
   ExecutionOrder exection_order_ = ExecutionOrder::DEFAULT;
+  bool enable_memory_reuse_ = true;
 };
 
 class SequentialPlanner {
