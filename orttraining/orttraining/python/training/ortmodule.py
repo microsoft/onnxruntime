@@ -31,12 +31,16 @@ T = TypeVar('T', bound='Module')
 ONNX_OPSET_VERSION = 12
 
 
-def _ortvalue_to_dlpack(ortvalue):
-    return ortvalue._ortvalue.to_dlpack()
+def _ortvalue_to_torch_tensor(ortvalue):
+    # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+    # and convert the config to torch.uint8 tensor duing from_dlpack().
+    # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
+    torch_tensor = from_dlpack(ortvalue._ortvalue.to_dlpack())
+    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
 
-def _ortvalue_from_dlpack(dlpack_tensor):
-    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
+def _ortvalue_from_torch_tensor(torch_tensor):
+    return OrtValue(C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool))
 
 
 class Verbosity(IntEnum):
@@ -49,7 +53,7 @@ class Verbosity(IntEnum):
 def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_ortvalue_input(
-            value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
+            value_info.name, _ortvalue_from_torch_tensor(inputs[idx]))
 
     for output_name in outputs:
         io_binding.bind_output(output_name, device.type,
@@ -75,19 +79,6 @@ def _check_same_device(device, argument_str, *args):
             if arg_device != device:
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
-
-
-def _ort_output_to_torch_tensor(ort_output):
-    # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-    # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
-    # from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
-    # is feeded to backward graph as input, it will cause data type mismatch issue during
-    # inference session running. We cannot change the from_dlpack() in PyTorch side, so we
-    # have to handle this specially, which will introduce a cast here and there is data copied.
-    # Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
-    # real data type of the inputs in the backeard graph, and perform the cast only necessary.
-    tensor = from_dlpack(_ortvalue_to_dlpack(ort_output))
-    return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 
 def _load_torch_allocator_cpp_extension(verbosity):
@@ -184,8 +175,9 @@ class ORTModule(torch.nn.Module):
 
                     # Run and return module outputs.
                     run_id = self._training_session.run_forward(self._training_foward_io_binding, self._run_options)
-                    
-                    user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in self._training_foward_io_binding.get_outputs())
+                    user_outputs = tuple(_ortvalue_to_torch_tensor(
+                        forward_output) for forward_output in self._training_foward_io_binding.get_outputs())
+
                     ctx.run_id = run_id
 
                     # Disable materializing grads then None object will not be converted
@@ -226,8 +218,8 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [_ortvalue_from_dlpack(
-                        to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
+                    backward_grad_output_ortvalue = [_ortvalue_from_torch_tensor(
+                        grad_output) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id
@@ -242,14 +234,14 @@ class ORTModule(torch.nn.Module):
                     for input_name in self._onnx_graphs_info.user_input_names:
                         try:
                             # Append to the results the backward output for each input that required grad
-                            results.append(_ort_output_to_torch_tensor(
+                            results.append(_ortvalue_to_torch_tensor(
                                 backward_outputs[self._input_names_require_grad.index(input_name)]))
                         except ValueError:
                             # input_name is not found in the self._input_names_require_grad list
                             # Append None to results for each input that did not require grad
                             results.append(None)
                     # Append gradients of initializer to results
-                    results += [_ort_output_to_torch_tensor(backward_output)
+                    results += [_ortvalue_to_torch_tensor(backward_output)
                                 for backward_output in backward_outputs[num_user_input_grads:]]
                     # The OrtValue has a shared_ptr to the data.
                     # At this point there are two shared_ptrs to the data, one through the
