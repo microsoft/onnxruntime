@@ -80,7 +80,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
     fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
   }
 
-  OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
+  OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
   OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, ort_env->GetLoggingManager()->DefaultLogger());
   ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 

@@ -80,7 +80,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   };
 
   OptimizerExecutionFrame(const Info& info,
-                          const std::vector<int>& fetch_mlvalue_idxs);
+                          const std::vector<int>& fetch_mlvalue_idxs,
+                          const std::vector<OrtValue>& fetches = {});
 
   ~OptimizerExecutionFrame() override = default;
 
