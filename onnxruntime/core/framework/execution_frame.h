@@ -49,8 +49,10 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
+#ifdef ENABLE_TRAINING
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
+#endif
 
   // TO DO: make it thread safe
   // This method is not thread safe!

@@ -13,7 +13,10 @@
 namespace onnxruntime {
 namespace contrib {
 
+// the pair is <forward_status, forward_outputs>
 typedef std::pair<Status, std::vector<OrtValue>> ForwardReturnType;
+
+// the pair is <terminate_flag, backward_inputs>
 typedef std::pair<bool, std::vector<OrtValue>> BackwardReturnType;
 
 class OrtTasks final {
@@ -28,14 +31,14 @@ class OrtTasks final {
 
   void SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs);
   ForwardReturnType WaitForForwardOutputs(int64_t run_id);
-  bool ForwardOutputsIsValid();
+  bool ForwardOutputsIsValid() const;
 
   void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs, bool terminate);
   BackwardReturnType WaitForBackwardInputs();
 
   void SetStatus(const Status& status);
   Status WaitForStatus(int64_t run_id);
-  bool TaskIsCompleted(int64_t run_id);
+  bool TaskIsCompleted(int64_t run_id) const;
 
  private:
   OrtTasks() = default;

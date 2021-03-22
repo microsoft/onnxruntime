@@ -66,7 +66,16 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+
+# DLPack is a header-only dependency
+set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+
+target_include_directories(onnxruntime_pybind11_state PRIVATE 
+                           ${ONNXRUNTIME_ROOT} 
+                           ${PYTHON_INCLUDE_DIR} 
+                           ${NUMPY_INCLUDE_DIR} 
+                           ${pybind11_INCLUDE_DIRS} 
+                           ${DLPACK_INCLUDE_DIR})
 if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()

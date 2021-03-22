@@ -27,7 +27,7 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack_convertor.h"
+#include "python/dlpack_converter.h"
 #endif
 
 // execution provider factory creator headers

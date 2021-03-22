@@ -45,6 +45,7 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
   return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
 }
 
+#ifdef ENABLE_TRAINING
 Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
@@ -54,6 +55,7 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   all_values_[ort_value_idx] = ort_value;
   return Status::OK();
 }
+#endif
 
 // TO DO: make it thread safe
 // This method is not thread safe!

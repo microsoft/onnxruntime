@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING
-#include "python/dlpack_convertor.h"
+#include "python/dlpack_converter.h"
 
 namespace onnxruntime {
 namespace python {
