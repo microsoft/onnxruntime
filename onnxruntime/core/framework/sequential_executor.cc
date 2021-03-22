@@ -182,8 +182,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // Make sure intermediate outputs are ready in the event they are being asynchronously computed.
     if (program_counter_end < exec_plan_size) {
-      const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
-      const auto& exec_plan_vec = seq_exec_plan.execution_plan;
       const auto& node_exec_plan = exec_plan_vec[program_counter_end];
       auto node_index = node_exec_plan.node_index;
       const auto& graph_viewer = session_state.GetGraphViewer();
