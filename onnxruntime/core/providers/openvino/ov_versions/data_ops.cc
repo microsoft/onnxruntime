@@ -36,8 +36,10 @@ std::set<std::string> ops_supported_only_in_model = {
       "Expand",
       "EyeLike",
       "Exp",
+      "GatherElements",
       "GatherND",
       "Identity",
+      "Loop",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -49,6 +51,7 @@ std::set<std::string> ops_supported_only_in_model = {
       "Round",
       "Shape",
       "Split",
+      "Tile",
       "TopK"
 }; 
 
