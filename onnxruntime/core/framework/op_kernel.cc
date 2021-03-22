@@ -191,4 +191,15 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
 }
 
+Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
+  if (index < 0 || index >= OutputCount()) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Index out of range. " +
+                                                      std::to_string(index) + " was specified, but " +
+                                                      "range is (0, " + std::to_string(OutputCount()) + ")");
+  }
+
+  auto output_arg_index = GetOutputArgIndex(index);
+  return execution_frame_->SetOutputMLValue(output_arg_index, ort_value);
+}
+
 }  // namespace onnxruntime

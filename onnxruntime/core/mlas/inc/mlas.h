@@ -17,6 +17,7 @@ Abstract:
 
 #pragma once
 
+#include <cstddef>
 #include <cstdlib>
 #include <cstdint>
 
@@ -372,7 +373,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t OutputSize;
     size_t K;
     MLAS_CONV_ALGORITHM Algorithm;
-    int32_t ThreadCount;
+    ptrdiff_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
