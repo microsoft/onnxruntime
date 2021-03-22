@@ -43,10 +43,13 @@ class CustomFnWrapperModule(torch.nn.Module):
             print("device: ", ret.device)
             v = ret.data_ptr()
             print("address: ", v)
-            grad_output = ret #.contiguous()
+            grad_output = ret.contiguous()
             self.contiguous_grad_outputs.append(grad_output)
             self.contiguous_grad_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in self.contiguous_grad_outputs]
-            return_vals = [r.ortvalue_ptr() for r in self.contiguous_grad_outputs ] 
+            return_vals = [r.ortvalue_ptr() for r in self.contiguous_grad_outputs]
+            # 235 is the fake address of ctx.grad_func.
+            return_vals = [235] + return_vals
+            print(return_vals)
             return tuple(return_vals)
         except Exception as e:
             print(e)
