@@ -310,7 +310,7 @@ stages:
       #   timeoutInMinutes: 20
 
       - script: |
-          python3 -m twine upload -r ort-gpu-nightly-training-feed --repository-url https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly-training-feed/pypi/upload \
+          python3 -m twine upload -r ORT-Nightly --repository-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/upload \
           --username $(ortpypitrainingnightlyusername) --password $(aiinfrapypifeedpassword) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
         displayName: 'python3 -m twine upload $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
         timeoutInMinutes: 20
