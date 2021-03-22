@@ -796,6 +796,14 @@ void DataOps::populate_op_mode_supported() {
     } };
     op_list_.insert({"Where", obj});
   }
+  {
+    UnsupportedOpMode obj = {{V_2021_3},
+      [this](const Node* node, const Provider_InitializedTensorSet&) {
+        return (!this->dimension_unsupported(node));
+      }
+    };
+    op_list_.insert({"ReduceSum", obj});
+  }
 }  
 
 bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_list) {
@@ -931,7 +939,14 @@ bool DataOps::dimension_unsupported(const Node* node) {
     if (node->OpType() == "Unsqueeze") {
       auto& attributes = node->GetAttributes();
       int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
-      if (input_dims + axes_size > 5)
+      if (input_dims + axes_size > 5 || axes_size == 0)
+        return false;
+    }
+
+    if (node->OpType() == "ReduceSum") {
+      auto& attributes = node->GetAttributes();
+      int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
+      if (axes_size == 0)
         return false;
     }
   }
