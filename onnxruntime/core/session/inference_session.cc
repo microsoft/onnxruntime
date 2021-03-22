@@ -233,9 +233,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       bool allow_intra_op_spinning =
           session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.intra_op_param;
-      if (to.name == nullptr) {
-        to.name = ORT_TSTR("intra-op");
+      std::basic_stringstream<ORTCHAR_T> ss;
+      if (to.name) {
+        ss << to.name << ORT_TSTR("-");
       }
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
+      thread_pool_name_ = ss.str();
+      to.name = thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
@@ -254,8 +258,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       // we set thread affinity.
       to.auto_set_affinity =
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-      if (to.name == nullptr)
-        to.name = ORT_TSTR("intra-op");
+      std::basic_stringstream<ORTCHAR_T> ss;
+      if (to.name) {
+        ss << to.name << ORT_TSTR("-");
+      }
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
+      inter_thread_pool_name_ = ss.str();
+      to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       to.allow_spinning = allow_inter_op_spinning;
       inter_op_thread_pool_ =
