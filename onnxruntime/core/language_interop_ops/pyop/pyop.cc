@@ -150,50 +150,6 @@ bool ExtractOutput(PyObject* pyObj,
   memcpy(static_cast<void*>(outputs.back().get()), PyArray_DATA(np_array), data_len);
   return true;
 }
-
-bool ExtractAdressFromOutput(PyObject* pyObj,
-                             vector<unique_ptr<char[]>>& outputs,
-                             vector<int32_t>& outputs_elem_size,
-                             vector<vector<int64_t>>& outputs_dim) {
-  outputs_dim.push_back({1});
-  long addr = PyLong_AsLong(pyObj);
-  outputs_elem_size.push_back(static_cast<int32_t>(sizeof(long)));
-
-  auto data_len = std::accumulate(begin(outputs_dim.back()),
-                                  end(outputs_dim.back()),
-                                  static_cast<int64_t>(outputs_elem_size.back()),
-                                  std::multiplies<int64_t>());
-
-  outputs.push_back(unique_ptr<char[]>(new char[data_len]));
-  memcpy(static_cast<void*>(outputs.back().get()), static_cast<void*>(&addr), data_len);
-  return true;
-}
-
-bool ExtractOrtValueOutput(PyObject* pyObj,
-                           vector<unique_ptr<char[]>>& outputs,
-                           vector<int32_t>& outputs_elem_size,
-                           vector<vector<int64_t>>& outputs_dim) {
-  // we assume the address of OrtValue is passed.
-  void* ortvalue_prt = PyLong_AsVoidPtr(pyObj);
-  auto* ort_value = reinterpret_cast<OrtValue*>(ortvalue_prt);
-  const Tensor& tensor = ort_value->Get<Tensor>();
-  const auto& shape = tensor.Shape();
-  outputs_dim.push_back({});
-  for (size_t i = 0; i < shape.NumDimensions(); ++i) {
-    outputs_dim.back().push_back(shape[i]);
-  }
-  // hard code to float currently
-  outputs_elem_size.push_back(static_cast<int32_t>(sizeof(float)));
-  auto data_len = std::accumulate(begin(outputs_dim.back()),
-                                  end(outputs_dim.back()),
-                                  static_cast<int64_t>(outputs_elem_size.back()),
-                                  std::multiplies<int64_t>());
-
-  outputs.push_back(unique_ptr<char[]>(new char[data_len]));
-  memcpy(static_cast<void*>(outputs.back().get()), const_cast<void*>(tensor.DataRaw()), data_len);
-  return true;
-}
-
 void* PyOpLibProxy::NewInstance(const char* module, const char* class_name, const unordered_map<string, string>& args) {
   Scope scope;
   auto pyModule = PyImport_ImportModule(module);
@@ -282,14 +238,19 @@ int32_t GetType(const OrtValue* input) {
   return numpy_type;
 }
 
+bool ExtractPointerOutput(PyObject* pyObj, vector<void*>& outputs) {
+  void* prt = PyLong_AsVoidPtr(pyObj);
+  outputs.push_back(prt);
+  return true;
+}
+
 bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
                                     const char* function,
                                     const vector<OrtValue*>& inputs,
                                     vector<unique_ptr<char[]>>& outputs,
                                     vector<int32_t>& outputs_elem_size,
                                     vector<vector<int64_t>>& outputs_dim,
-                                    std::function<void(const char*)> logging_func,
-                                    bool npy_as_io) {
+                                    std::function<void(const char*)> logging_func) {
   Scope scope;
   auto instance = static_cast<PyObject*>(raw_inst);
   if (nullptr == instance || nullptr == function) {
@@ -306,13 +267,7 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
   scope.Add(pyFunc);
   auto pyArgs = PyTuple_New(inputs.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
-    if (npy_as_io) {
-      PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], GetType(inputs[i]), inputs[i]->Get<Tensor>().Shape().GetDims()));
-    } else {
-      DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
-      PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-      PyTuple_SetItem(pyArgs, i, dltensor);
-    }
+    PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], GetType(inputs[i]), inputs[i]->Get<Tensor>().Shape().GetDims()));
   }
 
   scope.Add(pyArgs);
@@ -324,30 +279,12 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
 
   scope.Add(pyResult);
   if (PyArray_Check(pyResult)) {
-    if (npy_as_io) {
-      ExtractOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
-    } else {
-      ExtractOrtValueOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
-    }
+    ExtractOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
   } else if (PyTuple_Check(pyResult)) {
     for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
-      if (npy_as_io) {  // the 1st item is address of ctx for non-npy case.
-        if (!ExtractOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
-          logging_func("InvokePythonFunc: failed to extract output");
-          return false;
-        }
-      } else {
-        // if (i == 0) {
-        //   if (!ExtractAdressFromOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
-        //     logging_func("InvokePythonFunc: failed to extract address from output");
-        //     return false;
-        //   }
-        // } else {
-        if (!ExtractOrtValueOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
-          logging_func("InvokePythonFunc: failed to extract ortvalue output");
-          return false;
-        }
-        // }
+      if (!ExtractOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
+        logging_func("InvokePythonFunc: failed to extract output");
+        return false;
       }
     }
   } else {
@@ -357,12 +294,63 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
   return true;
 }  //bool InvokePythonFunc
 
-PyCustomKernel::PyCustomKernel(Ort::CustomOpApi ort,
-                               const OnnxAttrs& attrs,
-                               const std::string& module,
-                               const std::string& class_name,
-                               const std::string& compute,
-                               PyOpLogFunc logging_func) : ort_(ort), attrs_(attrs), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) {
+bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
+                                            const char* function,
+                                            const vector<OrtValue*>& inputs,
+                                            vector<void*>& outputs,
+                                            std::function<void(const char*)> logging_func) {
+  Scope scope;
+  auto instance = static_cast<PyObject*>(raw_inst);
+  if (nullptr == instance || nullptr == function) {
+    logging_func("InvokePythonFunc: found invalid instance or function");
+    return false;
+  }
+
+  auto pyFunc = PyObject_GetAttrString(instance, function);
+  if (nullptr == pyFunc) {
+    logging_func("InvokePythonFunc: failed to create function object");
+    return false;
+  }
+
+  scope.Add(pyFunc);
+  auto pyArgs = PyTuple_New(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    // Wrap with DLPack, then transfer to Python for its release.
+    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
+    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+    PyTuple_SetItem(pyArgs, i, dltensor);
+  }
+
+  scope.Add(pyArgs);
+  auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+  if (nullptr == pyResult) {
+    logging_func("InvokePythonFunc: no result");
+    return false;
+  }
+
+  scope.Add(pyResult);
+  if (PyTuple_Check(pyResult)) {
+    for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
+      if (!ExtractPointerOutput(PyTuple_GetItem(pyResult, i), outputs)) {
+        logging_func("InvokePythonFunc: failed to extract address from output");
+        return false;
+      }
+    }
+  } else {
+    logging_func("InvokePythonFunc: returned value must be numpy(s)");
+    return false;
+  }
+  return true;
+}
+
+PyCustomKernel::PyCustomKernel(
+    Ort::CustomOpApi ort,
+    const OnnxAttrs& attrs,
+    const std::string& module,
+    const std::string& class_name,
+    const std::string& compute,
+    PyOpLogFunc logging_func)
+    : ort_(ort), attrs_(attrs), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) {
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
@@ -383,13 +371,42 @@ PyCustomKernel::~PyCustomKernel() {
 // Do nothing since Custom Op does not trigger shape inference
 void PyCustomKernel::GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
 
-void PyCustomKernel::Compute(OrtKernelContext* context) {
+Status PyCustomKernel::Compute(OrtKernelContext* context) {
+  bool is_generic_python_call = false;
+  if (is_generic_python_call) {
+    ORT_ENFORCE(nullptr != context);
+    auto inputs_count = (size_t) reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+    std::vector<OrtValue*> inputs;
+    std::vector<std::unique_ptr<char[]>> outputs;
+    std::vector<int32_t> outputs_elem_size;
+    std::vector<std::vector<int64_t>> outputs_dim;
+
+    for (size_t i = 0; i < inputs_count; ++i) {
+      auto ort_value = ort_.KernelContext_GetInput(context, i);
+      inputs.push_back(const_cast<OrtValue*>(ort_value));
+    }
+
+    std::string err;
+    auto state = PyOpLibProxy::GetInstance().GetGil();
+    ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, outputs, outputs_elem_size,
+                                                             outputs_dim, logging_func_),
+                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
+    PyOpLibProxy::GetInstance().PutGil(state);
+
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
+      auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
+      auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
+      memcpy(output_mem_addr, outputs[i].get(), output_len);
+    }
+    return Status::OK();
+  }
+
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   ORT_ENFORCE(nullptr != context);
-  auto inputs_count = (size_t) reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+  auto inputs_count = (size_t)ctx_internal->InputCount();
   std::vector<OrtValue*> inputs;
-  std::vector<std::unique_ptr<char[]>> outputs;
-  std::vector<int32_t> outputs_elem_size;
-  std::vector<std::vector<int64_t>> outputs_dim;
+  std::vector<void*> outputs;
 
   for (size_t i = 0; i < inputs_count; ++i) {
     auto ort_value = ort_.KernelContext_GetInput(context, i);
@@ -398,17 +415,19 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, outputs, outputs_elem_size,
-                                                           outputs_dim, logging_func_, false),
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), inputs, outputs,
+                                                                   logging_func_),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
-    auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
-    auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
-    memcpy(output_mem_addr, outputs[i].get(), output_len);
-  }
+  // We had the assumption:
+  // The 1st output is address of ctx.grad_fn function.
+  // The 2nd output is address of OrtValue we got from Python script run.
+  void* forward_ret_ortvalue_addr = outputs[1];
+  auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
+  ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(0, *forward_ret_ortvalue_ptr));
+  // TODO: handle the output, maing sure its lifetime is still there untill the backward operation completed.
+  return Status::OK();
 }
 
 PyCustomOp::PyCustomOp(const OnnxAttrs& attrs,
