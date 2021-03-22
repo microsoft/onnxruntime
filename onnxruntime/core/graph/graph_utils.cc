@@ -262,13 +262,22 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
 //--- end of local helpers ---
 //----------------------------
 
-int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
-  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
-                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
-  ORT_ENFORCE(itr != node.InputDefs().end(),
-              "Attempting to get index for an input which does not exist.");
-  auto index = std::distance(node.InputDefs().begin(), itr);
+int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
+  const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
+  auto itr = std::find_if(node_args.begin(), node_args.end(),
+                          [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
+  ORT_ENFORCE(itr != node_args.end(),
+              "Attempting to get index by a name which does not exist.");
+  auto index = std::distance(node_args.begin(), itr);
   return static_cast<int>(index);
+}
+
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  return GetIndexFromName(node, input_name, true);
+}
+
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
+  return GetIndexFromName(node, output_name, false);
 }
 
 const std::string& GetNodeInputName(const Node& node, int index) {

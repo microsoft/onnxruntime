@@ -30,7 +30,10 @@ class Precision(Enum):
     def __str__(self):
         return self.value
 
-
+IO_BINDING_DATA_TYPE_MAP = {
+    "float32": numpy.float32,
+    # TODO: Add more. 
+}
 def create_onnxruntime_session(onnx_model_path,
                                use_gpu,
                                enable_all_optimization=True,
@@ -214,7 +217,8 @@ def inference_ort_with_io_binding(ort_session,
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        io_binding.bind_input(name, np_input.device.type, 0, data_type, np_input.shape, np_input.data_ptr())
+        input_type = IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)] if str(ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP else data_type
+        io_binding.bind_input(name, np_input.device.type, 0, input_type, np_input.shape, np_input.data_ptr())
     # Bind outputs buffers with the sizes needed if not allocated already
     if len(output_buffers) == 0:
         allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)

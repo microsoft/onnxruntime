@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/murmurhash3.h"
-#include "gsl/gsl"
 
+#include <algorithm>
 #include <unordered_set>
 #include <string>
+
+#include "gsl/gsl"
+
+#include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
 namespace {
@@ -56,8 +59,11 @@ void KernelDef::CalculateHash() {
   // use the supported_type_constraints_ list for the hash so the value in an ORT format model is stable.
   for (const auto& key_value : supported_type_constraints_) {
     hash_str(key_value.first);
-    for (const auto& data_type : key_value.second) {
-      hash_str(std::string(DataTypeImpl::ToString(data_type)));
+    auto data_type_strings = DataTypeImpl::ToString(key_value.second);
+    // sort type constraint data type strings so that order does not matter
+    std::sort(data_type_strings.begin(), data_type_strings.end());
+    for (const auto& data_type_string : data_type_strings) {
+      hash_str(data_type_string);
     }
   }
 

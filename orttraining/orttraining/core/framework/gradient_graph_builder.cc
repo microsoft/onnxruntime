@@ -105,8 +105,8 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       auto it = STOP_GRADIENT_EDGES.find(n->OpType());
       if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                               << " of node: " << n->Name();
+        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                            << " of node: " << n->Name();
         continue;
       }
 

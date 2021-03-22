@@ -276,12 +276,28 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 /// <summary>
+/// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
+/// </summary>
+typedef struct OrtROCMProviderOptions {
+  int device_id;                                    // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
+  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+} OrtROCMProviderOptions;
+
+/// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
-  int has_user_compute_stream;
-  void* user_compute_stream;
+  int device_id;                                  // cuda device id.
+  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                      // user specified CUDA compute stream.
+  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -1149,6 +1165,13 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Append ROCM execution provider to the session options
+   * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
 
   /**
    * Append OpenVINO execution provider to the session options

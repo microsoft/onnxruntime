@@ -8,7 +8,7 @@ import unittest
 import os
 import sys
 import onnx
-from bert_model_generator import create_bert_attention
+from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -26,6 +26,19 @@ class TestFusion(unittest.TestCase):
 
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
                                            'pruned_attention_opt.onnx')
+        expected = onnx.load(expected_model_path)
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+    
+    def test_3d_attention_fusion_tf2onnx_model(self):
+        model = create_tf2onnx_attention_3d()
+        dir = '.'
+        model_path = os.path.join(dir, 'bert_3d_attention.onnx')
+        onnx.save(model, model_path)
+        optimized_model = optimize_model(model_path, model_type='bert_tf', num_heads=4, hidden_size=16)
+        os.remove(model_path)
+
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+                                           'bert_3d_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
