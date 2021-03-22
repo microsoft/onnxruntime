@@ -790,9 +790,9 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& ) {
-      //float data type is not supported
-      const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
-      return data_is_float;
+        //float data type is not supported
+        const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
+          return data_is_float;
     } };
     op_list_.insert({"Where", obj});
   }
@@ -1088,8 +1088,14 @@ bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
 }
 
 bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node) {
-    if (node->OpType() == "Reshape") {
+    if (node->OpType() == "Where") {
+      if (device_id_.find("MYRIAD") != std::string::npos) {
+        if (node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+          return true;
+      }
+    } else if (node->OpType() == "Reshape") {
       if (device_id_.find("MYRIAD") == std::string::npos) {
+        std::cout << "reshape special condition for cluster size one\n";
         const auto& shape_arg = node->InputDefs()[1];
         if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
           return true;
