@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef ENABLE_TRAINING
-#include "python/dlpack_converter.h"
+
+#include "python/dlpack/dlpack_converter.h"
 
 namespace onnxruntime {
 namespace python {
@@ -231,4 +231,3 @@ OrtValue DlpackToOrtValue(const DLManagedTensor* dlpack, bool is_bool_tensor) {
 
 }  // namespace python
 }  // namespace onnxruntime
-#endif
