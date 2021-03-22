@@ -19,9 +19,29 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRequestBatch(out handle));
         }
 
+        public void AddToBatch(string[] inputNames, OrtValue[] inputs)
+        {
+            if (inputs.Length != inputNames.Length)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Length}) must match that of {nameof(inputs)} ({inputs.Length}).");
+            }
+
+            IntPtr[] inputHandles = new IntPtr[inputs.Length];
+            for (int i = 0; i < inputs.Length; ++i)
+            {
+                inputHandles[i] = inputs[i].Handle;
+            }
+
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                var inputNamesPinned = NativeOnnxValueHelper.ConvertToUtf8AndPin(inputNames, inputName => inputName, cleanupList);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddRequestToBatch(handle, (UIntPtr)inputNames.Length, inputNamesPinned, inputHandles));
+
+            }
+        }
         public void Clear()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtClearRequestBatch(handle));
+            NativeMethods.OrtClearRequestBatch(handle);
         }
         internal IntPtr Pointer
         {
@@ -66,12 +86,41 @@ namespace Microsoft.ML.OnnxRuntime
         internal ResponseBatch(IntPtr handle)
     : base(handle, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateResponseBatch(out handle));
+        }
+
+        public void AddToBatch(string[] outputNames, OrtValue[] outputs, OrtMemoryInfo[] memInfo)
+        {
+            if (outputs.Length != outputNames.Length)
+            {
+                throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Length}) must match that of {nameof(outputs)} ({outputs.Length}).");
+            }
+
+            if (outputs.Length != memInfo.Length)
+            {
+                throw new ArgumentException($"Length of {nameof(memInfo)} ({memInfo.Length}) must match that of {nameof(outputs)} ({outputs.Length}).");
+            }
+
+            IntPtr[] outputHandles = new IntPtr[outputs.Length];
+            IntPtr[] memInfoHandles = new IntPtr[outputs.Length];
+
+            for (int i = 0; i < outputs.Length; ++i)
+            {
+                outputHandles[i] = outputs[i].Handle;
+                memInfoHandles[i] = memInfo[i].Pointer;
+            }
+
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                var outputNamesPinned = NativeOnnxValueHelper.ConvertToUtf8AndPin(outputNames, outputName => outputName, cleanupList);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddResponseToBatch(handle, (UIntPtr)outputNames.Length,
+                    outputNamesPinned, outputNamesPinned, memInfoHandles));
+
+            }
         }
 
         public void Clear()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtClearResponseBatch(handle));
+            NativeMethods.OrtClearResponseBatch(handle);
         }
 
 
@@ -122,7 +171,7 @@ namespace Microsoft.ML.OnnxRuntime
         public ResponseBatch Run(RequestBatch requestBatch, int numSteps)
         {
             IntPtr responseBatch = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtPipelineSessionRun(handle, requestBatch.Handle, out responseBatch, numSteps));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtPipelineSessionRun(handle, requestBatch.Pointer, out responseBatch, numSteps));
             return new ResponseBatch(responseBatch);
         }
 

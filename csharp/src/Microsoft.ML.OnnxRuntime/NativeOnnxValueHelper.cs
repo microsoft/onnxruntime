@@ -5,6 +5,8 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -41,7 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         // No need for the finalizer
         // If this is not disposed timely GC can't help us
         #endregion
-   }
+    }
 
     /// <summary>
     /// This helper class contains methods to create native OrtValue from a managed value object
@@ -77,6 +79,33 @@ namespace Microsoft.ML.OnnxRuntime
             Marshal.Copy(nativeUtf8, buffer, 0, len);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
+
+        // Delegate for string extraction from an arbitrary objects
+        internal delegate string StringExtractor<in TInput>(TInput input);
+
+        /// <summary>
+        /// Extracts strings from a read only collection of objects using the provided extractor 
+        /// and converts each to UTF-8 zero terminated byte[] instances 
+        /// and returns pinned handles to each of them 
+        /// </summary>
+        /// <param name="inputs">input convert to zero terminated utf8 and pin</param>
+        /// <param name="extractor">delegate to extract strings from the provided objects</param>
+        /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
+        /// <returns></returns>
+        internal static IntPtr[] ConvertToUtf8AndPin<T>(IReadOnlyCollection<T> inputs, StringExtractor<T> extractor,
+            DisposableList<IDisposable> cleanupList)
+        {
+            var result = new IntPtr[inputs.Count];
+            for (int i = 0; i < inputs.Count; ++i)
+            {
+                var name = extractor(inputs.ElementAt(i));
+                var utf8Name = StringToZeroTerminatedUtf8(name);
+                var pinnedHandle = new PinnedGCHandle(GCHandle.Alloc(utf8Name, GCHandleType.Pinned));
+                result[i] = pinnedHandle.Pointer;
+                cleanupList.Add(pinnedHandle);
+            }
+            return result;
+        }
     }
 
     internal static class TensorElementTypeConverter
@@ -84,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
         {
             TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
-            if(result != null)
+            if (result != null)
             {
                 type = result.TensorType;
                 width = result.TypeSize;
