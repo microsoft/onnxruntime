@@ -41,6 +41,8 @@ struct TrainingGraphInfo {
   std::vector<std::string> initializer_grad_names_to_train{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
+  // Indices of output grads that are non-differentiable.
+  std::vector<size_t> output_grad_indices_non_differentiable{};
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
