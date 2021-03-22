@@ -1520,6 +1520,8 @@ Serialized model format will default to ONNX unless:
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_mem_reuse", &PySessionOptions::enable_mem_reuse,
                      R"pbdoc(Enable the memory reuse optimization. Default is true.)pbdoc")
+      .def_readwrite("transfer_ownership_intermediate_output_tensors", &PySessionOptions::transfer_ownership_intermediate_output_tensors,
+                     R"pbdoc(Transfer ownership of output tensors that are intermediate graph tensors (in partial graph run). Default is false.)pbdoc")
       .def_readwrite("logid", &PySessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &PySessionOptions::session_log_severity_level,

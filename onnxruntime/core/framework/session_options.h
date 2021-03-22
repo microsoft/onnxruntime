@@ -66,6 +66,8 @@ struct SessionOptions {
 
   bool enable_mem_reuse = true;
 
+  bool transfer_ownership_intermediate_output_tensors = false;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.

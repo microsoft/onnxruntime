@@ -30,8 +30,8 @@ class SequentialExecutor : public IExecutor {
 
   common::Status Execute(const SessionState& session_state,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                         std::vector<OrtValue>& fetches, const logging::Logger& logger,
-                         ExecutionFrame& frame, size_t program_counter_start, size_t program_counter_end);
+                         const logging::Logger& logger, ExecutionFrame& frame, size_t program_counter_start,
+                         size_t program_counter_end);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);

@@ -1179,7 +1179,8 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse);
+        session_options_.enable_mem_reuse,
+        session_options_.transfer_ownership_intermediate_output_tensors);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 

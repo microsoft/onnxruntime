@@ -134,7 +134,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto exec_plan_size = exec_plan_vec.size();
   if (run_id == DEFAULT_RUN_ID) {
     ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-    return Execute(session_state, feeds, fetch_mlvalue_idxs, fetches, logger, frame, 0, exec_plan_size);
+    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, frame, 0, exec_plan_size));
+    VLOGS(logger, 1) << "Fetching output.";
+    // ExecutionFrame::Finalize will update 'fetches' with the final output
+    ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches, session_state.GetTransferIntermidiateTensorOwnership()));
+    VLOGS(logger, 1) << "Done with execution.";
   } else {
     // Partial graph execution frame management code.
     ExecutionFrame* frame;
@@ -162,35 +166,93 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     // Determine partial graph execution start and end nodes.
-    // REVIEW(codemzs): Ideally these should be determined just by looking at fetches but we can make that 
-    // optimization after the first commit. That will also get rid of the need for an "explicit" operator to indicate 
+    // REVIEW(codemzs): Ideally these should be determined just by looking at fetches but we can make that
+    // optimization after the first commit. That will also get rid of the need for an "explicit" operator to indicate
     // partial graph execution cut point, this will require some thinking on making sure the control flow of execution order
     // is correct, i.e backward pass follows forward pass.
     size_t program_counter_end;
     for (program_counter_end = frame->program_counter_;
          (program_counter_end < exec_plan_size) &&
-         (session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "YieldOp");
-         program_counter_end += 1);
+         ((session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "YieldOp") ||
+          (program_counter_end == frame->program_counter_));
+         program_counter_end += 1)
+      ;
 
-    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, fetches, logger, *frame,
-                                frame->program_counter_, program_counter_end));
+    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, *frame, frame->program_counter_, program_counter_end));
 
-    frame->program_counter_ = program_counter_end + 1;
+    // Make sure intermediate outputs are ready in the event they are being asynchronously computed.
+    if (program_counter_end < exec_plan_size) {
+      const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
+      const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+      const auto& node_exec_plan = exec_plan_vec[program_counter_end];
+      auto node_index = node_exec_plan.node_index;
+      const auto& graph_viewer = session_state.GetGraphViewer();
+      const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
+      auto p_op_kernel = session_state.GetKernel(node_index);
+      if (p_op_kernel == nullptr)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+                               node.Name());
+
+      OpKernelContextInternal op_kernel_context(session_state, *frame, *p_op_kernel, logger, terminate_flag_);
+      int queue_id = p_op_kernel->KernelDef().ExecQueueId();
+      if (seq_exec_plan.NodeHasFence(node_index)) {
+        for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+          Fence_t fence = op_kernel_context.InputFence(input_index);
+          if (fence) {
+            auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+            if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+              execution_provider_type = kCpuExecutionProvider;
+            }
+            fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+          }
+        }
+
+        for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+          Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+          if (fence) {
+            auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+            if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+              execution_provider_type = kCpuExecutionProvider;
+            }
+            fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+          }
+        }
+
+        for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+          Fence_t fence = op_kernel_context.OutputFence(output_index);
+          if (fence) {
+            fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+          }
+        }
+      }
+    }
+
+    VLOGS(logger, 1) << "Fetching output.";
+    // ExecutionFrame::Finalize will update 'fetches' with the final output
+    ORT_RETURN_IF_ERROR(frame->GetOutputs(fetches, session_state.GetTransferIntermidiateTensorOwnership()));
+    VLOGS(logger, 1) << "Done with execution.";
+
+    // Set the program counter to the begining of next partial run depending upon the need to free the tensors.
+    if (session_state.GetTransferIntermidiateTensorOwnership()) {
+      frame->program_counter_ = program_counter_end + 1;
+    } else {
+      frame->program_counter_ = program_counter_end;
+    }
 
     // Release the frame upon the completion of "full" graph execution.
     if (frame->program_counter_ == exec_plan_size) {
       std::lock_guard<OrtMutex> lock(session_state.graph_runs_lock_);
       session_state.graph_runs_.erase(it);
     }
-
-    return Status::OK();
   }
+
+  return Status::OK();
 }
 
 Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                                   std::vector<OrtValue>& fetches, const logging::Logger& logger,
-                                   ExecutionFrame& frame, size_t program_counter_start, size_t program_counter_end) {
+                                   const logging::Logger& logger, ExecutionFrame& frame, size_t program_counter_start,
+                                   size_t program_counter_end) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -510,11 +572,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     backward_range.End();
   }
 #endif
-
-  VLOGS(logger, 1) << "Fetching output.";
-  // ExecutionFrame::Finalize will update 'fetches' with the final output
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches, true));
-  VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),

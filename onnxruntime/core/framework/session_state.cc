@@ -582,6 +582,8 @@ bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; 
 
 bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
+bool SessionState::GetTransferIntermidiateTensorOwnership() const { return transfer_ownership_intermediate_output_tensors_; }
+
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
   // to handle a scenario where an input is required on different devices by different nodes. Validate that.

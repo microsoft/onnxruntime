@@ -88,7 +88,8 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true)
+               bool enable_mem_reuse = true,
+               bool transfer_ownership_intermediate_output_tensors = false)
       : graph_runs_counter_(0),
         graph_(graph),
         execution_providers_(execution_providers),
@@ -99,7 +100,8 @@ class SessionState {
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse) {
+        enable_mem_reuse_(enable_mem_reuse),
+        transfer_ownership_intermediate_output_tensors_(transfer_ownership_intermediate_output_tensors) {
     SetupAllocators();
   }
 
@@ -217,6 +219,8 @@ class SessionState {
   bool GetEnableMemoryPattern() const;
 
   bool GetEnableMemoryReuse() const;
+
+  bool GetTransferIntermidiateTensorOwnership() const;
 
   /**
   Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
@@ -449,6 +453,7 @@ class SessionState {
 
   bool use_deterministic_compute_;
   bool enable_mem_reuse_;
+  bool transfer_ownership_intermediate_output_tensors_;
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
 

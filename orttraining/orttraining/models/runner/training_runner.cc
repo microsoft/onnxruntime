@@ -40,6 +40,7 @@ static SessionOptions SESSION_OPTION = {
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
     true,                              //enable_mem_reuse
+    false,                             //transfer_ownership_intermediate_output_tensors
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
