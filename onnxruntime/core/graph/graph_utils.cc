@@ -558,7 +558,7 @@ const Node* FirstChildByType(const Node& node, const std::string& child_type) {
 
 std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
   // find children and sort them by source argument index
-  std::vector<const Node*> children(node.GetOutputEdgesCount(), nullptr);
+  std::vector<const Node*> children(node.OutputDefs().size(), nullptr);
   for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
     if (it->GetNode().OpType().compare(child_type) == 0) {
       children[it->GetSrcArgIndex()] = &(it->GetNode());
@@ -582,7 +582,7 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
 
 std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
   // find parents and sort them by destination argument index
-  std::vector<const Node*> parents(node.GetInputEdgesCount(), nullptr);
+  std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
   for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
     if (it->GetNode().OpType().compare(parent_type) == 0) {
       parents[it->GetDstArgIndex()] = &(it->GetNode());

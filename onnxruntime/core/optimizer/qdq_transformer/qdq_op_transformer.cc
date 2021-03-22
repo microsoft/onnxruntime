@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "qdq_op_transformer.h"
 
 #include <string>
@@ -37,7 +35,7 @@ void QDQOperatorTransformer::FillQDQOptionalZeroPoint(const std::vector<const No
 }
 
 const ONNX_NAMESPACE::TensorProto QDQOperatorTransformer::optional_zero_point_int8_ = []() {
-  constexpr char* name = "855dd0fa-cd7b-4b10-ae5a-df64cabfe1f8";
+  const char* const name = "855dd0fa-cd7b-4b10-ae5a-df64cabfe1f8";
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
@@ -47,7 +45,7 @@ const ONNX_NAMESPACE::TensorProto QDQOperatorTransformer::optional_zero_point_in
 }();
 
 const ONNX_NAMESPACE::TensorProto QDQOperatorTransformer::optional_zero_point_uint8_ = []() {
-  constexpr char* name = "35b188f7-c464-43e3-8692-97ac832bb14a";
+  const char* const name = "35b188f7-c464-43e3-8692-97ac832bb14a";
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);

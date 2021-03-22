@@ -9,8 +9,8 @@
 
 namespace onnxruntime {
 
-constexpr char* QOPTypeName = "QuantizeLinear";
-constexpr char* DQOPTypeName = "DequantizeLinear";
+static const char* const QOPTypeName = "QuantizeLinear";
+static const char* const DQOPTypeName = "DequantizeLinear";
 
 class Node;
 class Graph;
