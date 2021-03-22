@@ -504,9 +504,7 @@ class RunQueue {
   // subsequent call to RevokeWithTag to remove the item from the queue in combination
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
-  //
-  // If the queue is full, returns w, otherwise returns default-constructed work.
-  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_ready) {
+  bool PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_ready) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
@@ -514,14 +512,14 @@ class RunQueue {
     ElemState s = e.state.load(std::memory_order_relaxed);
     if (s != ElemState::kEmpty ||
         !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return w;
+      return false; /* Not enqueued */
     was_ready &= (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
     e.w = std::move(w);
     e.tag = tag;
     e.state.store(ElemState::kReady, std::memory_order_release);
-    return Work();
+    return true; /* Enqueued */
   }
 
   // PopBack removes and returns the last elements in the queue.
@@ -1178,24 +1176,25 @@ void SummonWorkers(PerThread &pt,
       Queue& q = td.queue;
       unsigned w_idx;
       bool was_ready = worker_data_[q_idx].GetStatus() != WorkerData::ThreadStatus::Active;
+      bool enqueued;
       if (USE_STICKY_INDEX_ASSIGNMENT) {
-        t = q.PushBackWithTag([&ps, worker_fn, idx]() {
-                                unsigned my_idx = idx+1;
-                                if (my_idx == my_last_idx) {
-                                  idx_as_last++;
-                                }
-                                my_last_idx = my_idx;
-                                worker_fn(my_idx);
-                                ps.tasks_finished++;
-                              },
-                              pt.tag,
-                              w_idx,
-                              was_ready);
+        enqueued = q.PushBackWithTag([&ps, worker_fn, idx]() {
+            unsigned my_idx = idx+1;
+            if (my_idx == my_last_idx) {
+              idx_as_last++;
+            }
+            my_last_idx = my_idx;
+            worker_fn(my_idx);
+            ps.tasks_finished++;
+          },
+          pt.tag,
+          w_idx,
+          was_ready);
       } else {
-        t = q.PushBackWithTag(call_worker_fn,
-                              pt.tag,
-                              w_idx,
-                              was_ready);
+        enqueued = q.PushBackWithTag(call_worker_fn,
+                                     pt.tag,
+                                     w_idx,
+                                     was_ready);
       }
       if (was_ready) {
         if (USE_STICKY_WORKER_ASSIGNMENT) {
@@ -1211,7 +1210,7 @@ void SummonWorkers(PerThread &pt,
           preferred_workers[idx] = next_q;
         }
       }
-      if (!t) { // Queue accepted task
+      if (enqueued) { // Queue accepted task
         ps.tasks.push_back({q_idx, w_idx});
         if (was_ready) {
           td.EnsureAwake();
@@ -1429,6 +1428,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     // rebalancing.
     std::vector<int> preferred_workers;
     int main_thread_id = -1;
+    PaddingToAvoidFalseSharing padding_2;
   };
 
   //  static_assert(std::is_trivially_destructible<PerThread>::value,
@@ -1657,6 +1657,9 @@ int CurrentThreadId() const EIGEN_FINAL {
                     blocked_--;
                   });
 
+              // Thread just unblocked.  Unless we have work, assume
+              // we were woken because work was pushed to an
+              // overloaded queue; attempt to steal it.
               if (!t) {
                 t = q.PopFront();
               }
