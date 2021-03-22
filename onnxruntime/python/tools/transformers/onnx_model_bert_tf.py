@@ -29,6 +29,21 @@ class BertOnnxModelTF(BertOnnxModel):
         self.remove_nodes(nodes_to_remove)
         logger.info(f"Removed Identity count: {len(nodes_to_remove)}")
 
+    def match_mask_path(self, add_or_sub_before_softmax):
+        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Reshape', 'Cast'],
+                                            [1, None, 1, 0])
+        if mask_nodes is not None:
+            return mask_nodes
+
+        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'],
+                                            [1, 0, 1, 0, 0])
+        if mask_nodes is not None:
+            return mask_nodes
+
+        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'],
+                                            [1, None, 1, 0, 0])
+        return mask_nodes
+
     def fuse_mask(self):
         nodes_to_remove = []
         for node in self.nodes():
@@ -85,16 +100,14 @@ class BertOnnxModelTF(BertOnnxModel):
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == 'Mul' and self.has_constant_input(node, -10000):
-                mask_path = self.match_parent_path(node, ['Sub', 'Unsqueeze', 'Mul', 'Cast', 'Reshape', 'Cast'],
-                                                   [0, 1, 0, 1, 0, 0])
+                mask_path = self.match_parent_path(node, ['Sub', 'Cast', 'Slice', 'Unsqueeze'], [0, 1, 0, 0])
                 if mask_path is None:
                     continue
-                sub_node, unsqueeze_node, mul_node, cast_node_0, reshape_node_0, cast_node_1 = mask_path
+                sub_node, cast_node, slice_node, unsqueeze_node = mask_path
 
                 mask_input_name = self.attention_mask.get_first_mask()
-
-                if cast_node_1.input[0] != mask_input_name:
-                    print("Cast input {} is not mask input{}".format(cast_node_1.input[0], mask_input_name))
+                if unsqueeze_node.input[0] != mask_input_name:
+                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
                     continue
 
                 unsqueeze_added_1 = onnx.helper.make_node('Unsqueeze',
@@ -109,13 +122,14 @@ class BertOnnxModelTF(BertOnnxModel):
                                                           name='Mask_UnSqueeze_2',
                                                           axes=[2])
 
+                #self.replace_node_input(cast_node, cast_node.input[0], 'mask_fuse_unsqueeze2_output')
                 cast_node_2 = onnx.helper.make_node('Cast',
                                                     inputs=['mask_fuse_unsqueeze2_output'],
                                                     outputs=['mask_fuse_cast_output'])
                 cast_node_2.attribute.extend([onnx.helper.make_attribute("to", 1)])
                 self.replace_node_input(sub_node, sub_node.input[1], 'mask_fuse_cast_output')
 
-                nodes_to_remove.extend([unsqueeze_node, mul_node, cast_node_0, reshape_node_0, cast_node_1])
+                nodes_to_remove.extend([slice_node, unsqueeze_node, cast_node])
                 self.add_node(unsqueeze_added_1)
                 self.add_node(unsqueeze_added_2)
                 self.add_node(cast_node_2)
@@ -360,9 +374,22 @@ class BertOnnxModelTF(BertOnnxModel):
         nodes_to_remove = []
         attention_count = 0
 
+        start_nodes = []
         skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
-        for normalize_node in skip_layer_norm_nodes:
+        layer_norm_nodes = self.get_nodes_by_op_type("LayerNormalization")
+        # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
+        # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
+        start_nodes.extend(skip_layer_norm_nodes)
+        start_nodes.extend(layer_norm_nodes)
+
+        for normalize_node in start_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            if normalize_node.op_type == 'LayerNormalization':
+                add_before_layernorm = self.match_parent(normalize_node, 'Add', 0)
+                if add_before_layernorm is not None:
+                    normalize_node = add_before_layernorm
+                else:
+                    continue
             parent = self.get_parent(normalize_node, 1)
             if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
                 parent = self.get_parent(normalize_node, 0)
@@ -376,50 +403,63 @@ class BertOnnxModelTF(BertOnnxModel):
                 qkv_nodes = self.match_parent_path(normalize_node, ['MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                    [1, 0, 0, 0])
                 if qkv_nodes is None:
-                    logger.debug("Failed to match qkv nodes")
-                    continue
+                    qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'Einsum', 'Einsum'], [0, 0, 0])
+                    if qkv_nodes is None:
+                        logger.debug("Failed to match qkv nodes")
+                        continue
 
-            (reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes[-3:]
+            matmul_qkv = qkv_nodes[-1]
             v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if v_nodes is None:
-                logger.debug("Failed to match v path")
-                continue
+                v_nodes = self.match_parent_path(matmul_qkv, ['Add', 'Einsum'], [1, 0])
+                if v_nodes is None:
+                    logger.debug("Failed to match v path")
+                    continue
 
-            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+            add_v = v_nodes[-2]
+            matmul_v = v_nodes[-1]
             qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', "Mul", 'MatMul'], [0, 0, 0, 0])
             if qk_nodes is None:
-                logger.debug("Failed to match qk_paths")
-                continue
-            (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
+                qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Einsum'], [0, 0, 0])
+                if qk_nodes is None:
+                    logger.debug("Failed to match qk_paths")
+                    continue
+            matmul_qk = qk_nodes[-1]
 
             q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
             if q_nodes is None:
-                logger.debug("Failed to match q path")
-                continue
-            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+                q_nodes = self.match_parent_path(matmul_qk, ['Add', 'Einsum'], [0, 0])
+                if q_nodes is None:
+                    logger.debug("Failed to match q path")
+                    continue
+            add_q = q_nodes[-2]
+            matmul_q = q_nodes[-1]
 
             k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if k_nodes is None:
-                logger.debug("Failed to match k path")
-                continue
-            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
-
-            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
-            if mask_nodes is None:
-                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul'], [1, 0, 1, 0, 0])
-                if mask_nodes is None:
-                    logger.debug("Failed to match mask path")
+                k_nodes = self.match_parent_path(matmul_qk, ['Mul', 'Add', 'Einsum'], [1, 0, 0])
+                if k_nodes is None:
+                    logger.debug("Failed to match k path")
                     continue
+            add_k = k_nodes[-2]
+            matmul_k = k_nodes[-1]
+
+            mask_nodes = self.match_mask_path(qk_nodes[1])
+
+            if mask_nodes is None:
+                logger.debug("Cannot find mask_nodes.")
+                continue
 
             if not self.has_constant_input(mask_nodes[1], 1):
                 logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
             # add a squeeze node to convert a 3-d mask to 2-d
-            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0])
+            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0]) or self.match_parent_path(
+                mask_nodes[-1], ['Expand'], [0])
             squeeze_node_name = "Squeeze_3d_to_2d_mask"
             squeeze_output_name = squeeze_node_name + "_output"
-            if squeeze_node is None and len(mask_nodes) == 5:
+            if squeeze_node is None and len(mask_nodes) == 5 and self.find_graph_input(mask_nodes[-1].input[0]) is None:
                 mask_input = mask_nodes[-1].input[1]
                 self.add_node(
                     helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]))
@@ -427,11 +467,32 @@ class BertOnnxModelTF(BertOnnxModel):
 
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
             if is_same_root:
-                mask_index = self.attention_mask.process_mask(squeeze_output_name)
+                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
-                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
-                                                                             add_q, add_k, add_v, parent.output[0],
-                                                                             reshape_qkv.output[0])
+                # For tf models, q and v are flipped.
+                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_k, matmul_q, matmul_v,
+                                                                             add_k, add_q, add_v, self.num_heads,
+                                                                             self.hidden_size, parent.output[0],
+                                                                             qkv_nodes[2].output[0]) 
+                if attention_node is None:
+                    continue
+
+                if qkv_nodes[1].op_type == 'Einsum':
+                    # add reshape before einsum
+                    tensor = helper.make_tensor(name=qkv_nodes[1].name + "_newshape",
+                                                data_type=TensorProto.INT64,
+                                                dims=[4],
+                                                vals=np.int64(
+                                                    [[0, 0, self.num_heads,
+                                                      int(self.hidden_size / self.num_heads)]]).tobytes(),
+                                                raw=True)
+                    self.add_initializer(tensor)
+                    reshape_ = helper.make_node("Reshape",
+                                                inputs=[attention_node.output[0], qkv_nodes[1].name + "_newshape"],
+                                                outputs=[qkv_nodes[1].name + "_reshape_output"],
+                                                name=qkv_nodes[1].name + "_reshape")
+                    qkv_nodes[1].input[0] = qkv_nodes[1].name + "_reshape_output"
+                    self.add_node(reshape_)
                 if parent.op_type == 'Reshape':
                     # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
@@ -443,13 +504,11 @@ class BertOnnxModelTF(BertOnnxModel):
                     self.add_initializer(tensor)
                     parent.input[1] = parent.name + "_modified"
 
-                if attention_node is None:
-                    continue
-
+               
                 self.add_node(attention_node)
                 attention_count += 1
 
-                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qkv_nodes[2:])
                 nodes_to_remove.extend(qk_nodes)
                 nodes_to_remove.extend(q_nodes)
                 nodes_to_remove.extend(k_nodes)
@@ -466,7 +525,20 @@ class BertOnnxModelTF(BertOnnxModel):
         self.remove_identity()
         self.process_embedding()
         #TODO: remove fuse mask since we have embedding fused so fuse_attention shall handle the mask nodes.
-        self.fuse_mask()
+        # self.fuse_mask()
+        self.skip_reshape()
+
+    def skip_reshape(self):
+        count = 0
+        reshape_nodes = self.get_nodes_by_op_type("Reshape")
+        for reshape_node in reshape_nodes:
+            parent = self.get_parent(reshape_node, 0)
+            if parent is not None and parent.op_type == "Reshape":
+                reshape_node.input[0] = parent.input[0]
+                count += 1
+
+        if count > 0:
+            logger.info(f"Skip consequent Reshape count: {count}")
 
     def remove_reshape_before_first_attention(self):
         attention_nodes = self.get_nodes_by_op_type("Attention")
@@ -475,7 +547,7 @@ class BertOnnxModelTF(BertOnnxModel):
             if path is None:
                 continue
             logger.info("Remove Reshape before first Attention node.")
-            reshape, embed = path
+            reshape, _ = path
             self.replace_input_of_all_nodes(reshape.output[0], reshape.input[0])
             self.remove_node(reshape)
             break

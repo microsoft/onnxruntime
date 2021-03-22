@@ -1,6 +1,10 @@
+autopep8
+matplotlib
+scikit-learn
+skl2onnx
 sphinx
 sphinx-gallery
 pyquickhelper
+sphinxcontrib.imagesvg
 tensorflow
-tensorflow-onnx
-
+tf2onnx
