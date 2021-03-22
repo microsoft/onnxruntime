@@ -52,16 +52,19 @@ def get_args():
     args = parser.parse_args()
     return args
 
-print('Running deepspeed pipeline parallel module with ORTModule')
 n = 10
 d_in = 4
 d_hidden = 8
 d_out = 3
-import sys
-print(sys.version)
 args = get_args()
 torch.cuda.set_device(args.local_rank)
 device = torch.device("cuda", args.local_rank)
+
+if args.run_without_ort:
+   print('Running deepspeed pipeline parallel module without ORTModule')
+else:
+   print('Running deepspeed pipeline parallel module with ORTModule')
+
 
 dist.init_process_group(backend=args.backend)
 torch.manual_seed(args.seed)
@@ -83,11 +86,11 @@ else:
     print("*************************************** testing with ORTModule ************")
     model = nn.Sequential(
         ORTModule(nn.Linear(d_in, d_hidden).to(device)),     # Stage 1
-        nn.ReLU().to(device),#ORTModule(nn.ReLU().to(device)),                     # Stage 1
+        nn.ReLU().to(device),                                # ORTModule(nn.ReLU().to(device)), Stage 1, TODO: ORTModule can wrap Relu once stateless model is supported.
         ORTModule(nn.Linear(d_hidden, d_hidden).to(device)), # Stage 1
-        nn.ReLU().to(device),#ORTModule(nn.ReLU().to(device)),                     # Stage 1
+        nn.ReLU().to(device),                                # ORTModule(nn.ReLU().to(device)), Stage 1, TODO: ORTModule can wrap Relu once stateless model is supported.
         ORTModule(nn.Linear(d_hidden, d_hidden).to(device)), # Stage 2
-        nn.ReLU().to(device),#ORTModule(nn.ReLU().to(device)),                     # Stage 2
+        nn.ReLU().to(device),                                # ORTModule(nn.ReLU().to(device)), Stage 2, TODO: ORTModule can wrap Relu once stateless model is supported.
         ORTModule(nn.Linear(d_hidden, d_out).to(device))     # Stage 2
     )
 
@@ -117,3 +120,5 @@ model_engine, optimizer, _, _ = deepspeed.initialize(args=args,
 
 for step in range(args.steps):
     loss = model_engine.train_batch()
+    if step % 10 == 0:
+        print("step = ", step, ", loss = ",loss)
