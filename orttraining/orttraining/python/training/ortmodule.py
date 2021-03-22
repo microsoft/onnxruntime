@@ -109,7 +109,7 @@ class ORTModule(torch.nn.Module):
             # TODO: using pytorch for evaluation for now. We will use ORT for evaluation later.
             # TODO: If the model is being executed with the gradient disabled (inside torch.no_grad() context for example),
             # leverage pytorch model for now.
-            if not self._is_training or not torch.is_grad_enabled():
+            if not self.is_training:
                 return self._original_module(*inputs, **kwargs)
 
             # Exporting module to ONNX for the first time
@@ -131,12 +131,13 @@ class ORTModule(torch.nn.Module):
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
             initializer_names_to_train_set = {initializer[0] for initializer in
                 self._flattened_output_module.named_parameters() if initializer[1].requires_grad}
+            initializer_names_to_train_set_prev = set(self._onnx_graphs_info.initializer_names_to_train) \
+                if self._onnx_graphs_info else None
             # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
             if input_names_require_grad != self._input_names_require_grad or \
-                initializer_names_to_train_set != self._initializer_names_to_train_set:
+                initializer_names_to_train_set != initializer_names_to_train_set_prev:
                 self._input_names_require_grad = input_names_require_grad
-                self._initializer_names_to_train_set = initializer_names_to_train_set
                 self._initialize_module_gradient_graph_builder()
                 # Trigger the rebuilding of the gradient graph
                 build_gradient_graph = True
@@ -251,10 +252,12 @@ class ORTModule(torch.nn.Module):
 
                     # Append gradients of initializer to results
                     # Go over each initializer, check if it required grad and append to results accordingly
-                    initializer_index = 0
-                    for inititializer_name in self._onnx_graphs_info.initializer_names:
-                        if inititializer_name in self._onnx_graphs_info.initializer_names_to_train:
-                            results.append(_ortvalue_to_torch_tensor(backward_outputs[num_user_input_grads+initializer_index]))
+                    initializer_names_to_train_set = set(self._onnx_graphs_info.initializer_names_to_train) \
+                        if self._onnx_graphs_info else None
+                    initializer_index = num_user_input_grads
+                    for initializer_name in self._onnx_graphs_info.initializer_names:
+                        if initializer_name in initializer_names_to_train_set:
+                            results.append(_ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
                             initializer_index += 1
                         else:
                             results.append(None)
@@ -305,7 +308,7 @@ class ORTModule(torch.nn.Module):
                     "The model's forward method has **kwargs parameter which is currently not supported.")
 
         self._onnx_inference = None
-        self._is_training = True
+        self.is_training = True
 
         # Related to training graph shape inference
         self._current_input_shape = None
@@ -315,7 +318,7 @@ class ORTModule(torch.nn.Module):
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
-        self._initializer_names_to_train_set = None
+        self._onnx_graphs_info = None
 
         # Training model
         self._onnx_training = None
@@ -343,6 +346,14 @@ class ORTModule(torch.nn.Module):
                 self._verbosity)
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+
+    @property
+    def is_training(self):
+        return self._is_training and torch.is_grad_enabled()
+
+    @is_training.setter
+    def is_training(self, training_mode):
+        self._is_training = training_mode
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
@@ -426,11 +437,11 @@ class ORTModule(torch.nn.Module):
                       self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
-        self._is_training = False
+        self.is_training = False
         self._flattened_output_module.eval()
 
     def train(self: T, mode: bool = True) -> T:
-        self._is_training = mode
+        self.is_training = mode
         self._flattened_output_module.train(mode)
 
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
