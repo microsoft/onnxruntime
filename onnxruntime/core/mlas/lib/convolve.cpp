@@ -902,9 +902,9 @@ Return Value:
         return;
     }
 
-#if defined(MLAS_TARGET_WASM)
+#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
 
-    if (Algorithm == MlasConvAlgorithmDepthwise || Algorithm == MlasConvAlgorithmDirectConv) {
+    if (Algorithm == MlasConvAlgorithmDepthwise) {
         std::fill_n(WorkingBuffer, Parameters->InputShape[1] + 2, 0.0f);
     }
 
@@ -972,18 +972,11 @@ Return Value:
                     break;
                 }
 
-#if defined(MLAS_TARGET_WASM)
+#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
 
                 case MlasConvAlgorithmDepthwise:
                 {
                     MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
-                    break;
-                }
-
-                case MlasConvAlgorithmDirectConv:
-                {
-                    MlasConvDirectFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
                     MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
                     break;
                 }
@@ -1223,22 +1216,20 @@ Return Value:
 
 #if defined(MLAS_TARGET_WASM) && !defined(MLAS_TARGET_WASMSIMD)
 
-        // Fast scalar direct conv for wasm without SIMD.
+        // Scalar direct conv for depthwise convolution.
+        // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
+        // TODO: support more general depthwise convolution.
 
         if (Dimensions == 2
+                && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
                 && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
                 && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
                 && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
                 && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
-            if (Parameters->FilterCount == 1 && Parameters->InputChannels == 1) {
-                Parameters->Algorithm = MlasConvAlgorithmDepthwise;
-            } else {
-                Parameters->Algorithm = MlasConvAlgorithmDirectConv;
-            }
+            Parameters->Algorithm = MlasConvAlgorithmDepthwise;
             return;
-
         }
 
 #endif

@@ -17,17 +17,34 @@ Abstract:
 
 #include "mlasi.h"
 
-// filter 3x3, dilations are all 1. pad is 0 or 1, input_image_width > 2
-template <bool IsAccumulate>
 static
 void
-MlasConvSingleChannelAccumulate_CHW(
+MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
     float* Output,
     const float* Zeros
     )
+/*++
+
+Routine Description:
+
+    This routine is an inner kernel to compute convolution on one channel input with one filter channel.
+
+Arguments:
+
+    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
+
+    Input - input channel data start. Input is NCHW, so this pointer point to single H x W image data.
+
+    Filter - Whole filters are of F x CpG x FH x FW, this filter point to single FH x FW filter data.
+
+    Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
+
+    Zeroes - Point to working buffer where all 0.0f are filled.
+
+--*/
 {
     const float w00 = Filter[0];
     const float w01 = Filter[1];
@@ -58,12 +75,7 @@ MlasConvSingleChannelAccumulate_CHW(
             float dotsum = w01 * row0[1] + w02 * row0[2] +
                            w11 * row1[1] + w12 * row1[2] +
                            w21 * row2[1] + w22 * row2[2];
-            if (IsAccumulate) {
-                *Output += dotsum;
-            } else {
-                *Output = dotsum;
-            }
-            Output++;
+            *Output++ = dotsum;
             out_col--;
             row0 += stride_w;
             row1 += stride_w;
@@ -75,12 +87,7 @@ MlasConvSingleChannelAccumulate_CHW(
                 w00 * row0[0] + w01 * row0[1] + w02 * row0[2] +
                 w10 * row1[0] + w11 * row1[1] + w12 * row1[2] +
                 w20 * row2[0] + w21 * row2[1] + w22 * row2[2];
-            if (IsAccumulate) {
-                *Output += dotsum;
-            } else {
-                *Output = dotsum;
-            }
-            Output++;
+            *Output++ = dotsum;
             row0 += stride_w;
             row1 += stride_w;
             row2 += stride_w;
@@ -91,12 +98,7 @@ MlasConvSingleChannelAccumulate_CHW(
                 w00 * row0[0] + w01 * row0[1] +
                 w10 * row1[0] + w11 * row1[1] +
                 w20 * row2[0] + w21 * row2[1];
-            if (IsAccumulate) {
-                *Output += dotsum;
-            } else {
-                *Output = dotsum;
-            }
-            Output++;
+            *Output++ = dotsum;
         }
 
         h += stride_h;
@@ -107,7 +109,6 @@ MlasConvSingleChannelAccumulate_CHW(
 }
 
 
-// filter 3x3, dilations are all 1. pad is 0 or 1, input_image_width > 2
 void
 MlasConvDepthwiseFloat_CHW(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -116,47 +117,31 @@ MlasConvDepthwiseFloat_CHW(
     float* Output,
     const float* Zeros
     )
+/*++
+
+Routine Description:
+
+    This routine is an inner kernel to compute depthwise convolution for one filter channel on one input channel.
+
+Arguments:
+
+    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
+
+    Input - input channel data start. Input is NCHW, so this pointer point to single H x W image data.
+
+    Filter - Whole filters are of F x CpG x FH x FW, this filter point to single FH x FW filter data.
+
+    Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
+
+    Zeroes - Point to working buffer where all 0.0f are filled.
+
+Note:
+    No checking here as it is inner loop. Logic in generating Parameters controls the check.
+
+    Currently only support 2d kernel 3x3.
+    Will add general case and more special case if needed later.
+
+--*/
 {
-    MlasConvSingleChannelAccumulate_CHW<false>(Parameters, Input, Filter, Output, Zeros);
-}
-
-
-// filter 3x3, dilations are all 1. pad is 0 or 1
-void
-MlasConvDirectFloat_CHW(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* Input,
-    const float* Filter,
-    float* Output,
-    const float* Zeros
-    )
-{
-    const auto kernel_size = Parameters->KernelShape[0] * Parameters->KernelShape[1];
-    const auto filter_size = kernel_size * Parameters->InputChannels;
-
-    auto input_channel = Parameters->InputChannels;
-    if (input_channel > 0) {
-        const auto* filter = Filter;
-        auto* output = Output;
-        for (auto out_channel = Parameters->FilterCount; out_channel > 0; out_channel--) {
-            MlasConvSingleChannelAccumulate_CHW<false>(Parameters, Input, filter, output, Zeros);
-            filter += filter_size;
-            output += Parameters->OutputSize;
-        }
-        Input += Parameters->InputSize;
-        Filter += kernel_size;
-        input_channel--;
-    }
-
-    for (; input_channel > 0; input_channel--) {
-        const auto* filter = Filter;
-        auto* output = Output;
-        for (auto out_channel = Parameters->FilterCount; out_channel > 0; out_channel--) {
-            MlasConvSingleChannelAccumulate_CHW<true>(Parameters, Input, filter, output, Zeros);
-            filter += filter_size;
-            output += Parameters->OutputSize;
-        }
-        Input += Parameters->InputSize;
-        Filter += kernel_size;    
-    }
+    MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(Parameters, Input, Filter, Output, Zeros);
 }

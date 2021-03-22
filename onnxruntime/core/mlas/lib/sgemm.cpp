@@ -227,6 +227,17 @@ Return Value:
     }
 }
 
+#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
+
+#define MLAS_PACKB_WIDE 4
+
+#else
+
+#define MLAS_PACKB_WIDE 16
+#define MLAS_PACKB_WIDE_16
+
+#endif
+
 void
 MlasSgemmCopyPackB(
     float* D,
@@ -242,9 +253,9 @@ Routine Description:
     This routine copies elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 16 elements from the source matrix are unrolled to be physically
+    Columns of 16(or 4) elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 16 elements wide are zero-padded.
+    columns less than 16(or 4) elements wide are zero-padded.
 
 Arguments:
 
@@ -269,7 +280,7 @@ Return Value:
     // time.
     //
 
-    while (CountX >= 16) {
+    while (CountX >= MLAS_PACKB_WIDE) {
 
         const float* b = B;
         size_t y = CountY;
@@ -280,28 +291,35 @@ Return Value:
             vst4q_f32(D, vld4q_f32(b));
 #else
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
+
+#if defined(MLAS_PACKB_WIDE_16)
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
             MLAS_FLOAT32X4 t3 = MlasLoadFloat32x4(&b[12]);
+#endif
 
             MlasStoreAlignedFloat32x4(&D[0], t0);
+
+#if defined(MLAS_PACKB_WIDE_16)
             MlasStoreAlignedFloat32x4(&D[4], t1);
             MlasStoreAlignedFloat32x4(&D[8], t2);
             MlasStoreAlignedFloat32x4(&D[12], t3);
 #endif
 
-            D += 16;
+#endif
+
+            D += MLAS_PACKB_WIDE;
             b += ldb;
             y--;
 
         } while (y > 0);
 
-        B += 16;
-        CountX -= 16;
+        B += MLAS_PACKB_WIDE;
+        CountX -= MLAS_PACKB_WIDE;
     }
 
     //
-    // Special case the handling of the remaining columns less than 16 elements
+    // Special case the handling of the remaining columns less than 16(or 4) elements
     // wide.
     //
 
@@ -324,10 +342,16 @@ Return Value:
             vst4q_f32(d, ZeroFloat32x4x4);
 #else
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
+
+#if defined(MLAS_PACKB_WIDE_16)
             MlasStoreAlignedFloat32x4(d + 4, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 8, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 12, ZeroFloat32x4);
 #endif
+
+#endif
+
+#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountX & 8) != 0) {
 
@@ -349,6 +373,8 @@ Return Value:
                 b += 4;
             }
 
+#endif
+
             if ((CountX & 2) != 0) {
 
                 float t0 = b[0];
@@ -365,7 +391,7 @@ Return Value:
                 d[0] = b[0];
             }
 
-            D += 16;
+            D += MLAS_PACKB_WIDE;
             B += ldb;
             y--;
 
@@ -433,9 +459,9 @@ Return Value:
 #endif
 
         MlasStoreAlignedFloat32x4(&D[0], t0);
-        MlasStoreAlignedFloat32x4(&D[16], t1);
-        MlasStoreAlignedFloat32x4(&D[32], t2);
-        MlasStoreAlignedFloat32x4(&D[48], t3);
+        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE], t1);
+        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE * 2], t2);
+        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE * 3], t3);
 
         D += 4;
         B += ldb * 4;
@@ -457,9 +483,9 @@ Routine Description:
     This routine transposes elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 16 elements from the source matrix are unrolled to be physically
+    Columns of 16(or 4) elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 16 elements wide are zero-padded.
+    columns less than 16(or 4) elements wide are zero-padded.
 
 Arguments:
 
@@ -480,11 +506,11 @@ Return Value:
 --*/
 {
     //
-    // Transpose elements from matrix B into the packed buffer 16 rows at a
+    // Transpose elements from matrix B into the packed buffer 16(or 4) rows at a
     // time.
     //
 
-    while (CountY >= 16) {
+    while (CountY >= MLAS_PACKB_WIDE) {
 
         const float* b = B;
         size_t x = CountX;
@@ -507,9 +533,9 @@ Return Value:
 
         while (x >= 4) {
 
-            MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
+            MlasSgemmTransposePackBNx4<MLAS_PACKB_WIDE>(&D[0], &b[0], ldb);
 
-            D += 16 * 4;
+            D += MLAS_PACKB_WIDE * 4;
             b += 4;
             x -= 4;
         }
@@ -522,6 +548,9 @@ Return Value:
             float t1 = b[ldb];
             float t2 = b[ldb * 2];
             float t3 = b[ldb * 3];
+
+#if defined(MLAS_PACKB_WIDE_16)
+
             float t4 = b[ldb * 4];
             float t5 = b[ldb * 5];
             float t6 = b[ldb * 6];
@@ -535,10 +564,15 @@ Return Value:
             float t14 = b[ldb * 14];
             float t15 = b[ldb * 15];
 
+#endif
+
             D[0] = t0;
             D[1] = t1;
             D[2] = t2;
             D[3] = t3;
+
+#if defined(MLAS_PACKB_WIDE_16)
+
             D[4] = t4;
             D[5] = t5;
             D[6] = t6;
@@ -552,13 +586,15 @@ Return Value:
             D[14] = t14;
             D[15] = t15;
 
-            D += 16;
+#endif
+
+            D += MLAS_PACKB_WIDE;
             b += 1;
             x--;
         }
 
-        B += ldb * 16;
-        CountY -= 16;
+        B += ldb * MLAS_PACKB_WIDE;
+        CountY -= MLAS_PACKB_WIDE;
     }
 
     //
@@ -579,6 +615,8 @@ Return Value:
 
             float* d = D;
             const float* b = B;
+
+#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountY & 8) != 0) {
 
@@ -614,10 +652,12 @@ Return Value:
                 MlasStoreAlignedFloat32x4(&d[52], ZeroFloat32x4);
             }
 
+#endif
+
             MlasStoreAlignedFloat32x4(&d[0], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[16], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[32], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[48], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE * 2], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE * 3], ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
 
@@ -628,18 +668,18 @@ Return Value:
                 __m128 v0 = _mm_unpacklo_ps(t0, t1);
                 __m128 v1 = _mm_unpackhi_ps(t0, t1);
                 _mm_storel_pi((__m64*)&d[0], v0);
-                _mm_storeh_pi((__m64*)&d[16], v0);
-                _mm_storel_pi((__m64*)&d[32], v1);
-                _mm_storeh_pi((__m64*)&d[48], v1);
+                _mm_storeh_pi((__m64*)&d[MLAS_PACKB_WIDE], v0);
+                _mm_storel_pi((__m64*)&d[MLAS_PACKB_WIDE * 2], v1);
+                _mm_storeh_pi((__m64*)&d[MLAS_PACKB_WIDE * 3], v1);
 #else
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
-                MlasStoreLaneFloat32x4<1>(&d[16], t0);
-                MlasStoreLaneFloat32x4<1>(&d[17], t1);
-                MlasStoreLaneFloat32x4<2>(&d[32], t0);
-                MlasStoreLaneFloat32x4<2>(&d[33], t1);
-                MlasStoreLaneFloat32x4<3>(&d[48], t0);
-                MlasStoreLaneFloat32x4<3>(&d[49], t1);
+                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE], t0);
+                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE + 1], t1);
+                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2], t0);
+                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2 + 1], t1);
+                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3], t0);
+                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3 + 1], t1);
 #endif
 
                 d += 2;
@@ -652,18 +692,18 @@ Return Value:
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
 
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
-                MlasStoreLaneFloat32x4<1>(&d[16], t0);
-                MlasStoreLaneFloat32x4<2>(&d[32], t0);
-                MlasStoreLaneFloat32x4<3>(&d[48], t0);
+                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE], t0);
+                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2], t0);
+                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3], t0);
 #else
                 d[0] = b[0];
-                d[16] = b[1];
-                d[32] = b[2];
-                d[48] = b[3];
+                d[MLAS_PACKB_WIDE] = b[1];
+                d[MLAS_PACKB_WIDE * 2] = b[2];
+                d[MLAS_PACKB_WIDE * 3] = b[3];
 #endif
             }
 
-            D += 16 * 4;
+            D += MLAS_PACKB_WIDE * 4;
             B += 4;
             x -= 4;
         }
@@ -676,6 +716,8 @@ Return Value:
 
             float* d = D;
             const float* b = B;
+
+#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountY & 8) != 0) {
 
@@ -726,6 +768,8 @@ Return Value:
                 MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
             }
 
+#endif
+
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
@@ -744,7 +788,7 @@ Return Value:
                 d[0] = b[0];
             }
 
-            D += 16;
+            D += MLAS_PACKB_WIDE;
             B += 1;
             x--;
         }

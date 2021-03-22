@@ -849,6 +849,22 @@ MlasFp32FromBits(
     return u.FloatValue;
 }
 
+
+#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
+
+void
+MLASCALL
+MlasConvDepthwiseFloat_CHW(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    const float* Zeros
+    );
+
+#endif
+
+
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
 // cross-compiler support.
