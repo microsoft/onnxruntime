@@ -63,7 +63,7 @@ def _create_backward_iobinding(io_binding, inputs, model, device, input_names):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, name in enumerate(input_names):
         io_binding.bind_ortvalue_input(
-            name + "_grad", _ortvalue_from_torch_tensor(inputs[idx]))
+            name, _ortvalue_from_torch_tensor(inputs[idx]))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -221,7 +221,7 @@ class ORTModule(torch.nn.Module):
 
                     # Run and get results
                     run_id = ctx.run_id
-                    _create_backward_iobinding(self._training_backward_io_binding, contiguous_grad_outputs, self._onnx_training, self._device, self._onnx_graphs_info.user_output_names)
+                    _create_backward_iobinding(self._training_backward_io_binding, contiguous_grad_outputs, self._onnx_training, self._device, self._onnx_graphs_info.ort_yield_op_output_names)
                     self._training_session.run_backward(self._training_backward_io_binding, self._run_options, np.int64(run_id))
                     backward_outputs = self._training_backward_io_binding.get_outputs()
 

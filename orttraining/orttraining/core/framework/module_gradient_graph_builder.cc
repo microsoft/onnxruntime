@@ -229,6 +229,7 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     }
 
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+    training_graph_info_.ort_yield_op_output_names.emplace_back(grad_name);
   }
 
   NodeAttributes attributes({{attribute_name, full_shape_outputs}});
