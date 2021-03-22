@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-include(pybind11)
 FIND_PACKAGE(NumPy)
 
 if(NOT PYTHON_INCLUDE_DIR)
