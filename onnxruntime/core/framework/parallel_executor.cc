@@ -187,7 +187,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                      node.Name() + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
-
+      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
@@ -224,7 +224,9 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()},
+                                                      {"provider", p_op_kernel->KernelDef().Provider()},
+                                                      {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }

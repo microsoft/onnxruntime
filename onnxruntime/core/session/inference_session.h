@@ -585,6 +585,9 @@ class InferenceSession {
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.
+  std::basic_string<ORTCHAR_T> thread_pool_name_;
+  std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
