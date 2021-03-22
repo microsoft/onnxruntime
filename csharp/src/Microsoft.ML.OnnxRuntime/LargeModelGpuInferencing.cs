@@ -19,6 +19,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRequestBatch(out handle));
         }
 
+        public void Clear()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtClearRequestBatch(handle));
+        }
         internal IntPtr Pointer
         {
             get
@@ -64,6 +68,13 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateResponseBatch(out handle));
         }
+
+        public void Clear()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtClearResponseBatch(handle));
+        }
+
+
         internal IntPtr Pointer
         {
             get
