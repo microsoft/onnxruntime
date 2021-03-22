@@ -29,8 +29,13 @@ class PyOpLibProxy {
                         std::vector<std::unique_ptr<char[]>>&,
                         std::vector<int32_t>&,
                         std::vector<std::vector<int64_t>>&,
-                        std::function<void(const char*)>,
-                        bool npy_as_io = false);
+                        std::function<void(const char*)>);
+
+  bool InvokePythonAutoGradFunc(void*,
+                                const char*,
+                                const std::vector<OrtValue*>&,
+                                std::vector<void*>& outputs,
+                                std::function<void(const char*)>);
   const char* GetLastErrorMessage(std::string&);
   void* NewInstance(const char*, const char*, const OnnxAttrs&);
   bool Initialized() const { return initialized_; }
@@ -52,7 +57,7 @@ struct PyCustomKernel {
                  PyOpLogFunc logging_func);
   ~PyCustomKernel();
   void GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*);
-  void Compute(OrtKernelContext* context);
+  Status Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;

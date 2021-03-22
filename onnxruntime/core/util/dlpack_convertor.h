@@ -11,7 +11,8 @@
 namespace onnxruntime {
 namespace python {
 
-DLManagedTensor* OrtValueToDlpack(const OrtValue& ort_value);
+DLManagedTensor*   OrtValueToDlpack(const OrtValue& ort_value);
+
 OrtValue DlpackToOrtValue(const DLManagedTensor* dlpack);
 
 }  // namespace python
