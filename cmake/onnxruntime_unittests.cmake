@@ -524,7 +524,7 @@ add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+elseif (onnxruntime_ENABLE_NSYNC)
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -553,7 +553,7 @@ add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+elseif (onnxruntime_ENABLE_NSYNC)
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -837,7 +837,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
           onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
-  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if(NOT WIN32 AND onnxruntime_ENABLE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -877,7 +877,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if(NOT WIN32 AND onnxruntime_ENABLE_NSYNC)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
@@ -962,7 +962,7 @@ endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
 set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
-if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if(NOT WIN32 AND onnxruntime_ENABLE_NSYNC)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
 endif()
 if (onnxruntime_USE_OPENMP)

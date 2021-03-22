@@ -23,7 +23,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 
 target_link_libraries(onnxruntime_wasm PRIVATE
-  protobuf::libprotobuf
+  protobuf::libprotobuf-lite
   onnx
   onnx_proto
   onnxruntime_common

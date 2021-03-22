@@ -899,46 +899,17 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             ]
 
     if args.build_wasm:
-        # install emscripten if not exist.
-        # since emscripten doesn't support file packaging required for unit tests,
-        # need to apply patch with the specific version of emscripten.
-        # once patch is committed to emsdk repository, this must be replaced with 'latest'.
-        emsdk_version = "2.0.13"
-
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
-        emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
-        emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
         emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
                                                        "Platform", "Emscripten.cmake")
-
-        if os.path.exists(emsdk_version_file):
-            with open(emsdk_version_file) as f:
-                emsdk_version_data = json.load(f)
-            emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
-        if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
-            print("Installing emsdk...")
-            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
-        print("Activating emsdk...")
-        run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file
+            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file,
+            "-Donnxruntime_ENABLE_NSYNC=OFF"
         ]
-
-        # by default, disable running unit tests due to wasm size and speed.
         if not args.test:
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
-        else:
-            # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
-            #
-            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
-            #       should be removed once the following PR get merged:
-            #       https://github.com/emscripten-core/emscripten/pull/11785
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
     if path_to_protoc_exe:
         cmake_args += [
@@ -1954,6 +1925,40 @@ def main():
                     log.warning(
                         "Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
+
+        if args.build_wasm:
+            # install emscripten if not exist.
+            # since emscripten doesn't support file packaging required for unit tests,
+            # need to apply patch with the specific version of emscripten.
+            # once patch is committed to emsdk repository, this must be replaced with 'latest'.
+            emsdk_version = "2.0.13"
+
+            emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
+            emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
+            emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
+            emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
+                                                           "Platform", "Emscripten.cmake")
+
+            if os.path.exists(emsdk_version_file):
+                with open(emsdk_version_file) as f:
+                    emsdk_version_data = json.load(f)
+                emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
+            if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
+                print("Installing emsdk...")
+                run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+            print("Activating emsdk...")
+            run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
+
+            if args.test:
+                # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
+                #
+                # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in
+                #       Node.js
+                #       should be removed once the following PR get merged:
+                #       https://github.com/emscripten-core/emscripten/pull/11785
+                shutil.copy(
+                    os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                    os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:

@@ -24,7 +24,7 @@ void EMSCRIPTEN_KEEPALIVE ort_init();
 
 /**
  * create an instance of ORT session.
- * @param data a pointer to a buffer that contains the model.
+ * @param data a pointer to a buffer that contains the ONNX or ORT format model.
  * @param data_length the size of the buffer in bytes.
  * @returns a handle of the ORT session.
  */
@@ -42,16 +42,16 @@ size_t EMSCRIPTEN_KEEPALIVE ort_get_output_count(ort_session_handle_t session);
  * get the model's input name.
  * @param session handle of the specified session
  * @param index the input index
- * @returns a pointer to a buffer which contains C-style string.
- * @remarks caller should release the C style string after use by calling ort_free().
+ * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
+ * calling ort_free().
  */
 char* EMSCRIPTEN_KEEPALIVE ort_get_input_name(ort_session_handle_t session, size_t index);
 /**
  * get the model's output name.
  * @param session handle of the specified session
  * @param index the output index
- * @returns a pointer to a buffer which contains C-style string.
- * @remarks caller should release the C style string after use by calling ort_free().
+ * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
+ * calling ort_free().
  */
 char* EMSCRIPTEN_KEEPALIVE ort_get_output_name(ort_session_handle_t session, size_t index);
 
@@ -79,7 +79,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE ort_create_tensor(int data_type, void* 
  * @param data [out] specify the memory to write the tensor data
  * @param dims [out] specify the memory to write address of the buffer containing value of each dimension.
  * @param dims_length [out] specify the memory to write dims length
- * @remarks a temporary buffer 'dims' is allocated during the call. Caller should release the buffer after use by calling ort_free().
+ * @remarks a temporary buffer 'dims' is allocated during the call. Caller must release the buffer after use by calling ort_free().
  */
 void EMSCRIPTEN_KEEPALIVE ort_get_tensor_data(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
 
@@ -92,6 +92,11 @@ void EMSCRIPTEN_KEEPALIVE ort_release_tensor(ort_tensor_handle_t tensor);
  * inference the model.
  * @param session handle of the specified session
  */
-void EMSCRIPTEN_KEEPALIVE ort_run(ort_session_handle_t session, const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count, const char** output_names, size_t output_count, ort_tensor_handle_t* outputs);
-
+void EMSCRIPTEN_KEEPALIVE ort_run(ort_session_handle_t session,
+                                  const char** input_names,
+                                  const ort_tensor_handle_t* inputs,
+                                  size_t input_count,
+                                  const char** output_names,
+                                  size_t output_count,
+                                  ort_tensor_handle_t* outputs);
 };

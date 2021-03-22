@@ -12,6 +12,7 @@ Ort::Env* g_env;
 }  // namespace
 
 void ort_init() {
+  // TODO: allow user to specify logging
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   g_env = new Ort::Env{logging_level, "Default"};
 }
@@ -59,7 +60,12 @@ OrtValue* ort_create_tensor(int data_type, void* data, size_t data_length, size_
     shapes[i] = dims[i];
   }
 
-  return Ort::Value::CreateTensor({}, data, data_length, dims_length > 0 ? shapes.data() : nullptr, dims_length, static_cast<ONNXTensorElementDataType>(data_type))
+  return Ort::Value::CreateTensor({},
+                                  data,
+                                  data_length,
+                                  dims_length > 0 ? shapes.data() : nullptr,
+                                  dims_length,
+                                  static_cast<ONNXTensorElementDataType>(data_type))
       .release();
 }
 
@@ -84,6 +90,8 @@ void ort_release_tensor(OrtValue* tensor) {
   Ort::OrtRelease(tensor);
 }
 
-void ort_run(ort_session_handle_t session, const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count, const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
+void ort_run(Ort::Session* session,
+             const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
+             const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
   Ort::ThrowOnError(Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs));
 }
