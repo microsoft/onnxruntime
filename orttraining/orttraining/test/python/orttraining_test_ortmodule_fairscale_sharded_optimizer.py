@@ -250,7 +250,7 @@ if __name__ == "__main__":
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=42, metavar='S',
                         help='random seed (default: 42)')
-    parser.add_argument('--data_dir', type=str, default='./mnist',
+    parser.add_argument('--data-dir', type=str, default='./mnist',
                         help='Path to the mnist data directory') 
     args = parser.parse_args()
 
