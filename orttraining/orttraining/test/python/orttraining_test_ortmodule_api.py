@@ -1449,17 +1449,25 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     model.fc1.requires_grad_(True)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
+    assert model._original_module.fc1.weight.grad is None
+    assert model._original_module.fc1.bias.grad is None
 
     # Make sure no exception is raised
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session1 = model._training_session
+    weight_grad_2 = model._original_module.fc1.weight.grad
+    bias_grad_2 = model._original_module.fc1.bias.grad
 
     model._original_module.fc1.requires_grad_(False)
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session2 = model._training_session
+    weight_grad_3 = model._original_module.fc1.weight.grad
+    bias_grad_3 = model._original_module.fc1.bias.grad
 
     assert training_session1 != training_session2
+    assert torch.equal(weight_grad_2, weight_grad_3)
+    assert torch.equal(bias_grad_2, bias_grad_3)

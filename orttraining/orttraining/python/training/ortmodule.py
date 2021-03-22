@@ -129,8 +129,8 @@ class ORTModule(torch.nn.Module):
             _, _, input_names_require_grad, new_input_shape = \
                 _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
-            initializer_names_to_train_set = {initializer[0] for initializer in
-                self._flattened_output_module.named_parameters() if initializer[1].requires_grad}
+            initializer_names_to_train_set = {name for name, param in
+                self._flattened_output_module.named_parameters() if param.requires_grad}
             initializer_names_to_train_set_prev = set(self._onnx_graphs_info.initializer_names_to_train) \
                 if self._onnx_graphs_info else None
             # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
@@ -357,12 +357,12 @@ class ORTModule(torch.nn.Module):
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [p[0]
-                             for p in self._flattened_output_module.named_parameters()]
+        initializer_names = [name
+                             for name, _ in self._flattened_output_module.named_parameters()]
         initializer_names_to_train = []
         if torch.is_grad_enabled():
-            initializer_names_to_train = [p[0]
-                for p in self._flattened_output_module.named_parameters() if p[1].requires_grad]
+            initializer_names_to_train = [name
+                for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
         onnx_initializer_names = {
             p.name for p in self._onnx_inference.graph.initializer}
         initializer_names_to_train = [
