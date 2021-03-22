@@ -175,6 +175,7 @@ class OpKernelContext {
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
 
   // Creates the OrtValue* based on the shape, if it does not exist
   // The parameter nnz is used only for sparse-tensors and indicates the
