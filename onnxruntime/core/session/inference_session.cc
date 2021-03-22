@@ -1740,7 +1740,7 @@ common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBin
 }
 
 void InferenceSession::CancelPartialRun(int64_t run_id) {
-  ORT_ENFORCE(run_id >= 0);
+  ORT_ENFORCE(run_id > DEFAULT_PARTIAL_RUN_ID);
 
   auto it = session_state_->graph_runs_.find(run_id);
 

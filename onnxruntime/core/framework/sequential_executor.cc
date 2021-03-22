@@ -214,6 +214,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
 #else
+  ORT_UNUSED_PARAMETER(fetch_mlvalue_idxs);
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
   const bool only_execute_path_to_fetches = false;
 #endif
