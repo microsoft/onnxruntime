@@ -23,6 +23,7 @@ ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
 ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
+ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 ENV LANG en_US.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 

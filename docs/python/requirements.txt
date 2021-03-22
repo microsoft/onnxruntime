@@ -4,7 +4,10 @@ scikit-learn
 skl2onnx
 sphinx
 sphinx-gallery
-pyquickhelper
 sphinxcontrib.imagesvg
+sphinx_rtd_theme
+pyquickhelper
 tensorflow
 tf2onnx
+pandas
+pydot
