@@ -539,6 +539,15 @@ MlasTranspose(
     size_t N
     );
 
+void
+MLASCALL
+MlasTranspose(
+    const float* Input,
+    float* Output,
+    size_t M,
+    size_t N
+    );
+
 //
 // Buffer reordering routines.
 //
