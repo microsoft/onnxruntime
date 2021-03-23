@@ -354,10 +354,6 @@ class ORTModule(torch.nn.Module):
         if self._is_training():
             initializer_names_to_train = [name
                 for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
-        onnx_initializer_names = {
-            p.name for p in self._onnx_inference.graph.initializer}
-        initializer_names_to_train = [
-            p for p in initializer_names_to_train if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
@@ -492,7 +488,9 @@ class ORTModule(torch.nn.Module):
                                   do_constant_folding=False,
                                   training=torch.onnx.TrainingMode.TRAINING,
                                   dynamic_axes=dynamic_axes,
-                                  verbose=self._verbosity < Verbosity.WARNING)
+                                  verbose=self._verbosity < Verbosity.WARNING,
+                                  export_params=False,
+                                  keep_initializers_as_inputs=True)
         except RuntimeError as e:
             raise RuntimeError(
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
