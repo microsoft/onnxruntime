@@ -27,6 +27,8 @@ limitations under the License.
 #include <locale>
 #elif defined(__APPLE__)
 #include <cpuid.h>
+#elif defined(__wasm__)
+#include <emscripten/threading.h>
 #else
 #include <sched.h>
 #endif
@@ -124,6 +126,8 @@ void ThreadPoolProfiler::MainThreadStat::LogCore() {
   if ((CPUInfo[3] & (1 << 9)) != 0) {
     core_ = (unsigned)CPUInfo[1] >> 24;
   }
+#elif defined(__wasm__)
+  core_ = emscripten_num_logical_cores();
 #else
   core_ = sched_getcpu();
 #endif
@@ -202,6 +206,8 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
       if ((CPUInfo[3] & (1 << 9)) != 0) {
         child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
       }
+#elif defined(__wasm__)
+      child_thread_stats_[thread_idx].core_ = emscripten_num_logical_cores();
 #else
       child_thread_stats_[thread_idx].core_ = sched_getcpu();
 #endif
