@@ -109,7 +109,7 @@ class ORTModule(torch.nn.Module):
             # TODO: using pytorch for evaluation for now. We will use ORT for evaluation later.
             # TODO: If the model is being executed with the gradient disabled (inside torch.no_grad() context for example),
             # leverage pytorch model for now.
-            if not self.is_training:
+            if not self._is_training():
                 return self._original_module(*inputs, **kwargs)
 
             # Exporting module to ONNX for the first time
@@ -308,7 +308,6 @@ class ORTModule(torch.nn.Module):
                     "The model's forward method has **kwargs parameter which is currently not supported.")
 
         self._onnx_inference = None
-        self.is_training = True
 
         # Related to training graph shape inference
         self._current_input_shape = None
@@ -347,20 +346,15 @@ class ORTModule(torch.nn.Module):
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
-    @property
-    def is_training(self):
-        return self._is_training and torch.is_grad_enabled()
-
-    @is_training.setter
-    def is_training(self, training_mode):
-        self._is_training = training_mode
+    def _is_training(self):
+        return self._flattened_output_module.training and torch.is_grad_enabled()
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [name
                              for name, _ in self._flattened_output_module.named_parameters()]
         initializer_names_to_train = []
-        if self.is_training:
+        if self._is_training():
             initializer_names_to_train = [name
                 for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
         onnx_initializer_names = {
@@ -437,11 +431,9 @@ class ORTModule(torch.nn.Module):
                       self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
-        self.is_training = False
         self._flattened_output_module.eval()
 
     def train(self: T, mode: bool = True) -> T:
-        self.is_training = mode
         self._flattened_output_module.train(mode)
 
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
