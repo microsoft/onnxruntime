@@ -122,16 +122,16 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build
+                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/docs/html'
+          SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
           Contents: '**'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/inference_html_doc'
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
@@ -284,10 +284,64 @@ stages:
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+      - task: CmdLine@2
+        displayName: 'Build Python Documentation'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimetraininggpubuild \
+                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
+          Contents: '**'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
+
       - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
           ArtifactName: onnxruntime_gpu
+
+      - script: |
+          sudo apt-get update
+          sudo apt-get install python3-pip python-dev
+        displayName: 'sudo apt-get install python3-pip python-dev'
+
+      - script: |
+          python3 -m pip install twine
+        displayName: 'python3 -m pip install twine'
+        timeoutInMinutes: 20
+
+      # this block does not work because TwineAuthenticate@1 will trigger cleanup of $(PYPIRC_PATH)
+      # at the end of pipeline execution. Because $(PYPIRC_PATH) is already cleaned by clean-agent-build-directory-step.yml
+      # the cleanup task for TwineAuthenticate@1 will fail. For this reason, we cannot used TwineAuthenticate@1.
+      # - task: TwineAuthenticate@1
+      #   inputs:
+      #     artifactFeed: 'lotus/ort-gpu-nightly-training-feed'
+
+      # - script: |
+      #     python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+      #   displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+      #   timeoutInMinutes: 20
+
+      - script: |
+          python3 -m twine upload -r ORT-Nightly --repository-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/upload \
+          --username $(ortpypitrainingnightlyusername) --password $(aiinfrapypifeedpassword) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+        displayName: 'python3 -m twine upload $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+        timeoutInMinutes: 20
 
       - template: component-governance-component-detection-steps.yml
         parameters:

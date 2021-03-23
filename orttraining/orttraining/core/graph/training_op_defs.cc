@@ -2214,32 +2214,49 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Yield Op.")
-      .Input(0, "outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+      .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
-      .Output(0, "outputs_grad", "Gradient of outputs returned from pytorch.", "T", OpSchema::Variadic,
+      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
-      .Attr("full_shape_outputs", "The indices of the outputs that must have full shape.", AttributeProto::INTS)
+      .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs());
-        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i, i);
-        }
-
-        const std::string attribute_name = "full_shape_outputs";
-        auto full_shape_outputs = ctx.getAttribute(attribute_name);
-        if (nullptr == full_shape_outputs) {  // attribute not present
-          fail_type_inference("Value of attribute ", attribute_name, " not specified");
-        }
-
-        for (size_t i = 0, n = static_cast<size_t>(full_shape_outputs->ints_size()); i < n; ++i) {
-          size_t j = static_cast<size_t>(full_shape_outputs->ints(static_cast<int>(i)));
-          auto typeProto = ctx.getInputType(j);
-          if (hasShape(*typeProto)) {
-            propagateShapeFromInputToOutput(ctx, j, j);
+        auto non_differentiable_outputs = ctx.getAttribute("non_differentiable_outputs");
+        std::unordered_set<size_t> non_differentiable_outputs_indices{};
+        if (nullptr != non_differentiable_outputs) {
+          for (int i = 0, n = non_differentiable_outputs->ints_size(); i < n; ++i) {
+            non_differentiable_outputs_indices.insert(static_cast<size_t>(non_differentiable_outputs->ints(i)));
           }
+        }
+        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs() + non_differentiable_outputs_indices.size());
+
+        auto full_shape_outputs = ctx.getAttribute("full_shape_outputs");
+        std::unordered_set<size_t> full_shape_outputs_indices{};
+        if (nullptr == full_shape_outputs) {  // attribute not present
+          fail_type_inference("Value of attribute 'full_shape_outputs' not specified");
+        } else {
+          for (int i = 0, n = full_shape_outputs->ints_size(); i < n; ++i) {
+            full_shape_outputs_indices.insert(static_cast<size_t>(full_shape_outputs->ints(i)));
+          }
+        }
+
+        for (size_t i = 0, j = 0; i < ctx.getNumInputs(); ++i) {
+          // skip module outputs that are non differentiable
+          if (non_differentiable_outputs_indices.count(i) > 0) {
+            continue;
+          }
+
+          propagateElemTypeFromInputToOutput(ctx, i, j);
+          if (full_shape_outputs_indices.count(i) > 0) {
+            auto typeProto = ctx.getInputType(i);
+            if (hasShape(*typeProto)) {
+              propagateShapeFromInputToOutput(ctx, i, j);
+            }
+          }
+          j++;
         }
       });
 }

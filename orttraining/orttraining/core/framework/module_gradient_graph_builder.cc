@@ -166,6 +166,13 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
+  const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
+  for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
+    if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
+      training_graph_info_.output_grad_indices_non_differentiable.emplace_back(i);
+    }
+  }
+
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
   return Status::OK();
 }
@@ -204,11 +211,26 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     graph_utils::ReplaceDownstreamNodeInput(gradient_graph, *producer_node, producer_node_arg_index, add_node, 0);
   }
 
+  NodeAttributes attributes{};
+
+  // YieldOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
+  const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
+  if (non_differentiable_indices.size() > 0) {
+    ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
+    const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
+    non_differentiable_outputs.set_name(non_differentiable_outputs_name);
+    non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+    for (auto index : non_differentiable_indices) {
+      non_differentiable_outputs.add_ints(index);
+    }
+    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
+  }
+
   // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
   // We need this info to set make TypeAndShapeInferenceFunction work properly.
   ONNX_NAMESPACE::AttributeProto full_shape_outputs;
-  const std::string attribute_name = "full_shape_outputs";
-  full_shape_outputs.set_name(attribute_name);
+  const std::string full_shape_outputs_name = "full_shape_outputs";
+  full_shape_outputs.set_name(full_shape_outputs_name);
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
   std::vector<NodeArg*> yield_input_node_args;
@@ -228,10 +250,14 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
+      ;
+    } else {
+      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+    }
   }
+  attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);
 }

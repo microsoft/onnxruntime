@@ -249,6 +249,9 @@ file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/operators/*.py"
 )
+file(GLOB onnxruntime_python_quantization_cal_table_flatbuffers_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/CalTableFlatBuffers/*.py"
+)
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
 )
@@ -277,6 +280,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
@@ -322,6 +326,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_operators_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_cal_table_flatbuffers_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
