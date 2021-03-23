@@ -179,6 +179,7 @@ static bool IsEnvVarDefined(const char* var) {
   
 static bool USE_STICKY_WORKER_ASSIGNMENT = false;
 static bool USE_STICKY_INDEX_ASSIGNMENT = false;
+static bool WORKER_ASSIGNMENT_STATS = false;
 
 // Additional profiling of the number of tasks that are not run
 // immediately, and the number of times that a task is stolen.  [ Will
@@ -785,6 +786,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         done_(false),
         cancelled_(false) {
 
+    if (IsEnvVarDefined("ORT_WORKER_ASSIGNMENT_STATS")) {
+      auto e = GetEnv("ORT_WORKER_ASSIGNMENT_STATS");
+      if (atoi(e.get())) {
+        WORKER_ASSIGNMENT_STATS = true;
+      }
+    }
     if (IsEnvVarDefined("ORT_STICKY")) {
       auto e = GetEnv("ORT_STICKY");
       if (atoi(e.get())) {
@@ -843,7 +850,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
 
-    ::std::cerr << "Basic stats: " <<
+    if (WORKER_ASSIGNMENT_STATS)  {
+      ::std::cerr << "Basic stats: " <<
         " sticky=" << (USE_STICKY_WORKER_ASSIGNMENT ? "true" : "false") <<
         " tasks_stolen=" << tasks_stolen <<
         " tasks_stolen_on_wake=" << tasks_stolen_on_wake <<
@@ -854,8 +862,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         " same_worker_as_last=" << tasks_as_last <<
         " same_idx_as_last=" << idx_as_last <<
         " revoked=" << num_tasks_revoked <<
-        //        " timing_us=" << timing_us <<
         "\n";
+    }
   }
 
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed
@@ -1219,10 +1227,12 @@ void SummonWorkers(PerThread &pt,
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
 
-        if (q_idx == last[idx]) {
-          stats_as_last++;
+        if (WORKER_ASSIGNMENT_STATS) {
+          if (q_idx == last[idx]) {
+            stats_as_last++;
+          }
+          last[idx] = q_idx;
         }
-        last[idx] = q_idx;
       }
     }
 
@@ -1237,11 +1247,13 @@ void SummonWorkers(PerThread &pt,
   }
 
   // Merge per-thread stats to global atomics
-  if (stats_extra_wakeup) extra_wakeup += stats_extra_wakeup;
-  if (stats_tasks_ready) tasks_ready += stats_tasks_ready;
-  if (stats_used_preferred) used_preferred += stats_used_preferred;
-  if (stats_refreshed_preferred) refreshed_preferred += stats_refreshed_preferred;
-  if (stats_as_last) tasks_as_last += stats_as_last;
+  if (WORKER_ASSIGNMENT_STATS) {
+    if (stats_extra_wakeup) extra_wakeup += stats_extra_wakeup;
+    if (stats_tasks_ready) tasks_ready += stats_tasks_ready;
+    if (stats_used_preferred) used_preferred += stats_used_preferred;
+    if (stats_refreshed_preferred) refreshed_preferred += stats_refreshed_preferred;
+    if (stats_as_last) tasks_as_last += stats_as_last;
+  }
 }
 
 // Run a single parallel loop in an existing parallel section.  This
