@@ -65,7 +65,7 @@ struct PartialGraphExecutionManager {
   std::map<int64_t, std::pair<std::unique_ptr<ExecutionFrame>, size_t>> graph_runs_;
   std::vector<int64_t> available_run_ids_;
   int64_t graph_runs_counter_;
-  std::unordered_set<size_t> to_be_executed_runs_;
+  std::unordered_set<int64_t> to_be_executed_runs_;
 
   PartialGraphExecutionManager() {
     graph_runs_counter_ = 0;
@@ -73,7 +73,7 @@ struct PartialGraphExecutionManager {
 
   int64_t GetNewPartialGraphRunId() {
     std::lock_guard<OrtMutex> lock(lock_);
-    size_t new_run_id;
+    int64_t new_run_id;
     if (available_run_ids_.size() > 0) {
       new_run_id = available_run_ids_.back();
       available_run_ids_.pop_back();
