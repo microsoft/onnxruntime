@@ -129,14 +129,14 @@ class ORTModule(torch.nn.Module):
             _, _, input_names_require_grad, new_input_shape = \
                 _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
-            initializer_names_to_train_set = {name for name, param in
+            initializer_names_to_train_set_user_model = {name for name, param in
                 self._flattened_output_module.named_parameters() if param.requires_grad}
-            initializer_names_to_train_set_prev = set(self._onnx_graphs_info.initializer_names_to_train) \
+            initializer_names_to_train_set_onnx_graph = set(self._onnx_graphs_info.initializer_names_to_train) \
                 if self._onnx_graphs_info else None
             # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
             if input_names_require_grad != self._input_names_require_grad or \
-                initializer_names_to_train_set != initializer_names_to_train_set_prev:
+                initializer_names_to_train_set_user_model != initializer_names_to_train_set_onnx_graph:
                 self._input_names_require_grad = input_names_require_grad
                 self._initialize_module_gradient_graph_builder()
                 # Trigger the rebuilding of the gradient graph
