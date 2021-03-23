@@ -180,8 +180,8 @@ def get_trtexec_pid(df, python_pid):
         if pid != python_pid: 
             return pid
 
-def get_max_memory(mem_file, trtexec): 
-    df = pd.read_csv(mem_file)
+def get_max_memory(trtexec): 
+    df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
     
     if trtexec: 
@@ -191,15 +191,15 @@ def get_max_memory(mem_file, trtexec):
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
 
-def start_memory_tracking(mem_file): 
-    p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
+def start_memory_tracking(): 
+    p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
     return p
 
-def end_memory_tracking(p, mem_file): 
+def end_memory_tracking(p, trtexec): 
     p.terminate()
     p.wait()
-    mem_usage = get_max_memory(mem_file, False) 
-    os.remove(mem_file)
+    mem_usage = get_max_memory(trtexec) 
+    os.remove(MEMORY_FILE)
     return mem_usage
 
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
@@ -221,9 +221,9 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         try:
             if args.track_memory and track_ep_memory(ep): 
 
-                p = start_memory_tracking(MEMORY_FILE)            
+                p = start_memory_tracking()            
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-                mem_usage = end_memory_tracking(p, MEMORY_FILE)
+                mem_usage = end_memory_tracking(p, False)
             else: 
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
 
@@ -1028,11 +1028,10 @@ def run_onnxruntime(args, models):
                 if trt in ep and args.trtexec:
                     
                     if args.track_memory: 
-                        p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", mem_file])
                         
-                        p = start_memory_tracking(MEMORY_FILE)            
+                        p = start_memory_tracking()            
                         result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                        mem_usage = end_memory_tracking(p, MEMORY_FILE)
+                        mem_usage = end_memory_tracking(p, True)
                         if result and mem_usage: 
                             result["memory"] = mem_usage
                         ep = standalone_trt_fp16 if fp16 else standalone_trt
