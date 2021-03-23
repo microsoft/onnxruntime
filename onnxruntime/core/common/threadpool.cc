@@ -21,6 +21,7 @@ limitations under the License.
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
 #include "processthreadsapi.h"
 #include <codecvt>
@@ -30,11 +31,13 @@ limitations under the License.
 #else
 #include <sched.h>
 #endif
+#endif
 
 namespace onnxruntime {
 
 namespace concurrency {
 
+#if !defined(ORT_MINIMAL_BUILD)
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
     num_threads_(num_threads) {
   child_thread_stats_.assign(num_threads, {});
@@ -220,6 +223,7 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
   }
   return ss.str();
 }
+#endif
 
   // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
