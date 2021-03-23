@@ -1459,6 +1459,8 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     training_session1 = model._training_session
     weight_grad_2 = model._original_module.fc1.weight.grad
     bias_grad_2 = model._original_module.fc1.bias.grad
+    assert weight_grad_2 is not None
+    assert bias_grad_2 is not None
 
     model._original_module.fc1.requires_grad_(False)
     output = model(x)
