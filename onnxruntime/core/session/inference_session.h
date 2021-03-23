@@ -28,7 +28,6 @@
 #include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
 #endif
-#include "core/framework/utils.h"
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -54,8 +53,7 @@ namespace logging {
 class LoggingManager;
 }
 
-const int64_t DEFAULT_PARTIAL_RUN_ID = -1;
-const int64_t DEFAULT_RUN_ID = -2;
+const int64_t DEFAULT_RUN_ID = -1;
 
 /**
   * Pre-defined and custom metadata about the model.
@@ -267,7 +265,7 @@ class InferenceSession {
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
                      std::vector<OrtValue>* p_fetches,
-                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
+                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr, int64_t run_id = DEFAULT_RUN_ID) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -291,14 +289,13 @@ class InferenceSession {
                      const std::vector<std::string>& output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
-  common::Status RunCore(const RunOptions& run_options,
-                         const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
-                         const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                         const std::vector<OrtDevice>* p_fetches_device_info, int64_t& run_id);
+#ifdef ENABLE_TRAINING
+  int64_t CreatePartialRun();
 
-  common::Status PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t& run_id);
+  common::Status PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t run_id);
 
   void CancelPartialRun(int64_t run_id);
+#endif
 
   /**
   * Creates a new binding object for binding inputs and outputs.

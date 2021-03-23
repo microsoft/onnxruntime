@@ -584,6 +584,8 @@ bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
 bool SessionState::GetTransferIntermidiateTensorOwnership() const { return transfer_ownership_intermediate_output_tensors_; }
 
+PartialGraphExecutionManager& SessionState::GetPartialGraphExecutionManager() { return partial_graph_runs_manager_; }
+
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
   // to handle a scenario where an input is required on different devices by different nodes. Validate that.
@@ -1009,9 +1011,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #endif
 
   // Memory pattern tracer allocates all initializers on a single continous
-  // buffer. This has the effect of reducing memory fragementation. 
+  // buffer. This has the effect of reducing memory fragementation.
   // Further more, NCCL kernels require initializers to be allocated
-  // continously. 
+  // continously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
   // release some initializers. See OpKernel::PrePack(). Letting all initializers

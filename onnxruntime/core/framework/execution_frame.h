@@ -31,7 +31,7 @@ class IExecutionFrame {
   // initialized until the derived class is constructed.
   IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info,
-                  std::vector<int>& fetch_mlvalue_idxs);
+                  const std::vector<int>& fetch_mlvalue_idxs);
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
@@ -40,10 +40,9 @@ class IExecutionFrame {
  public:
   virtual ~IExecutionFrame();
 
-  void UpdateFeedAndFetches(const std::vector<int>& feed_mlvalue_idxs,
-                            const std::vector<OrtValue>& feeds,
-                            std::vector<int>& fetch_mlvalue_idxs,
-                            const std::vector<OrtValue>& fetches);
+  void UpdateFeeds(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches);
+
+  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches);
 
   // Get the index for the first entry of the given node.
   int GetNodeOffset(NodeIndex index) const {
@@ -69,7 +68,9 @@ class IExecutionFrame {
 
   /**
    * write the output values to the 'fetches' vector
-   * Don't access the values after SessionState is destroyed 
+   * Don't access the values after SessionState is destroyed, however
+   * when release is set to true (in the case of partial graph execution)
+   * then do not access the values after they have been "released". 
    */
   Status GetOutputs(std::vector<OrtValue>& fetches, bool release = false);
 
@@ -86,7 +87,7 @@ class IExecutionFrame {
   virtual Status ReleaseMLValueImpl(int ort_value_idx);
 
   // returns true if the ort_value_idx is an output from the graph
-  bool IsOutput(int ort_value_idx);
+  bool IsOutput(int ort_value_idx) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
@@ -96,7 +97,7 @@ class IExecutionFrame {
     return all_values_[ort_value_index];
   }
 
-  void GetMLValue(int ort_value_index, OrtValue& fetch) {
+  void GetAndReleaseMLValue(int ort_value_index, OrtValue& fetch) {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     fetch = all_values_[ort_value_index];
     all_values_[ort_value_index] = OrtValue();
@@ -172,8 +173,6 @@ class ExecutionFrame final : public IExecutionFrame {
     //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
-
-  size_t program_counter_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);

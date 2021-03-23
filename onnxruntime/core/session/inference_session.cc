@@ -251,7 +251,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      bool allow_inter_op_spinning = 
+      bool allow_inter_op_spinning =
           session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
@@ -1510,15 +1510,7 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                             const std::vector<OrtDevice>* p_fetches_device_info) {
-  int64_t run_id = DEFAULT_RUN_ID;
-  return RunCore(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info, run_id);
-}
-
-Status InferenceSession::RunCore(const RunOptions& run_options,
-                                 const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
-                                 const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                                 const std::vector<OrtDevice>* p_fetches_device_info, int64_t& run_id) {
+                             const std::vector<OrtDevice>* p_fetches_device_info, int64_t run_id) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1738,24 +1730,25 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
              &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 }
 
-common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t& run_id) {
+#ifdef ENABLE_TRAINING
+int64_t InferenceSession::CreatePartialRun() {
+  return session_state_->GetPartialGraphExecutionManager().GetNewPartialGraphRunId();
+}
+
+common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t run_id) {
   ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryPattern() == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryReuse() == false);
-  ORT_ENFORCE(run_id >= DEFAULT_PARTIAL_RUN_ID);
-  return RunCore(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-                 &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), run_id);
+  ORT_ENFORCE(session_state_->GetPartialGraphExecutionManager().IsValidRunId(run_id));
+
+  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), run_id);
 }
 
 void InferenceSession::CancelPartialRun(int64_t run_id) {
-  ORT_ENFORCE(run_id > DEFAULT_PARTIAL_RUN_ID);
-
-  auto it = session_state_->graph_runs_.find(run_id);
-
-  ORT_ENFORCE(it != session_state_->graph_runs_.end());
-  std::lock_guard<OrtMutex> lock(session_state_->graph_runs_lock_);
-  session_state_->graph_runs_.erase(it);
+  session_state_->GetPartialGraphExecutionManager().CancelPartialGraphRun(run_id);
 }
+#endif
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   RunOptions run_options;

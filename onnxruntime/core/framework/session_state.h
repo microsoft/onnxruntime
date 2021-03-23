@@ -60,6 +60,92 @@ struct MemoryPatternGroup;
 class MemoryInfo;
 #endif
 
+struct PartialGraphExecutionManager {
+  OrtMutex lock_;
+  std::map<int64_t, std::pair<std::unique_ptr<ExecutionFrame>, size_t>> graph_runs_;
+  std::vector<int64_t> available_run_ids_;
+  int64_t graph_runs_counter_;
+  std::unordered_set<size_t> to_be_executed_runs_;
+
+  PartialGraphExecutionManager() {
+    graph_runs_counter_ = 0;
+  }
+
+  int64_t GetNewPartialGraphRunId() {
+    std::lock_guard<OrtMutex> lock(lock_);
+    size_t new_run_id;
+    if (available_run_ids_.size() > 0) {
+      new_run_id = available_run_ids_.back();
+      available_run_ids_.pop_back();
+    } else {
+      new_run_id = graph_runs_counter_++;
+    }
+
+    ORT_ENFORCE(to_be_executed_runs_.find(new_run_id) == to_be_executed_runs_.end());
+
+    to_be_executed_runs_.insert(new_run_id);
+    return new_run_id;
+  }
+
+  bool IsValidRunId(int64_t run_id) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it_in_progress_runs = graph_runs_.find(run_id);
+    auto it_to_be_executed = to_be_executed_runs_.find(run_id);
+
+    return ((it_in_progress_runs != graph_runs_.end()) ^ (it_to_be_executed != to_be_executed_runs_.end()));
+  }
+
+  bool IsToBeExecutedRunId(int64_t run_id) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it = to_be_executed_runs_.find(run_id);
+    return it != to_be_executed_runs_.end();
+  }
+
+  void CancelPartialGraphRun(int64_t run_id) {
+    //REVIEW(codemzs): Does it make sense to cancel a partial run that was not "prepared". May be?
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it = graph_runs_.find(run_id);
+
+    ORT_ENFORCE(it != graph_runs_.end());
+
+    available_run_ids_.push_back(run_id);
+    graph_runs_.erase(it);
+  }
+
+  void PreparePartialRun(std::unique_ptr<ExecutionFrame> frame, int64_t run_id, size_t program_counter) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it = graph_runs_.find(run_id);
+
+    ORT_ENFORCE(it == graph_runs_.end());
+
+    auto it_to_be_executed = to_be_executed_runs_.find(run_id);
+
+    ORT_ENFORCE(it_to_be_executed != to_be_executed_runs_.end());
+
+    to_be_executed_runs_.erase(it_to_be_executed);
+
+    graph_runs_.insert(std::make_pair(run_id, std::make_pair(std::move(frame), program_counter))).first;
+  }
+
+  std::pair<std::unique_ptr<onnxruntime::ExecutionFrame>, size_t>& GetPartialRun(int64_t run_id) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it = graph_runs_.find(run_id);
+
+    ORT_ENFORCE(it != graph_runs_.end());
+
+    return it->second;
+  }
+
+  void UpdatePartialRunProgramCounter(int64_t run_id, size_t program_counter) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto it = graph_runs_.find(run_id);
+
+    ORT_ENFORCE(it != graph_runs_.end());
+
+    it->second.second = program_counter;
+  }
+};
+
 /**
  * SessionState should be modified by the inference session class only.
  * It is supposed to be passed by const-ref only to all the executors.
@@ -90,8 +176,7 @@ class SessionState {
                bool use_deterministic_compute = false,
                bool enable_mem_reuse = true,
                bool transfer_ownership_intermediate_output_tensors = false)
-      : graph_runs_counter_(0),
-        graph_(graph),
+      : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
         profiler_(profiler),
@@ -222,6 +307,8 @@ class SessionState {
 
   bool GetTransferIntermidiateTensorOwnership() const;
 
+  PartialGraphExecutionManager& GetPartialGraphExecutionManager();
+
   /**
   Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
   If any one of the graph input is shapeless, enable_mem_pattern_ will be set to false
@@ -303,10 +390,6 @@ class SessionState {
   SessionState* Parent() {
     return parent_;
   }
-
-  mutable OrtMutex graph_runs_lock_;
-  mutable std::map<int64_t, std::unique_ptr<ExecutionFrame>> graph_runs_;
-  mutable int64_t graph_runs_counter_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -454,6 +537,7 @@ class SessionState {
   bool use_deterministic_compute_;
   bool enable_mem_reuse_;
   bool transfer_ownership_intermediate_output_tensors_;
+  mutable PartialGraphExecutionManager partial_graph_runs_manager_;
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
 

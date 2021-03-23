@@ -28,15 +28,27 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   }
 }
 
+Status ParallelExecutor::ExecutePartial(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                        const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                        std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                        const logging::Logger& logger, int64_t run_id) {
+  ORT_UNUSED_PARAMETER(session_state);
+  ORT_UNUSED_PARAMETER(feed_mlvalue_idxs);
+  ORT_UNUSED_PARAMETER(feeds);
+  ORT_UNUSED_PARAMETER(fetch_mlvalue_idxs);
+  ORT_UNUSED_PARAMETER(fetches);
+  ORT_UNUSED_PARAMETER(fetch_allocators);
+  ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(run_id);
+
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, "Partial execution is not supported in Parallel Executor at this time.");
+}
+
 Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                  const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
                                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                 const logging::Logger& logger,
-                                 int64_t& run_id) {
-  
-  ORT_ENFORCE(run_id == DEFAULT_RUN_ID);
-
+                                 const logging::Logger& logger) {
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
@@ -82,7 +94,6 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  // ExecutionFrame::Finalize will update 'fetches' with the final output
   ORT_RETURN_IF_ERROR(root_frame_->GetOutputs(fetches));
   VLOGS(logger, 1) << "Done execution.";
 

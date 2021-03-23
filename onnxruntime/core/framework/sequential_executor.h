@@ -24,9 +24,13 @@ class SequentialExecutor : public IExecutor {
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                         std::vector<OrtValue>& fetches,
-                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                         const logging::Logger& logger, int64_t& run_id) override;
+                         std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                         const logging::Logger& logger) override;
+
+  common::Status ExecutePartial(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                const logging::Logger& logger, int64_t run_id) override;
 
   common::Status Execute(const SessionState& session_state,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
