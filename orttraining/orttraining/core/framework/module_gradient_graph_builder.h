@@ -16,6 +16,8 @@ namespace training {
  * The training configuration options.
  */
 struct ModuleGradientGraphBuilderConfiguration {
+  // The names of the weights.
+  std::vector<std::string> initializer_names{};
   // The names of the weights to train.
   std::vector<std::string> initializer_names_to_train{};
   // The names of inputs that require gradient.
@@ -35,6 +37,8 @@ struct TrainingGraphInfo {
   std::vector<std::string> user_input_names{};
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
   std::unordered_map<std::string, std::string> user_input_grad_names{};
+  // All initializers (trainable as well as non trainable).
+  std::vector<std::string> initializer_names{};
   // Trainable initializers.
   std::vector<std::string> initializer_names_to_train{};
   // Trainable initializer grad names, ordered according to initializer_names_to_train.
@@ -60,9 +64,9 @@ class ModuleGradientGraphBuilder {
   Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
 
   /**
-   * Build the gradient graph and split it to forward and backward graphs.
+   * Build the gradient graph.
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
-   * @return The status of the gradient graph building and forward/backward graphs splitting.
+   * @return The status of the gradient graph building.
    */
   Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
@@ -73,8 +77,8 @@ class ModuleGradientGraphBuilder {
   std::string GetGradientModel() const;
 
   /**
-   * Get the split graphs information.
-   * @return The split graphs information.
+   * Get the training graphs information.
+   * @return The training graphs information.
    */
   TrainingGraphInfo GetTrainingGraphInfo() const { return training_graph_info_; }
 
