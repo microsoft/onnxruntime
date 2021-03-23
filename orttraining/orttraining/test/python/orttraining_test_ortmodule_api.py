@@ -504,7 +504,7 @@ def test_gradient_correctness():
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
         
-        assert torch.allclose(ort_prediction, pt_prediction, equal_nan=True)
+        assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_module_with_non_differential_output():
