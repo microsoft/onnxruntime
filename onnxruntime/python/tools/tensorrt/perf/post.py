@@ -73,7 +73,6 @@ def main():
                         os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD') + \
                         '@onnxruntimedashboard.mysql.database.azure.com/' + \
                         'onnxruntime'
-    print(connection_string)
     engine = create_engine(connection_string, connect_args=ssl_args)
 
     try: 
