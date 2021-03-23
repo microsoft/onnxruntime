@@ -227,16 +227,7 @@ Return Value:
     }
 }
 
-#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
-
-#define MLAS_PACKB_WIDE 4
-
-#else
-
-#define MLAS_PACKB_WIDE 16
-#define MLAS_PACKB_WIDE_16
-
-#endif
+#if !defined(MLAS_TARGET_WASM_SCALAR)
 
 void
 MlasSgemmCopyPackB(
@@ -253,9 +244,9 @@ Routine Description:
     This routine copies elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 16(or 4) elements from the source matrix are unrolled to be physically
+    Columns of 16 elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 16(or 4) elements wide are zero-padded.
+    columns less than 16 elements wide are zero-padded.
 
 Arguments:
 
@@ -280,7 +271,7 @@ Return Value:
     // time.
     //
 
-    while (CountX >= MLAS_PACKB_WIDE) {
+    while (CountX >= 16) {
 
         const float* b = B;
         size_t y = CountY;
@@ -291,35 +282,28 @@ Return Value:
             vst4q_f32(D, vld4q_f32(b));
 #else
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-
-#if defined(MLAS_PACKB_WIDE_16)
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
             MLAS_FLOAT32X4 t3 = MlasLoadFloat32x4(&b[12]);
-#endif
 
             MlasStoreAlignedFloat32x4(&D[0], t0);
-
-#if defined(MLAS_PACKB_WIDE_16)
             MlasStoreAlignedFloat32x4(&D[4], t1);
             MlasStoreAlignedFloat32x4(&D[8], t2);
             MlasStoreAlignedFloat32x4(&D[12], t3);
 #endif
 
-#endif
-
-            D += MLAS_PACKB_WIDE;
+            D += 16;
             b += ldb;
             y--;
 
         } while (y > 0);
 
-        B += MLAS_PACKB_WIDE;
-        CountX -= MLAS_PACKB_WIDE;
+        B += 16;
+        CountX -= 16;
     }
 
     //
-    // Special case the handling of the remaining columns less than 16(or 4) elements
+    // Special case the handling of the remaining columns less than 16 elements
     // wide.
     //
 
@@ -342,16 +326,10 @@ Return Value:
             vst4q_f32(d, ZeroFloat32x4x4);
 #else
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
-
-#if defined(MLAS_PACKB_WIDE_16)
             MlasStoreAlignedFloat32x4(d + 4, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 8, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 12, ZeroFloat32x4);
 #endif
-
-#endif
-
-#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountX & 8) != 0) {
 
@@ -373,8 +351,6 @@ Return Value:
                 b += 4;
             }
 
-#endif
-
             if ((CountX & 2) != 0) {
 
                 float t0 = b[0];
@@ -391,7 +367,7 @@ Return Value:
                 d[0] = b[0];
             }
 
-            D += MLAS_PACKB_WIDE;
+            D += 16;
             B += ldb;
             y--;
 
@@ -459,9 +435,9 @@ Return Value:
 #endif
 
         MlasStoreAlignedFloat32x4(&D[0], t0);
-        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE], t1);
-        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE * 2], t2);
-        MlasStoreAlignedFloat32x4(&D[MLAS_PACKB_WIDE * 3], t3);
+        MlasStoreAlignedFloat32x4(&D[16], t1);
+        MlasStoreAlignedFloat32x4(&D[32], t2);
+        MlasStoreAlignedFloat32x4(&D[48], t3);
 
         D += 4;
         B += ldb * 4;
@@ -483,9 +459,9 @@ Routine Description:
     This routine transposes elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 16(or 4) elements from the source matrix are unrolled to be physically
+    Columns of 16 elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 16(or 4) elements wide are zero-padded.
+    columns less than 16 elements wide are zero-padded.
 
 Arguments:
 
@@ -506,11 +482,11 @@ Return Value:
 --*/
 {
     //
-    // Transpose elements from matrix B into the packed buffer 16(or 4) rows at a
+    // Transpose elements from matrix B into the packed buffer 16 rows at a
     // time.
     //
 
-    while (CountY >= MLAS_PACKB_WIDE) {
+    while (CountY >= 16) {
 
         const float* b = B;
         size_t x = CountX;
@@ -533,9 +509,9 @@ Return Value:
 
         while (x >= 4) {
 
-            MlasSgemmTransposePackBNx4<MLAS_PACKB_WIDE>(&D[0], &b[0], ldb);
+            MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
 
-            D += MLAS_PACKB_WIDE * 4;
+            D += 16 * 4;
             b += 4;
             x -= 4;
         }
@@ -548,9 +524,6 @@ Return Value:
             float t1 = b[ldb];
             float t2 = b[ldb * 2];
             float t3 = b[ldb * 3];
-
-#if defined(MLAS_PACKB_WIDE_16)
-
             float t4 = b[ldb * 4];
             float t5 = b[ldb * 5];
             float t6 = b[ldb * 6];
@@ -564,15 +537,10 @@ Return Value:
             float t14 = b[ldb * 14];
             float t15 = b[ldb * 15];
 
-#endif
-
             D[0] = t0;
             D[1] = t1;
             D[2] = t2;
             D[3] = t3;
-
-#if defined(MLAS_PACKB_WIDE_16)
-
             D[4] = t4;
             D[5] = t5;
             D[6] = t6;
@@ -586,15 +554,13 @@ Return Value:
             D[14] = t14;
             D[15] = t15;
 
-#endif
-
-            D += MLAS_PACKB_WIDE;
+            D += 16;
             b += 1;
             x--;
         }
 
-        B += ldb * MLAS_PACKB_WIDE;
-        CountY -= MLAS_PACKB_WIDE;
+        B += ldb * 16;
+        CountY -= 16;
     }
 
     //
@@ -615,8 +581,6 @@ Return Value:
 
             float* d = D;
             const float* b = B;
-
-#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountY & 8) != 0) {
 
@@ -652,12 +616,10 @@ Return Value:
                 MlasStoreAlignedFloat32x4(&d[52], ZeroFloat32x4);
             }
 
-#endif
-
             MlasStoreAlignedFloat32x4(&d[0], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE * 2], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[MLAS_PACKB_WIDE * 3], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[16], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[32], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[48], ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
 
@@ -668,18 +630,18 @@ Return Value:
                 __m128 v0 = _mm_unpacklo_ps(t0, t1);
                 __m128 v1 = _mm_unpackhi_ps(t0, t1);
                 _mm_storel_pi((__m64*)&d[0], v0);
-                _mm_storeh_pi((__m64*)&d[MLAS_PACKB_WIDE], v0);
-                _mm_storel_pi((__m64*)&d[MLAS_PACKB_WIDE * 2], v1);
-                _mm_storeh_pi((__m64*)&d[MLAS_PACKB_WIDE * 3], v1);
+                _mm_storeh_pi((__m64*)&d[16], v0);
+                _mm_storel_pi((__m64*)&d[32], v1);
+                _mm_storeh_pi((__m64*)&d[48], v1);
 #else
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
-                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE], t0);
-                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE + 1], t1);
-                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2], t0);
-                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2 + 1], t1);
-                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3], t0);
-                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3 + 1], t1);
+                MlasStoreLaneFloat32x4<1>(&d[16], t0);
+                MlasStoreLaneFloat32x4<1>(&d[17], t1);
+                MlasStoreLaneFloat32x4<2>(&d[32], t0);
+                MlasStoreLaneFloat32x4<2>(&d[33], t1);
+                MlasStoreLaneFloat32x4<3>(&d[48], t0);
+                MlasStoreLaneFloat32x4<3>(&d[49], t1);
 #endif
 
                 d += 2;
@@ -692,18 +654,18 @@ Return Value:
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
 
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
-                MlasStoreLaneFloat32x4<1>(&d[MLAS_PACKB_WIDE], t0);
-                MlasStoreLaneFloat32x4<2>(&d[MLAS_PACKB_WIDE * 2], t0);
-                MlasStoreLaneFloat32x4<3>(&d[MLAS_PACKB_WIDE * 3], t0);
+                MlasStoreLaneFloat32x4<1>(&d[16], t0);
+                MlasStoreLaneFloat32x4<2>(&d[32], t0);
+                MlasStoreLaneFloat32x4<3>(&d[48], t0);
 #else
                 d[0] = b[0];
-                d[MLAS_PACKB_WIDE] = b[1];
-                d[MLAS_PACKB_WIDE * 2] = b[2];
-                d[MLAS_PACKB_WIDE * 3] = b[3];
+                d[16] = b[1];
+                d[32] = b[2];
+                d[48] = b[3];
 #endif
             }
 
-            D += MLAS_PACKB_WIDE * 4;
+            D += 16 * 4;
             B += 4;
             x -= 4;
         }
@@ -716,8 +678,6 @@ Return Value:
 
             float* d = D;
             const float* b = B;
-
-#if defined(MLAS_PACKB_WIDE_16)
 
             if ((CountY & 8) != 0) {
 
@@ -768,7 +728,336 @@ Return Value:
                 MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
             }
 
-#endif
+            MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
+
+            if ((CountY & 2) != 0) {
+
+                float t0 = b[0];
+                float t1 = b[ldb];
+
+                d[0] = t0;
+                d[1] = t1;
+
+                d += 2;
+                b += ldb * 2;
+            }
+
+            if ((CountY & 1) != 0) {
+                d[0] = b[0];
+            }
+
+            D += 16;
+            B += 1;
+            x--;
+        }
+    }
+}
+
+#else //defined(MLAS_TARGET_WASM_SCALAR)
+
+// MlasSgemmCopyPackB() and MlasSgemmTransposePackB() using 4 elements wide
+
+void
+MlasSgemmCopyPackB(
+    float* D,
+    const float* B,
+    size_t ldb,
+    size_t CountX,
+    size_t CountY
+    )
+/*++
+
+Routine Description:
+
+    This routine copies elements from the source matrix to the destination
+    packed buffer.
+
+    Columns of 4 elements from the source matrix are unrolled to be physically
+    contiguous for better locality inside the SGEMM kernels. Any remaining
+    columns less than 4 elements wide are zero-padded.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+    CountX - Supplies the number of columns of the source matrix to copy.
+
+    CountY - Supplies the number of rows of the source matrix to copy.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    //
+    // Copy data from matrix B into the destination buffer 4 columns at a
+    // time.
+    //
+
+    while (CountX >= 4) {
+
+        const float* b = B;
+        size_t y = CountY;
+
+        do {
+            MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
+            MlasStoreAlignedFloat32x4(&D[0], t0);
+
+            D += 4;
+            b += ldb;
+            y--;
+
+        } while (y > 0);
+
+        B += 4;
+        CountX -= 4;
+    }
+
+    //
+    // Special case the handling of the remaining columns less than 4 elements
+    // wide.
+    //
+
+    if (CountX > 0) {
+
+        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+        size_t y = CountY;
+
+        do {
+
+            float* d = D;
+            const float* b = B;
+
+            MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
+
+            if ((CountX & 2) != 0) {
+
+                float t0 = b[0];
+                float t1 = b[1];
+
+                d[0] = t0;
+                d[1] = t1;
+
+                d += 2;
+                b += 2;
+            }
+
+            if ((CountX & 1) != 0) {
+                d[0] = b[0];
+            }
+
+            D += 4;
+            B += ldb;
+            y--;
+
+        } while (y > 0);
+    }
+}
+
+template<unsigned N>
+inline
+void
+MlasSgemmTransposePackBNx4(
+    float* D,
+    const float* B,
+    size_t ldb
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes elements from the source matrix to the destination
+    packed buffer.
+
+    4 columns of N rows from the source matrix are transposed to N columns of 4
+    rows in the destination packed buffer.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    for (unsigned n = 0; n < N / 4; n++) {
+
+        MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&B[ldb * 0]);
+        MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&B[ldb * 1]);
+        MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&B[ldb * 2]);
+        MLAS_FLOAT32X4 t3 = MlasLoadFloat32x4(&B[ldb * 3]);
+
+        MLAS_FLOAT32X4 z0 = MlasInterleaveLowFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z1 = MlasInterleaveHighFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z2 = MlasInterleaveLowFloat32x4(t1, t3);
+        MLAS_FLOAT32X4 z3 = MlasInterleaveHighFloat32x4(t1, t3);
+        t0 = MlasInterleaveLowFloat32x4(z0, z2);
+        t1 = MlasInterleaveHighFloat32x4(z0, z2);
+        t2 = MlasInterleaveLowFloat32x4(z1, z3);
+        t3 = MlasInterleaveHighFloat32x4(z1, z3);
+
+        MlasStoreAlignedFloat32x4(&D[0], t0);
+        MlasStoreAlignedFloat32x4(&D[4], t1);
+        MlasStoreAlignedFloat32x4(&D[8], t2);
+        MlasStoreAlignedFloat32x4(&D[12], t3);
+
+        D += 4;
+        B += ldb * 4;
+    }
+}
+
+void
+MlasSgemmTransposePackB(
+    float* D,
+    const float* B,
+    size_t ldb,
+    size_t CountY,
+    size_t CountX
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes elements from the source matrix to the destination
+    packed buffer.
+
+    Columns of 4 elements from the source matrix are unrolled to be physically
+    contiguous for better locality inside the SGEMM kernels. Any remaining
+    columns less than 4 elements wide are zero-padded.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+    CountY - Supplies the number of rows of the source matrix to transpose.
+
+    CountX - Supplies the number of columns of the source matrix to transpose.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    //
+    // Transpose elements from matrix B into the packed buffer 4 rows at a
+    // time.
+    //
+
+    while (CountY >= 4) {
+
+        const float* b = B;
+        size_t x = CountX;
+
+        while (x >= 4) {
+
+            MlasSgemmTransposePackBNx4<4>(&D[0], &b[0], ldb);
+
+            D += 4 * 4;
+            b += 4;
+            x -= 4;
+        }
+
+        while (x > 0) {
+
+            float t0 = b[0];
+            float t1 = b[ldb];
+            float t2 = b[ldb * 2];
+            float t3 = b[ldb * 3];
+
+            D[0] = t0;
+            D[1] = t1;
+            D[2] = t2;
+            D[3] = t3;
+
+            D += 4;
+            b += 1;
+            x--;
+        }
+
+        B += ldb * 4;
+        CountY -= 4;
+    }
+
+    //
+    // Special case the handling of the less than 16 remaining rows.
+    //
+
+    if (CountY > 0) {
+
+        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+        size_t x = CountX;
+
+        //
+        // Transpose 4 columns at a time.
+        //
+
+        while (x >= 4) {
+
+            float* d = D;
+            const float* b = B;
+
+            MlasStoreAlignedFloat32x4(&d[0], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[8], ZeroFloat32x4);
+            MlasStoreAlignedFloat32x4(&d[12], ZeroFloat32x4);
+
+            if ((CountY & 2) != 0) {
+
+                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
+                MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
+
+                MlasStoreLaneFloat32x4<0>(&d[0], t0);
+                MlasStoreLaneFloat32x4<0>(&d[1], t1);
+                MlasStoreLaneFloat32x4<1>(&d[4], t0);
+                MlasStoreLaneFloat32x4<1>(&d[5], t1);
+                MlasStoreLaneFloat32x4<2>(&d[8], t0);
+                MlasStoreLaneFloat32x4<2>(&d[9], t1);
+                MlasStoreLaneFloat32x4<3>(&d[12], t0);
+                MlasStoreLaneFloat32x4<3>(&d[13], t1);
+
+                d += 2;
+                b += ldb * 2;
+            }
+
+            if ((CountY & 1) != 0) {
+
+                d[0] = b[0];
+                d[4] = b[1];
+                d[4 * 2] = b[2];
+                d[4 * 3] = b[3];
+            }
+
+            D += 4 * 4;
+            B += 4;
+            x -= 4;
+        }
+
+        //
+        // Transpose the remaining columns.
+        //
+
+        while (x > 0) {
+
+            float* d = D;
+            const float* b = B;
 
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
 
@@ -788,12 +1077,14 @@ Return Value:
                 d[0] = b[0];
             }
 
-            D += MLAS_PACKB_WIDE;
+            D += 4;
             B += 1;
             x--;
         }
     }
 }
+
+#endif
 
 MLAS_FORCEINLINE
 float*

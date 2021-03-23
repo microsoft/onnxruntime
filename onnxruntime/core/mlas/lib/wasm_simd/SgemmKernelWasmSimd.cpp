@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sgemmc.cpp
+    SgemmKernelWasmSimd.cpp
 
 Abstract:
 
@@ -16,8 +16,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
-// #include <wasm_simd128.h>
 
 template<bool ZeroMode, bool ProcessTwoRows>
 size_t

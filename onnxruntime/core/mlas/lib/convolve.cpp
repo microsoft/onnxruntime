@@ -902,9 +902,11 @@ Return Value:
         return;
     }
 
-#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
+#if defined(MLAS_TARGET_WASM_SCALAR)
 
     if (Algorithm == MlasConvAlgorithmDepthwise) {
+        // Fill the Working Buffer with Zero for use by the depthwise kernel.
+        // The length for the zeros are input image wide + 2 currently.
         std::fill_n(WorkingBuffer, Parameters->InputShape[1] + 2, 0.0f);
     }
 
@@ -972,7 +974,7 @@ Return Value:
                     break;
                 }
 
-#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
+#if defined(MLAS_TARGET_WASM_SCALAR)
 
                 case MlasConvAlgorithmDepthwise:
                 {
@@ -1214,7 +1216,7 @@ Return Value:
 
     } else {
 
-#if defined(MLAS_TARGET_WASM) && !defined(MLAS_TARGET_WASMSIMD)
+#if defined(MLAS_TARGET_WASM_SCALAR)
 
         // Scalar direct conv for depthwise convolution.
         // Currently only support 3x3 kernel with padding <=1 and dilations = 1.

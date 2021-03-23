@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sgemmc.cpp
+    SgemmKernelWasmScalar.cpp
 
 Abstract:
 

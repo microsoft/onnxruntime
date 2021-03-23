@@ -6,12 +6,12 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sgemmc.cpp
+    SgemvKernelWasmSimd.cpp
 
 Abstract:
 
-    This module implements the kernels for the single precision matrix/matrix
-    multiply operation (SGEMM).
+    This module implements the kernels for the single precision matrix/vector
+    multiply operation (SGEMV).
 
 --*/
 

@@ -6,18 +6,18 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sgemmc.cpp
+    SgemvKernelWasmScalar.cpp
 
 Abstract:
 
-    This module implements the kernels for the single precision matrix/matrix
-    multiply operation (SGEMM).
+    This module implements the kernels for the single precision matrix/vector
+    multiply operation (SGEMV).
 
 --*/
 
 #include "mlasi.h"
 
-size_t
+void
 MLASCALL 
 MlasGemvFloatKernel(
     const float* A,
@@ -166,6 +166,4 @@ Return Value:
         B += ldb;
         A++;
     }
-
-    return 0;
 }

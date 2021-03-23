@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    direct_conv_chw.cpp
+    SconvDepthwiseKernelWasmScalar.cpp
 
 Abstract:
 

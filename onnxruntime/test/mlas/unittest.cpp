@@ -30,7 +30,6 @@ Abstract:
 #endif
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 #include "core/platform/threadpool.h"
-#include "core/platform/env.h"
 #endif
 
 #include "core/common/make_unique.h"

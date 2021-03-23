@@ -56,7 +56,9 @@ Abstract:
 #if defined(__wasm__)
 #define MLAS_TARGET_WASM
 #if defined(__wasm_simd128__)
-#define MLAS_TARGET_WASMSIMD
+#define MLAS_TARGET_WASM_SIMD
+#else
+#define MLAS_TARGET_WASM_SCALAR
 #endif
 #endif
 
