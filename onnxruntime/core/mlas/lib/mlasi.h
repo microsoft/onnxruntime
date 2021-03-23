@@ -850,7 +850,7 @@ MlasFp32FromBits(
 }
 
 
-#if defined(MLAS_TARGET_WASM) and !defined(MLAS_TARGET_WASMSIMD)
+#if defined(MLAS_TARGET_WASM) && !defined(MLAS_TARGET_WASMSIMD)
 
 void
 MLASCALL
