@@ -1,3 +1,8 @@
-numpy >= 1.16.6
-protobuf
+cerberus
 flatbuffers
+h5py
+numpy >= 1.16.6
+onnx
+packaging
+protobuf
+sympy
