@@ -17,7 +17,9 @@ def get_ep_list(comparison):
     if comparison == 'acl': 
         ep_list = [cpu, acl]
     else:   
-        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16]
+        ep_list = [trt, standalone_trt, trt_fp16, standalone_trt_fp16]
+        #ep_list = [trt_fp16, standalone_trt]
+        #ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16]
     return ep_list
 
 def main():
