@@ -360,7 +360,7 @@ class ORTModule(torch.nn.Module):
         initializer_names = [name
                              for name, _ in self._flattened_output_module.named_parameters()]
         initializer_names_to_train = []
-        if torch.is_grad_enabled():
+        if self.is_training:
             initializer_names_to_train = [name
                 for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
         onnx_initializer_names = {
