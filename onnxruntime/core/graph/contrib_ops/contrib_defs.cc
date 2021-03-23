@@ -2377,6 +2377,21 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+
+  // No shape inference function at this time.
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "This is a version of MatMul that supports Sparse Tensor Multiplication."
+          "This version currently supports Sparse Tensor To Dense multiplication with Dense output.")
+      .Input(0, "sparse_matrix", "Sparse Matrix in CSR format", "T")
+      .Input(1, "dense_matrix", "Dense Matrix", "T1")
+      .Output(0, "product", "The result", "T1")
+      .TypeConstraint("T", {"sparse_tensor(float)", "sparse_tensor(double)"}, "Sparse Matrix input types")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(double)"}, "Dense Matrix input types");
+
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();

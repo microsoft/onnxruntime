@@ -9,6 +9,12 @@
 namespace onnxruntime {
 
 template <typename T>
+struct MatMulSparseInfo {
+  sparse_util::SparseMatrixRow<T> sparse_initializer_;
+  TensorShape shape_;
+};
+
+template <typename T>
 class MatMul final : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {}
@@ -17,7 +23,8 @@ class MatMul final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  std::unique_ptr<matmul_sparse::MatMulSparseInfo<T>> sparse_info_;
+ private:
+  std::unique_ptr<MatMulSparseInfo<T>> sparse_info_;
 };
 
 template <>
@@ -41,7 +48,7 @@ class MatMul<float> final : public OpKernel {
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;
-  std::unique_ptr<matmul_sparse::MatMulSparseInfo<float>> sparse_info_;
+  std::unique_ptr<MatMulSparseInfo<float>> sparse_info_;
 };
 
 }  // namespace onnxruntime

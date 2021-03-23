@@ -94,14 +94,20 @@ template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
+  const auto* a = ctx->Input<Tensor>(0);
+  MatMulComputeHelper helper;
+
   if (sparse_info_) {
-    return matmul_sparse::Compute<T>(ctx, *sparse_info_, false, false);
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), sparse_info_->shape_));
+    Tensor* y = ctx->Output(0, helper.OutputShape());
+    // Bail out early if the output is going to be empty
+    if (y->Shape().Size() == 0)
+      return Status::OK();
+
+    return sparse_util::ComputeWithSparseWeight<T>(a->Data<T>(), y->MutableData<T>(), helper, sparse_info_->sparse_initializer_, false);
   }
 
-  const auto* a = ctx->Input<Tensor>(0);
   const auto* b = ctx->Input<Tensor>(1);
-
-  MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
@@ -137,12 +143,16 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
   // only pack Matrix B
   if (param.input_idx == 1) {
     if (param.UseCsrFormat()) {
-      return matmul_sparse::PrePack<T>(tensor, param, false, utils::ToTensorProtoElementType<T>(), sparse_info_, is_packed);
+      auto sparse_info = onnxruntime::make_unique<MatMulSparseInfo<T>>();
+      ORT_RETURN_IF_ERROR(sparse_util::ConvertDenseToEigenSparse<T>(tensor, false,
+                                                                      utils::ToTensorProtoElementType<T>(), sparse_info->sparse_initializer_));
+      sparse_info->shape_ = tensor.Shape();
+      sparse_info_ = std::move(sparse_info);
+      is_packed = true;
     }
   }
   return Status::OK();
 }
-
 
 Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
@@ -150,9 +160,16 @@ Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, b
   // only pack Matrix B
   if (param.input_idx == 1) {
     if (param.UseCsrFormat()) {
-      return matmul_sparse::PrePack<float>(tensor, param, trans_b_attr_, utils::ToTensorProtoElementType<float>(), sparse_info_, is_packed);
+      auto sparse_info = onnxruntime::make_unique<MatMulSparseInfo<float>>();
+      ORT_RETURN_IF_ERROR(sparse_util::ConvertDenseToEigenSparse<float>(tensor, trans_b_attr_,
+                                                                          utils::ToTensorProtoElementType<float>(),
+                                                                          sparse_info->sparse_initializer_));
+      sparse_info->shape_ = tensor.Shape();
+      sparse_info_ = std::move(sparse_info);
+      is_packed = true;
+    } else {
+      is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
     }
-    is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();
 }
@@ -160,20 +177,28 @@ Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, b
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-  if (sparse_info_) {
-    return matmul_sparse::Compute<float>(ctx, *sparse_info_, false, false);
-  }
-
-
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+
+  MatMulComputeHelper helper;
+  if (sparse_info_) {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), sparse_info_->shape_));
+    Tensor* y = ctx->Output(0, helper.OutputShape());
+    // Bail out early if the output is going to be empty
+    if (y->Shape().Size() == 0)
+      return Status::OK();
+
+    return sparse_util::ComputeWithSparseWeight<float>(a->Data<float>(), y->MutableData<float>(),
+                                                         helper, sparse_info_->sparse_initializer_,
+                                                         trans_a_attr_ && a->Shape().NumDimensions() != 1);
+  }
+
   const auto& b_shape = b ? b->Shape() : b_shape_;
 
   // match CUDA kernel implementation, ignore transpose for vectors
   const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
   const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
 
-  MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
