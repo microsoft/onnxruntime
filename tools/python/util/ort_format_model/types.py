@@ -20,8 +20,8 @@ class FbsTypeInfo:
         fbs.TensorDataType.TensorDataType.DOUBLE: 'double',
         fbs.TensorDataType.TensorDataType.UINT32: 'uint32_t',
         fbs.TensorDataType.TensorDataType.UINT64: 'uint64_t',
-        fbs.TensorDataType.TensorDataType.COMPLEX64: 'complex64 is not supported',
-        fbs.TensorDataType.TensorDataType.COMPLEX128: 'complex128 is not supported',
+        # fbs.TensorDataType.TensorDataType.COMPLEX64: 'complex64 is not supported',
+        # fbs.TensorDataType.TensorDataType.COMPLEX128: 'complex128 is not supported',
         fbs.TensorDataType.TensorDataType.BFLOAT16: 'BFloat16'
     }
 

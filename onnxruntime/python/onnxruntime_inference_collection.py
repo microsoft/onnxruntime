@@ -278,7 +278,7 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options)
-        except RuntimeError:
+        except ValueError:
             if self._enable_fallback:
                 print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
@@ -291,16 +291,16 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options):
         available_providers = C.get_available_providers()
 
-        # validate providers and provider_options before other initialization
-        providers, provider_options = check_and_normalize_provider_args(providers,
-                                                                        provider_options,
-                                                                        available_providers)
-
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
+
+        # validate providers and provider_options before other initialization
+        providers, provider_options = check_and_normalize_provider_args(providers,
+                                                                        provider_options,
+                                                                        available_providers)
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
@@ -522,17 +522,3 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
-
-    def to_dlpack(self):
-        '''
-        Returns a DLPack object from the OrtValue.
-        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
-        '''
-        return self._ortvalue.to_dlpack()
-
-    @staticmethod
-    def from_dlpack(dlpack_tensor):
-        '''
-        Returns a OrtValue object from DLPack.
-        '''
-        return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))

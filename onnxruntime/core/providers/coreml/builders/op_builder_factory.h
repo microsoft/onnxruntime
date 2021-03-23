@@ -23,6 +23,7 @@ void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateBatchNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

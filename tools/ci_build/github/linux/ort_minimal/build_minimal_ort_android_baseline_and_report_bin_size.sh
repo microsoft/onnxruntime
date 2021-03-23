@@ -5,7 +5,7 @@
 
 set -e
 set -x
-
+export PATH=/opt/python/cp37-cp37m/bin:$PATH
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
 echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
 
@@ -18,7 +18,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --android \
     --android_sdk_path /android_home \
-    --android_ndk_path /android_home/ndk-bundle \
+    --android_ndk_path /ndk_home \
     --android_abi=arm64-v8a \
     --android_api=29 \
     --minimal_build \

@@ -24,7 +24,7 @@ struct TestTypesHolderUnspecified {
 };
 }  // namespace
 
-// supported
+// default
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -36,7 +36,7 @@ static_assert(
         TypeList<int32_t, int64_t, float, double>>::value,
     "unexpected enabled types");
 
-// supported + allowed for Op
+// default + allowed for Op
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -48,7 +48,7 @@ static_assert(
         TypeList<int64_t, float>>::value,
     "unexpected enabled types");
 
-// supported + allowed for Op, all enabled
+// default + allowed for Op, all enabled
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -60,7 +60,7 @@ static_assert(
         TypeList<int32_t, int64_t, float, double>>::value,
     "unexpected enabled types");
 
-// supported + allowed for Op, allowed not subset of supported
+// default + allowed for Op, allowed not subset of default
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -72,7 +72,7 @@ static_assert(
         TypeList<int64_t, double>>::value,
     "unexpected enabled types");
 
-// supported + allowed for Op, all disabled
+// default + allowed for Op, all disabled
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -84,7 +84,7 @@ static_assert(
         TypeList<>>::value,
     "unexpected enabled types");
 
-// supported + allowed for Op + allowed globally
+// default + allowed for Op + allowed globally
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -96,7 +96,7 @@ static_assert(
         TypeList<int64_t>>::value,
     "unexpected enabled types");
 
-// supported + required + allowed for Op
+// default + required + allowed for Op
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -108,7 +108,7 @@ static_assert(
         TypeList<int32_t, int64_t, double>>::value,
     "unexpected enabled types");
 
-// supported + required + allowed for Op, only required enabled
+// default + required + allowed for Op, only required enabled
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
@@ -120,7 +120,7 @@ static_assert(
         TypeList<int64_t>>::value,
     "unexpected enabled types");
 
-// supported + required + allowed for Op + allowed globally
+// default + required + allowed for Op + allowed globally
 static_assert(
     utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<

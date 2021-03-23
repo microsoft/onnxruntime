@@ -118,13 +118,13 @@ OrtDevice GetOrtDevice(const DLContext& ctx) {
   }
 }
 
-MLDataType GetOrtValueDataType(const DLDataType& dtype) {
+MLDataType GetOrtValueDataType(const DLDataType& dtype, bool is_bool_tensor) {
   if (dtype.lanes != 1) ORT_THROW("ORT does not support lanes != 1");
   switch (dtype.code) {
     case DLDataTypeCode::kDLUInt:
       switch (dtype.bits) {
         case 8:
-          return DataTypeImpl::GetType<uint8_t>();
+          return is_bool_tensor ? DataTypeImpl::GetType<bool>() : DataTypeImpl::GetType<uint8_t>();
         case 16:
           return DataTypeImpl::GetType<uint16_t>();
         case 32:
@@ -213,19 +213,19 @@ DLManagedTensor* OrtValueToDlpack(const OrtValue& ort_value) {
   return &(ort_dlmanaged_tensor->tensor);
 }
 
-OrtValue DlpackToOrtValue(const DLManagedTensor* dlpack) {
+OrtValue DlpackToOrtValue(const DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.ctx);
-  MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype);
-  auto deleter = [dlpack](void*) { dlpack->deleter(const_cast<DLManagedTensor*>(dlpack)); };
+  MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
+  std::function<void(void*)> deleter = [dlpack](void*) { dlpack->deleter(const_cast<DLManagedTensor*>(dlpack)); };
   OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
       dlpack->dl_tensor.data, info);
 
   OrtValue ort_value;
-  ort_value.Initialize(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
   return ort_value;
 }
 

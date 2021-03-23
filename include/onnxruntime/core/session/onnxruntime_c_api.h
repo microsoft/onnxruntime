@@ -276,12 +276,28 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 /// <summary>
+/// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
+/// </summary>
+typedef struct OrtROCMProviderOptions {
+  int device_id;                                    // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
+  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+} OrtROCMProviderOptions;
+
+/// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
-  int has_user_compute_stream;
-  void* user_compute_stream;
+  int device_id;                                  // cuda device id.
+  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                      // user specified CUDA compute stream.
+  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -728,10 +744,40 @@ struct OrtApi {
   ORT_API2_STATUS(GetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name, _In_ const OrtValue* in,
                   _Out_ void* data_container, size_t data_container_size);
 
+  /**
+     * Fetch a float stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ float* out);
+
+  /**
+     * Fetch a 64-bit int stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out);
+  /**
+     * Fetch a string stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of string attribute
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string 
+        attribute, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual string attribute's size,
+        the value of `size` is set to the true size of the string attribute, the provided memory
+        is filled with the attribute's contents, and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual string attribute's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the string attribute
+        and a failure status is returned.)
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
                   _Inout_ size_t* size);
 
@@ -1121,6 +1167,13 @@ struct OrtApi {
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
 
   /**
+   * Append ROCM execution provider to the session options
+   * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
+
+  /**
    * Append OpenVINO execution provider to the session options
    * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
    */
@@ -1179,6 +1232,48 @@ struct OrtApi {
    * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
    */
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+  /**
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+        array's size, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ float* out, _Inout_ size_t* size);
+
+  /**
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+        array's size, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ int64_t* out, _Inout_ size_t* size);
 };
 
 /*
