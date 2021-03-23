@@ -96,8 +96,7 @@ class ORTTrainer(object):
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
         options (ORTTrainerOptions, default is None): options for additional features.
         session_option: the session option instance for training session. if it is None, the default instance will be used.
-        provider_names: the sequence of providers used in the training session.
-        provider_options: the sequence of dict, in the order of providers registered to training session.
+        provider_options: a dict that map from provider name to its option, like {'EP1' : {'option1': val1, 'option2': val2, ...}} 
     Example:
 
         .. code-block:: python
@@ -127,7 +126,6 @@ class ORTTrainer(object):
                  loss_fn=None, 
                  options=None, 
                  session_option=None,
-                 provider_names=None,
                  provider_options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
@@ -207,10 +205,8 @@ class ORTTrainer(object):
         self._training_session = None
         self._load_state_dict = None
         self._session_option = session_option;
-        self._provider_names = provider_names;
         self._provider_options = provider_options;
-        self._init_session(provider_names=self._provider_names,
-                           provider_options=self._provider_options)
+        self._init_session(provider_options=self._provider_options)
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -572,7 +568,6 @@ class ORTTrainer(object):
     def _create_ort_training_session(self, 
                                      optimizer_state_dict={}, 
                                      session_option=None, 
-                                     provider_names=None,
                                      provider_options=None):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
@@ -685,12 +680,12 @@ class ORTTrainer(object):
         del self._training_session
 
         # Set provider-specific options if needed
-        def get_providers(provider_names, provider_options):
+        def get_providers(provider_options):
             providers = ort.get_available_providers()
             
-            if provider_names is not None and provider_options is not None:
-                for provider_name, option in zip(provider_names, provider_options):
-                    providers[providers.index(provider_name)] = (provider_name, option)
+            if provider_options is not None:
+                for provider_name in provider_options:
+                    providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
             #default: using cuda
             elif 'cuda' in self.options.device.id.lower():
                 cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
@@ -710,7 +705,7 @@ class ORTTrainer(object):
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
-                                                     session_options, get_providers(provider_names, provider_options))
+                                                     session_options, get_providers(provider_options))
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -742,11 +737,9 @@ class ORTTrainer(object):
             optimizer_state_dict = self._load_state_dict()
 
         self._init_session(optimizer_state_dict,
-                           provider_names=self._provider_names,
                            provider_options=self._provider_options)
 
     def _init_session(self, optimizer_state_dict={},
-                      provider_names=None,
                       provider_options=None):
         if self._onnx_model is None:
             return
@@ -757,7 +750,6 @@ class ORTTrainer(object):
         # Create training session used by train_step
         # pass all optimizer states to the backend
         self._create_ort_training_session(optimizer_state_dict,
-                                          provider_names=provider_names,
                                           provider_options=provider_options)
 
         # Update model description to update dtype when mixed precision is enabled
@@ -1328,7 +1320,6 @@ class ORTTrainer(object):
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
         self._init_session(optimizer_state_dict,
-                           provider_names=self._provider_names,
                            provider_options=self._provider_options)
 
     def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
