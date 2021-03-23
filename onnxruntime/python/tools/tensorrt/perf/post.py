@@ -34,6 +34,7 @@ def post_latency_fp32(engine, latency, model_group):
     latency = latency.set_axis(latency_db_columns, axis=1)
     latency = latency.assign(Group=model_group)
     latency.to_sql('ep_model_latency_fp32', con=engine, if_exists='replace', index=False, chunksize=1)
+    print('posted latency fp32 to database')
 
 def post_latency_fp16(engine, latency, model_group):
     latency_fp16_columns = ['Model', \
@@ -49,12 +50,14 @@ def post_latency_fp16(engine, latency, model_group):
     latency = latency.set_axis(latency_db_columns, axis=1)
     latency = latency.assign(Group=model_group)
     latency.to_sql('ep_model_latency_fp16', con=engine, if_exists='replace', index=False, chunksize=1)
-
+    print('posted latency fp16 to database')
+    
 def post_status(engine, status, model_group):
     status_db_columns = ['Model', 'Cpu', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
     status = status.set_axis(status_db_columns, axis=1)
     status = status.assign(Group=model_group)
     status.to_sql('ep_models_status', con=engine, if_exists='replace', index=False, chunksize=1)
+    print('posted status to database')
 
 def get_database_cert(): 
     cert = 'BaltimoreCyberTrustRoot.crt.pem'
@@ -66,7 +69,6 @@ def main():
     
     # connect to database 
     cert = get_database_cert()
-    #cert = 'C:\ssl\BaltimoreCyberTrustRoot.crt.pem'
     ssl_args = {'ssl_ca': cert}
     connection_string = 'mysql+mysqlconnector://' + \
                         'powerbi@onnxruntimedashboard:' + \
