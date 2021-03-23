@@ -174,6 +174,19 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
         
         return out1, mask1, out2, mask2     # intentionally place the non-differentiable output in the middle
 
+class NeuralNetPartialNoGradModel(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetPartialNoGradModel, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size).requires_grad_(False)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, model_input):
+        out = self.relu(self.fc1(model_input))
+        out = self.fc2(out)
+        return out
+
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
 @pytest.fixture(autouse=True)
@@ -1404,3 +1417,59 @@ def test_uint8_input_and_output():
 
     assert y1 is not None
     assert y2 is not None and y2.dtype == torch.uint8
+
+def test_model_partially_requires_grad():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPartialNoGradModel(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+
+    # Make sure no exception is raised
+    output = model(x)
+
+    loss = torch.sum(output)
+    loss.backward()
+
+def test_model_wrapped_inside_torch_no_grad():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+
+    # Make sure no exception is raised
+    with torch.no_grad():
+        output = model(x)
+
+def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPartialNoGradModel(D_in, H, D_out).to(device)
+    model.fc1.requires_grad_(True)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    assert model._original_module.fc1.weight.grad is None
+    assert model._original_module.fc1.bias.grad is None
+
+    # Make sure no exception is raised
+    output = model(x)
+    loss = torch.sum(output)
+    loss.backward()
+    training_session1 = model._training_session
+    weight_grad_2 = model._original_module.fc1.weight.grad
+    bias_grad_2 = model._original_module.fc1.bias.grad
+    assert weight_grad_2 is not None
+    assert bias_grad_2 is not None
+
+    model._original_module.fc1.requires_grad_(False)
+    output = model(x)
+    loss = torch.sum(output)
+    loss.backward()
+    training_session2 = model._training_session
+    weight_grad_3 = model._original_module.fc1.weight.grad
+    bias_grad_3 = model._original_module.fc1.bias.grad
+
+    assert training_session1 != training_session2
+    assert torch.equal(weight_grad_2, weight_grad_3)
+    assert torch.equal(bias_grad_2, bias_grad_3)
