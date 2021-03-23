@@ -187,7 +187,7 @@ class ThreadPoolProfiler {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
   void Start(){};
-  std::string Stop() { return "not available for mininum build"; }
+  std::string Stop() { return "not available for minimum build"; }
   void LogStart(){};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
