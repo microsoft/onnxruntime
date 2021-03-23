@@ -49,6 +49,8 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
     size_t PackedStrideK;
+    size_t ThreadStrideM;
+    size_t ThreadStrideN;
 };
 
 const MLAS_GEMM_U8X8_DISPATCH*
@@ -78,17 +80,6 @@ MlasGemmU8X8GetDispatch(
 
     return GemmU8X8Dispatch;
 }
-
-//
-// Define the parameters to execute segments of a QGEMM operation on worker
-// threads.
-//
-
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
-    ptrdiff_t ThreadCountM;
-    ptrdiff_t ThreadCountN;
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters;
-};
 
 //
 // Define the default striding parameters used for the quantized integer
@@ -1137,6 +1128,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,
     0,
+    MLAS_GEMM_U8X8_KERNEL_SSE::Strides.M,
+    MLAS_GEMM_U8X8_KERNEL_SSE::Strides.N
 };
 
 #endif
@@ -1311,6 +1304,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.K,
+    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.M,
+    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.N
 };
 
 struct MLAS_GEMM_U8U8_KERNEL_AVX2
@@ -1401,6 +1396,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
+    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.M,
+    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.N,
 };
 
 #endif
@@ -1897,6 +1894,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
+    MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.M,
+    MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.N,
 };
 
 #endif
@@ -2469,6 +2468,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.K,
+    MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.M,
+    MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.N,
 };
 
 #endif
@@ -2653,11 +2654,66 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK,
     0,
+    MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides.M,
+    MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides.N
 };
+
+/**
+ * Utility in paritioning matrix mul, output stide size
+ * in M and N dimensions
+ */
+inline void MlasGemmU8X82DStride(
+    size_t M, size_t N, size_t K,
+    const MLAS_GEMM_U8X8_DISPATCH* dispatch,
+    ptrdiff_t& ThreadStrideM, ptrdiff_t& ThreadStrideN,
+    ptrdiff_t& ThreadCountM, ptrdiff_t& ThreadCountN)
+{
+  ThreadStrideM = dispatch->ThreadStrideM;
+  ThreadStrideN = dispatch->ThreadStrideN;
+
+  // TODO stride N must be multiple of 16 due to packing logic
+  // need a way to ensure this.
+
+  //
+  // ensure we have a big enough block in case K is too small
+  //
+  ptrdiff_t multipler = MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN* K) + 1;
+  ThreadStrideN = std::min(ptrdiff_t(N), ThreadStrideN * multipler);
+  multipler = MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN * K) + 1;
+  ThreadStrideM = std::min(ptrdiff_t(M), ThreadStrideM * multipler);
+
+  ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
+  ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
+}
+
+/**
+ * @brief Segment the work of multiplying [M,K], [K,N] matrix for parallel
+ *        processing
+ * @param [IN]  M 
+ * @param [IN]  N 
+ * @param [IN]  K 
+ * @param [IN}  BIsSigned          Whether B matrix is int_8
+ * @param [OUT] TargetThreadCount  Total number of segments to run in parallel
+ * @param [OUT] CostInCycles       Estimated execution cost for each segment
+*/
+inline void MlasGemmSegWork(size_t M, size_t N, size_t K, bool BIsSigned,
+                     ptrdiff_t& TargetThreadCount, double& CostInCycles)
+{
+  const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+  ptrdiff_t StrideM;
+  ptrdiff_t StrideN;
+  ptrdiff_t ThreadCountM;
+  ptrdiff_t ThreadCountN;
+  MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch, StrideM, StrideN, ThreadCountM, ThreadCountN);
+
+  TargetThreadCount = ThreadCountM * ThreadCountN;
+  CostInCycles = double(StrideM) * double(StrideN) * double(K);
+}
+
 
 void
 MlasGemmU8X8Threaded(
-    void* Context,
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
     ptrdiff_t ThreadId
     )
 /*++
@@ -2679,48 +2735,36 @@ Return Value:
 
 --*/
 {
-    const auto* WorkBlock = (MLAS_GEMM_U8X8_WORK_BLOCK*)Context;
-    const auto* Parameters = WorkBlock->Parameters;
-
-    const ptrdiff_t ThreadIdM = ThreadId / WorkBlock->ThreadCountN;
-    const ptrdiff_t ThreadIdN = ThreadId % WorkBlock->ThreadCountN;
-
-    //
-    // Partition the operation along the M dimension.
-    //
-
-    size_t RangeStartM;
-    size_t RangeCountM;
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Parameters->BIsSigned);
 
     const size_t M = Parameters->M;
-
-    MlasPartitionWork(ThreadIdM, WorkBlock->ThreadCountM, M, &RangeStartM, &RangeCountM);
-
-    //
-    // Partition the operation along the N dimension.
-    //
-
-    size_t RangeStartN;
-    size_t RangeCountN;
-
     const size_t N = Parameters->N;
+    const size_t K = Parameters->K;
 
-    const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
-        MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    //
+    // Partition the operation
+    //
+    ptrdiff_t ThreadStrideM;
+    ptrdiff_t ThreadStrideN;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
+    MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch,
+                         ThreadStrideM, ThreadStrideN,
+                         ThreadCountM, ThreadCountN);
 
-    MlasPartitionWork(ThreadIdN, WorkBlock->ThreadCountN, BlockedN,
-        &RangeStartN, &RangeCountN);
+    ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
+    ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
 
-    RangeStartN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-    RangeCountN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    size_t RangeStartM = ThreadIdM * ThreadStrideM;
+    size_t RangeCountM = std::min(size_t(ThreadStrideM), M - RangeStartM);
 
-    RangeCountN = std::min(N - RangeStartN, RangeCountN);
+    size_t RangeStartN = ThreadIdN * ThreadStrideN;
+    size_t RangeCountN = std::min(size_t(ThreadStrideN), N - RangeStartN);
 
     //
     // Dispatch the partitioned operation.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Parameters->BIsSigned);
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
     if (Parameters->BIsPacked) {
@@ -2731,6 +2775,7 @@ Return Value:
 
     GemmU8X8Operation(Parameters, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
+
 
 void
 MLASCALL
@@ -2758,66 +2803,39 @@ Return Value:
 
 --*/
 {
-    const size_t M = Parameters->M;
-    const size_t N = Parameters->N;
-    const size_t K = Parameters->K;
-
-    //
-    // Compute the number of target threads given the complexity of the SGEMM
-    // operation. Small requests should run using the single threaded path.
-    //
-
-    const double Complexity = double(M) * double(N) * double(K);
-
-    ptrdiff_t TargetThreadCount;
-
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
-    }
-
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
-
-    if (TargetThreadCount >= MaximumThreadCount) {
-        TargetThreadCount = MaximumThreadCount;
-    }
-
-    //
-    // Segment the operation across multiple threads.
-    //
-    // N.B. Currently, the operation is segmented as a 1D partition, which
-    // works okay for operations involving skinny matrices.
-    //
-
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    WorkBlock.Parameters = Parameters;
-
-    if (N > M) {
-
-        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
-            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-
-        if (size_t(TargetThreadCount) > BlockedN) {
-            TargetThreadCount = ptrdiff_t(BlockedN);
-        }
-
-        WorkBlock.ThreadCountM = 1;
-        WorkBlock.ThreadCountN = TargetThreadCount;
-
-    } else {
-
-        if (size_t(TargetThreadCount) > M) {
-            TargetThreadCount = ptrdiff_t(M);
-        }
-
-        WorkBlock.ThreadCountM = TargetThreadCount;
-        WorkBlock.ThreadCountN = 1;
-    }
-
-    MlasExecuteThreaded(MlasGemmU8X8Threaded, &WorkBlock, TargetThreadCount, ThreadPool);
+  MlasGemmBatch(Parameters, 1, ThreadPool);
 }
+
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool) 
+{
+  const size_t M = Parameters->M;
+  const size_t N = Parameters->N;
+  const size_t K = Parameters->K;
+
+  // Segment the work for parallelization. This is a two dimentional work partition.
+  // The idea is to generate a group of not-too-small work chunks and let the thread
+  // pool load balance them
+
+  std::ptrdiff_t BlksPerGemm;
+  double cost;
+  MlasGemmSegWork(M, N, K, Parameters->BIsSigned, BlksPerGemm, cost);
+
+  MLAS_THREADPOOL::TryParallelFor(
+      ThreadPool, BlksPerGemm * BatchN, cost,
+      [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (auto idx = begin; idx < end; idx++) {
+          const auto gemm_i = idx / BlksPerGemm;
+          const auto blk_i = idx % BlksPerGemm;
+          MlasGemmU8X8Threaded(&(Parameters[gemm_i]), blk_i);
+        }
+      });
+}
+
 
 size_t
 MLASCALL

@@ -296,12 +296,32 @@ struct MLAS_GEMM_U8X8_PARAMETERS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
+
 void
 MLASCALL
 MlasGemm(
     const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
     MLAS_THREADPOOL* ThreadPool
     );
+
+/** 
+ * Batched GEMM, takes an array of MLAS_GEMM_U8X8_PARAMETERS
+ * for multiplying multiple pairs of matrices. 
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same: M, N, K, BIsPacked, BIsSigned must be the
+ *        same across all parameter blocks. 
+ *        TODO!! consider split the parameter blocks into shape/type part and data part?
+ * 
+ * @param [IN]  Parameters   Starting address of the parameters array.
+ * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
+ * @param [IN]  ThreadPool   optional thread pool for parallel processing
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool);
 
 //
 // Buffer packing routines.

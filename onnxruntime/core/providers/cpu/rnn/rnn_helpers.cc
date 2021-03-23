@@ -258,12 +258,12 @@ void ComputeGemm(const int M,
 
   float a_scale;
   uint8_t a_zero_point;
-  GetQuantizationParameter(A, M * K, a_scale, a_zero_point);
+  GetQuantizationParameter(A, M * K, a_scale, a_zero_point, thread_pool);
 
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(M * K) * sizeof(uint8_t)));
   BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
   // quantize the data
-  MlasQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point);
+  ParQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point, thread_pool);
 
   bool b_is_signed = weights.quant_para_->is_signed;
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;

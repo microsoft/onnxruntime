@@ -46,39 +46,40 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-  gemm_params.M = static_cast<size_t>(helper.M());
-  gemm_params.N = static_cast<size_t>(helper.N());
-  gemm_params.K = static_cast<size_t>(helper.K());
-  gemm_params.lda = gemm_params.K;
-  gemm_params.ZeroPointA = a_zero_point;
-  gemm_params.ldb = gemm_params.N;
-  gemm_params.ZeroPointB = &b_zero_point;
-  gemm_params.ldc = gemm_params.N;
-
   auto* y_data = y->template MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(
-        y_data + helper.OutputOffsets()[i],
-        static_cast<size_t>(helper.N()),
-        &multiplier,
-        bias_data);
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const int num_gemms = static_cast<int>(helper.OutputOffsets().size());
+  const bool b_is_signed = packed_b_ ? b_is_signed_ : b->IsDataType<int8_t>();
 
-    gemm_params.A = a_data + helper.LeftOffsets()[i];
-    if (packed_b_) {
-      gemm_params.B = packed_b_.get();
-      gemm_params.BIsPacked = true;
-      gemm_params.BIsSigned = b_is_signed_;
-    } else {
-      gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) +  + helper.RightOffsets()[i];
-      gemm_params.BIsSigned = b->IsDataType<int8_t>();
-    }
-    gemm_params.C = reinterpret_cast<int32_t*>(y_data) + helper.OutputOffsets()[i];
-    gemm_params.OutputProcessor = &scale_bias_processor;
-    MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
+  // batch gemm
+  std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> gemm_scale_procs;
+  gemm_scale_procs.reserve(num_gemms);
+  MLAS_GEMM_U8X8_BATCH_CALLER batch_gemm(M, N, K, bool(packed_b_), b_is_signed, num_gemms);
+
+  for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+    gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],
+                              N,
+                              &multiplier,
+                              bias_data);
+    batch_gemm.AddData(
+        a_data + helper.LeftOffsets()[gemm_idx], // A
+        K, // lda
+        a_zero_point,
+        bool(packed_b_) ? packed_b_.get() :
+            static_cast<const uint8_t*>(b->DataRaw()) + +helper.RightOffsets()[gemm_idx], // B
+        N, // ldb
+        &b_zero_point,
+        false, // per_col_zero_points
+        reinterpret_cast<int32_t*>(y_data) + helper.OutputOffsets()[gemm_idx], // C
+        N, // ldc
+        &gemm_scale_procs[gemm_idx]);
   }
+
+  batch_gemm.Run(ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }
@@ -137,6 +138,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
                 "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
     b_zero_point = *static_cast<const uint8_t*>(b_zero_point_tensor->DataRaw());
   }
+  std::atomic<uint32_t> __core_dbg[64] = {0};
 
   // calculate quantization parameter of a
   const float* a_data = a->template Data<float>();
@@ -144,14 +146,14 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
   float a_scale;
   uint8_t a_zero_point;
-  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point);
+  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
   BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
-  // quantize the data
-  MlasQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point);
+
+  ParQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
   return ComputeCommon(ctx,
                        a_data_quant,
