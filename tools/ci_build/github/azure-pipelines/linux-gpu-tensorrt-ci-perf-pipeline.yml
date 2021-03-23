@@ -11,25 +11,21 @@ jobs:
     #   displayName: 'Build latest ORT Images'
     #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
-    #   displayName: 'Onnx Zoo Models Perf'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      displayName: 'Onnx Zoo Models Perf'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models"'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     #   displayName: 'Many Models Perf'
     #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "partner-models"'
-    #   displayName: 'Partner Models Perf'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-    # - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact' 
-    #   displayName: 'Prepare Artifacts'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "selected-models" -m /usr/share/perf/subset_jsons/mask.json -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      displayName: 'Selected Models Perf'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "partner-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      displayName: 'Partner Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "selected-models" -m /usr/share/perf/subset_jsons/mask.json -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    #   displayName: 'Selected Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
@@ -39,13 +35,6 @@ jobs:
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result'
-
-    # - template: templates/clean-agent-build-directory-step.yml
-    # steps:
-
-    # - script: rd /S /Q $(Agent.BuildDirectory)
-    #   displayName: Clean build files (Windows)
-    #   condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
       
     - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result'
       displayName: 'Post to Dashboard'
