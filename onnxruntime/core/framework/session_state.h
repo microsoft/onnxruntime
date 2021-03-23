@@ -124,7 +124,7 @@ struct PartialGraphExecutionManager {
 
     to_be_executed_runs_.erase(it_to_be_executed);
 
-    graph_runs_.insert(std::make_pair(run_id, std::make_pair(std::move(frame), program_counter))).first;
+    graph_runs_.insert(std::make_pair(run_id, std::make_pair(std::move(frame), program_counter)));
   }
 
   std::pair<std::unique_ptr<onnxruntime::ExecutionFrame>, size_t>& GetPartialRun(int64_t run_id) {
