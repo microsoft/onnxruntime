@@ -38,9 +38,15 @@ class CudaProfiler final: public DeviceProfiler {
   static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t);
   struct KernelStat {
     std::string name_ = {};
+    uint32_t stream_ = 0;
+    int32_t grid_x_ = 0;
+    int32_t grid_y_ = 0;
+    int32_t grid_z_ = 0;
+    int32_t block_x_ = 0;
+    int32_t block_y_ = 0;
+    int32_t block_z_ = 0;
     int64_t start_ = 0;
     int64_t stop_ = 0;
-    uint32_t stream_ = 0;
   };
   static OrtMutex mutex_;
   static std::vector<KernelStat> stats_;
@@ -73,7 +79,11 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext ctx, uint32_t streamId, ui
           CUpti_ActivityKernel6* kernel = (CUpti_ActivityKernel6*)record;
           {
             std::unique_lock<OrtMutex> lock(mutex_);
-            stats_.push_back({kernel->name, static_cast<int64_t>(kernel->start), static_cast<int64_t>(kernel->end), kernel->streamId});
+            stats_.push_back({kernel->name, kernel->streamId,
+                              kernel->gridX, kernel->gridY, kernel->gridZ,
+                              kernel->blockX, kernel->blockY, kernel->blockZ,
+                              static_cast<int64_t>(kernel->start),
+                              static_cast<int64_t>(kernel->end)});
           }
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
@@ -97,18 +107,25 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
 #define DUR(s, e) std::lround(static_cast<double>(e-s)/1000)
 
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
-  enabled_.clear();
-  cuptiActivityFlushAll(1);
-  std::unique_lock<OrtMutex> lock(mutex_);
   std::vector<EventRecord> events;
-  int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
-  for (const auto& stat : stats_) {
-    std::initializer_list<std::pair<std::string, std::string>> args = {{"kernel", stat.name_},
-                                                                       {"stream", std::to_string(stat.stream_)}};
-    if (stat.start_ > profiling_start) {
-      events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, "cuda kernel invoked", DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+  if (enabled_.test_and_set()) {
+    cuptiActivityFlushAll(1);
+    std::unique_lock<OrtMutex> lock(mutex_);
+    int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
+    for (const auto& stat : stats_) {
+      std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
+                                                                         {"grid_x", std::to_string(stat.grid_x_)},
+                                                                         {"grid_y", std::to_string(stat.grid_y_)},
+                                                                         {"grid_z", std::to_string(stat.grid_z_)},
+                                                                         {"block_x", std::to_string(stat.block_x_)},
+                                                                         {"block_y", std::to_string(stat.block_y_)},
+                                                                         {"block_z", std::to_string(stat.block_z_)}};
+      if (stat.start_ > profiling_start) {
+        events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+      }
     }
   }
+  enabled_.clear();
   return events;
 }
 #endif //USE_CUDA
