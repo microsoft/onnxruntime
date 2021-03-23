@@ -159,15 +159,11 @@ class ORTModule(torch.nn.Module):
                     # Run and return module outputs.
                     forward_outputs, run_id = self._training_session.run_forward(training_io_binding, run_options)
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
-                    ctx.run_id = run_id
-                    ctx.training_io_binding = training_io_binding
-                    # run_options needs to be added to ctx to keep the reference count, otherwise it will be destroyed after forward()
-                    ctx.run_options = run_options
-
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
-                    ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+                    output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+                    ctx.run_info = onnxruntime.training.RunStateInfo(run_id, run_options, training_io_binding, output_info)
 
                     # Assert that the outputs and model device match
                     _check_same_device(self._device, "Output argument from forward", *user_outputs)
@@ -178,6 +174,8 @@ class ORTModule(torch.nn.Module):
                 def backward(ctx, *grad_outputs):
                     '''Performs backward pass based on grad wrt module output
                     '''
+                    if not ctx.run_info:
+                        raise RuntimeError('ctx.run_info not set in forward')
 
                     # Assert that the grad_outputs and model device match
                     _check_same_device(self._device, "Input argument to backward", *grad_outputs)
@@ -187,7 +185,7 @@ class ORTModule(torch.nn.Module):
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
                         if grad_output is None:
-                            shape, device, dtype = ctx.output_info[idx]
+                            shape, device, dtype = ctx.run_info.output_info[idx]
                             if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:
                                 grad_output = torch.zeros(shape, device=device, dtype=dtype)
                             else:
@@ -198,8 +196,8 @@ class ORTModule(torch.nn.Module):
                     backward_grad_output_ortvalue = [onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
-                    run_id = ctx.run_id
-                    training_io_binding = ctx.training_io_binding
+                    run_id = ctx.run_info.run_id
+                    training_io_binding = ctx.run_info.io_binding
                     self._training_session.run_backward(backward_grad_output_ortvalue, run_id)
                     backward_outputs = training_io_binding.get_outputs()
 

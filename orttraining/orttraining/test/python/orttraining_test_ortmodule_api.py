@@ -487,6 +487,30 @@ def test_multiple_forward_only_calls():
 
         assert torch.allclose(ort_prediction, pt_prediction)
 
+def test_nesting_forward_backward_calls():
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    ort_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+
+    #forward1 forward2 backward2 backward1
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x1_copy = copy.deepcopy(x1)
+    prediction1 = ort_model(x1)
+    loss1 = prediction1.sum()
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    prediction2 = ort_model(x2)
+    loss2 = prediction2.sum()
+    loss2.backward()
+    x1.grad = None
+    loss1.backward()
+    x2.grad = None
+    # redo forward1 backward1 and compare
+    prediction1_again = ort_model(x1_copy)
+    loss1_again = prediction1_again.sum()
+    x1_copy.grad = None
+    loss1_again.backward()
+    assert torch.allclose(x1_copy.grad, x1.grad)
+
 def test_multiple_overlapping_forward_backward_calls():
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
