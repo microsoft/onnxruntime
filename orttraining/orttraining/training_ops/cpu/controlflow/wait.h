@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 
 namespace onnxruntime {
 namespace contrib {

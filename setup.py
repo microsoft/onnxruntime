@@ -227,6 +227,7 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
     'onnxruntime.transformers.longformer',
 ]

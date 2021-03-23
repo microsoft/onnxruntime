@@ -76,6 +76,9 @@ const std::string& GetNodeInputName(const Node& node, int index);
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
 
+/** Gets the index of an output arg with the specified output arg name. */
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
+
 /** Gets the name of the outgoing NodeArg with the specified index for the given node. */
 const std::string& GetNodeOutputName(const Node& node, int index);
 

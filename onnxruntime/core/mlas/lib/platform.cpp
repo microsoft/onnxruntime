@@ -42,12 +42,6 @@ MLAS_PLATFORM MlasPlatform;
 MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 //
-// Stores a vector to build a conditional load/store mask for vmaskmovpd.
-//
-
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint64_t MlasMaskMoveAvx64[4], 32) = { 0, 1, 2, 3 };
-
-//
 // Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
 //
 
@@ -229,8 +223,8 @@ Return Value:
                 this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
                 this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 this->ComputeExpF32Kernel = MlasComputeExpF32KernelFma3;
-                this->LogisticKernelRoutine = MlasLogisticKernelFma3;
-                this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->LogisticKernelRoutine = MlasComputeLogisticF32KernelFma3;
+                this->TanhKernelRoutine = MlasComputeTanhF32KernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;

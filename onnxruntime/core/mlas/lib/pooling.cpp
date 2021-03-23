@@ -45,8 +45,6 @@ void
     float* Output
     );
 
-typedef MLAS_POOL_KERNEL_ROUTINE* PMLAS_POOL_KERNEL_ROUTINE;
-
 //
 // Define the number of elements to allocate on the stack for the reduction
 // buffer in the vectorized kernels.
@@ -1078,7 +1076,7 @@ Return Value:
 // Stores pointers to the pooling kernel routines.
 //
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGenericKernels[][3] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolGenericKernels[][3] =
 {
     {
         MlasPool1DKernel<MLAS_MAXIMUM_POOLING>,
@@ -1097,14 +1095,14 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGenericKernels[][3] =
     },
 };
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGlobalKernels[] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolGlobalKernels[] =
 {
     MlasPoolGlobalKernel<MLAS_MAXIMUM_POOLING>,
     MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
     MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
 };
 
-static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
+static MLAS_POOL_KERNEL_ROUTINE* const MlasPoolVectorKernels[][2] =
 {
     {
         MlasPool2DVectorKernel<MLAS_MAXIMUM_POOLING>,
@@ -1249,7 +1247,7 @@ Return Value:
     // in the reduction buffer.
     //
 
-    PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
+    MLAS_POOL_KERNEL_ROUTINE* PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
 
