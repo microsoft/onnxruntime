@@ -97,6 +97,7 @@ common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
   }
+
   return Status::OK();
 }
 
