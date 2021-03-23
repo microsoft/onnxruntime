@@ -81,7 +81,7 @@ def _ort_output_to_torch_tensor(ort_output):
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 
-def _load_torch_allocator_cpp_extension(verbosity):
+def _load_torch_cuda_allocator_cpp_extension(verbosity):
     torch_cuda_allocator_addresses_cpp_source = """
     #include <torch/extension.h>
     #include <c10/cuda/CUDACachingAllocator.h>
@@ -98,6 +98,23 @@ def _load_torch_allocator_cpp_extension(verbosity):
                                   'cuda_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
+
+def _load_torch_rocm_allocator_cpp_extension(verbosity):
+    torch_rocm_allocator_addresses_cpp_source = """
+    #include <torch/extension.h>
+    #include <c10/hip/HIPMCachingAllocator.h>
+    size_t rocm_caching_allocator_raw_alloc_address() {
+        return reinterpret_cast<size_t>(&c10::hip::HIPCachingAllocator::raw_alloc);
+    }
+    size_t rocm_caching_allocator_raw_delete_address() {
+        return reinterpret_cast<size_t>(&c10::hip::HIPCachingAllocator::raw_delete);
+    }
+    """
+
+    return load_inline(name='inline_extension', cpp_sources=[torch_rocm_allocator_addresses_cpp_source],
+                       functions=['rocm_caching_allocator_raw_alloc_address',
+                                  'rocm_caching_allocator_raw_delete_address'],
+                       verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
 class ORTModule(torch.nn.Module):
 
@@ -320,13 +337,16 @@ class ORTModule(torch.nn.Module):
 
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
         # Disable external allocator for ROCM EP since external allocator is not supported yet.
-        self._use_external_cuda_allocator = (
-            False if self.is_rocm_pytorch else True)
+        self._use_external_cuda_allocator = True
         if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension(
-                self._verbosity)
-            self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
-            self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+            if self.is_rocm_pytorch:
+                self._torch_rocm_allocator = _load_torch_rocm_allocator_cpp_extension(self._verbosity)
+                self._torch_alloc = self._torch_rocm_allocator.rocm_caching_allocator_raw_alloc_address()
+                self._torch_free = self._torch_rocm_allocator.rocm_caching_allocator_raw_delete_address()
+            else:
+                self._torch_cuda_allocator = _load_torch_cuda_allocator_cpp_extension(self._verbosity)
+                self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
+                self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
@@ -363,8 +383,12 @@ class ORTModule(torch.nn.Module):
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
             if self._use_external_cuda_allocator:
-                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
-                    self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+                if self.is_rocm_pytorch:
+                    provider_options = [{"device_id": str(self._device.index), "rocm_external_alloc": str(
+                        self._torch_alloc), "rocm_external_free": str(self._torch_free)}, {}]
+                else:
+                    provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
+                        self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':

@@ -150,6 +150,12 @@ OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTI
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
+
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
@@ -481,6 +487,54 @@ static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHos
 
 #endif
 
+#ifdef USE_ROCM
+
+static bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+static AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, hip_mem_limit, arena_extend_strategy, external_allocator_info)});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+static void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
+}
+
+static void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
+}
+
+static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
+
 /*
  * Register execution provider with options.
  */
@@ -590,9 +644,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   info.device_id = cuda_device_id;
                   info.hip_mem_limit = cuda_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }();
 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external CUDA allocator.
+      external_allocator_info = info.external_allocator_info;
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 #endif
@@ -889,6 +948,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                   info.device_id = cuda_device_id;
                   info.hip_mem_limit = cuda_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }()),
 #endif
