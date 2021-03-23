@@ -1,11 +1,14 @@
 module.exports = {
   root: true,
   ignorePatterns: ['**/*.js', 'node_modules/', 'types/'],
-  env: { 'es6': true, 'node': true },
+  env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
   plugins: ['@typescript-eslint', 'prefer-arrow', 'import', 'jsdoc'],
   rules: {
+    'import/no-extraneous-dependencies': ['error', { 'devDependencies': false }],
+    'import/no-internal-modules': 'error',
+    'import/no-unassigned-import': 'error',
     '@typescript-eslint/array-type': ['error', { 'default': 'array-simple' }],
     '@typescript-eslint/await-thenable': 'error',
     '@typescript-eslint/ban-types': [
@@ -18,10 +21,8 @@ module.exports = {
         }
       }
     ],
-    '@typescript-eslint/camelcase': 'error',
-    '@typescript-eslint/class-name-casing': 'error',
+    '@typescript-eslint/naming-convention': 'error',
     '@typescript-eslint/consistent-type-assertions': 'error',
-    '@typescript-eslint/interface-name-prefix': 'error',
     '@typescript-eslint/member-delimiter-style': [
       'error', {
         'multiline': { 'delimiter': 'semi', 'requireLast': true },
@@ -76,7 +77,8 @@ module.exports = {
     'no-new-wrappers': 'error',
     'no-octal': 'error',
     'no-octal-escape': 'error',
-    'no-redeclare': 'error',
+    'no-redeclare': 'off',
+    "@typescript-eslint/no-redeclare": ["error"],
     'no-regex-spaces': 'error',
     'no-return-await': 'error',
     'no-sparse-arrays': 'error',
@@ -95,17 +97,17 @@ module.exports = {
     'use-isnan': 'error'
   },
   overrides: [{
-    files: ['lib/**/*.ts'],
+    files: ['nodejs/**/*.ts'],
+    env: { 'es6': true, 'node': true }
+  }, {
+    files: ['nodejs/lib/**/*.ts'],
     rules: {
-      'import/no-extraneous-dependencies': ['error', { 'devDependencies': false }],
-      'import/no-internal-modules': 'error',
-      'import/no-unassigned-import': 'error',
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
       'jsdoc/newline-after-description': 'error',
     }
   }, {
-    files: ['script/**/*.ts', 'test/**/*.ts'], rules: {
+    files: ['nodejs/script/**/*.ts', 'nodejs/test/**/*.ts'], rules: {
       '@typescript-eslint/camelcase': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

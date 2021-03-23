@@ -1,0 +1,19 @@
+{
+  "license": "MIT",
+  "name": "onnxruntime-common",
+  "repository": {
+    "url": "https://github.com/Microsoft/onnxruntime.git",
+    "type": "git"
+  },
+  "author": "fs-eire",
+  "version": "1.7.0",
+  "scripts": {
+    "prepare": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^4.2.3"
+  },
+  "main": "./lib/index.js",
+  "types": "./types/index.d.ts",
+  "description": "ONNXRuntime JavaScript library"
+}

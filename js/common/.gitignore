@@ -1,0 +1,9 @@
+node_modules/
+types/
+
+tsconfig.tsbuildinfo
+
+lib/**/*.js
+lib/**/*.js.map
+
+*.d.ts
