@@ -76,7 +76,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext ctx, uint32_t streamId, ui
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
         if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
-          CUpti_ActivityKernel6* kernel = (CUpti_ActivityKernel6*)record;
+          CUpti_ActivityKernel5* kernel = (CUpti_ActivityKernel5*)record;
           {
             std::unique_lock<OrtMutex> lock(mutex_);
             stats_.push_back({kernel->name, kernel->streamId,
