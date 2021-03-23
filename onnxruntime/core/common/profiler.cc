@@ -21,7 +21,7 @@ class DeviceProfiler {
   static DeviceProfiler* GetDeviceProfiler();
   virtual void StartProfiling(TimePoint start_time, int pid, int tid) = 0;
   virtual std::vector<EventRecord> EndProfiling() = 0;
-  virtual ~DeviceProfiler(){};
+  virtual ~DeviceProfiler() = default;
 };
 
 #ifdef USE_CUDA
@@ -72,19 +72,17 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext ctx, uint32_t streamId, ui
   CUptiResult status;
   CUpti_Activity* record = NULL;
   if (validSize > 0) {
+    std::unique_lock<OrtMutex> lock(mutex_);
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
         if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
           CUpti_ActivityKernel5* kernel = (CUpti_ActivityKernel5*)record;
-          {
-            std::unique_lock<OrtMutex> lock(mutex_);
-            stats_.push_back({kernel->name, kernel->streamId,
-                              kernel->gridX, kernel->gridY, kernel->gridZ,
-                              kernel->blockX, kernel->blockY, kernel->blockZ,
-                              static_cast<int64_t>(kernel->start),
-                              static_cast<int64_t>(kernel->end)});
-          }
+          stats_.push_back({kernel->name, kernel->streamId,
+                            kernel->gridX, kernel->gridY, kernel->gridZ,
+                            kernel->blockX, kernel->blockY, kernel->blockZ,
+                            static_cast<int64_t>(kernel->start),
+                            static_cast<int64_t>(kernel->end)});
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
         break;
@@ -120,10 +118,9 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
                                                                          {"block_x", std::to_string(stat.block_x_)},
                                                                          {"block_y", std::to_string(stat.block_y_)},
                                                                          {"block_z", std::to_string(stat.block_z_)}};
-      if (stat.start_ > profiling_start) {
-        events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
-      }
+      events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
     }
+    stats_.clear();
   }
   enabled_.clear();
   return events;
