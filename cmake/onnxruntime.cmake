@@ -53,7 +53,9 @@ target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PAR
 target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
 
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  #target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  message(${onnxruntime_CUDNN_HOME})
+  target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/lib64)
 endif()
 
 if(UNIX)

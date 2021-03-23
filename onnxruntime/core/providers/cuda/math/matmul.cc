@@ -6,6 +6,8 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 
+#include <cublasLt.h>
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -39,10 +41,10 @@ namespace cuda {
       MatMul<T>);
 
 REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+//REGISTER_KERNEL_TYPED(double)
+//REGISTER_KERNEL_TYPED(MLFloat16)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-REGISTER_KERNEL_TYPED(BFloat16)
+//REGISTER_KERNEL_TYPED(BFloat16)
 #endif
 
 // StridedBatchedGemm can be used for the following GEMM computation
@@ -118,6 +120,40 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int ldc = static_cast<int>(helper.N());
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
+
+  if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2) {
+    std::cout << "left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2" << std::endl;
+
+    void* workspace;
+    size_t workspaceSize = 4194304;
+    cudaMalloc(&workspace, workspaceSize);
+    cublasLtHandle_t ltHandle;
+    cublasLtCreate(&ltHandle);
+    CUBLAS_RETURN_IF_ERROR(
+      cublasLtGemmHelper(
+        ltHandle,
+        transB,
+        transA,
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.K()),
+        &alpha,
+        reinterpret_cast<const float*>(right_X->template Data<float>()),
+        ldb,
+        reinterpret_cast<const float*>(left_X->template Data<float>()),
+        lda,
+        &zero,
+        reinterpret_cast<float*>(Y->template MutableData<float>()),
+        ldc,
+        workspace,
+        workspaceSize
+      )
+    );
+
+    std::cout << "cublasLtGemmHelper() finished" << std::endl;
+    return Status::OK();
+  }
+
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),

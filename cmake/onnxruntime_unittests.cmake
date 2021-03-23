@@ -319,7 +319,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
@@ -610,7 +610,12 @@ AddTest(
   LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
   DEPENDS ${all_dependencies}
 )
-
+#if (onnxruntime_USE_CUDA)
+#  find_package(CUDA REQUIRED)
+#  include_directories("${CUDA_INCLUDE_DIRS}")
+#  target_link_options(onnxruntime_test_all PRIVATE "LINKER:--no-as-needed")
+#  target_link_options(onnxruntime_test_all PRIVATE "LINKER:-lcublasLt")
+#endif()
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
@@ -632,7 +637,6 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
 endif()
@@ -728,7 +732,7 @@ if(MSVC)
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
-target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
+target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT} -lcublasLt)
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
 if (onnxruntime_USE_TVM)

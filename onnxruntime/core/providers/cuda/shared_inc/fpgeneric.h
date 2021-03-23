@@ -15,7 +15,61 @@
 
 #include "core/providers/cuda/cuda_common.h"
 
+#include <cublasLt.h>
+
 // Generalize library calls to be use in template functions
+
+// gemm
+inline cublasStatus_t cublasLtGemmHelper(cublasLtHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m, int n, int k,
+                                         const float* alpha,
+                                         const float* A, int lda,
+                                         const float* B, int ldb,
+                                         const float* beta,
+                                         float* C, int ldc,
+                                         void *workspace,
+                                         size_t workspaceSize) {
+
+    cublasLtMatmulDesc_t operationDesc = nullptr;
+    cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr;
+
+    // check return status
+    cublasLtMatmulDescCreate(&operationDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
+    cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa));
+    cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transa));
+
+    cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_32F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda);
+    cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb);
+    cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, m, n, ldc);
+
+    cublasLtMatmulAlgo_t algo;
+
+    cublasStatus_t oneRunStatus = cublasLtMatmul(handle,
+                                                 operationDesc,
+                                                 alpha,
+                                                 A,
+                                                 Adesc,
+                                                 B,
+                                                 Bdesc,
+                                                 beta,
+                                                 C,
+                                                 Cdesc,
+                                                 C,
+                                                 Cdesc,
+                                                 &algo,
+                                                 workspace,
+                                                 workspaceSize,
+                                                 0);
+
+    if (Cdesc) cublasLtMatrixLayoutDestroy(Cdesc);
+    if (Bdesc) cublasLtMatrixLayoutDestroy(Bdesc);
+    if (Adesc) cublasLtMatrixLayoutDestroy(Adesc);
+    if (operationDesc) cublasLtMatmulDescDestroy(operationDesc);
+
+    return oneRunStatus;
+}
 
 // gemm
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
