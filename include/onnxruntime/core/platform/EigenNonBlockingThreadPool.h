@@ -185,9 +185,8 @@ class ThreadPoolProfiler {
   ThreadPoolProfiler(int, const CHAR_TYPE*){};
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
-  using Clock = std::chrono::high_resolution_clock;
   void Start(){};
-  std::string Stop() { return "not available for minimum build"; }
+  std::string Stop() { return "not available for minimal build"; }
   void LogStart(){};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
