@@ -147,9 +147,8 @@ class ORTModule(torch.nn.Module):
                     # Assert that the input and model device match
                     _check_same_device(self._device, "Input argument to forward", *inputs)
 
-                    # training_io_binding and run_options are per InferenceSession call
-                    # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes,
-                    #   expecially the backward graph outputs.
+                    # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
+                    #   especially the backward graph outputs.
                     training_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
                     
@@ -174,8 +173,7 @@ class ORTModule(torch.nn.Module):
                 def backward(ctx, *grad_outputs):
                     '''Performs backward pass based on grad wrt module output
                     '''
-                    if not ctx.run_info:
-                        raise RuntimeError('ctx.run_info not set in forward')
+                    assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
 
                     # Assert that the grad_outputs and model device match
                     _check_same_device(self._device, "Input argument to backward", *grad_outputs)
