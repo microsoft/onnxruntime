@@ -910,7 +910,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file,
             "-Donnxruntime_ENABLE_NSYNC=OFF"
         ]
-        if not args.test:
+        if args.disable_wasm_exception_catching:
+            # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
+            # unit test.
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
@@ -1808,6 +1810,9 @@ def main():
             raise BuildError("--nnapi_min_api should be 27+")
 
     if args.build_wasm:
+        if not args.disable_wasm_exception_catching and args.disable_exceptions:
+            # When '--disable_exceptions' is set, we set '--disable_wasm_exception_catching' as well
+            args.disable_wasm_exception_catching = True
         if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
             raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
 

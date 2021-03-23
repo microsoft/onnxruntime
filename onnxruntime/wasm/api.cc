@@ -11,13 +11,13 @@ namespace {
 Ort::Env* g_env;
 }  // namespace
 
-void ort_init() {
+void OrtInit() {
   // TODO: allow user to specify logging
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   g_env = new Ort::Env{logging_level, "Default"};
 }
 
-Ort::Session* ort_create_session(void* data, size_t data_length) {
+Ort::Session* OrtCreateSession(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
   session_options.SetLogId("onnxruntime");
 
@@ -27,34 +27,34 @@ Ort::Session* ort_create_session(void* data, size_t data_length) {
   return new Ort::Session(*g_env, data, data_length, session_options);
 }
 
-void ort_release_session(Ort::Session* session) {
+void OrtReleaseSession(Ort::Session* session) {
   delete session;
 }
 
-size_t ort_get_input_count(Ort::Session* session) {
+size_t OrtGetInputCount(Ort::Session* session) {
   return session->GetInputCount();
 }
 
-size_t ort_get_output_count(Ort::Session* session) {
+size_t OrtGetOutputCount(Ort::Session* session) {
   return session->GetOutputCount();
 }
 
-char* ort_get_input_name(Ort::Session* session, size_t index) {
+char* OrtGetInputName(Ort::Session* session, size_t index) {
   Ort::AllocatorWithDefaultOptions allocator;
   return session->GetInputName(index, allocator);
 }
 
-char* ort_get_output_name(Ort::Session* session, size_t index) {
+char* OrtGetOutputName(Ort::Session* session, size_t index) {
   Ort::AllocatorWithDefaultOptions allocator;
   return session->GetOutputName(index, allocator);
 }
 
-void ort_free(void* ptr) {
+void OrtFree(void* ptr) {
   Ort::AllocatorWithDefaultOptions allocator;
   allocator.Free(ptr);
 }
 
-OrtValue* ort_create_tensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length) {
+OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length) {
   std::vector<int64_t> shapes(dims_length);
   for (size_t i = 0; i < dims_length; i++) {
     shapes[i] = dims[i];
@@ -69,7 +69,7 @@ OrtValue* ort_create_tensor(int data_type, void* data, size_t data_length, size_
       .release();
 }
 
-void ort_get_tensor_data(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+void OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
   Ort::Value v{tensor};
   auto info = v.GetTensorTypeAndShapeInfo();
   size_t dims_len = info.GetDimensionsCount();
@@ -86,12 +86,12 @@ void ort_get_tensor_data(OrtValue* tensor, int* data_type, void** data, size_t**
   v.release();
 }
 
-void ort_release_tensor(OrtValue* tensor) {
+void OrtReleaseTensor(OrtValue* tensor) {
   Ort::OrtRelease(tensor);
 }
 
-void ort_run(Ort::Session* session,
-             const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
-             const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
+void OrtRun(Ort::Session* session,
+            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
+            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
   Ort::ThrowOnError(Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs));
 }
