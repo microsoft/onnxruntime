@@ -40,4 +40,20 @@ jobs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result'
 
-    - template: templates/clean-agent-build-directory-step.yml
+    # - template: templates/clean-agent-build-directory-step.yml
+    # steps:
+
+    # - script: rd /S /Q $(Agent.BuildDirectory)
+    #   displayName: Clean build files (Windows)
+    #   condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
+      
+    - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result'
+      displayName: 'Post to Dashboard'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      env:
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
+    - script: sudo rm -rf $(Agent.BuildDirectory)
+      displayName: Clean build files (POSIX)
+      condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
+      continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
