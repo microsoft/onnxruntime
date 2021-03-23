@@ -83,7 +83,6 @@ if args.run_without_ort:
 
 
 else:
-    print("*************************************** testing with ORTModule ************")
     model = nn.Sequential(
         ORTModule(nn.Linear(d_in, d_hidden).to(device)),     # Stage 1
         nn.ReLU().to(device),                                # ORTModule(nn.ReLU().to(device)), Stage 1, TODO: ORTModule can wrap Relu once stateless model is supported.
