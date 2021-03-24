@@ -536,7 +536,7 @@ class TestInferenceSession(unittest.TestCase):
         with open(profile_file) as f:
             lines = f.readlines()
             lines_len = len(lines)
-            self.assertTrue(lines_len > 0)
+            self.assertTrue(lines_len > 8)
             self.assertTrue('[' in lines[0])
             for i in range(1, lines_len-1):
                 for tag in tags:
