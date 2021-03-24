@@ -566,18 +566,23 @@ const Node* FirstChildByType(const Node& node, const std::string& child_type) {
 }
 
 std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
-  // find children and sort them by source argument index
-  std::vector<const Node*> children(node.OutputDefs().size(), nullptr);
+  // find children and sort them by source argument index:
+  //     Create a 2D vector to hold the result.
+  //     1st dimension index is output index,
+  //     and the 2nd dimension stores the edges from the output.
+  std::vector<std::vector<const Node*>> children(node.OutputDefs().size(), std::vector<const Node*>());
   for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
     if (it->GetNode().OpType().compare(child_type) == 0) {
-      children[it->GetSrcArgIndex()] = &(it->GetNode());
+      children[it->GetSrcArgIndex()].push_back(&(it->GetNode()));
     }
   }
 
-  // remove unmatched nodes
-  children.erase(std::remove(children.begin(), children.end(), nullptr), children.end());
-
-  return children;
+  // aggregate children
+  std::vector<const Node*> agg_res;
+  for (size_t output_idx = 0; output_idx < children.size(); output_idx++) {
+    agg_res.insert(agg_res.end(), children[output_idx].begin(), children[output_idx].end());
+  }
+  return agg_res;
 }
 
 const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
@@ -591,6 +596,8 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
 
 std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
   // find parents and sort them by destination argument index
+  // as there is at most one input edge for each input argument,
+  // there is no need of extra work like FindChildrenByType
   std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
   for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
     if (it->GetNode().OpType().compare(parent_type) == 0) {

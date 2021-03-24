@@ -24,7 +24,7 @@ class QDQOperatorTransformer {
   /* Determine whether to keep node_ itself or not.
            For operators that support int8, keep node_ and only change its input and output.
            Otherwise, node_ will be removed and replaced by a QLinear* version.
-        */
+  */
   virtual bool KeepNode() const {
     return false;
   }

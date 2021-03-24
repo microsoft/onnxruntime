@@ -50,7 +50,7 @@ class QDQRegistry {
         [](Node& node, Graph& graph) { return std::make_unique<Transformer>(node, graph); });                   \
   }
 
-#define REGISER_QDQ_CREATOR(op_type, Transformer) \
+#define REGISTER_QDQ_CREATOR(op_type, Transformer) \
   QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)  \
   ()
 }  // namespace onnxruntime

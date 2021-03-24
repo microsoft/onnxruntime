@@ -15,7 +15,10 @@ void QDQOperatorTransformer::FillQDQOptionalZeroPoint(const std::vector<const No
   for (const Node* p_node_const : qdq_nodes) {
     Node& node = *graph_.GetNode(p_node_const->Index());
     std::vector<NodeArg*>& input_defs = node.MutableInputDefs();
-    if (input_defs.size() == 3) continue;
+    constexpr size_t max_input_count = 3;
+    if (input_defs.size() == max_input_count) {
+      continue;  // zero point is not optional. No need to fill.
+    }
 
     bool is_default_zp_signed = false;
     if (node.OpType() == DQOPTypeName) {

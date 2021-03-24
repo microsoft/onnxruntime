@@ -11,11 +11,11 @@ DECLARE_QDQ_CREATOR(Add, QDQBinaryOpTransformer)
 DECLARE_QDQ_CREATOR(Mul, QDQBinaryOpTransformer)
 DECLARE_QDQ_CREATOR(MatMul, QDQMatMulTransformer)
 std::unordered_map<std::string, QDQRegistry::QDQTransformerCreator> QDQRegistry::qdqtransformer_creators_{
-    REGISER_QDQ_CREATOR(Conv, QDQConvTransformer),
-    REGISER_QDQ_CREATOR(MaxPool, QDQSimpleTransformer),
-    REGISER_QDQ_CREATOR(Reshape, QDQSimpleTransformer),
-    REGISER_QDQ_CREATOR(Add, QDQBinaryOpTransformer),
-    REGISER_QDQ_CREATOR(Mul, QDQBinaryOpTransformer),
-    REGISER_QDQ_CREATOR(MatMul, QDQMatMulTransformer),
+    REGISTER_QDQ_CREATOR(Conv, QDQConvTransformer),
+    REGISTER_QDQ_CREATOR(MaxPool, QDQSimpleTransformer),
+    REGISTER_QDQ_CREATOR(Reshape, QDQSimpleTransformer),
+    REGISTER_QDQ_CREATOR(Add, QDQBinaryOpTransformer),
+    REGISTER_QDQ_CREATOR(Mul, QDQBinaryOpTransformer),
+    REGISTER_QDQ_CREATOR(MatMul, QDQMatMulTransformer),
 };
 }  // namespace onnxruntime
