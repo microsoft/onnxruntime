@@ -755,8 +755,6 @@ Return Value:
 
 #else //defined(MLAS_TARGET_WASM_SCALAR)
 
-// MlasSgemmCopyPackB() and MlasSgemmTransposePackB() using 4 elements wide
-
 void
 MlasSgemmCopyPackB(
     float* D,
@@ -805,8 +803,8 @@ Return Value:
         size_t y = CountY;
 
         do {
-            MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-            MlasStoreAlignedFloat32x4(&D[0], t0);
+
+            std::copy_n(b, 4, D);
 
             D += 4;
             b += ldb;
@@ -825,16 +823,14 @@ Return Value:
 
     if (CountX > 0) {
 
-        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-
         size_t y = CountY;
 
         do {
 
+            std::fill_n(D, 4, 0.0f);
+
             float* d = D;
             const float* b = B;
-
-            MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
 
             if ((CountX & 2) != 0) {
 
@@ -857,64 +853,6 @@ Return Value:
             y--;
 
         } while (y > 0);
-    }
-}
-
-template<unsigned N>
-inline
-void
-MlasSgemmTransposePackBNx4(
-    float* D,
-    const float* B,
-    size_t ldb
-    )
-/*++
-
-Routine Description:
-
-    This routine transposes elements from the source matrix to the destination
-    packed buffer.
-
-    4 columns of N rows from the source matrix are transposed to N columns of 4
-    rows in the destination packed buffer.
-
-Arguments:
-
-    D - Supplies the address of the destination packed buffer.
-
-    B - Supplies the address of the source matrix.
-
-    ldb - Supplies the number of elements per row of the source matrix.
-
-Return Value:
-
-    None.
-
---*/
-{
-    for (unsigned n = 0; n < N / 4; n++) {
-
-        MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&B[ldb * 0]);
-        MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&B[ldb * 1]);
-        MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&B[ldb * 2]);
-        MLAS_FLOAT32X4 t3 = MlasLoadFloat32x4(&B[ldb * 3]);
-
-        MLAS_FLOAT32X4 z0 = MlasInterleaveLowFloat32x4(t0, t2);
-        MLAS_FLOAT32X4 z1 = MlasInterleaveHighFloat32x4(t0, t2);
-        MLAS_FLOAT32X4 z2 = MlasInterleaveLowFloat32x4(t1, t3);
-        MLAS_FLOAT32X4 z3 = MlasInterleaveHighFloat32x4(t1, t3);
-        t0 = MlasInterleaveLowFloat32x4(z0, z2);
-        t1 = MlasInterleaveHighFloat32x4(z0, z2);
-        t2 = MlasInterleaveLowFloat32x4(z1, z3);
-        t3 = MlasInterleaveHighFloat32x4(z1, z3);
-
-        MlasStoreAlignedFloat32x4(&D[0], t0);
-        MlasStoreAlignedFloat32x4(&D[4], t1);
-        MlasStoreAlignedFloat32x4(&D[8], t2);
-        MlasStoreAlignedFloat32x4(&D[12], t3);
-
-        D += 4;
-        B += ldb * 4;
     }
 }
 
@@ -955,6 +893,19 @@ Return Value:
 
 --*/
 {
+    auto TransposePackByVector = [&](float *D, const float* B) {
+
+        float b0 = B[0];
+        float b1 = B[1];
+        float b2 = B[2];
+        float b3 = B[3];
+
+        D[0] = b0;
+        D[4] = b1;
+        D[8] = b2;
+        D[12] = b3;
+    };
+
     //
     // Transpose elements from matrix B into the packed buffer 4 rows at a
     // time.
@@ -967,7 +918,10 @@ Return Value:
 
         while (x >= 4) {
 
-            MlasSgemmTransposePackBNx4<4>(&D[0], &b[0], ldb);
+            TransposePackByVector(&D[0], &b[ldb * 0]);
+            TransposePackByVector(&D[1], &b[ldb * 1]);
+            TransposePackByVector(&D[2], &b[ldb * 2]);
+            TransposePackByVector(&D[3], &b[ldb * 3]);
 
             D += 4 * 4;
             b += 4;
@@ -1001,8 +955,6 @@ Return Value:
 
     if (CountY > 0) {
 
-        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-
         size_t x = CountX;
 
         //
@@ -1011,38 +963,22 @@ Return Value:
 
         while (x >= 4) {
 
+            std::fill_n(D, 16, 0.0f);
+
             float* d = D;
             const float* b = B;
 
-            MlasStoreAlignedFloat32x4(&d[0], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[8], ZeroFloat32x4);
-            MlasStoreAlignedFloat32x4(&d[12], ZeroFloat32x4);
-
             if ((CountY & 2) != 0) {
 
-                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-                MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
-
-                MlasStoreLaneFloat32x4<0>(&d[0], t0);
-                MlasStoreLaneFloat32x4<0>(&d[1], t1);
-                MlasStoreLaneFloat32x4<1>(&d[4], t0);
-                MlasStoreLaneFloat32x4<1>(&d[5], t1);
-                MlasStoreLaneFloat32x4<2>(&d[8], t0);
-                MlasStoreLaneFloat32x4<2>(&d[9], t1);
-                MlasStoreLaneFloat32x4<3>(&d[12], t0);
-                MlasStoreLaneFloat32x4<3>(&d[13], t1);
+                TransposePackByVector(&d[0], &b[ldb * 0]);
+                TransposePackByVector(&d[1], &b[ldb * 1]);
 
                 d += 2;
                 b += ldb * 2;
             }
 
             if ((CountY & 1) != 0) {
-
-                d[0] = b[0];
-                d[4] = b[1];
-                d[4 * 2] = b[2];
-                d[4 * 3] = b[3];
+                TransposePackByVector(&d[0], &b[ldb * 0]);
             }
 
             D += 4 * 4;
@@ -1056,10 +992,10 @@ Return Value:
 
         while (x > 0) {
 
+            std::fill_n(D, 4, 0.0f);
+
             float* d = D;
             const float* b = B;
-
-            MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
 
