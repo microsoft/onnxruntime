@@ -166,31 +166,27 @@ class FusionAttention(Fusion):
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
 
-        if len(qw.shape) != 2:
-            logger.debug(f"weights for Q is expected to be 2D.")
-            return None
+        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size]. 
+        # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
+        in_size = qw.shape[0]
+        out_size = np.prod(qw.shape[1:])
 
-        # All the matrices have the same shape (in_size, out_size)
-        in_size, out_size = qw.shape
+        qkv_weight = np.stack((qw, kw, vw), axis=1)
+
+        qb = numpy_helper.to_array(q_bias)        
+        kb = numpy_helper.to_array(k_bias)
+        vb = numpy_helper.to_array(v_bias)
+
+        # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
+        assert qb.shape == kb.shape == vb.shape
+        assert np.prod(qb.shape) == out_size
 
         if out_size != hidden_size:
             logger.debug(
                 f"Shape for weights of Q is {in_size, out_size}, which does not match hidden_size={hidden_size}")
             return None
 
-        qkv_weight = np.stack((qw, kw, vw), axis=-2)
-
-        qb = numpy_helper.to_array(q_bias)
-        assert qb.shape == (out_size, )
-
-        kb = numpy_helper.to_array(k_bias)
-        assert kb.shape == (out_size, )
-
-        vb = numpy_helper.to_array(v_bias)
-        assert vb.shape == (out_size, )
-
-        qkv_bias = np.stack((qb, kb, vb), axis=-2)
-
+        qkv_bias = np.stack((qb, kb, vb), axis=0)
         attention_node_name = self.model.create_node_name('Attention')
 
         weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',

@@ -11,12 +11,12 @@
 
 #include "core/common/common.h"
 #include "core/common/type_list.h"
-#include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/data_types.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
@@ -30,16 +30,16 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
     int64_t);
 
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 }  // namespace op_kernel_type_control
 
 namespace {

@@ -38,6 +38,8 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -144,28 +146,31 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
 
       std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
-      std::unordered_set<std::string> cpu_cuda_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
+      std::unordered_set<std::string> cpu_cuda_rocm_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_acl_armnn_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_execution_providers));
 
-      std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
+      const std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      const std::unordered_set<std::string> cpu_cuda_rocm_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_rocm_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_rocm_execution_providers));
 
       if (enable_gelu_approximation){
-        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_execution_providers));
+        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_rocm_execution_providers));
       }
 
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_execution_providers));
 #endif
     } break;
 
