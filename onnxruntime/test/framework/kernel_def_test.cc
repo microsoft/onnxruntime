@@ -14,14 +14,28 @@ TEST(KernelDefTest, HashIgnoresTypeConstraintTypeOrdering) {
   auto build_kernel_def = [](std::vector<MLDataType> type_constraint_types) {
     return KernelDefBuilder{}
         .SetName("MyOp")
-        .SetDomain("MyDomain")
-        .Provider("MyProvider")
         .TypeConstraint("T", type_constraint_types)
         .Build();
   };
 
   const auto a = build_kernel_def(BuildKernelDefConstraints<int, float>());
   const auto b = build_kernel_def(BuildKernelDefConstraints<float, int>());
+
+  ASSERT_EQ(a->GetHash(), b->GetHash());
+}
+
+TEST(KernelDefTest, HashUsesFixedTypeConstraint) {
+  const auto a =
+      KernelDefBuilder{}
+          .SetName("MyOp")
+          .TypeConstraint("T", BuildKernelDefConstraints<int, double>())
+          .Build();
+  const auto b =
+      KernelDefBuilder{}
+          .SetName("MyOp")
+          .TypeConstraint("T", BuildKernelDefConstraints<int, double, float>())
+          .FixedTypeConstraintForHash("T", BuildKernelDefConstraints<int, double>())
+          .Build();
 
   ASSERT_EQ(a->GetHash(), b->GetHash());
 }

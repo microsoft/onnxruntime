@@ -14,6 +14,25 @@
  * If adding more supported types to an existing kernel definition, consider
  * using KernelDefBuilder::FixedTypeConstraintForHash().
  *
+ * For example:
+ * Say we have a kernel definition like this, which supports types int and
+ * double:
+ *     KernelDefBuilder{}
+ *         .TypeConstraint(
+ *             "T", BuildKernelDefConstraints<int, double>())
+ * If we want to update the kernel definition to add support for float, we can
+ * change it to something like this:
+ *     KernelDefBuilder{}
+ *         .TypeConstraint(
+ *             "T", BuildKernelDefConstraints<int, double, float>())
+ *         .FixedTypeConstraintForHash(
+ *             "T", BuildKernelDefConstraints<int, double>())
+ * In the updated kernel definition, the original types are specified with
+ * FixedTypeConstraintForHash().
+ *
+ * New kernel definitions should not use FixedTypeConstraintForHash().
+ * It is a way to keep the hash stable as kernel definitions change.
+ *
  * It is also possible that you have added a new kernel definition and are
  * seeing a message from one of these tests about updating the expected data.
  * Please do that if appropriate.
@@ -25,19 +44,81 @@
 
 #include <algorithm>
 #include <cinttypes>
-#include <cstdint>
-#include <cstdio>
+#include <iostream>
 
 #include "gtest/gtest.h"
 
+#include "core/common/common.h"
 #include "core/framework/kernel_registry.h"
+#include "core/mlas/inc/mlas.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
+const KernelDefHashes& GetExpectedCpuKernelDefHashes();
 
+// the format matches how the expected kernel def hashes are specified
+std::string DumpKernelDefHashesToString(const KernelDefHashes& kernel_def_hashes) {
+  std::string result{};
+  for (const auto& kvp : kernel_def_hashes) {
+    result += MakeString("{\"", kvp.first, "\", UINT64_C(", kvp.second, ")},\n");
+  }
+  return result;
+}
+
+void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& expected) {
+  ASSERT_TRUE(std::is_sorted(actual.begin(), actual.end()));
+  ASSERT_TRUE(std::is_sorted(expected.begin(), expected.end()));
+
+  constexpr const char* kNoteReference = "Note: Please read the note at the top of this file: " __FILE__;
+
+  KernelDefHashes expected_minus_actual{};
+  std::set_difference(expected.begin(), expected.end(), actual.begin(), actual.end(),
+                      std::back_inserter(expected_minus_actual));
+  EXPECT_EQ(expected_minus_actual, KernelDefHashes{})
+      << "Some expected kernel def hashes were not found.\n"
+      << kNoteReference;
+
+  KernelDefHashes actual_minus_expected{};
+  std::set_difference(actual.begin(), actual.end(), expected.begin(), expected.end(),
+                      std::back_inserter(actual_minus_expected));
+  if (!actual_minus_expected.empty()) {
+    std::cerr << "Extra actual kernel def hashes were found, please update the expected values as needed "
+                 "(see the output below).\n"
+              << kNoteReference << "\n"
+              << DumpKernelDefHashesToString(actual_minus_expected);
+  }
+}
+}  // namespace
+
+TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  const auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
+  std::cout << DumpKernelDefHashesToString(cpu_kernel_def_hashes);
+}
+
+TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
+  const auto& expected_cpu_kernel_def_hashes = GetExpectedCpuKernelDefHashes();
+
+  // remove kernel def hash added by another test
+  cpu_kernel_def_hashes.erase(
+      std::remove_if(
+          cpu_kernel_def_hashes.begin(), cpu_kernel_def_hashes.end(),
+          [](const KernelDefHashes::value_type& key_and_hash) {
+            return key_and_hash.first == "OpaqueCApiTestKernel com.microsoft.mlfeaturizers CPUExecutionProvider";
+          }),
+      cpu_kernel_def_hashes.end());
+
+  CheckKernelDefHashes(cpu_kernel_def_hashes, expected_cpu_kernel_def_hashes);
+}
+
+namespace {
 const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
   static const KernelDefHashes expected_cpu_kernel_def_hashes = []() {
     KernelDefHashes result{
@@ -71,7 +152,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Add ai.onnx CPUExecutionProvider", UINT64_C(14227555443561151544)},
         {"Add ai.onnx CPUExecutionProvider", UINT64_C(17163619535281201712)},
         {"Add ai.onnx CPUExecutionProvider", UINT64_C(17837365715369996800)},
-        {"Affine ai.onnx CPUExecutionProvider", UINT64_C(7811918192248490408)},
         {"And ai.onnx CPUExecutionProvider", UINT64_C(7931711152704979424)},
         {"ArgMax ai.onnx CPUExecutionProvider", UINT64_C(2317240841713684752)},
         {"ArgMax ai.onnx CPUExecutionProvider", UINT64_C(2424977109168024608)},
@@ -126,7 +206,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"ConvTranspose ai.onnx CPUExecutionProvider", UINT64_C(4454044225968077856)},
         {"Cos ai.onnx CPUExecutionProvider", UINT64_C(1499142588988375424)},
         {"Cosh ai.onnx CPUExecutionProvider", UINT64_C(15345496796160944720)},
-        {"Crop ai.onnx CPUExecutionProvider", UINT64_C(6914973556202621376)},
         {"CumSum ai.onnx CPUExecutionProvider", UINT64_C(5082944229190913256)},
         {"CumSum ai.onnx CPUExecutionProvider", UINT64_C(10623377395346323656)},
         {"CumSum ai.onnx CPUExecutionProvider", UINT64_C(13407812519646293824)},
@@ -160,7 +239,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Dropout ai.onnx CPUExecutionProvider", UINT64_C(17469316612540314360)},
         {"Dropout ai.onnx CPUExecutionProvider", UINT64_C(17666880288828056264)},
         {"DynamicQuantizeLinear ai.onnx CPUExecutionProvider", UINT64_C(15568473034242820680)},
-        {"DynamicSlice ai.onnx CPUExecutionProvider", UINT64_C(5387668728763060584)},
         {"Einsum ai.onnx CPUExecutionProvider", UINT64_C(14280390279553192696)},
         {"Elu ai.onnx CPUExecutionProvider", UINT64_C(3332615861526569160)},
         {"Equal ai.onnx CPUExecutionProvider", UINT64_C(465760068542515872)},
@@ -256,15 +334,12 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"If ai.onnx CPUExecutionProvider", UINT64_C(2236645891232685176)},
         {"If ai.onnx CPUExecutionProvider", UINT64_C(8375779015031532008)},
         {"If ai.onnx CPUExecutionProvider", UINT64_C(17525337343748410800)},
-        {"ImageScaler ai.onnx CPUExecutionProvider", UINT64_C(2013093418027264536)},
         {"InstanceNormalization ai.onnx CPUExecutionProvider", UINT64_C(17511351958774814976)},
         {"IsInf ai.onnx CPUExecutionProvider", UINT64_C(17892003161986514744)},
         {"IsNaN ai.onnx CPUExecutionProvider", UINT64_C(1410678655050221856)},
         {"IsNaN ai.onnx CPUExecutionProvider", UINT64_C(4005964532771713904)},
         {"IsNaN ai.onnx CPUExecutionProvider", UINT64_C(6643135320397294616)},
         {"IsNaN ai.onnx CPUExecutionProvider", UINT64_C(8601031213185457224)},
-        {"LayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(4058615579523172864)},
-        {"LayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(8466416990072218056)},
         {"LeakyRelu ai.onnx CPUExecutionProvider", UINT64_C(7020782930120154768)},
         {"Less ai.onnx CPUExecutionProvider", UINT64_C(2529281912870061232)},
         {"Less ai.onnx CPUExecutionProvider", UINT64_C(2613688346938587336)},
@@ -321,7 +396,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Mean ai.onnx CPUExecutionProvider", UINT64_C(15995564204118007280)},
         {"Mean ai.onnx CPUExecutionProvider", UINT64_C(17663800684295189072)},
         {"MeanVarianceNormalization ai.onnx CPUExecutionProvider", UINT64_C(4538073571749444680)},
-        {"MeanVarianceNormalization ai.onnx CPUExecutionProvider", UINT64_C(13114085849278607104)},
         {"MeanVarianceNormalization ai.onnx CPUExecutionProvider", UINT64_C(17242016597551698064)},
         {"Min ai.onnx CPUExecutionProvider", UINT64_C(5444634510407971152)},
         {"Min ai.onnx CPUExecutionProvider", UINT64_C(6810496931206290712)},
@@ -387,7 +461,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Pad ai.onnx CPUExecutionProvider", UINT64_C(9596174091174553032)},
         {"Pad ai.onnx CPUExecutionProvider", UINT64_C(15778168444418158464)},
         {"Pad ai.onnx CPUExecutionProvider", UINT64_C(17900876414644757728)},
-        {"ParametricSoftplus ai.onnx CPUExecutionProvider", UINT64_C(17971715260566574960)},
         {"Pow ai.onnx CPUExecutionProvider", UINT64_C(2732884601395419376)},
         {"Pow ai.onnx CPUExecutionProvider", UINT64_C(8377308095432624176)},
         {"Pow ai.onnx CPUExecutionProvider", UINT64_C(12963226513247425672)},
@@ -537,8 +610,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Round ai.onnx CPUExecutionProvider", UINT64_C(6445503327475574168)},
         {"Round ai.onnx CPUExecutionProvider", UINT64_C(7643555187101537632)},
         {"Round ai.onnx CPUExecutionProvider", UINT64_C(13985378343775212776)},
-        {"Scale ai.onnx CPUExecutionProvider", UINT64_C(12599351089228483328)},
-        {"ScaledTanh ai.onnx CPUExecutionProvider", UINT64_C(15584477984618710520)},
         {"Scan ai.onnx CPUExecutionProvider", UINT64_C(2560955351529676608)},
         {"Scan ai.onnx CPUExecutionProvider", UINT64_C(11384233164992114368)},
         {"Scan ai.onnx CPUExecutionProvider", UINT64_C(12198479371038564912)},
@@ -563,8 +634,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Sigmoid ai.onnx CPUExecutionProvider", UINT64_C(17627299285547200664)},
         {"Sign ai.onnx CPUExecutionProvider", UINT64_C(7242670280432058360)},
         {"Sign ai.onnx CPUExecutionProvider", UINT64_C(15771057264632726008)},
-        {"SimplifiedLayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(418129161279605176)},
-        {"SimplifiedLayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(16349480652468900704)},
         {"Sin ai.onnx CPUExecutionProvider", UINT64_C(4888589719281923384)},
         {"Sin ai.onnx CPUExecutionProvider", UINT64_C(17128842231045328968)},
         {"Sinh ai.onnx CPUExecutionProvider", UINT64_C(4576126796107617992)},
@@ -617,7 +686,6 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Tanh ai.onnx CPUExecutionProvider", UINT64_C(12012944136719804976)},
         {"TfIdfVectorizer ai.onnx CPUExecutionProvider", UINT64_C(12361724165659823144)},
         {"ThresholdedRelu ai.onnx CPUExecutionProvider", UINT64_C(4781858005566667480)},
-        {"ThresholdedRelu ai.onnx CPUExecutionProvider", UINT64_C(17820769706565099200)},
         {"Tile ai.onnx CPUExecutionProvider", UINT64_C(13093106569145134440)},
         {"Tile ai.onnx CPUExecutionProvider", UINT64_C(14102078343076871784)},
         {"TopK ai.onnx CPUExecutionProvider", UINT64_C(1153626550939059536)},
@@ -691,8 +759,21 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"TreeEnsembleRegressor ai.onnx.ml CPUExecutionProvider", UINT64_C(1006399804521896912)},
         {"TreeEnsembleRegressor ai.onnx.ml CPUExecutionProvider", UINT64_C(12993125630596348064)},
         {"ZipMap ai.onnx.ml CPUExecutionProvider", UINT64_C(868519487849210656)},
-#endif  // DISABLE_ML_OPS
+#endif  // !DISABLE_ML_OPS
 #ifndef DISABLE_CONTRIB_OPS
+        {"Affine ai.onnx CPUExecutionProvider", UINT64_C(7811918192248490408)},
+        {"Crop ai.onnx CPUExecutionProvider", UINT64_C(6914973556202621376)},
+        {"DynamicSlice ai.onnx CPUExecutionProvider", UINT64_C(5387668728763060584)},
+        {"ImageScaler ai.onnx CPUExecutionProvider", UINT64_C(2013093418027264536)},
+        {"LayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(4058615579523172864)},
+        {"LayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(8466416990072218056)},
+        {"MeanVarianceNormalization ai.onnx CPUExecutionProvider", UINT64_C(13114085849278607104)},
+        {"ParametricSoftplus ai.onnx CPUExecutionProvider", UINT64_C(17971715260566574960)},
+        {"Scale ai.onnx CPUExecutionProvider", UINT64_C(12599351089228483328)},
+        {"ScaledTanh ai.onnx CPUExecutionProvider", UINT64_C(15584477984618710520)},
+        {"SimplifiedLayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(16349480652468900704)},
+        {"SimplifiedLayerNormalization ai.onnx CPUExecutionProvider", UINT64_C(418129161279605176)},
+        {"ThresholdedRelu ai.onnx CPUExecutionProvider", UINT64_C(17820769706565099200)},
         {"Attention com.microsoft CPUExecutionProvider", UINT64_C(16464502426529915864)},
         {"AttnLSTM com.microsoft CPUExecutionProvider", UINT64_C(15421184737689665128)},
         {"BiasGelu com.microsoft CPUExecutionProvider", UINT64_C(12457646955212583504)},
@@ -742,69 +823,33 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
         {"Trilu com.microsoft CPUExecutionProvider", UINT64_C(1828108687906670152)},
         {"Unique com.microsoft CPUExecutionProvider", UINT64_C(17512097873619224240)},
         {"WordConvEmbedding com.microsoft CPUExecutionProvider", UINT64_C(7416606351345164776)},
-        {"AveragePool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(12528194512485261552)},
-        {"Conv com.microsoft.nchwc CPUExecutionProvider", UINT64_C(10643058043438608528)},
-        {"GlobalAveragePool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(9401543287182687288)},
-        {"GlobalMaxPool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(17341568537930161320)},
-        {"MaxPool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(14527249939908647936)},
-        {"ReorderInput com.microsoft.nchwc CPUExecutionProvider", UINT64_C(14330795113746035424)},
-        {"ReorderOutput com.microsoft.nchwc CPUExecutionProvider", UINT64_C(13428915370009679360)},
-        {"Upsample com.microsoft.nchwc CPUExecutionProvider", UINT64_C(16347985363638744760)},
-#endif  // DISABLE_CONTRIB_OPS
+#endif  // !DISABLE_CONTRIB_OPS
     };
+
+#ifndef DISABLE_CONTRIB_OPS
+    if (MlasNchwcGetBlockSize() > 1) {
+      const KernelDefHashes contrib_nchwc{
+          {"AveragePool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(12528194512485261552)},
+          {"Conv com.microsoft.nchwc CPUExecutionProvider", UINT64_C(10643058043438608528)},
+          {"GlobalAveragePool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(9401543287182687288)},
+          {"GlobalMaxPool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(17341568537930161320)},
+          {"MaxPool com.microsoft.nchwc CPUExecutionProvider", UINT64_C(14527249939908647936)},
+          {"ReorderInput com.microsoft.nchwc CPUExecutionProvider", UINT64_C(14330795113746035424)},
+          {"ReorderOutput com.microsoft.nchwc CPUExecutionProvider", UINT64_C(13428915370009679360)},
+          {"Upsample com.microsoft.nchwc CPUExecutionProvider", UINT64_C(16347985363638744760)},
+      };
+      result.insert(result.end(), contrib_nchwc.begin(), contrib_nchwc.end());
+    }
+#endif  // !DISABLE_CONTRIB_OPS
+
     std::sort(result.begin(), result.end());
+
     return result;
   }();
+
   return expected_cpu_kernel_def_hashes;
 }
-
-void PrintKernelDefHashes(const KernelDefHashes& kernel_def_hashes) {
-  for (const auto& kvp : kernel_def_hashes) {
-    printf("{\"%s\", UINT64_C(%" PRIu64 ")},\n", kvp.first.c_str(), kvp.second);
-  }
-}
-
-void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& expected) {
-  ASSERT_TRUE(std::is_sorted(actual.begin(), actual.end()));
-  ASSERT_TRUE(std::is_sorted(expected.begin(), expected.end()));
-
-  constexpr const char* kNoteReference = "Note: Please read the note at the top of this file: " __FILE__;
-
-  KernelDefHashes expected_minus_actual{};
-  std::set_difference(expected.begin(), expected.end(), actual.begin(), actual.end(),
-                      std::back_inserter(expected_minus_actual));
-  EXPECT_EQ(expected_minus_actual, KernelDefHashes{})
-      << "Some expected kernel def hashes were not found.\n"
-      << kNoteReference;
-
-  KernelDefHashes actual_minus_expected{};
-  std::set_difference(actual.begin(), actual.end(), expected.begin(), expected.end(),
-                      std::back_inserter(actual_minus_expected));
-  if (!actual_minus_expected.empty()) {
-    printf("%s\n%s\n",
-           "Extra actual kernel def hashes were found, please update the expected values as needed "
-           "(see the output below).",
-           kNoteReference);
-    PrintKernelDefHashes(actual_minus_expected);
-  }
-}
-
 }  // namespace
-
-TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  auto kernel_registry = cpu_ep->GetKernelRegistry();
-  const auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
-  PrintKernelDefHashes(cpu_kernel_def_hashes);
-}
-
-TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  auto kernel_registry = cpu_ep->GetKernelRegistry();
-  const auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
-  const auto& expected_cpu_kernel_def_hashes = GetExpectedCpuKernelDefHashes();
-  CheckKernelDefHashes(cpu_kernel_def_hashes, expected_cpu_kernel_def_hashes);
-}
 
 }  // namespace test
 }  // namespace onnxruntime
