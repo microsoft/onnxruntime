@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_sparse_info.h"
 #include "core/providers/cpu/math/matmul.h"
+#include "core/util/sparse_cpu_util.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
@@ -104,7 +104,11 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
     if (y->Shape().Size() == 0)
       return Status::OK();
 
-    return sparse_util::ComputeWithSparseWeight<T>(a->Data<T>(), y->MutableData<T>(), helper, sparse_info_->sparse_initializer_, false);
+    return sparse_util::ComputeWithSparseWeight<T>(a->Data<T>(),
+                                                   y->MutableData<T>(),
+                                                   helper,
+                                                   sparse_info_->sparse_initializer_,
+                                                   false);
   }
 
   const auto* b = ctx->Input<Tensor>(1);
@@ -145,7 +149,7 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
     if (param.UseCsrFormat()) {
       auto sparse_info = onnxruntime::make_unique<MatMulSparseInfo<T>>();
       ORT_RETURN_IF_ERROR(sparse_util::ConvertDenseToEigenSparse<T>(tensor, false,
-                                                                      utils::ToTensorProtoElementType<T>(), sparse_info->sparse_initializer_));
+                                                                    utils::ToTensorProtoElementType<T>(), sparse_info->sparse_initializer_));
       sparse_info->shape_ = tensor.Shape();
       sparse_info_ = std::move(sparse_info);
       is_packed = true;
@@ -162,8 +166,8 @@ Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, b
     if (param.UseCsrFormat()) {
       auto sparse_info = onnxruntime::make_unique<MatMulSparseInfo<float>>();
       ORT_RETURN_IF_ERROR(sparse_util::ConvertDenseToEigenSparse<float>(tensor, trans_b_attr_,
-                                                                          utils::ToTensorProtoElementType<float>(),
-                                                                          sparse_info->sparse_initializer_));
+                                                                        utils::ToTensorProtoElementType<float>(),
+                                                                        sparse_info->sparse_initializer_));
       sparse_info->shape_ = tensor.Shape();
       sparse_info_ = std::move(sparse_info);
       is_packed = true;
@@ -178,7 +182,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
   if (sparse_info_) {
@@ -188,11 +191,14 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     if (y->Shape().Size() == 0)
       return Status::OK();
 
-    return sparse_util::ComputeWithSparseWeight<float>(a->Data<float>(), y->MutableData<float>(),
-                                                         helper, sparse_info_->sparse_initializer_,
-                                                         trans_a_attr_ && a->Shape().NumDimensions() != 1);
+    return sparse_util::ComputeWithSparseWeight(a->Data<float>(), y->MutableData<float>(),
+                                                helper,
+                                                alpha_attr_,
+                                                sparse_info_->sparse_initializer_,
+                                                trans_a_attr_ && a->Shape().NumDimensions() != 1);
   }
 
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
   const auto& b_shape = b ? b->Shape() : b_shape_;
 
   // match CUDA kernel implementation, ignore transpose for vectors

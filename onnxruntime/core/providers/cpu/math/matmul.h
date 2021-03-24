@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "matmul_sparse_info.h"
+#include "core/util/sparse_cpu_util.h"
 
 namespace onnxruntime {
 

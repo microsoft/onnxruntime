@@ -57,17 +57,18 @@ Status ConvertDenseToEigenSparse(const Tensor& tensor,
 // XXX: Parallel batching
 // XXX: Speedup algorithm and parallelize it
 template <class T>
-static Status ComputeWithSparseWeight(const T* left_data,
-                                      T* output_data,
-                                      const MatMulComputeHelper& helper,
-                                      const sparse_util::SparseMatrixRow<T>& sparse_mat,
-                                      bool transa) {
+Status ComputeWithSparseWeight(const T* left_data,
+                               T* output_data,
+                               const MatMulComputeHelper& helper,
+                               const sparse_util::SparseMatrixRow<T>& sparse_mat,
+                               bool transa) {
   const auto M = helper.M();
   const auto K = helper.K();
   const auto N = helper.N();
 
-  const size_t max_len = helper.OutputOffsets().size();
-  for (size_t i = 0; i < max_len; ++i) {
+  const size_t batches = helper.OutputOffsets().size();
+
+  for (size_t i = 0; i < batches; ++i) {
     ConstEigenMatrixMapRowMajor<T> left_matrix(left_data + helper.LeftOffsets()[i], M, K);
     auto output_matrix = EigenMatrixMapRowMajor<T>(output_data + helper.OutputOffsets()[i], M, N);
     // Tried:
@@ -87,7 +88,14 @@ static Status ComputeWithSparseWeight(const T* left_data,
   return Status::OK();
 }
 
+Status ComputeWithSparseWeight(const float* left_data,
+                               float* output_data,
+                               const MatMulComputeHelper& helper,
+                               float alpha,
+                               const sparse_util::SparseMatrixRow<float>& sparse_mat,
+                               bool transa);
+
 // TODO: Make sure we can convert from CSR buffers to Eigen Sparse Matrix
 
-}  // namespace matmul_sparse
+}  // namespace sparse_util
 }  // namespace onnxruntime
