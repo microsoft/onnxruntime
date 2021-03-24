@@ -36,10 +36,8 @@ std::set<std::string> ops_supported_only_in_model = {
       "Expand",
       "EyeLike",
       "Exp",
-      "GatherElements",
       "GatherND",
       "Identity",
-      "Loop",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -435,6 +433,19 @@ void DataOps::populate_op_mode_supported() {
       }
     };
     op_list_.insert({"Gather", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_3},
+      [this](const Node* node, const Provider_InitializedTensorSet& ) {
+        const auto& indices_arg = node->InputDefs()[0];
+        if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+            (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) ||
+            (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
+            return false;
+        }
+        return true;
+    }};
+    op_list_.insert({"GatherElements", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2, V_2021_3},

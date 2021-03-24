@@ -78,7 +78,7 @@ void RunTypedTest() {
   // skip cuda as the cuda kernel won't throw the error message
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider, kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
