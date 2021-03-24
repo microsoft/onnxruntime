@@ -374,8 +374,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
     ASSERT_STATUS_OK(training_agent.RunBackward(run_id, {t_value}));
     // The output is MatMul(x_value, t_value);
     const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
-    vector<OrtValue>& outputs = io_binding->GetOutputs();
-    EXPECT_THAT(outputs[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(output_expected)));
+    vector<OrtValue>& graph_outputs = io_binding->GetOutputs();
+    EXPECT_THAT(graph_outputs[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(output_expected)));
   }
 }
 #endif
