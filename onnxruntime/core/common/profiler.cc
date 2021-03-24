@@ -52,6 +52,7 @@ class CudaProfiler final: public DeviceProfiler {
   };
   static OrtMutex mutex_;
   static std::vector<KernelStat> stats_;
+  bool initialized_ = false;
   TimePoint start_time_;
   int pid_ = 0;
   int tid_ = 0;
@@ -99,28 +100,35 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
     start_time_ = start_time;
     pid_ = pid;
     tid_ = tid;
-    ORT_ENFORCE(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS, "Failed to enable cuda kernel profiling.");
-    ORT_ENFORCE(cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS, "Failed to register cuda profiling callback.");
+    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+        cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
+      initialized_ = true;
+    }
   }
 }
 
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
-    cuptiActivityFlushAll(1);
-    std::unique_lock<OrtMutex> lock(mutex_);
-    int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
-    for (const auto& stat : stats_) {
-      std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
-                                                                         {"grid_x", std::to_string(stat.grid_x_)},
-                                                                         {"grid_y", std::to_string(stat.grid_y_)},
-                                                                         {"grid_z", std::to_string(stat.grid_z_)},
-                                                                         {"block_x", std::to_string(stat.block_x_)},
-                                                                         {"block_y", std::to_string(stat.block_y_)},
-                                                                         {"block_z", std::to_string(stat.block_z_)}};
-      events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+    if (initialized_) {
+      cuptiActivityFlushAll(1);
+      std::unique_lock<OrtMutex> lock(mutex_);
+      int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
+      for (const auto& stat : stats_) {
+        std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
+                                                                           {"grid_x", std::to_string(stat.grid_x_)},
+                                                                           {"grid_y", std::to_string(stat.grid_y_)},
+                                                                           {"grid_z", std::to_string(stat.grid_z_)},
+                                                                           {"block_x", std::to_string(stat.block_x_)},
+                                                                           {"block_y", std::to_string(stat.block_y_)},
+                                                                           {"block_z", std::to_string(stat.block_z_)}};
+        events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+      }
+      stats_.clear();
+    } else {
+      std::initializer_list<std::pair<std::string, std::string>> args;
+      events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
     }
-    stats_.clear();
   }
   enabled_.clear();
   return events;
