@@ -53,7 +53,7 @@ http://<your_ip_address>:<port>/v1/models/<your-model-name>/versions/<your-versi
 
 ### Request and Response Payload
 
-The request and response need to be a protobuf message. The Protobuf definition can be found [here](../onnxruntime/server/protobuf/predict.proto).
+The request and response need to be a protobuf message. The Protobuf definition can be found [here](../server/protobuf/predict.proto).
 
 A protobuf message could have two formats: binary and JSON. Usually the binary payload has better latency, in the meanwhile the JSON format is easy for human readability. 
 
@@ -101,7 +101,7 @@ For easy tracking of requests, we provide the following header fields:
 
 ### rsyslog Support
 
-If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](../BUILD.md#build-onnx-runtime-server-on-linux)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
+If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](https://www.onnxruntime.ai/docs/how-to/build.html#build-onnx-runtime-server-on-linux)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
 
 ## Report Issues
 

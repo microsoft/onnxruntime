@@ -17,19 +17,215 @@ limitations under the License.
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#ifdef _WIN32
+#include "processthreadsapi.h"
+#include <codecvt>
+#include <locale>
+#elif defined(__APPLE__)
+#include <cpuid.h>
+#else
+#include <sched.h>
+#endif
 
 namespace onnxruntime {
 
 namespace concurrency {
 
-// A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
+ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
+    num_threads_(num_threads) {
+  child_thread_stats_.assign(num_threads, {});
+  if (threal_pool_name) {
+#ifdef _WIN32
+    using convert_type = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_type, wchar_t> converter;
+    threal_pool_name_ = converter.to_bytes(threal_pool_name);
+#else
+    threal_pool_name_ = threal_pool_name;
+#endif
+  } else {
+    threal_pool_name_ = "unnamed_thread_pool";
+  }
+}
+
+ThreadPoolProfiler::~ThreadPoolProfiler() {
+  enabled_ = false;
+}
+
+void ThreadPoolProfiler::Start() {
+  enabled_ = true;
+}
+
+ThreadPoolProfiler::MainThreadStat& ThreadPoolProfiler::GetMainThreadStat() {
+  static thread_local std::unique_ptr<MainThreadStat> stat;
+  if (!stat) {
+    stat.reset(new MainThreadStat());
+  }
+  return *stat;
+}
+
+std::string ThreadPoolProfiler::Stop() {
+  ORT_ENFORCE(enabled_, "Profiler not started yet");
+  std::stringstream ss;
+  ss << "{\"main_thread\": {"
+     << "\"thread_pool_name\": \""
+     << threal_pool_name_ << "\", "
+     << GetMainThreadStat().Reset()
+     << "}, \"sub_threads\": {"
+     << DumpChildThreadStat()
+     << "}}";
+  return ss.str();
+}
+
+void ThreadPoolProfiler::LogStartAndCoreAndBlock(std::ptrdiff_t block_size) {
+  if (enabled_) {
+    MainThreadStat& stat = GetMainThreadStat();
+    stat.LogCore();
+    stat.LogBlockSize(block_size);
+    stat.LogStart();
+  }
+}
+
+void ThreadPoolProfiler::LogCoreAndBlock(std::ptrdiff_t block_size) {
+  if (enabled_) {
+    MainThreadStat& stat = GetMainThreadStat();
+    stat.LogCore();
+    stat.LogBlockSize(block_size);
+  }
+}
+
+void ThreadPoolProfiler::LogStart() {
+  if (enabled_) {
+    GetMainThreadStat().LogStart();
+  }
+}
+
+void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
+  if (enabled_) {
+    GetMainThreadStat().LogEnd(evt);
+  }
+}
+
+void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
+  if (enabled_) {
+    GetMainThreadStat().LogEndAndStart(evt);
+  }
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogCore() {
+#ifdef _WIN32
+  core_ = GetCurrentProcessorNumber();
+#elif defined(__APPLE__)
+  uint32_t CPUInfo[4];
+  __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
+  if ((CPUInfo[3] & (1 << 9)) != 0) {
+    core_ = (unsigned)CPUInfo[1] >> 24;
+  }
+#else
+  core_ = sched_getcpu();
+#endif
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogBlockSize(std::ptrdiff_t block_size) {
+  blocks_.emplace_back(block_size);
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogStart() {
+  points_.emplace_back(Clock::now());
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogEnd(ThreadPoolEvent evt) {
+  ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+  events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
+  points_.pop_back();
+}
+
+void ThreadPoolProfiler::MainThreadStat::LogEndAndStart(ThreadPoolEvent evt) {
+  ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+  events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
+  points_.back() = Clock::now();
+}
+
+std::string ThreadPoolProfiler::MainThreadStat::Reset() {
+  ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
+  std::stringstream ss;
+  ss << "\"thread_id\": \"" << std::this_thread::get_id() << "\", \"block_size\": [";
+  if (!blocks_.empty()) {
+    std::copy(blocks_.begin(), blocks_.end() - 1, std::ostream_iterator<std::ptrdiff_t>(ss, ", "));
+    ss << blocks_.back();
+    blocks_.clear();
+  }
+  ss << "], \"core\": " << core_ << ", ";
+  for (int i = 0; i < MAX_EVENT; ++i) {
+    ss << "\"" << ThreadPoolProfiler::GetEventName(static_cast<ThreadPoolEvent>(i))
+       << "\": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
+  }
+  memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
+  return ss.str();
+}
+
+const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) {
+  switch (event) {
+    case DISTRIBUTION:
+      return "Distribution";
+    case DISTRIBUTION_ENQUEUE:
+      return "DistributionEnqueue";
+    case RUN:
+      return "Run";
+    case WAIT:
+      return "Wait";
+    case WAIT_REVOKE:
+      return "WaitRevoke";
+    default:
+      return "UnknownEvent";
+  }
+}
+
+void ThreadPoolProfiler::LogThreadId(int thread_idx) {
+  child_thread_stats_[thread_idx].thread_id_ = std::this_thread::get_id();
+}
+
+void ThreadPoolProfiler::LogRun(int thread_idx) {
+  if (enabled_) {
+    child_thread_stats_[thread_idx].num_run_++;
+    auto now = Clock::now();
+    if (child_thread_stats_[thread_idx].core_ < 0 ||
+        TimeDiffMicroSeconds(child_thread_stats_[thread_idx].last_logged_point_, now) > 10000) {
+#ifdef _WIN32
+      child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
+#elif defined(__APPLE__)
+      uint32_t CPUInfo[4];
+      __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
+      if ((CPUInfo[3] & (1 << 9)) != 0) {
+        child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
+      }
+#else
+      child_thread_stats_[thread_idx].core_ = sched_getcpu();
+#endif
+      child_thread_stats_[thread_idx].last_logged_point_ = now;
+    }
+  }
+}
+
+std::string ThreadPoolProfiler::DumpChildThreadStat() {
+  std::stringstream ss;
+  for (int i = 0; i < num_threads_; ++i) {
+    ss << "\"" << child_thread_stats_[i].thread_id_ << "\": {"
+       << "\"num_run\": " << child_thread_stats_[i].num_run_ << ", "
+       << "\"core\": " << child_thread_stats_[i].core_ << "}"
+       << (i == num_threads_ - 1 ? "" : ",");
+  }
+  return ss.str();
+}
+
+  // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
-// shards until all of the shards' iterations are complete.  This approach serves to purposes.  First, compared
-// with atomic operations on a single counter, it reduces contention on a single counter in the case of loops with
+// shards until all of the shards' iterations are complete.  This approach serves two purposes.  First, compared
+// with atomic operations on a single counter, it reduces contention on the counter in the case of loops with
 // large numbers of short-running iteration.  Second, by having a thread work on its home shard initially, it
 // promotes affinity between the work that a thread performs in one loop and the work that it performs in the next.
 
@@ -41,6 +237,10 @@ namespace concurrency {
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
+#ifndef _OPENMP
+static constexpr int TaskGranularityFactor = 4;
+#endif
+
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
   uint64_t _end{0};
@@ -51,8 +251,11 @@ static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop count
 class alignas(CACHE_LINE_BYTES) LoopCounter {
 public:
  LoopCounter(uint64_t num_iterations,
+             uint64_t d_of_p,
              uint64_t block_size = 1) : _block_size(block_size),
-                                        _num_shards(GetNumShards(num_iterations, block_size)) {
+                                        _num_shards(GetNumShards(num_iterations,
+                                                                 d_of_p,
+                                                                 block_size)) {
    // Divide the iteration space between the shards.  If the iteration
    // space does not divide evenly into shards of multiples of
    // block_size then the final shard is left uneven.
@@ -66,10 +269,10 @@ public:
      // threads is provided via the thread pool
      _shards[shard]._next.store(shard * iterations_per_shard,
                                 ::std::memory_order_relaxed);
-     _shards[shard]._end = (shard+1) * iterations_per_shard;
-   }
 
-   _shards[_num_shards - 1]._end = num_iterations;
+     bool is_last_shard = (shard == _num_shards-1);
+     _shards[shard]._end = is_last_shard ? num_iterations : ((shard+1) * iterations_per_shard);
+   }
  }
 
  // Allocate each thread to a home shard, from which it starts
@@ -111,9 +314,18 @@ public:
 
 private:
   // Derive the number of shards to use for a given loop.  We require
-  // at least one block of work per shard, and subject to that
-  // constraint we use [1,MAX_SHARDS) shards.
+  // at least one block of work per shard, and subject to the
+  // constraints:
+  //
+  // - We use no more than MAX_SHARDS (limiting the amount of space needed
+  //   for the LoopCounter, and work needed to confirm that all shards have been
+  //   completed at the end of a loop).
+  //
+  // - The number of shards is <= the number of threads (d_of_p).
+  //   Hence, at low thread counts, each of N threads will get its own
+  //   shard representing 1/N of the work.
   static unsigned GetNumShards(uint64_t num_iterations,
+                               uint64_t d_of_p,
                                uint64_t block_size) {
     unsigned num_shards;
     auto num_blocks = num_iterations / block_size;
@@ -123,6 +335,9 @@ private:
       num_shards = static_cast<unsigned>(num_blocks);
     } else {
       num_shards = MAX_SHARDS;
+    }
+    if (num_shards > d_of_p) {
+      num_shards = static_cast<unsigned>(d_of_p);
     }
     return num_shards;
   }
@@ -181,7 +396,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
 
-  LoopCounter lc(total, block_size);
+  LoopCounter lc(total, d_of_p, block_size);
   std::function<void(unsigned)> run_work = [&](unsigned idx) {
     unsigned my_home_shard = lc.GetHomeShard(idx);
     unsigned my_shard = my_home_shard;
@@ -195,7 +410,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // Run the work in the thread pool (and in the current thread).  Synchronization with helping
   // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
   // run_work.
-  RunInParallel(run_work, num_work_items);
+  RunInParallel(run_work, num_work_items, block_size);
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
@@ -211,6 +426,20 @@ void ThreadPool::Schedule(std::function<void()> fn) {
     underlying_threadpool_->Schedule(std::move(fn));
   } else {
     fn();
+  }
+}
+
+void ThreadPool::StartProfiling() {
+  if (underlying_threadpool_) {
+    underlying_threadpool_->StartProfiling();
+  }
+}
+
+std::string ThreadPool::StopProfiling() {
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->StopProfiling();
+  } else {
+    return {};
   }
 }
 
@@ -244,15 +473,15 @@ ThreadPool::ParallelSection::~ParallelSection() {
 #endif
 }
 
-void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) {
+void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) {
   if (underlying_threadpool_) {
     if (ThreadPool::ParallelSection::current_parallel_section) {
       underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->ps_.get()),
                                                    std::move(fn),
-                                                   n);
+                                                   n, block_size);
     } else {
       underlying_threadpool_->RunInParallel(std::move(fn),
-                                            n);
+                                            n, block_size);
     }
   } else {
     fn(0);
@@ -375,8 +604,30 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #else
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
-  return tp ? (tp->NumThreads()+1) : 1;
+  if (tp) {
+    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
+    } else {
+      return ((tp->NumThreads() + 1));
+    }
+  } else {
+    return 1;
+  }
 #endif
+}
+
+void ThreadPool::StartProfiling(concurrency::ThreadPool* tp) {
+  if (tp) {
+    tp->StartProfiling();
+  }
+}
+
+std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
+  if (tp) {
+    return tp->StopProfiling();
+  } else {
+    return {};
+  }
 }
 
 // Return the number of threads created by the pool.

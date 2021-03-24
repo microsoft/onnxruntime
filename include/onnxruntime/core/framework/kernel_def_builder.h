@@ -54,7 +54,7 @@ class KernelDef {
   }
 
   const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
-    return type_constraints_;
+    return enabled_type_constraints_;
   }
 
   const std::vector<std::pair<int, int>>& MayInplace() const {
@@ -81,6 +81,8 @@ class KernelDef {
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
 
   bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
+
+  bool ExternalOutputs() const { return external_outputs_; }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
@@ -128,7 +130,12 @@ class KernelDef {
   // The supported data types for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
   // note: std::map as we need the order to be deterministic for the hash
-  std::map<std::string, std::vector<MLDataType>> type_constraints_;
+  // Note: supported_type_constraints_ are used to calculate the kernel hash so that the hash is
+  // stable across builds with and without kernel type reduction enabled.
+  std::map<std::string, std::vector<MLDataType>> supported_type_constraints_;
+
+  // the type constraints that are enabled in this build for the kernel
+  std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
@@ -142,6 +149,9 @@ class KernelDef {
 
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
+
+  // Whether the outputs are from external.
+  bool external_outputs_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -201,11 +211,19 @@ class KernelDefBuilder {
      of the set of types specified in the op schema.
      The arg name could be either op formal parameter name, say "X", or type
      argument name specified in op schema, say "T".
+     If this build uses type reduction the enabled types can optionally be provided.
   */
   KernelDefBuilder& TypeConstraint(const std::string& arg_name,
                                    const std::vector<MLDataType>& supported_types);
   KernelDefBuilder& TypeConstraint(const char* arg_name,
                                    const std::vector<MLDataType>& supported_types);
+
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
+                                   const std::vector<MLDataType>& supported_types,
+                                   const std::vector<MLDataType>& enabled_types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name,
+                                   const std::vector<MLDataType>& supported_types,
+                                   const std::vector<MLDataType>& enabled_types);
 
   /**
      Like TypeConstraint but supports just a single type.
@@ -242,6 +260,14 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& AllocateInputsContiguously() {
     kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
+
+  /**
+     Specify that this kernel's outputs are passed from external.
+  */
+  KernelDefBuilder& ExternalOutputs() {
+    kernel_def_->external_outputs_ = true;
     return *this;
   }
 
@@ -332,6 +358,10 @@ class KernelDefBuilder {
   }
 
  private:
+  KernelDefBuilder& TypeConstraintImpl(const std::string& arg_name,
+                                       const std::vector<MLDataType>& supported_types,
+                                       const std::vector<MLDataType>* enabled_types = nullptr);
+
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };

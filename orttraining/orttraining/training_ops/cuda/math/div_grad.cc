@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "div_grad.h"
-#include "div_grad_impl.h"
+#include "orttraining/training_ops/cuda/math/div_grad.h"
+#include "orttraining/training_ops/cuda/math/div_grad_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 
 using namespace onnxruntime::common;
@@ -67,6 +67,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   switch (prepare.output_rank_or_simple_broadcast) {
     case static_cast<int32_t>(SimpleBroadcast::NoBroadcast):
       ImplDivGradSimple<CudaT>(
+          Stream(),
           SimpleBroadcast::NoBroadcast,
           prepare_a_data,
           prepare_b_data,
@@ -84,6 +85,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       ImplDivGradSimple<CudaT>(
+          Stream(),
           SimpleBroadcast::LeftScalar,
           prepare_a_data,
           prepare_b_data,
@@ -112,6 +114,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
         temp_db_data = temp_db_allocator.get();
       }
       ImplDivGradSimple<CudaT>(
+          Stream(),
           SimpleBroadcast::RightScalar,
           prepare_a_data,
           prepare_b_data,
@@ -143,6 +146,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       if (prepare.output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
         // lhs(1,C,H) and rhs (C,1)
         ImplDivGradRhsPerChannelBatch1<CudaT>(
+            Stream(),
             prepare_a_data,
             prepare_b_data,
             prepare_dy_data,
@@ -153,6 +157,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       } else {
         // lhs(N,C,H) and rhs (C,1)
         ImplDivGradRhsPerChannelBatchN<CudaT>(
+            Stream(),
             prepare_a_data,
             prepare_b_data,
             prepare_dy_data,
@@ -197,6 +202,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
         }
 
       ImplDivGrad<CudaT>(
+          Stream(),
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           prepare_a_data,

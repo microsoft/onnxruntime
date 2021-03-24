@@ -16,6 +16,8 @@ constexpr const char* kMemLimit = "cuda_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
+constexpr const char* kcudaExternalAlloc = "cuda_external_alloc";
+constexpr const char* kcudaExternalFree = "cuda_external_free";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -34,13 +36,14 @@ const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
 
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
-
+  void* alloc = nullptr;
+  void* free = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
               cuda::provider_option_names::kDeviceId,
               [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseString(value_str, info.device_id));
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
                 ORT_RETURN_IF_NOT(
                     CUDA_CALL(cudaGetDeviceCount(&num_devices)),
@@ -49,6 +52,22 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                     0 <= info.device_id && info.device_id < num_devices,
                     "Invalid device ID: ", info.device_id,
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                return Status::OK();
+              })
+          .AddValueParser(
+              cuda::provider_option_names::kcudaExternalAlloc,
+              [&alloc](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                alloc  = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              cuda::provider_option_names::kcudaExternalFree,
+              [&free](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                free  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.cuda_mem_limit)
@@ -61,18 +80,22 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
+  CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
+  info.external_allocator_info = alloc_info;
   return info;
 }
 
 ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
   const ProviderOptions options{
-      {cuda::provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {cuda::provider_option_names::kMemLimit, MakeString(info.cuda_mem_limit)},
+      {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.cuda_mem_limit)},
+      {cuda::provider_option_names::kcudaExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {cuda::provider_option_names::kcudaExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {cuda::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
        EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
-      {cuda::provider_option_names::kDoCopyInDefaultStream, MakeString(info.do_copy_in_default_stream)},
+      {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
   };
 
   return options;

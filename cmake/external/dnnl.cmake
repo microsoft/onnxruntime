@@ -2,7 +2,7 @@ include (ExternalProject)
 
 set(DNNL_URL https://github.com/oneapi-src/onednn)
 # If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.7)
+set(DNNL_TAG v1.8.1)
 
 if(WIN32)
   set(DNNL_SHARED_LIB dnnl.dll)
@@ -15,9 +15,11 @@ else()
   endif()  
 endif()
 
-if (onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_DNNL_OPENCL_ROOT required for onnxruntime_DNNL_GPU_RUNTIME")
-elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
+if(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+  message(FATAL_ERROR "--dnnl_opencl_root required")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+  message(FATAL_ERROR "--dnnl_gpu_runtime required")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
   file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
   set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
   set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")

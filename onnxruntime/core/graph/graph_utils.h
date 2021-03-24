@@ -76,6 +76,9 @@ const std::string& GetNodeInputName(const Node& node, int index);
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
 
+/** Gets the index of an output arg with the specified output arg name. */
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
+
 /** Gets the name of the outgoing NodeArg with the specified index for the given node. */
 const std::string& GetNodeOutputName(const Node& node, int index);
 
@@ -147,6 +150,9 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Removes output edges from the specific output_idx for the given Node of the Graph. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
 
 /** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node',
     with an output from a different node. Moves the output edges from 'node' for 'output_idx' to the replacement node.

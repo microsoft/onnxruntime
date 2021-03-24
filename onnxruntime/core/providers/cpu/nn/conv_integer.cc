@@ -149,19 +149,19 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         }
       }
 
-      QGemm(static_cast<int>(M / conv_attrs_.group),
-            static_cast<int>(output_image_size),
-            static_cast<int>(kernel_dim),
-            Wdata + group_id * W_offset,
-            static_cast<int>(kernel_dim),
-            filter_offset,
-            col_buffer_data == nullptr ? Xdata : col_buffer_data,
-            static_cast<int>(output_image_size),
-            input_offset,
-            false,
-            Ydata,
-            static_cast<int>(output_image_size),
-            thread_pool);
+      MLAS_GEMM_U8X8_PARAMETERS gemm_params;
+      gemm_params.M = static_cast<size_t>(M / conv_attrs_.group);
+      gemm_params.N = static_cast<size_t>(output_image_size);
+      gemm_params.K = static_cast<size_t>(kernel_dim);
+      gemm_params.A = Wdata + group_id * W_offset;
+      gemm_params.lda = static_cast<size_t>(kernel_dim);
+      gemm_params.ZeroPointA = filter_offset;
+      gemm_params.B = (col_buffer_data == nullptr) ? Xdata : col_buffer_data,
+      gemm_params.ldb = static_cast<size_t>(output_image_size);
+      gemm_params.ZeroPointB = &input_offset;
+      gemm_params.C = Ydata;
+      gemm_params.ldc = static_cast<size_t>(output_image_size);
+      MlasGemm(&gemm_params, thread_pool);
 
       Xdata += X_offset;
       Ydata += Y_offset;

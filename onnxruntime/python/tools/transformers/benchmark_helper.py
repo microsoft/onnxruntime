@@ -30,7 +30,10 @@ class Precision(Enum):
     def __str__(self):
         return self.value
 
-
+IO_BINDING_DATA_TYPE_MAP = {
+    "float32": numpy.float32,
+    # TODO: Add more. 
+}
 def create_onnxruntime_session(onnx_model_path,
                                use_gpu,
                                enable_all_optimization=True,
@@ -53,10 +56,6 @@ def create_onnxruntime_session(onnx_model_path,
         if num_threads > 0:
             sess_options.intra_op_num_threads = num_threads
             logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
-        elif (not use_gpu) and (version.parse(onnxruntime_version) < version.parse('1.3.0')):
-            # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
-            # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
-            sess_options.intra_op_num_threads = 1
 
         if verbose:
             sess_options.log_severity_level = 0
@@ -98,9 +97,10 @@ def prepare_environment(cache_dir, output_dir, use_gpu):
     logger.info(f'Transformers Version:{transformers.__version__}')
     logger.info(f'Onnxruntime Version:{onnxruntime.__version__}')
 
+    # Support three major versions of PyTorch and OnnxRuntime, and up to 6 months of transformers.
     from packaging import version
-    assert version.parse(torch.__version__) >= version.parse('1.4.0')
-    assert version.parse(transformers.__version__) >= version.parse('2.11.0')
+    assert version.parse(torch.__version__) >= version.parse('1.5.0')
+    assert version.parse(transformers.__version__) >= version.parse('3.0.0')
     assert version.parse(onnxruntime.__version__) >= version.parse('1.4.0')
 
 
@@ -217,14 +217,15 @@ def inference_ort_with_io_binding(ort_session,
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        io_binding.bind_input(name, np_input.device.type, 0, data_type, np_input.shape, np_input.data_ptr())
+        input_type = IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)] if str(ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP else data_type
+        io_binding.bind_input(name, np_input.device.type, 0, input_type, np_input.shape, np_input.data_ptr())
     # Bind outputs buffers with the sizes needed if not allocated already
     if len(output_buffers) == 0:
         allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)
 
     for i in range(len(ort_output_names)):
-        io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32, ort_outputs[i].shape,
-                           output_buffers[i].data_ptr())
+        io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
+                               ort_outputs[i].shape, output_buffers[i].data_ptr())
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": True})
@@ -238,3 +239,90 @@ def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
 
     for i in output_buffer_max_sizes:
         output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))
+
+
+def set_random_seed(seed=123):
+    """Set random seed manully to get deterministic results"""
+    import random
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    #torch.backends.cudnn.enabled = False
+    #torch.backends.cudnn.benchmark = False
+    #torch.backends.cudnn.deterministic = True
+
+
+def measure_memory(is_gpu, func):
+    import os
+    import psutil
+    from time import sleep
+
+    class MemoryMonitor:
+        def __init__(self, keep_measuring=True):
+            self.keep_measuring = keep_measuring
+
+        def measure_cpu_usage(self):
+            max_usage = 0
+            while True:
+                max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+                sleep(0.005)  # 5ms
+                if not self.keep_measuring:
+                    break
+            return max_usage
+
+        def measure_gpu_usage(self):
+            from py3nvml.py3nvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
+                                 nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
+            max_gpu_usage = []
+            gpu_name = []
+            try:
+                nvmlInit()
+                deviceCount = nvmlDeviceGetCount()
+                max_gpu_usage = [0 for i in range(deviceCount)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(deviceCount)]
+                while True:
+                    for i in range(deviceCount):
+                        info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+                        max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
+                    sleep(0.005)  # 5ms
+                    if not self.keep_measuring:
+                        break
+                nvmlShutdown()
+                return [{
+                    "device_id": i,
+                    "name": gpu_name[i],
+                    "max_used_MB": max_gpu_usage[i]
+                } for i in range(deviceCount)]
+            except NVMLError as error:
+                if not self.silent:
+                    self.logger.error("Error fetching GPU information using nvml: %s", error)
+                return None
+
+    monitor = MemoryMonitor(False)
+
+    memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor() as executor:
+        monitor = MemoryMonitor()
+        mem_thread = executor.submit(monitor.measure_gpu_usage if is_gpu else monitor.measure_cpu_usage)
+        try:
+            fn_thread = executor.submit(func)
+            result = fn_thread.result()
+        finally:
+            monitor.keep_measuring = False
+            max_usage = mem_thread.result()
+
+        if is_gpu:
+            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1:
+                before = memory_before_test[0]["max_used_MB"]
+                after = max_usage[0]["max_used_MB"]
+                return after - before
+            else:
+                return None
+        else:
+            print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+            return max_usage - memory_before_test

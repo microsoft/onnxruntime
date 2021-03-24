@@ -1121,6 +1121,13 @@ HRESULT OnnxruntimeEngine::GetNumberOfIntraOpThreads(uint32_t* num_threads)
   return S_OK;
 }
 
+HRESULT OnnxruntimeEngine::GetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t>& overrides) {
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetNamedDimensionsOverrides(session_.get(), overrides), ort_api);
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -1321,6 +1328,18 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
   return S_OK;
 }
 
+STDMETHODIMP OnnxruntimeEngineFactory::CreateEmptyModel(int64_t opset, _Outptr_ _winml::IModel** out) {
+  RETURN_IF_FAILED(EnsureEnvironment());
+  OrtModel* ort_model = nullptr;
+  if (auto status = winml_adapter_api_->CreateModel(opset, &ort_model)) {
+    return E_INVALIDARG;
+  }
+
+  auto model = UniqueOrtModel(ort_model, winml_adapter_api_->ReleaseModel);
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnruntimeModel>(out, this, std::move(model)));
+  return S_OK;
+}
+
 STDMETHODIMP OnnxruntimeEngineFactory::CreateEngineBuilder(_Outptr_ _winml::IEngineBuilder** out) {
   RETURN_IF_FAILED(EnsureEnvironment());
   Microsoft::WRL::ComPtr<OnnxruntimeEngineBuilder> onnxruntime_engine_builder;
@@ -1337,7 +1356,7 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
   return winml_adapter_api_;
 }
 
-HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
+HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {
   RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
   return S_OK;
@@ -1349,7 +1368,7 @@ HRESULT OnnxruntimeEngineFactory::EnableDebugOutput(bool is_enabled) {
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngineFactory::CreateCustomRegistry(IMLOperatorRegistry** registry) {
+HRESULT OnnxruntimeEngineFactory::CreateCustomRegistry(_Out_ IMLOperatorRegistry** registry) {
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api_->CreateCustomRegistry(registry),
                           ort_api_);
   return S_OK;
@@ -1359,5 +1378,62 @@ STDAPI CreateOnnxruntimeEngineFactory(_Out_ _winml::IEngineFactory** engine_fact
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> onnxruntime_engine_factory;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngineFactory>(&onnxruntime_engine_factory));
   RETURN_IF_FAILED(onnxruntime_engine_factory.CopyTo(engine_factory));
+  return S_OK;
+}
+struct OrtDescriptorInfo : public Microsoft::WRL::RuntimeClass<
+                                     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                                     IDescriptorInfo,
+                                     IOrtTypeInfoProvider> {
+  OrtDescriptorInfo() : info_(nullptr, nullptr) {}
+
+  HRESULT RuntimeClassInitialize(UniqueOrtTypeInfo info) {
+    info_ = std::move(info);
+    return S_OK;
+  }
+
+  STDMETHOD(GetTypeInfo)(OrtTypeInfo** info) override {
+    *info = info_.get();
+    return S_OK;
+  }
+
+  OrtTypeInfo* UseOrtTypeInfo() {
+    return info_.get();
+  }
+
+  private:
+  UniqueOrtTypeInfo info_;
+};
+
+HRESULT OnnxruntimeEngineFactory::CreateTensorDescriptorInfo(winml::TensorKind kind, int64_t* dims,
+                                                             size_t num_dims, IDescriptorInfo** tensor_info) {
+  OrtTypeInfo* tensor_type_info = nullptr;
+  winml_adapter_api_->CreateTensorTypeInfo(dims, num_dims, ONNXTensorElementDataTypeFromTensorKind(kind), &tensor_type_info);
+  UniqueOrtTypeInfo info(tensor_type_info, ort_api_->ReleaseTypeInfo);
+
+  Microsoft::WRL::ComPtr<OrtDescriptorInfo> descriptor_info;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OrtDescriptorInfo>(&descriptor_info, std::move(info)));
+  RETURN_IF_FAILED(descriptor_info.CopyTo(tensor_info));
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngineFactory::CreateSequenceDescriptorInfo(IDescriptorInfo** seq_info) {
+  OrtTypeInfo* sequence_type_info = nullptr;
+  winml_adapter_api_->CreateSequenceTypeInfo(&sequence_type_info);
+  UniqueOrtTypeInfo info(sequence_type_info, ort_api_->ReleaseTypeInfo);
+
+  Microsoft::WRL::ComPtr<OrtDescriptorInfo> descriptor_info;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OrtDescriptorInfo>(&descriptor_info, std::move(info)));
+  RETURN_IF_FAILED(descriptor_info.CopyTo(seq_info));
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngineFactory::CreateMapDescriptorInfo(IDescriptorInfo** desc_info) {
+  OrtTypeInfo* map_type_info = nullptr;
+  winml_adapter_api_->CreateMapTypeInfo(&map_type_info);
+  UniqueOrtTypeInfo info(map_type_info, ort_api_->ReleaseTypeInfo);
+
+  Microsoft::WRL::ComPtr<OrtDescriptorInfo> descriptor_info;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OrtDescriptorInfo>(&descriptor_info, std::move(info)));
+  RETURN_IF_FAILED(descriptor_info.CopyTo(desc_info));
   return S_OK;
 }

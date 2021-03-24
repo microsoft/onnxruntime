@@ -16,6 +16,7 @@ import argparse
 import logging
 import torch
 import onnx
+from packaging import version
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
@@ -84,6 +85,12 @@ def parse_arguments(argv=None):
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
+    parser.add_argument('--sequence_lengths',
+                        nargs='+',
+                        type=int,
+                        default=[1],
+                        help="sequence lengths (excluding past)")
+
     parser.add_argument('-s',
                         '--past_sequence_lengths',
                         nargs='+',
@@ -107,6 +114,10 @@ def parse_arguments(argv=None):
 
 
 def main(args):
+    from transformers import __version__ as transformers_version
+    if version.parse(transformers_version) < version.parse("3.1.0"): # past_key_values name does not exist in 3.0.2 or older
+        raise RuntimeError("This tool requires transformers 3.1.0 or later.")
+
     logger.info(f"Arguments:{args}")
     if args.precision == Precision.FLOAT16:
         assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
@@ -176,100 +187,104 @@ def main(args):
     if session is None:
         return
 
-    # One word is generated for each inference. This length does not include that of past state.
-    sequence_length = 1
-
     # Allocate output buffers for IO Binding
     max_output_shapes = Gpt2Helper.get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths),
-                                                     sequence_length, config, args.model_class)
+                                                     max(args.sequence_lengths), config, args.model_class)
     output_buffers = Gpt2Helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "model_name", "model_class", "gpu", "precision", "optimizer", "torchscript", "batch_size",
-            "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
+            "sequence_length", "past_sequence_length", "torch_latency", "onnxruntime_latency",
+            "onnxruntime_io_binding_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
 
         for batch_size in args.batch_sizes:
-            for past_sequence_length in args.past_sequence_lengths:
-                logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-                dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
-                                                           past_sequence_length,
-                                                           sequence_length,
-                                                           config.num_attention_heads,
-                                                           config.hidden_size,
-                                                           config.n_layer,
-                                                           config.vocab_size,
-                                                           device,
-                                                           float16=(args.precision == Precision.FLOAT16),
-                                                           has_position_ids=use_padding,
-                                                           has_attention_mask=use_padding)
-                output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
-                                                             args.model_class)
-
-                try:
-                    outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
-                    ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs, args.test_times)
-                    ort_io_outputs, ort_io_latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
-                        session,
-                        dummy_inputs,
-                        output_buffers,
-                        output_shapes,
-                        args.test_times,
-                        return_numpy=False,
-                        include_copy_output_latency=args.include_copy_output_latency)
-
-                    if args.validate_onnx:
-                        if Gpt2Helper.compare_outputs(outputs,
-                                                      ort_outputs,
-                                                      rtol=DEFAULT_TOLERANCE[args.precision],
-                                                      atol=DEFAULT_TOLERANCE[args.precision]):
-                            logger.info(
-                                f'Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
-                            )
-
-                        # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
-                        copy_outputs = []
-                        for output in ort_io_outputs:
-                            copy_outputs.append(output.cpu().numpy())
-
-                        if Gpt2Helper.compare_outputs(outputs,
-                                                      copy_outputs,
-                                                      rtol=DEFAULT_TOLERANCE[args.precision],
-                                                      atol=DEFAULT_TOLERANCE[args.precision]):
-                            logger.info(
-                                f'Pytorch and ONNX Runtime IO Binding outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
-                            )
-
-                    logger.info(
-                        f"batch_size={batch_size}, past_sequence_length={past_sequence_length}, torch_latency={torch_latency:.2f}, ort_latency={ort_latency:.2f}, ort_io_latency={ort_io_latency:.2f}"
+            for sequence_length in args.sequence_lengths:
+                for past_sequence_length in args.past_sequence_lengths:
+                    assert batch_size > 0 and sequence_length > 0 and past_sequence_length >= 0
+                    logger.debug(
+                        f"Running test for batch_size={batch_size} sequence_length={sequence_length} past_sequence_length={past_sequence_length}..."
                     )
+                    dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                               past_sequence_length,
+                                                               sequence_length,
+                                                               config.num_attention_heads,
+                                                               config.hidden_size,
+                                                               config.n_layer,
+                                                               config.vocab_size,
+                                                               device,
+                                                               float16=(args.precision == Precision.FLOAT16),
+                                                               has_position_ids=use_padding,
+                                                               has_attention_mask=use_padding)
+                    output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length,
+                                                                 config, args.model_class)
 
-                    row = {
-                        "model_name": args.model_name_or_path,
-                        "model_class": args.model_class,
-                        "gpu": args.use_gpu,
-                        "precision": args.precision,
-                        "optimizer": args.optimize_onnx,
-                        "torchscript": args.torchscript,
-                        "batch_size": batch_size,
-                        "past_sequence_length": past_sequence_length,
-                        "torch_latency": f"{torch_latency:.2f}",
-                        "ort_latency": f"{ort_latency:.2f}",
-                        "ort_io_latency": f"{ort_io_latency:.2f}"
-                    }
-                    csv_writer.writerow(row)
-                except:
-                    logger.error(f"Exception", exc_info=True)
+                    try:
+                        outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
+                        ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs,
+                                                                                    args.test_times)
+                        ort_io_outputs, ort_io_latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                            session,
+                            dummy_inputs,
+                            output_buffers,
+                            output_shapes,
+                            args.test_times,
+                            return_numpy=False,
+                            include_copy_output_latency=args.include_copy_output_latency)
+
+                        if args.validate_onnx:
+                            if Gpt2Helper.compare_outputs(outputs,
+                                                          ort_outputs,
+                                                          rtol=DEFAULT_TOLERANCE[args.precision],
+                                                          atol=DEFAULT_TOLERANCE[args.precision]):
+                                logger.info(
+                                    f'Pytorch and ONNX Runtime outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
+                                )
+
+                            # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
+                            copy_outputs = []
+                            for output in ort_io_outputs:
+                                copy_outputs.append(output.cpu().numpy())
+
+                            if Gpt2Helper.compare_outputs(outputs,
+                                                          copy_outputs,
+                                                          rtol=DEFAULT_TOLERANCE[args.precision],
+                                                          atol=DEFAULT_TOLERANCE[args.precision]):
+                                logger.info(
+                                    f'Pytorch and ONNX Runtime IO Binding outputs are all close (tolerance={DEFAULT_TOLERANCE[args.precision]}).'
+                                )
+
+                        logger.info(
+                            f"batch_size={batch_size}, sequence_length={sequence_length}, past_sequence_length={past_sequence_length}, torch_latency={torch_latency:.2f}, onnxruntime_latency={ort_latency:.2f}, onnxruntime_io_binding_latency={ort_io_latency:.2f}"
+                        )
+
+                        row = {
+                            "model_name": args.model_name_or_path,
+                            "model_class": args.model_class,
+                            "gpu": args.use_gpu,
+                            "precision": args.precision,
+                            "optimizer": args.optimize_onnx,
+                            "torchscript": args.torchscript,
+                            "batch_size": batch_size,
+                            "sequence_length": sequence_length,
+                            "past_sequence_length": past_sequence_length,
+                            "torch_latency": f"{torch_latency:.2f}",
+                            "onnxruntime_latency": f"{ort_latency:.2f}",
+                            "onnxruntime_io_binding_latency": f"{ort_io_latency:.2f}"
+                        }
+                        csv_writer.writerow(row)
+                    except:
+                        logger.error(f"Exception", exc_info=True)
 
     logger.info(f"Results are saved to file {csv_filename}")
     return csv_filename
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':       
     args = parse_arguments()
     setup_logger(args.verbose)
     main(args)

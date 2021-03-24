@@ -15,7 +15,7 @@ namespace onnxruntime {
  * Tries to parse a value from an entire string.
  */
 template <typename T>
-bool TryParseString(const std::string& str, T& value) {
+bool TryParseStringWithClassicLocale(const std::string& str, T& value) {
   if (std::is_integral<T>::value && std::is_unsigned<T>::value) {
     // if T is unsigned integral type, reject negative values which will wrap
     if (!str.empty() && str[0] == '-') {
@@ -43,12 +43,12 @@ bool TryParseString(const std::string& str, T& value) {
   return true;
 }
 
-inline bool TryParseString(const std::string& str, std::string& value) {
+inline bool TryParseStringWithClassicLocale(const std::string& str, std::string& value) {
   value = str;
   return true;
 }
 
-inline bool TryParseString(const std::string& str, bool& value) {
+inline bool TryParseStringWithClassicLocale(const std::string& str, bool& value) {
   if (str == "0" || str == "False" || str == "false") {
     value = false;
     return true;
@@ -66,8 +66,8 @@ inline bool TryParseString(const std::string& str, bool& value) {
  * Parses a value from an entire string.
  */
 template <typename T>
-Status ParseString(const std::string& s, T& value) {
-  ORT_RETURN_IF_NOT(TryParseString(s, value), "Failed to parse value: \"", value, "\"");
+Status ParseStringWithClassicLocale(const std::string& s, T& value) {
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(s, value), "Failed to parse value: \"", value, "\"");
   return Status::OK();
 }
 
@@ -75,9 +75,9 @@ Status ParseString(const std::string& s, T& value) {
  * Parses a value from an entire string.
  */
 template <typename T>
-T ParseString(const std::string& s) {
+T ParseStringWithClassicLocale(const std::string& s) {
   T value{};
-  ORT_THROW_IF_ERROR(ParseString(s, value));
+  ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(s, value));
   return value;
 }
 

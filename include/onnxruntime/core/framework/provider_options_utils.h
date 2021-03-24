@@ -107,7 +107,7 @@ class ProviderOptionsParser {
     return AddValueParser(
         name,
         [&dest](const std::string& value_str) -> Status {
-          return ParseString(value_str, dest);
+          return ParseStringWithClassicLocale(value_str, dest);
         });
   }
 
@@ -142,7 +142,6 @@ class ProviderOptionsParser {
     for (const auto& option : options) {
       const auto& name = option.first;
       const auto& value_str = option.second;
-
       const auto value_parser_it = value_parsers_.find(name);
       ORT_RETURN_IF(
           value_parser_it == value_parsers_.end(),

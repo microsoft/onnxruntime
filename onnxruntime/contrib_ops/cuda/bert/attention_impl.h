@@ -20,6 +20,7 @@ size_t GetAttentionWorkspaceSize(
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,                   // Device Properties
+    cudaStream_t stream,                          // cuda stream
     const void* input,                            // Input tensor
     const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
     const std::vector<int64_t>* mask_index_dims,  // Mask index shape
@@ -57,19 +58,19 @@ cublasStatus_t inline CublasGemmStridedBatched(
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
+                    const int max_threads_per_block, const float* input, float* output);
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const half* input, half* output);
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
+                    const int max_threads_per_block, const float* input, float* output);
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const half* input, half* output);
 
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
@@ -77,6 +78,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const float* past,
                                const float* k_v,
                                float* present);
@@ -87,6 +89,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const half* past,
                                const half* k_v,
                                half* present);

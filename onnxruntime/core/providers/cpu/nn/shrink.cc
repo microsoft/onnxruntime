@@ -3,17 +3,33 @@
 
 #include "core/providers/cpu/nn/shrink.h"
 
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/util/math_cpuonly.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0,
+    element_type_lists::AllNumeric);
+}
+
+using ShrinkDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
+using EnabledShrinkDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,
     KernelDefBuilder()
         .MayInplace(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
 
 namespace shrink_internal {
@@ -69,14 +85,9 @@ struct CallShrinkImpl {
 }  // namespace shrink_internal
 
 Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
-  using namespace shrink_internal;
-
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   auto* output = p_op_kernel_context->Output(0, input->Shape());
-  // bool, std::string are not supported.
-  utils::MLTypeCallDispatcherRet<Status, shrink_internal::CallShrinkImpl, float, double, MLFloat16, BFloat16, int8_t, uint8_t,
-                                 int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-      t_disp(input->GetElementType());
-  return t_disp.Invoke(input, output, bias_, lambd_);
+  utils::MLTypeCallDispatcherFromTypeList<EnabledShrinkDataTypes> t_disp(input->GetElementType());
+  return t_disp.InvokeRet<Status, shrink_internal::CallShrinkImpl>(input, output, bias_, lambd_);
 }
 }  // namespace onnxruntime

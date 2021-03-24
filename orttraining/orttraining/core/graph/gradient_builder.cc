@@ -194,7 +194,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     }
   };
 
-  if (A_has_shape && B_has_shape && Y_has_shape) {
+  if (A_has_shape && B_has_shape && Y_has_shape &&
+      A_shape.size() >= 2 && B_shape.size() >= 2) {
     std::vector<AttributeProto> shared_attributes;
     shared_attributes.push_back(MakeAttribute("beta", float(0)));
     AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
@@ -703,18 +704,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
   }
   return std::vector<NodeDef>{
       NodeDef(OpDef{"DropoutGrad", kMSDomain, 1},
-              inputs,
-              {GI(0)},
-              {SrcNodeAttributes()})};
-}
-
-IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
-  std::vector<ArgDef> inputs{GO(0), O(1)};
-  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
-    inputs.push_back(I(i));
-  }
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"TrainableDropoutGrad", kMSDomain, 1},
               inputs,
               {GI(0)},
               {SrcNodeAttributes()})};

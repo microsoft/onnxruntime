@@ -52,15 +52,11 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     OrtValue ort_value;
     OrtMemoryInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
     std::unique_ptr<char[]> buffer(new char[cpu_tensor_length]);
-    OrtCallback deleter;
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
-        Env::Default(), nullptr, tensor_proto, MemBuffer(buffer.get(), cpu_tensor_length, info), ort_value, deleter));
+        Env::Default(), nullptr, tensor_proto, MemBuffer(buffer.get(), cpu_tensor_length, info), ort_value));
 
     sample->push_back(ort_value);
     ortvalue_buffers_.emplace_back(std::move(buffer));
-    if (deleter.f != nullptr) {
-      ortvalue_deleters_.emplace_back(deleter);
-    }
   }
 
   data_.emplace_back(move(sample));
@@ -76,7 +72,7 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 // see input_to_dimension_mapping in bert/main.cc for example, and training_utils.h for more explanation
 common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& input_to_dimension_mapping,
                                                       MapStringToString& mapped_dimensions) const {
-  if (input_to_dimension_mapping.size() == 0) return Status::OK(); 
+  if (input_to_dimension_mapping.size() == 0) return Status::OK();
 
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     std::string input_name = GetInputName(input_index);
@@ -212,7 +208,8 @@ std::string LossScaler::SaveToString() const {
 
 Status LossScaler::LoadFromString(const std::string& input) {
   std::istringstream s{input};
-  ORT_RETURN_IF_NOT((s >> loss_scale_ >> stable_steps_) && s.eof());
+  ORT_RETURN_IF_NOT((s >> loss_scale_ >> stable_steps_) && s.eof(),
+                    "(s >> loss_scale_ >> stable_steps_) && s.eof() was false");
   return Status::OK();
 }
 

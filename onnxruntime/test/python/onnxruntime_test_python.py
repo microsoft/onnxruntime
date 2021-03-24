@@ -65,7 +65,6 @@ class TestInferenceSession(unittest.TestCase):
             import sys
             import ctypes
             CUDA_SUCCESS = 0
-
             def runBaseTest1():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
                 self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
@@ -122,6 +121,12 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values(
                     'do_copy_in_default_stream', [0, 1])
 
+                option['cuda_external_alloc'] = '0'
+                option['cuda_external_free'] = '0'
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_external_alloc'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_external_free'], '0')
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -332,7 +337,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testStringListAsInput(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
-        x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2, 2))
+        x = np.array(['this', 'is', 'identity', 'test'], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
         np.testing.assert_equal(x, res[0])
@@ -360,8 +365,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testBooleanInputs(self):
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"))
-        a = np.array([[True, True], [False, False]], dtype=np.bool)
-        b = np.array([[True, False], [True, False]], dtype=np.bool)
+        a = np.array([[True, True], [False, False]], dtype=bool)
+        b = np.array([[True, False], [True, False]], dtype=bool)
 
         # input1:0 is first in the protobuf, and input:0 is second
         # and we maintain the original order.
@@ -386,13 +391,13 @@ class TestInferenceSession(unittest.TestCase):
         output_type = sess.get_outputs()[0].type
         self.assertEqual(output_type, 'tensor(bool)')
 
-        output_expected = np.array([[True, False], [False, False]], dtype=np.bool)
+        output_expected = np.array([[True, False], [False, False]], dtype=bool)
         res = sess.run([output_name], {a_name: a, b_name: b})
         np.testing.assert_equal(output_expected, res[0])
 
     def testStringInput1(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
-        x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2, 2))
+        x = np.array(['this', 'is', 'identity', 'test'], dtype=str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -413,7 +418,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testStringInput2(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
-        x = np.array(['Olá', '你好', '여보세요', 'hello'], dtype=np.unicode).reshape((2, 2))
+        x = np.array(['Olá', '你好', '여보세요', 'hello'], dtype=str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -476,7 +481,9 @@ class TestInferenceSession(unittest.TestCase):
 
     def testInputVoid(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
-        x = np.array([b'this', b'is', b'identity', b'test'], np.void).reshape((2, 2))
+        # numpy 1.20+ doesn't automatically pad the bytes based entries in the array when dtype is np.void,
+        # so we use inputs where that is the case
+        x = np.array([b'must', b'have', b'same', b'size'], dtype=np.void).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -494,14 +501,13 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([output_name], {x_name: x})
 
-        expr = np.array([['this\x00\x00\x00\x00', 'is\x00\x00\x00\x00\x00\x00'], ['identity', 'test\x00\x00\x00\x00']],
-                        dtype=object)
+        expr = np.array([['must', 'have'], ['same', 'size']], dtype=object)
         np.testing.assert_equal(expr, res[0])
 
     def testRaiseWrongNumInputs(self):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("logicaland.onnx"))
-            a = np.array([[True, True], [False, False]], dtype=np.bool)
+            a = np.array([[True, True], [False, False]], dtype=bool)
             res = sess.run([], {'input:0': a})
 
         self.assertTrue('Model requires 2 inputs' in str(context.exception))
@@ -559,8 +565,8 @@ class TestInferenceSession(unittest.TestCase):
         opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED)
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), sess_options=opt)
-        a = np.array([[True, True], [False, False]], dtype=np.bool)
-        b = np.array([[True, False], [True, False]], dtype=np.bool)
+        a = np.array([[True, True], [False, False]], dtype=bool)
+        b = np.array([[True, False], [True, False]], dtype=bool)
 
         res = sess.run([], {'input1:0': a, 'input:0': b})
 

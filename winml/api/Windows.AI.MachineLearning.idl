@@ -33,7 +33,7 @@ import "windows.storage.idl";
 
 namespace ROOT_NS.AI.MachineLearning 
 {
-    [contractversion(4)]
+    [contractversion(5)]
     apicontract MachineLearningContract{};
 
     //! Forward declarations
@@ -385,6 +385,19 @@ namespace ROOT_NS.AI.MachineLearning
         Windows.Foundation.Collections.IVectorView<Int64> Shape{ get; };
     }
 
+    //! \enum LearningModelPixelRange
+    //! \brief Defines the list of image nominal pixel range specified in model metadata.
+    [contract(MachineLearningContract, 5)]
+    enum LearningModelPixelRange
+    {
+        //! [0...255] for 8bpp(8 Bits per Pixel) samples
+        ZeroTo255= 0,
+        //! [0...1] pixel data is stored normalized
+        ZeroToOne,
+        //! [-1...1] pixel data is stored normalized
+        MinusOneToOne 
+    };
+
     //! \class ImageFeatureDescriptor
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
@@ -397,6 +410,12 @@ namespace ROOT_NS.AI.MachineLearning
         Windows.Graphics.Imaging.BitmapPixelFormat BitmapPixelFormat{ get; };
         //! Specifies the alpha mode of the pixel data.
         Windows.Graphics.Imaging.BitmapAlphaMode BitmapAlphaMode{ get; };
+        [contract(MachineLearningContract, 5)]
+        {
+            //！Specifies the nominal pixel range of pixel data.
+            LearningModelPixelRange PixelRange{ get; };
+        }
+
         //! The width of the image.
         UInt32 Width{ get; };
         //! The height of the image.

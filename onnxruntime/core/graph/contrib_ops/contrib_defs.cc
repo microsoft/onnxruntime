@@ -11,6 +11,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/graph/signal_ops/signal_defs.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -274,6 +275,59 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
+
+void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+  }
+
+  // Shape inference
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    auto& input_dims = input_shape.dim();
+    if (input_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions");
+    }
+
+    auto& bias_shape = getInputShape(ctx, 2);
+    auto& bias_dims = bias_shape.dim();
+    if (bias_dims.size() != 1 || bias_shape.dim(0).dim_value() % 3 != 0) {
+      fail_shape_inference("Invalid bias shape");
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_dims) {
+      *output_shape.add_dim() = dim;
+    }
+    output_shape.mutable_dim(2)->set_dim_value(bias_shape.dim(0).dim_value() / 3);
+    updateOutputShape(ctx, 0, output_shape);
+
+    if (ctx.getNumOutputs() > 1) {
+      if (hasInputShape(ctx, past_input_index)) {
+        auto& past_shape = getInputShape(ctx, past_input_index);
+        auto& past_dims = past_shape.dim();
+        if (past_dims.size() != 5) {
+          fail_shape_inference("Inputs 4 shall be 5 dimensions");
+        }
+
+        if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+          auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+
+          ONNX_NAMESPACE::TensorShapeProto present_shape;
+          for (auto& dim : past_dims) {
+            *present_shape.add_dim() = dim;
+          }
+          present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
+
+          updateOutputShape(ctx, 1, present_shape);
+        }
+      }
+    }
+  }
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -295,8 +349,8 @@ and present state are optional. Present state could appear in output even when p
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
-      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
+      .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length) or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
@@ -305,42 +359,8 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        }
-
-        if (hasInputShape(ctx, 0)) {
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-
-          if (ctx.getNumOutputs() > 1) {
-            auto& input_shape = getInputShape(ctx, 0);
-            auto& input_dims = input_shape.dim();
-            if (input_dims.size() != 3) {
-              fail_shape_inference("Inputs 0 shall be 3 dimensions");
-            }
-
-            if (hasInputShape(ctx, 4)) {
-              auto& past_shape = getInputShape(ctx, 4);
-              auto& past_dims = past_shape.dim();
-              if (past_dims.size() != 5) {
-                fail_shape_inference("Inputs 4 shall be 5 dimensions");
-              }
-
-              if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
-                auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
-
-                ONNX_NAMESPACE::TensorShapeProto present_shape;
-                for (auto& dim : past_dims) {
-                  *present_shape.add_dim() = dim;
-                }
-                present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
-
-                updateOutputShape(ctx, 1, present_shape);
-              }
-            }
-          }
-        }
+        constexpr int past_input_index = 4;
+        AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
@@ -355,12 +375,12 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           0,
           "input",
-          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size",
+          "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)",
           "T1")
       .Input(
           1,
           "weight",
-          "2D input tensor with shape (hidden_size, 3 * hidden_size)",
+          "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",
           "T2")
       .Input(
           2,
@@ -417,18 +437,8 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
-
-        // Shape inference
-        // if the input shape doesn't exist, further shape inference is not possible
-        if (!hasNInputShapes(ctx, 1)) {
-          return;
-        }
-
-        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
-
-        return;
+        constexpr int past_input_index = 8;
+        AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
       static const char* Longformer_Attention_doc = R"DOC(
@@ -455,7 +465,7 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .Input(4, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(5, "global_bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(6, "global", "Global attention flags with shape (batch_size, sequence_length)", "G")
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
@@ -546,7 +556,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
-      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
+      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T", OpSchema::Optional)
       .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
@@ -1122,7 +1132,7 @@ Sample echo operator.)DOC");
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
       .Input(0, "X", "input tensor", "T")
-      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("signal_ndim", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Output(0, "Y", "output tensor", "T")
@@ -1269,6 +1279,12 @@ activation.)DOC")
       .Input(
           2,
           "B",
+          "",
+          "T",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "Z",
           "",
           "T",
           OpSchema::Optional)
@@ -2079,7 +2095,7 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
-      .Input(2, "B", "Bias tensor.", "T")
+      .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
       .Output(0, "Y", "Output data tensor.", "T")
       .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
       .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
@@ -2366,6 +2382,11 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
     RegisterNchwcSchemas();
   }
   RegisterBertSchemas();
+
+#ifdef BUILD_MS_EXPERIMENTAL_OPS
+  onnxruntime::signal::RegisterSignalSchemas();
+#endif
+
   RegisterQuantizationSchemas();
 }
 }  // namespace contrib

@@ -16,7 +16,7 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: >
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory)
         -t onnxruntime_perf_test_image
         -x "
         --config RelWithDebInfo
@@ -25,11 +25,19 @@ jobs:
         "
       DisplayName: 'Build performance tests'
 
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+    displayName: 'Mount bert-data'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/gpt2-data" -d "/gpt2_data"
+    displayName: 'Mount gpt2 test data'
+    condition: succeededOrFailed() # ensure all tests are run
+
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
       --volume $(Build.SourcesDirectory):/onnxruntime_src
       --volume $(Build.BinariesDirectory):/build
-      --volume /bert_ort/bert_models:/build/bert_models:ro
+      --volume /bert_data/bert_models:/build/bert_models:ro
       --volume /bert_data:/build/bert_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
@@ -37,19 +45,23 @@ jobs:
       --training_data_root /build/bert_data
       --model_root /build/bert_models
     displayName: 'Run bert performance tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
 
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
       --volume $(Build.SourcesDirectory):/onnxruntime_src
       --volume $(Build.BinariesDirectory):/build
-      --volume /bert_ort/gpt2_models:/build/gpt2_models:ro
-      --volume /bert_data/gpt2_data:/build/gpt2_data:ro
+      --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
+      --volume /gpt2_data:/build/gpt2_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/gpt2_data
       --model_root /build/gpt2_models
     displayName: 'Run gpt-2 performance tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
 
   # generate jdbc.properties
   - script: >
@@ -70,5 +82,9 @@ jobs:
       ORT_PERF_PASSWORD: $(ortperf)
     displayName: 'Populate perf metrics'
     workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml

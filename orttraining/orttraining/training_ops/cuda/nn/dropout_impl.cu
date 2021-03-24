@@ -43,6 +43,7 @@ __global__ void DropoutGradientKernel(
 
 template <typename T>
 void DropoutGradientKernelImpl(
+    cudaStream_t stream,
     const int64_t N,
     const T* dY_data,
     const bool* mask_data,
@@ -50,18 +51,19 @@ void DropoutGradientKernelImpl(
     T* dX_data) {
   if (ratio == 0.0f) {
     if (dY_data != dX_data) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(dX_data, dY_data, N * sizeof(T), cudaMemcpyDeviceToDevice));
+      CUDA_CALL_THROW(cudaMemcpyAsync(dX_data, dY_data, N * sizeof(T), cudaMemcpyDeviceToDevice, stream));
     }
   } else {
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
     DropoutGradientKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-                         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(N, dY_data, mask_data, scale, dX_data);
+                         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(N, dY_data, mask_data, scale, dX_data);
   }
 }
 
 #define SPECIALIZED_DROPOUT_GRAD_IMPL(T)   \
   template void DropoutGradientKernelImpl( \
+      cudaStream_t stream,           \
       const int64_t N,                     \
       const T* dY_data,                    \
       const bool* mask_data,               \
@@ -71,6 +73,9 @@ void DropoutGradientKernelImpl(
 SPECIALIZED_DROPOUT_GRAD_IMPL(float)
 SPECIALIZED_DROPOUT_GRAD_IMPL(double)
 SPECIALIZED_DROPOUT_GRAD_IMPL(half)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_DROPOUT_GRAD_IMPL(nv_bfloat16)
+#endif
 
 constexpr int UNROLL = 4;
 
@@ -128,6 +133,7 @@ __global__ void BiasDropoutKernel(
 template <typename T>
 void BiasDropoutKernelImpl(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const int64_t N,
     const fast_divmod fdm_dim,
     const float ratio,
@@ -146,15 +152,16 @@ void BiasDropoutKernelImpl(
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
   if (residual_data == nullptr) {
-    BiasDropoutKernel<T, false><<<grid_size, block_size, 0>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    BiasDropoutKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
   } else {
-    BiasDropoutKernel<T, true><<<grid_size, block_size, 0>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    BiasDropoutKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
   }
 }
 
 #define SPECIALIZED_BIAS_DROPOUT_IMPL(T) \
   template void BiasDropoutKernelImpl(  \
       const cudaDeviceProp& prop,   \
+      cudaStream_t stream,          \
       const int64_t N,              \
       const fast_divmod fdm_dim,    \
       const float ratio,            \
@@ -168,7 +175,9 @@ void BiasDropoutKernelImpl(
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
 SPECIALIZED_BIAS_DROPOUT_IMPL(double)
 SPECIALIZED_BIAS_DROPOUT_IMPL(half)
-
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_BIAS_DROPOUT_IMPL(nv_bfloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

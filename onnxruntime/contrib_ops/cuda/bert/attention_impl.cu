@@ -71,8 +71,10 @@ bool QkvToContext(
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
 
+  const int max_threads_per_block(prop.maxThreadsPerBlock);
+
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3)) {
+  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, input, scratch3)) {
     return false;
   }
 
@@ -93,7 +95,7 @@ bool QkvToContext(
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
   const int present_size_per_batch = all_sequence_length * head_size;
   if (nullptr != present) {
-    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, past, k, present)) {
+    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, past, k, present)) {
       return false;
     }
 
@@ -143,11 +145,12 @@ bool QkvToContext(
   }
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, scratch3, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, scratch3, output);
 }
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const void* input,
     const int* mask_index,
     const std::vector<int64_t>* mask_index_dims,
@@ -163,9 +166,6 @@ bool LaunchAttentionKernel(
     int past_sequence_length,
     const void* past,
     void* present) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
-
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
