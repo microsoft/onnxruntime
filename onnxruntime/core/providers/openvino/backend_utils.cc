@@ -16,6 +16,7 @@
 #include "core/providers/shared_library/provider_api.h"
 
 #include "backend_utils.h"
+
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {

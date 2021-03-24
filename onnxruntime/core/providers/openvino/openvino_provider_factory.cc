@@ -9,10 +9,11 @@ namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
                           const char* device_id, size_t num_of_threads,
-                          bool use_compiled_network, std::string blob_dump_path)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network), blob_dump_path_(blob_dump_path) {
+                          bool use_compiled_network, const char* blob_dump_path)
+      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
+    blob_dump_path_ = (blob_dump_path == nullptr) ? "" : blob_dump_path;
   }
   ~OpenVINOProviderFactory() override {
   }
@@ -34,7 +35,7 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, std::string blob_dump_path) {
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path) {
   return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile, device_id, num_of_threads, use_compiled_network, blob_dump_path);
 }
 
