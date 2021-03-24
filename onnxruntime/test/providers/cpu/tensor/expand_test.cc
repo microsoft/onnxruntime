@@ -163,6 +163,32 @@ TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
   test.Run();
 }
 
+TEST(ExpandOpTest, Expand_Upsample_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {1, 2, 3, 1, 5, 1},
+                        {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                         6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                         11.0f, 12.0f, 13.0f, 14.0f, 15.0f,
+                         16.0f, 17.0f, 18.0f, 19.0f, 20.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f,
+                         26.0f, 27.0f, 28.0f, 29.0f, 30.0f});
+  test.AddInput<int64_t>("data_1", {6}, {1, 1, 1, 2, 1, 2});
+  test.AddOutput<float>("result", {1, 2, 3, 2, 5, 2},
+                        {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f,
+                         1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f,
+                         6.0f, 6.0f, 7.0f, 7.0f, 8.0f, 8.0f, 9.0f, 9.0f, 10.0f, 10.0f,
+                         6.0f, 6.0f, 7.0f, 7.0f, 8.0f, 8.0f, 9.0f, 9.0f, 10.0f, 10.0f,
+                         11.0f, 11.0f, 12.0f, 12.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f,
+                         11.0f, 11.0f, 12.0f, 12.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f,
+                         16.0f, 16.0f, 17.0f, 17.0f, 18.0f, 18.0f, 19.0f, 19.0f, 20.0f, 20.0f,
+                         16.0f, 16.0f, 17.0f, 17.0f, 18.0f, 18.0f, 19.0f, 19.0f, 20.0f, 20.0f,
+                         21.0f, 21.0f, 22.0f, 22.0f, 23.0f, 23.0f, 24.0f, 24.0f, 25.0f, 25.0f,
+                         21.0f, 21.0f, 22.0f, 22.0f, 23.0f, 23.0f, 24.0f, 24.0f, 25.0f, 25.0f,
+                         26.0f, 26.0f, 27.0f, 27.0f, 28.0f, 28.0f, 29.0f, 29.0f, 30.0f, 30.0f,
+                         26.0f, 26.0f, 27.0f, 27.0f, 28.0f, 28.0f, 29.0f, 29.0f, 30.0f, 30.0f});
+  test.Run();
+}
+
 #ifndef USE_TENSORRT
 TEST(ExpandOpTest, Expand_scalar_float) {
   OpTester test("Expand", 8);

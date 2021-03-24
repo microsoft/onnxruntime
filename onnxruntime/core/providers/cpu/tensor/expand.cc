@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "expand.h"
+#include "upsample.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -66,8 +67,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     output_shape_iter++;
   }
 
-  TensorShape output_tensor_shape(output_shape);
-  auto* output_tensor = context->Output(0, output_tensor_shape);
+  auto* output_tensor = context->Output(0, output_shape);
   auto* output_data = output_tensor->template MutableData<T>();
   auto* output_dims = output_shape.data();
   auto output_dims_size = static_cast<int64_t>(output_shape.size());
@@ -76,6 +76,21 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   if (0 == max_dims_size) {
     *output_data = *input_data;
     return Status::OK();
+  }
+
+  // Some PyTorch image models use tensor.expand to do a 2x2 upsample of the image tensor.
+  // Route this to a faster implementation to do the expansion, but do so for the float
+  // type only to keep code size down.
+  if (std::is_same<T, float>::value) {
+    // Check for an expand with the pattern [N,C,H,1,W,1]->[N,C,H,2,W,2].
+    if (input_dims_size == 6 && output_dims_size == 6 &&
+        input_shape[0] == output_shape[0] && input_shape[1] == output_shape[1] &&
+        input_shape[2] == output_shape[2] && input_shape[4] == output_shape[4] &&
+        input_shape[3] == 1 && output_shape[3] == 2 &&
+        input_shape[5] == 1 && output_shape[5] == 2) {
+      UpsampleNearest2x(input_shape[0] * input_shape[1] * input_shape[2], input_shape[4], input_data, output_data);
+      return Status::OK();
+    }
   }
 
   std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
@@ -126,7 +141,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       }  //for j
       memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
       output_offsets[i] = output_offset;
-    } //for i
+    }  //for i
   };  //distribute_fn
 
   auto per_thread_tasks =
@@ -146,30 +161,30 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     auto copy_fn =
       [&](ptrdiff_t j_start, ptrdiff_t j_end) {
       for (auto j = j_start; j < j_end; j++) {
-	auto output_offset = output_offsets[j];
-	if (output_offset % output_dim_group[i] == 0) {
-	  auto copy_len = output_dim_group[i] / expand_dim_size[i];
-	  auto copy_byte = copy_len * sizeof(T);
-	  auto output_from = output_data + output_offset;
-	  auto output_at = output_from + copy_len;
-	  auto output_end = output_from + output_dim_group[i];
-	  while (output_at + copy_len <= output_end) {
-	    memcpy(output_at, output_from, copy_byte);
-	    output_at += copy_len;
-	    copy_len <<= 1;
-	    copy_byte <<= 1;
-	  }  //while
-	  while (output_at < output_end) {
-	    if (output_at + copy_len <= output_end) {
-	      memcpy(output_at, output_from, copy_byte);
-	      output_at += copy_len;
-	    } else {
-	      copy_len >>= 1;
-	      copy_byte >>= 1;
-	    }
-	  }  //while
-	}  //if
-      } // for
+        auto output_offset = output_offsets[j];
+        if (output_offset % output_dim_group[i] == 0) {
+          auto copy_len = output_dim_group[i] / expand_dim_size[i];
+          auto copy_byte = copy_len * sizeof(T);
+          auto output_from = output_data + output_offset;
+          auto output_at = output_from + copy_len;
+          auto output_end = output_from + output_dim_group[i];
+          while (output_at + copy_len <= output_end) {
+            memcpy(output_at, output_from, copy_byte);
+            output_at += copy_len;
+            copy_len <<= 1;
+            copy_byte <<= 1;
+          }  //while
+          while (output_at < output_end) {
+            if (output_at + copy_len <= output_end) {
+              memcpy(output_at, output_from, copy_byte);
+              output_at += copy_len;
+            } else {
+              copy_len >>= 1;
+              copy_byte >>= 1;
+            }
+          }  //while
+        }  //if
+      }  //for
     };  //copy_fn
     if (per_thread_tasks > 20) {
       concurrency::ThreadPool::TryParallelFor(

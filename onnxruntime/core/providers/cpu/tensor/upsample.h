@@ -44,6 +44,9 @@ enum ResizeNearestMode {
   NearestModeCount = 5,
 };
 
+template <typename T>
+void UpsampleNearest2x(int64_t input_height, int64_t input_width, const T* input, T* output);
+
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {

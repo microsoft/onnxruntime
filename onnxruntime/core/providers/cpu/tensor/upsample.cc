@@ -29,27 +29,15 @@ REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
-void UpsampleNearest2x(int64_t batch_size,
-                       int64_t num_channels,
-                       int64_t input_height,
-                       int64_t input_width,
-                       const T* input,
-                       T* output) {
+void UpsampleNearest2x(int64_t input_height, int64_t input_width, const T* input, T* output) {
   const int64_t output_height = input_height * 2;
-  const int64_t output_width = input_width * 2;
-  for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t y = 0; y < output_height; ++y) {
-        const int64_t in_y = y / 2;
-        for (int64_t x = 0; x < input_width; ++x) {
-          const T v = input[in_y * input_width + x];
-          const int64_t oidx = output_width * y + x * 2;
-          output[oidx + 0] = v;
-          output[oidx + 1] = v;
-        }
-      }
-      input += input_height * input_width;
-      output += output_height * output_width;
+  for (int64_t y = 0; y < output_height; ++y) {
+    const int64_t in_y = y / 2;
+    const T* input_ptr = &input[in_y * input_width];
+    for (int64_t x = 0; x < input_width; ++x) {
+      const T v = *input_ptr++;
+      *output++ = v;
+      *output++ = v;
     }
   }
 }
@@ -173,7 +161,7 @@ Status UpsampleNearest(const T* input,
 
   if (n_dim == 4) {
     if (use_nearest2x_optimization && scales[0] == 1 && scales[1] == 1 && scales[2] == 2 && scales[3] == 2) {
-      UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
+      UpsampleNearest2x<T>(input_shape[0] * input_shape[1] * input_shape[2], input_shape[3], input, output);
       return Status::OK();
     }
     std::vector<int64_t> input_mapping_0(output_shape[0]);
@@ -407,7 +395,7 @@ void UpsampleBilinear(int64_t batch_size,
       dx2[x] = 0.5f;
     }
   }
-  
+
  for (int64_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
                                                   [&](std::ptrdiff_t c) {
@@ -903,7 +891,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                          use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                         Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                         Y->template MutableData<T>(), alloc, get_original_coordinate_,
                          output_height*output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
@@ -926,7 +914,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                           output_depth, output_height, output_width,
                           is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                           is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_,
                           output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else {
