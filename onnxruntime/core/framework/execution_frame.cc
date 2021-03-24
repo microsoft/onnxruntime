@@ -51,9 +51,9 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  if (!IsFromExternal(ort_value_idx)) {
+  if (!IsAllocatedExternally(ort_value_idx)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetOutputMLValue() is not allowed for OrtValue index ", ort_value_idx,
-                           " as its allocation kind is not kFromExternal.");
+                           " as its allocation kind is not kAllocatedExternally.");
   }
 
   all_values_[ort_value_idx] = ort_value;
@@ -637,9 +637,9 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   return alloc_plan[ort_value_idx];
 }
 
-bool ExecutionFrame::IsFromExternal(int ort_value_idx) {
+bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
   const auto& allocation_plan = GetAllocationPlan(ort_value_idx);
-  return allocation_plan.alloc_kind == AllocKind::kFromExternal;
+  return allocation_plan.alloc_kind == AllocKind::kAllocatedExternally;
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {

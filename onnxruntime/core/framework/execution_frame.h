@@ -98,7 +98,7 @@ class IExecutionFrame {
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
-  virtual bool IsFromExternal(int /*ort_value_idx*/) {
+  virtual bool IsAllocatedExternally(int /*ort_value_idx*/) {
     return false;
   }
 
@@ -189,7 +189,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
 
-  bool IsFromExternal(int ort_value_idx) override;
+  bool IsAllocatedExternally(int ort_value_idx) override;
 
   const SessionState& session_state_;
 
