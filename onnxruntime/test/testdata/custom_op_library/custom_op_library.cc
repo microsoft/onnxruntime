@@ -12,7 +12,7 @@
 
 #include "sequence_pooling.h"
 
-static const char* c_OpDomain = "test.customop";
+static const char* c_OpDomain = "com.microsoft";
 
 struct OrtCustomOpDomainDeleter {
   explicit OrtCustomOpDomainDeleter(const OrtApi* ort_api) {
@@ -198,7 +198,12 @@ struct SequencePooling : Ort::CustomOpBase<SequencePooling, SequencePoolingKerne
   const char* GetName() const { return "SequencePooling"; };
 
   size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/index) const {
+    if (index == 0) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    }
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
@@ -228,7 +233,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     return status;
   }
 
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpTwo)) {
+  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling)) {
     return status;
   }
 
