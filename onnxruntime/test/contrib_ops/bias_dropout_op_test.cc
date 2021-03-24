@@ -129,7 +129,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   t.SetCustomOutputVerifier(output_verifier);
 
-  t.Run();
+  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 }  // namespace
 
