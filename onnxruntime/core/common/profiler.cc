@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "profiler.h"
+#include <cmath>
 
 #ifdef USE_CUDA
 #include <cupti.h>
@@ -68,7 +69,7 @@ void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size
   *maxNumRecords = 0;
 }
 
-void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t* buffer, size_t size, size_t validSize) {
+void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t validSize) {
   CUptiResult status;
   CUpti_Activity* record = NULL;
   if (validSize > 0) {
