@@ -416,6 +416,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   add_definitions(-DUSE_TENSORRT=1)
+  add_definitions(-DBUILD_LIBRARY_ONLY=1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
   include_directories(${PROJECT_SOURCE_DIR}/external/protobuf)
