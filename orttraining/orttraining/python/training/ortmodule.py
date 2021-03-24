@@ -30,12 +30,16 @@ T = TypeVar('T', bound='Module')
 ONNX_OPSET_VERSION = 12
 
 
-def _ortvalue_to_dlpack(ortvalue):
-    return ortvalue._ortvalue.to_dlpack()
+def _ortvalue_to_torch_tensor(ortvalue):
+    # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+    # and convert the config to torch.uint8 tensor duing from_dlpack().
+    # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
+    torch_tensor = from_dlpack(ortvalue._ortvalue.to_dlpack())
+    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
 
-def _ortvalue_from_dlpack(dlpack_tensor):
-    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
+def _ortvalue_from_torch_tensor(torch_tensor):
+    return OrtValue(C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool))
 
 
 class Verbosity(IntEnum):
@@ -50,7 +54,7 @@ def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_ortvalue_input(
-            value_info.name, _ortvalue_from_dlpack(to_dlpack(inputs[idx])))
+            value_info.name, _ortvalue_from_torch_tensor(inputs[idx]))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -66,19 +70,6 @@ def _check_same_device(device, argument_str, *args):
             if arg_device != device:
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
-
-
-def _ort_output_to_torch_tensor(ort_output):
-    # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-    # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
-    # from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
-    # is feeded to backward graph as input, it will cause data type mismatch issue during
-    # inference session running. We cannot change the from_dlpack() in PyTorch side, so we
-    # have to handle this specially, which will introduce a cast here and there is data copied.
-    # Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
-    # real data type of the inputs in the backeard graph, and perform the cast only necessary.
-    tensor = from_dlpack(_ortvalue_to_dlpack(ort_output))
-    return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 
 def _load_torch_allocator_cpp_extension(verbosity):
@@ -116,7 +107,9 @@ class ORTModule(torch.nn.Module):
             Finally, we instantiate the ONNX Runtime InferenceSession.
             '''
             # TODO: using pytorch for evaluation for now. We will use ORT for evaluation later.
-            if not self._is_training:
+            # TODO: If the model is being executed with the gradient disabled (inside torch.no_grad() context for example),
+            # leverage pytorch model for now.
+            if not self._is_training():
                 return self._original_module(*inputs, **kwargs)
 
             # Exporting module to ONNX for the first time
@@ -131,16 +124,25 @@ class ORTModule(torch.nn.Module):
                 self._get_inference_graph_and_init_gradient_graph_builder(
                     *inputs, **kwargs)
 
+            # Flag to indicate whether the gradient_graph needs to be built
+            build_gradient_graph = self._current_input_shape is None
             _, _, input_names_require_grad, new_input_shape = \
                 _ortmodule_io.parse_inputs_for_onnx_export(
                     self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
+            initializer_names_to_train_set_user_model = {name for name, param in
+                self._flattened_output_module.named_parameters() if param.requires_grad}
+            initializer_names_to_train_set_onnx_graph = set(self._onnx_graphs_info.initializer_names_to_train) \
+                if self._onnx_graphs_info else None
             # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
-            if input_names_require_grad != self._input_names_require_grad:
+            if input_names_require_grad != self._input_names_require_grad or \
+                initializer_names_to_train_set_user_model != initializer_names_to_train_set_onnx_graph:
                 self._input_names_require_grad = input_names_require_grad
                 self._initialize_module_gradient_graph_builder()
+                # Trigger the rebuilding of the gradient graph
+                build_gradient_graph = True
 
-            if self._current_input_shape is None:
+            if build_gradient_graph:
                 self._current_input_shape = new_input_shape
                 self._build_training_graph()
                 self._create_training_session()
@@ -177,7 +179,7 @@ class ORTModule(torch.nn.Module):
                     # Run and return module outputs.
                     forward_outputs, run_id = self._training_session.run_forward(
                         self._training_io_binding, self._run_options)
-                    user_outputs = tuple(_ort_output_to_torch_tensor(
+                    user_outputs = tuple(_ortvalue_to_torch_tensor(
                         forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
 
@@ -208,6 +210,12 @@ class ORTModule(torch.nn.Module):
                     # Push user output grads to ONNX backend.
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
+                        if idx in self._onnx_graphs_info.output_grad_indices_non_differentiable:
+                            assert grad_output is None, "ORT found the {}-th module output '{}' is non-differentiable according to the onnx graph. " \
+                                                        "However, the gradient value is still provided by torch's autograd engine." \
+                                                        .format(idx, self._onnx_graphs_info.user_output_names[idx]) 
+                            continue
+                        
                         if grad_output is None:
                             shape, device, dtype = ctx.output_info[idx]
                             if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:
@@ -219,8 +227,8 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [_ortvalue_from_dlpack(
-                        to_dlpack(grad_output)) for grad_output in contiguous_grad_outputs]
+                    backward_grad_output_ortvalue = [_ortvalue_from_torch_tensor(
+                        grad_output) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
                     run_id = ctx.run_id
@@ -235,15 +243,25 @@ class ORTModule(torch.nn.Module):
                     for input_name in self._onnx_graphs_info.user_input_names:
                         try:
                             # Append to the results the backward output for each input that required grad
-                            results.append(_ort_output_to_torch_tensor(
+                            results.append(_ortvalue_to_torch_tensor(
                                 backward_outputs[self._input_names_require_grad.index(input_name)]))
                         except ValueError:
                             # input_name is not found in the self._input_names_require_grad list
                             # Append None to results for each input that did not require grad
                             results.append(None)
+
                     # Append gradients of initializer to results
-                    results += [_ort_output_to_torch_tensor(backward_output)
-                                for backward_output in backward_outputs[num_user_input_grads:]]
+                    # Go over each initializer, check if it required grad and append to results accordingly
+                    initializer_names_to_train_set = set(self._onnx_graphs_info.initializer_names_to_train) \
+                        if self._onnx_graphs_info else None
+                    initializer_index = num_user_input_grads
+                    for initializer_name in self._onnx_graphs_info.initializer_names:
+                        if initializer_name in initializer_names_to_train_set:
+                            results.append(_ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
+                            initializer_index += 1
+                        else:
+                            results.append(None)
+
                     # The OrtValue has a shared_ptr to the data.
                     # At this point there are two shared_ptrs to the data, one through the
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
@@ -290,7 +308,6 @@ class ORTModule(torch.nn.Module):
                     "The model's forward method has **kwargs parameter which is currently not supported.")
 
         self._onnx_inference = None
-        self._is_training = True
 
         # Related to training graph shape inference
         self._current_input_shape = None
@@ -300,6 +317,7 @@ class ORTModule(torch.nn.Module):
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
+        self._onnx_graphs_info = None
 
         # Training model
         self._onnx_training = None
@@ -328,18 +346,26 @@ class ORTModule(torch.nn.Module):
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
+    def _is_training(self):
+        return self._flattened_output_module.training and torch.is_grad_enabled()
+
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [p[0]
-                             for p in self._flattened_output_module.named_parameters()]
+        initializer_names = [name
+                             for name, _ in self._flattened_output_module.named_parameters()]
+        initializer_names_to_train = []
+        if self._is_training():
+            initializer_names_to_train = [name
+                for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
         onnx_initializer_names = {
             p.name for p in self._onnx_inference.graph.initializer}
-        initializer_names = [
-            p for p in initializer_names if p in onnx_initializer_names]
+        initializer_names_to_train = [
+            p for p in initializer_names_to_train if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
-        grad_builder_config.initializer_names_to_train = initializer_names
+        grad_builder_config.initializer_names = initializer_names
+        grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
         self._module_gradient_graph_builder.initialize(
@@ -405,11 +431,9 @@ class ORTModule(torch.nn.Module):
                       self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
-        self._is_training = False
         self._flattened_output_module.eval()
 
     def train(self: T, mode: bool = True) -> T:
-        self._is_training = mode
         self._flattened_output_module.train(mode)
 
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):

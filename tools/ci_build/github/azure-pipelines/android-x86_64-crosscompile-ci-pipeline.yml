@@ -2,7 +2,7 @@ jobs:
 - job: Android_CI
   pool:
     vmImage: 'macOS-10.14'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings

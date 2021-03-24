@@ -847,12 +847,19 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion0.onnx", // Test fusion from the right input
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx" // Test fusion from the left input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx", // Test fusion from the left input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion2.onnx", // Test fusion both from the left and right inputs
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion3.onnx", // Cast nodes feed multiple MatMul nodes.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion4.onnx", // Cast nodes feed one MatMul node and
+                                                                   // the Transpose nodes feed another MatMul node.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion5.onnx"  // One Cast node and one Transpose node feed each
+                                                                   // MatMul nodes.
   };
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
     Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph); // Original op count
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
@@ -861,8 +868,8 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["Transpose"] == 0);
     ASSERT_TRUE(op_to_count["MatMul"] == 0);
-    ASSERT_TRUE(op_to_count["Cast"] == 2);
-    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
+    ASSERT_TRUE(op_to_count["Cast"] == orig_op_to_count["Cast"]);
+    ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == orig_op_to_count["MatMul"]);
   }
 }
 
