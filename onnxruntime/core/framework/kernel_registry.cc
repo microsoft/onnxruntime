@@ -152,7 +152,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if type matches
-  auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
 
   // Note: The number of formal input/output parameters is N and the number of
   // type constraints is M. We select between an O(N*M) and an O(N+M) approach.

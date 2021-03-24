@@ -53,7 +53,13 @@ class KernelDef {
     return provider_type_;
   }
 
+  // type constraints with types supported by default
   const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+    return default_type_constraints_;
+  }
+
+  // type constraints with types supported in this build
+  const std::map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
     return enabled_type_constraints_;
   }
 
