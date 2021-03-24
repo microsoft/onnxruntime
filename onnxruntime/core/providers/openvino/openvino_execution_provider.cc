@@ -55,6 +55,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::cout << "In the OpenVINO EP" << std::endl;
 
 #if defined OPENVINO_2020_3
   result = openvino_ep::GetCapability_2020_3(graph_viewer,
@@ -70,6 +71,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 #elif defined (OPENVINO_2021_2)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_2");
+  result = obj.Execute();
+#elif defined (OPENVINO_2021_3)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_3");
   result = obj.Execute();
 #endif
 
