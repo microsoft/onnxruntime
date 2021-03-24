@@ -32,6 +32,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
  bool import_blob_status = false;
  std::string model_blob_name;
  std::ifstream blob_path;
+ std::string ov_compiled_blobs_dir = "";
 
  if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
@@ -44,7 +45,11 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         else {
             model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
         }
-        std::string ov_compiled_blobs_dir = openvino_ep::backend_utils::GetCurrentWorkingDir() + "/ov_compiled_blobs";
+        if(global_context_.blob_dump_path == "") {
+          ov_compiled_blobs_dir = openvino_ep::backend_utils::GetCurrentWorkingDir() + "/ov_compiled_blobs/";
+        } else {
+          ov_compiled_blobs_dir = global_context_.blob_dump_path + "/ov_compiled_blobs";
+        }
         if(openvino_ep::backend_utils::IsDirExists(ov_compiled_blobs_dir)) {
           LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory already exists at the executable path";
         }
@@ -153,7 +158,7 @@ if ((global_context_.use_compiled_network == true && import_blob_status == false
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     if(global_context_.use_compiled_network && hw_target == "MYRIAD") {
       LOGS_DEFAULT(INFO) << log_tag << "Dumping the compiled blob for this model into the directory 'ov_compiled_blobs'";
-      std::ofstream compiled_blob_dump{"ov_compiled_blobs/" + model_blob_name};
+      std::ofstream compiled_blob_dump{ov_compiled_blobs_dir + "/" + model_blob_name};
       exe_network_.Export(compiled_blob_dump);
     }
   }

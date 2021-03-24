@@ -61,16 +61,16 @@ std::string GetCurrentWorkingDir() {
 }
 
 bool IsDirExists(const std::string& pathname) {
-struct stat info;
-if( stat( pathname.c_str(), &info ) != 0 ) {
+  struct stat info;
+  if(stat(pathname.c_str(), &info) != 0) {
     LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
 	  return false;
-} else if( info.st_mode & S_IFDIR ) {
-    LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
-	  return true;
-} else {
-    LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
-}
+  } else if(info.st_mode & S_IFDIR) {
+      LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
+	    return true;
+  } else {
+      LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
+  }
   return false;
 }
 

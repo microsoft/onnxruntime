@@ -634,6 +634,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             params.device_id = option.second.c_str();
           } else if (option.first == "num_of_threads") {
             params.num_of_threads = std::stoi(option.second);
+          } else if (option.first == "blob_dump_path") {
+            params.blob_dump_path = option.second.c_str();
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -905,7 +907,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, ""),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
