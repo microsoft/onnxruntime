@@ -12,41 +12,12 @@
 #else
 #define HMODULE void*
 #endif
+#include "pyop_lib_proxy.h"
 
 namespace onnxruntime {
 
 using OnnxTypes = std::vector<ONNXTensorElementDataType>;
-using OnnxAttrs = std::unordered_map<std::string, std::string>;
 using PyOpLogFunc = std::function<void(const char*)>;
-
-class PyOpLibProxy {
- public:
-  static PyOpLibProxy& GetInstance();
-  void ReleaseInstance(void*);
-  bool InvokePythonFunc(void*,
-                        const char*,
-                        const std::vector<OrtValue*>&,
-                        std::vector<std::unique_ptr<char[]>>&,
-                        std::vector<int32_t>&,
-                        std::vector<std::vector<int64_t>>&,
-                        std::function<void(const char*)>);
-
-  bool InvokePythonAutoGradFunc(void*,
-                                const char*,
-                                const std::vector<OrtValue*>&,
-                                std::vector<void*>& outputs,
-                                std::function<void(const char*)>);
-  const char* GetLastErrorMessage(std::string&);
-  void* NewInstance(const char*, const char*, const OnnxAttrs&);
-  bool Initialized() const { return initialized_; }
-  int32_t GetGil() const;
-  void PutGil(int32_t) const;
-
- private:
-  PyOpLibProxy();
-  ~PyOpLibProxy();
-  bool initialized_ = false;
-};
 
 struct PyCustomKernel {
   PyCustomKernel(Ort::CustomOpApi ort,
@@ -70,13 +41,14 @@ struct PyCustomKernel {
 };
 
 struct PyCustomOp : Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
-  PyCustomOp(const OnnxAttrs& attrs,
-             const OnnxTypes& inputs_type,
-             const OnnxTypes& outputs_type,
-             const std::string& module,
-             const std::string& class_name,
-             const std::string& compute = "compute",
-             PyOpLogFunc logging_func = [](const char*) {});
+  PyCustomOp(
+      const OnnxAttrs& attrs,
+      const OnnxTypes& inputs_type,
+      const OnnxTypes& outputs_type,
+      const std::string& module,
+      const std::string& class_name,
+      const std::string& compute = "compute",
+      PyOpLogFunc logging_func = [](const char*) {});
   void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const;
   const char* GetName() const;
   size_t GetInputTypeCount() const;
