@@ -38,6 +38,7 @@ std::set<std::string> ops_supported_only_in_model = {
       "Exp",
       "GatherND",
       "Identity",
+      "Loop",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -438,11 +439,14 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2021_3},
       [this](const Node* node, const Provider_InitializedTensorSet& ) {
         const auto& indices_arg = node->InputDefs()[0];
+        const auto& output_arg = node->OutputDefs()[0];
+        if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
+          return true;
         if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
             (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) ||
             (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
-            return false;
-        }
+          return false;
+        } 
         return true;
     }};
     op_list_.insert({"GatherElements", obj});
@@ -1105,13 +1109,10 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
           return true;
       }
     } else if (node->OpType() == "Reshape") {
-      if (device_id_.find("MYRIAD") == std::string::npos) {
-        std::cout << "reshape special condition for cluster size one\n";
         const auto& shape_arg = node->InputDefs()[1];
         if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
           return true;
         }
-      }
     } else if (node->OpType() == "Expand") {
         // nGraph only supports constant shape input values
         const auto& output = node->OutputDefs()[0];
