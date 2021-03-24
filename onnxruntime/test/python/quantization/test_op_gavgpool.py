@@ -14,7 +14,7 @@ from onnxruntime.quantization import quantize_static, quantize_dynamic
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
 
-class TestOpQuatizerPad(unittest.TestCase):
+class TestOpGlobalAveragePool(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
         for i in range(n):
