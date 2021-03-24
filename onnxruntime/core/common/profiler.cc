@@ -12,11 +12,6 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
-#define BUF_SIZE (32 * 1024)
-#define ALIGN_SIZE (8)
-#define ALIGN_BUFFER(buffer, align) \
-  (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
-
 class DeviceProfiler {
  public:
   static DeviceProfiler* GetDeviceProfiler();
@@ -26,6 +21,12 @@ class DeviceProfiler {
 };
 
 #ifdef USE_CUDA
+#define BUF_SIZE (32 * 1024)
+#define ALIGN_SIZE (8)
+#define ALIGN_BUFFER(buffer, align) \
+  (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
+#define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
+
 class CudaProfiler final: public DeviceProfiler {
  public:
   friend class DeviceProfiler;
@@ -103,8 +104,6 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
   }
 }
 
-#define DUR(s, e) std::lround(static_cast<double>(e-s)/1000)
-
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
@@ -166,7 +165,6 @@ void Profiler::Initialize(const logging::Logger* session_logger) {
   ORT_ENFORCE(instance_ == nullptr, "Static profiler instance only works with single session");
   instance_ = this;
 #endif
-  //StartCudaProfiling();
 }
 
 void Profiler::StartProfiling(const logging::Logger* custom_logger) {
