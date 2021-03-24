@@ -50,7 +50,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(1);
   if (ratio) {
-    utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
     t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
@@ -80,15 +80,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  using SupportedTypes = onnxruntime::TypeList<
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-      float, MLFloat16, double, BFloat16
-#else
-      float, MLFloat16, double
-#endif
-      >;
-
-  utils::MLTypeCallDispatcherFromTypeList<SupportedTypes> t_disp(X->GetElementType());
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
   t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, ratio_data, generator, *X, *Y, mask_data);
 
   return Status::OK();
