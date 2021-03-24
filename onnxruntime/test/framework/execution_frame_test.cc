@@ -275,9 +275,9 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
   full_shape_outputs.add_ints(static_cast<int64_t>(0));
   NodeAttributes attributes({{attribute_name, full_shape_outputs}});
-  graph.AddNode("node1", "StopOp", "stop", ArgMap{&input_def}, ArgMap{&yield_out_def}, &attributes, kMSDomain)
+  graph.AddNode("node1", "BreakOp", "stop", ArgMap{&input_def}, ArgMap{&yield_out_def}, &attributes, kMSDomain)
       .SetExecutionProviderType(xp_type);
-  // Add another node after StopOp as StopOp should not be graph output.
+  // Add another node after BreakOp as BreakOp should not be graph output.
   graph.AddNode("node2", "MatMul", "gemm1", ArgMap{&yield_out_def, &input_def}, ArgMap{&gemm_out_def})
       .SetExecutionProviderType(xp_type);
 

@@ -254,12 +254,12 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       stop_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
-      training_graph_info_.ort_stop_op_output_names.emplace_back(grad_name);
+      training_graph_info_.ort_break_op_output_names.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  gradient_graph.AddNode("StopOp", "StopOp", "Stop Op", stop_input_node_args, stop_output_node_args, &attributes,
+  gradient_graph.AddNode("BreakOp", "BreakOp", "Break Op", stop_input_node_args, stop_output_node_args, &attributes,
                          kMSDomain);
 }
 

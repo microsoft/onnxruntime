@@ -9,9 +9,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class StopOp final : public OpKernel {
+class BreakOp final : public OpKernel {
  public:
-  StopOp(const OpKernelInfo& info) : OpKernel(info) {
+  BreakOp(const OpKernelInfo& info) : OpKernel(info) {
     size_t num_inputs = static_cast<size_t>(info.GetInputCount());
     size_t num_outputs = static_cast<size_t>(info.GetOutputCount());
 

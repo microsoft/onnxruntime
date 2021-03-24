@@ -58,7 +58,7 @@ class TrainingAgent(object):
 
     def run_forward(self, iobinding, run_options):
         """
-         Compute the forward subgraph until it hits the Stop Op.
+         Compute the forward subgraph until it hits the Break Op.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
          :param run_options: See :class:`onnxruntime.RunOptions`.
         """
@@ -67,7 +67,7 @@ class TrainingAgent(object):
 
     def run_backward(self, iobinding, run_options, run_id):
         """
-         Resume executing the backward subgraph starting from Stop Op.
+         Resume executing the backward subgraph starting from Break Op.
          :param backward_output_grads: Output gradients for backward.
         """
         self._training_agent.run_backward(iobinding._iobinding, run_options, run_id)

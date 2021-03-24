@@ -297,7 +297,7 @@ class InferenceSession {
   int64_t CreatePartialRun();
 
   /**
-    * Partially train a model until 'stop' operator is reached. The execution can 
+    * Partially train a model until 'break' operator is reached. The execution can 
     * be resumed with this call. 
     * Multiple threads are allowed to run this function; hence its thread-safe.
     * @param run_options Misc. options for graph execution.

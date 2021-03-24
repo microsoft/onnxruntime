@@ -297,14 +297,14 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
   size_t program_counter_end;
   for (program_counter_end = program_counter;
        (program_counter_end < exec_plan_size) &&
-       ((session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "StopOp") ||
+       ((session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "BreakOp") ||
         (program_counter_end == program_counter));
        program_counter_end += 1)
     ;
 
   ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, *frame, program_counter, program_counter_end));
 
-  // Make sure intermediate outputs (stop op node inputs in this case) are ready in the event they are being asynchronously computed.
+  // Make sure intermediate outputs (Break Op node inputs in this case) are ready in the event they are being asynchronously computed.
   if (program_counter_end < exec_plan_size) {
     ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(seq_exec_plan, program_counter_end, session_state, *frame, terminate_flag_, logger));
   }
