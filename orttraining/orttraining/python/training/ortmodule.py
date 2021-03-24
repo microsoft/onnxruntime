@@ -181,7 +181,8 @@ class ORTModule(torch.nn.Module):
 
                     # Run and return module outputs.
                     forward_outputs, run_id = self._training_session.run_forward(training_io_binding, run_options)
-                    user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+                    user_outputs = tuple(_ortvalue_to_torch_tensor(
+                        forward_output) for forward_output in forward_outputs)
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
