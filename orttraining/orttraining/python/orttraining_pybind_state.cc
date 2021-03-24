@@ -65,6 +65,7 @@ struct TrainingParameters {
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
   bool enable_adasum = false;
+  bool propagate_cast_ops = false;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -348,7 +349,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("model_after_graph_transforms_path", &TrainingParameters::model_after_graph_transforms_path)
       .def_readwrite("model_with_gradient_graph_path", &TrainingParameters::model_with_gradient_graph_path)
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
-      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
+      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
+      .def_readwrite("propagate_cast_ops", &TrainingParameters::propagate_cast_ops);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
