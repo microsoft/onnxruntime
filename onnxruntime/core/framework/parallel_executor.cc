@@ -15,7 +15,6 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 #include "core/platform/threadpool.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 

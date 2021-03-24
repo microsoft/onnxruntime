@@ -19,4 +19,6 @@ using InputDefList = std::vector<const onnxruntime::NodeArg*>;
 using OutputDefList = std::vector<const onnxruntime::NodeArg*>;
 
 using NameMLValMap = std::unordered_map<std::string, OrtValue>;
+
+const int64_t DEFAULT_RUN_ID = -1;
 }  // namespace onnxruntime

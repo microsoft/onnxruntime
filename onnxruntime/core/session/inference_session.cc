@@ -1536,7 +1536,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart();
 
-    // REVIEW(codemzs): Need to populate intermediate tensors so they can be validated for partial run.
+    // REVIEW(codemzs): Not sure it makes sense to populate for partial run because
+    // there is a possiblity the shape may not be known for some intermediate tensors. For outputs
+    // we just validate the name which we can do but if incorrect name is passed it will fail
+    // downstream anyways.
     if (run_id == DEFAULT_RUN_ID) {
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));

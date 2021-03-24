@@ -62,7 +62,7 @@ class MemoryInfo;
 
 struct PartialGraphExecutionManager {
   OrtMutex lock_;
-  std::map<int64_t, std::pair<std::unique_ptr<ExecutionFrame>, size_t>> graph_runs_;
+  std::map<int64_t, std::pair<std::shared_ptr<onnxruntime::ExecutionFrame>, size_t>> graph_runs_;
   std::vector<int64_t> available_run_ids_;
   int64_t graph_runs_counter_;
   std::unordered_set<int64_t> to_be_executed_runs_;
@@ -112,7 +112,7 @@ struct PartialGraphExecutionManager {
     graph_runs_.erase(it);
   }
 
-  void PreparePartialRun(std::unique_ptr<ExecutionFrame> frame, int64_t run_id, size_t program_counter) {
+  void PreparePartialRun(std::shared_ptr<ExecutionFrame> frame, int64_t run_id, size_t program_counter) {
     std::lock_guard<OrtMutex> lock(lock_);
     auto it = graph_runs_.find(run_id);
 
@@ -124,10 +124,10 @@ struct PartialGraphExecutionManager {
 
     to_be_executed_runs_.erase(it_to_be_executed);
 
-    graph_runs_.insert(std::make_pair(run_id, std::make_pair(std::move(frame), program_counter)));
+    graph_runs_.insert(std::make_pair(run_id, std::make_pair(frame, program_counter)));
   }
 
-  std::pair<std::unique_ptr<onnxruntime::ExecutionFrame>, size_t>& GetPartialRun(int64_t run_id) {
+  std::pair<std::shared_ptr<onnxruntime::ExecutionFrame>, size_t> GetPartialRun(int64_t run_id) {
     std::lock_guard<OrtMutex> lock(lock_);
     auto it = graph_runs_.find(run_id);
 

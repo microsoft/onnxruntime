@@ -45,8 +45,7 @@ class IExecutor {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger,
                          int64_t run_id) {
-    //REVIEW(codemzs): Get rid of this "0".
-    if (run_id >= 0) {
+    if (run_id > DEFAULT_RUN_ID) {
       return ExecutePartial(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, run_id);
     } else {
       return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);

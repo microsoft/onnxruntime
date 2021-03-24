@@ -277,23 +277,20 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   const auto exec_plan_size = exec_plan_vec.size();
-  ExecutionFrame* frame;
+  std::shared_ptr<ExecutionFrame> frame = nullptr;
   std::map<int64_t, std::pair<std::unique_ptr<onnxruntime::ExecutionFrame>, size_t>>::iterator it;
   size_t program_counter = 0;
   //REVIEW(codemzs): We can get rid of this const cast by basically making partial graph exec manager APIs as SessionState.
   PartialGraphExecutionManager& partial_graph_runs_manager = const_cast<SessionState&>(session_state).GetPartialGraphExecutionManager();
   if (partial_graph_runs_manager.IsToBeExecutedRunId(run_id)) {
-    auto p_frame = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                            fetch_allocators, session_state);
-
-    frame = p_frame.get();
-    partial_graph_runs_manager.PreparePartialRun(std::move(p_frame), run_id, program_counter);
+    frame = std::shared_ptr<ExecutionFrame>(new ExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state));
+    partial_graph_runs_manager.PreparePartialRun(frame, run_id, program_counter);
   } else {
-    auto& run = partial_graph_runs_manager.GetPartialRun(run_id);
+    auto run = partial_graph_runs_manager.GetPartialRun(run_id);
     (run.first)->UpdateFeeds(feed_mlvalue_idxs, feeds);
     (run.first)->UpdateFetches(fetch_mlvalue_idxs, fetches);
     program_counter = run.second;
-    frame = (run.first).get();
+    frame = run.first;
   }
 
   // Determine partial graph execution start and end nodes.
