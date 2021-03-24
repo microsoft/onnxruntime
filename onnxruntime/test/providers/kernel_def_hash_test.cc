@@ -11,6 +11,8 @@
  * If you are seeing a test failure from one of these tests, it is likely that
  * some kernel definition changed in a way that updated its hash value.
  * This is what we want to catch! Please update the kernel definition.
+ * If adding more supported types to an existing kernel definition, consider
+ * using KernelDefBuilder::FixedTypeConstraintForHash().
  *
  * It is also possible that you have added a new kernel definition and are
  * seeing a message from one of these tests about updating the expected data.
