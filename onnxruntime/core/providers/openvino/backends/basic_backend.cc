@@ -45,7 +45,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         else {
             model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
         }
-        if(global_context_.blob_dump_path == "") {
+        if(global_context_.blob_dump_path == "" || global_context_.blob_dump_path == "\"" || global_context_.blob_dump_path.empty()) {
           ov_compiled_blobs_dir = openvino_ep::backend_utils::GetCurrentWorkingDir() + "/ov_compiled_blobs/";
         } else {
           ov_compiled_blobs_dir = global_context_.blob_dump_path + "/ov_compiled_blobs";
@@ -56,7 +56,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         else {
           CreateDirectory(ov_compiled_blobs_dir);
         }
-        blob_path.open("ov_compiled_blobs/" + model_blob_name);
+        blob_path.open(ov_compiled_blobs_dir + "/" + model_blob_name);
         if (!blob_path.is_open()) {
             LOGS_DEFAULT(INFO) << log_tag << "Device specific Compiled blob doesn't exist for this model";
         } else {
