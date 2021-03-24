@@ -38,19 +38,19 @@ namespace onnxruntime {
 namespace concurrency {
 
 #if !defined(ORT_MINIMAL_BUILD)
-ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
+ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_pool_name) : 
     num_threads_(num_threads) {
   child_thread_stats_.assign(num_threads, {});
-  if (threal_pool_name) {
+  if (thread_pool_name) {
 #ifdef _WIN32
     using convert_type = std::codecvt_utf8<wchar_t>;
     std::wstring_convert<convert_type, wchar_t> converter;
-    threal_pool_name_ = converter.to_bytes(threal_pool_name);
+    thread_pool_name_ = converter.to_bytes(thread_pool_name);
 #else
-    threal_pool_name_ = threal_pool_name;
+    thread_pool_name_ = thread_pool_name;
 #endif
   } else {
-    threal_pool_name_ = "unnamed_thread_pool";
+    thread_pool_name_ = "unnamed_thread_pool";
   }
 }
 
@@ -75,7 +75,7 @@ std::string ThreadPoolProfiler::Stop() {
   std::stringstream ss;
   ss << "{\"main_thread\": {"
      << "\"thread_pool_name\": \""
-     << threal_pool_name_ << "\", "
+     << thread_pool_name_ << "\", "
      << GetMainThreadStat().Reset()
      << "}, \"sub_threads\": {"
      << DumpChildThreadStat()

@@ -247,7 +247,7 @@ class ThreadPoolProfiler {
     PaddingToAvoidFalseSharing padding_; //to prevent false sharing
   };
   std::vector<ChildThreadStat> child_thread_stats_;
-  std::string threal_pool_name_;
+  std::string thread_pool_name_;
 };
 #endif
 
