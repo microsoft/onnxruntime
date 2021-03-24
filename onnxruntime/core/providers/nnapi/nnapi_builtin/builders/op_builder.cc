@@ -702,7 +702,7 @@ Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initialize
 
   scale = GetQuantizationScale(initializers, node, scale_idx);
   zero_point = 0;
-  if (node.InputDefs().size() > 2) {
+  if (node.InputDefs().size() > zero_point_idx) {
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
   }
 

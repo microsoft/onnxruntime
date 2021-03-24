@@ -182,7 +182,7 @@ static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInp
 
 static Status GetInputDataType(
     const InitializedTensorSet& initializers,
-    const std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs,
+    const std::unordered_map<std::string, std::vector<const Node*>>& all_quantized_op_inputs,
     const std::string& name, int32_t data_type, const Shape& shape,
     OperandType& operand_type) {
   Type type = Type::TENSOR_FLOAT32;
