@@ -238,7 +238,7 @@ class ORTModule(torch.nn.Module):
 
                     # Run and get results
                     run_id = ctx.run_id
-                    _create_backward_iobinding(self._training_backward_io_binding, contiguous_grad_outputs, self._onnx_training, self._device, self._onnx_graphs_info.ort_yield_op_output_names)
+                    _create_backward_iobinding(self._training_backward_io_binding, contiguous_grad_outputs, self._onnx_training, self._device, self._onnx_graphs_info.ort_stop_op_output_names)
                     self._training_session.run_backward(self._training_backward_io_binding, self._run_options, np.int64(run_id))
                     backward_outputs = self._training_backward_io_binding.get_outputs()
 

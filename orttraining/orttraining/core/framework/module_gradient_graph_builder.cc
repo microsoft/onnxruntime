@@ -215,7 +215,7 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
 
   NodeAttributes attributes{};
 
-  // YieldOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
+  // StopOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
   const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
   if (non_differentiable_indices.size() > 0) {
     ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
@@ -228,19 +228,19 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
   }
 
-  // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
+  // StopOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
   // We need this info to set make TypeAndShapeInferenceFunction work properly.
   ONNX_NAMESPACE::AttributeProto full_shape_outputs;
   const std::string full_shape_outputs_name = "full_shape_outputs";
   full_shape_outputs.set_name(full_shape_outputs_name);
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
-  std::vector<NodeArg*> yield_input_node_args;
-  std::vector<NodeArg*> yield_output_node_args;
+  std::vector<NodeArg*> stop_input_node_args;
+  std::vector<NodeArg*> stop_output_node_args;
   training_graph_info_.output_grad_indices_require_full_shape.clear();
   for (size_t i = 0; i < training_graph_info_.user_output_names.size(); i++) {
     std::string name = training_graph_info_.user_output_names[i];
-    yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+    stop_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
     std::string grad_name = GradientBuilderBase::GradientName(name);
     if (internal_output_grad_names.find(grad_name) != internal_output_grad_names.end()) {
       grad_name = GradientBuilderBase::ExternalOutputName(grad_name);
@@ -253,13 +253,13 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     }
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
-      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
-      training_graph_info_.ort_yield_op_output_names.emplace_back(grad_name);
+      stop_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      training_graph_info_.ort_stop_op_output_names.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
+  gradient_graph.AddNode("StopOp", "StopOp", "Stop Op", stop_input_node_args, stop_output_node_args, &attributes,
                          kMSDomain);
 }
 

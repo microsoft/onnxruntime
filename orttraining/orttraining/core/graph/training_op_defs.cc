@@ -2209,11 +2209,11 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(YieldOp)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(StopOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Yield Op.")
+      .SetDoc("Stop Op.")
       .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
