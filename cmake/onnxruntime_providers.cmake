@@ -606,11 +606,6 @@ if (onnxruntime_USE_OPENVINO)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-  set(ov_blob_directory "ov_compiled_blobs")
-  add_custom_command(TARGET onnxruntime_providers_openvino PRE_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E make_directory
-		                $<TARGET_FILE_DIR:onnxruntime_providers_openvino>/${ov_blob_directory})
-
 endif()
 
 if (onnxruntime_USE_COREML)

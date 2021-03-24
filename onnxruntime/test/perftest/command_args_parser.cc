@@ -60,7 +60,7 @@ namespace perftest {
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_vpu_fast_compile]: Optionally enabled to speeds up the model's compilation on VPU device targets.\n"
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
-      "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists. currently this feature is supported only on Linux and with MyriadX(VPU) device.\n"
+      "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists. currently this feature is supported on MyriadX(VPU) hardware device target.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 use_compiled_network|true\"\n"
       "\t    [TensorRT only] [use_trt_options]: Overrides TensorRT environment variables (if any) with following settings at runtime.\n"		  

@@ -16,7 +16,6 @@
 #include "core/providers/shared_library/provider_api.h"
 
 #include "backend_utils.h"
-
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
@@ -51,6 +50,49 @@ bool UseCompiledNetwork() {
   return (std::getenv("OV_USE_COMPILED_NETWORK") != nullptr);
 #endif
 }
+
+std::string GetCurrentWorkingDir() {
+  std::string curr_dir;
+  ORT_UNUSED_PARAMETER(curr_dir);
+  char buff[FILENAME_MAX];
+  curr_dir = GetCurrentDir(buff, FILENAME_MAX);
+  std::string current_working_dir(buff);
+  return current_working_dir;
+}
+
+bool IsDirExists(const std::string& pathname) {
+struct stat info;
+if( stat( pathname.c_str(), &info ) != 0 ) {
+    LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
+	  return false;
+} else if( info.st_mode & S_IFDIR ) {
+    LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
+	  return true;
+} else {
+    LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
+}
+  return false;
+}
+
+void CreateDirectory(const std::string& ov_compiled_blobs_dir) {
+  LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory doesn't exist at the executable path, so creating one";
+#if defined(_WIN32)
+  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) { // Creating a directory 
+	  LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
+  } else {
+    LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
+    throw std::runtime_error("Could not create the directory");
+  }
+#else
+  if (mkdir(ov_compiled_blobs_dir.c_str(), 0777) == 0) { // Creating a directory
+    LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
+  } else {
+    LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
+    throw std::runtime_error("Could not create the directory");
+  }
+#endif
+}
+
 struct static_cast_int64 {
   template <typename T1>  // T1 models type statically convertible to T
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }

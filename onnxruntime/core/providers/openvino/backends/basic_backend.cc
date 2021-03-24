@@ -32,6 +32,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
  bool import_blob_status = false;
  std::string model_blob_name;
  std::ifstream blob_path;
+
  if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
         std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
@@ -42,6 +43,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         }
         else {
             model_blob_name = global_context_.onnx_model_name + "_" + "op_v_" + std::to_string(global_context_.onnx_opset_version) + "_" + model_name.substr(0,model_extension_index) + "_" + hw_target + "_" + subgraph_context_.subgraph_name + "_ov_" + "partially" + ".blob";
+        }
+        std::string ov_compiled_blobs_dir = openvino_ep::backend_utils::GetCurrentWorkingDir() + "/ov_compiled_blobs";
+        if(openvino_ep::backend_utils::IsDirExists(ov_compiled_blobs_dir)) {
+          LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory already exists at the executable path";
+        }
+        else {
+          CreateDirectory(ov_compiled_blobs_dir);
         }
         blob_path.open("ov_compiled_blobs/" + model_blob_name);
         if (!blob_path.is_open()) {
