@@ -204,9 +204,8 @@ class ORTTrainer(object):
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
         self._load_state_dict = None
-        self._session_option = session_option;
-        self._provider_options = provider_options;
-        self._init_session(provider_options=self._provider_options)
+        self._init_session(provider_options=self.options.provider_options,
+                           session_options=self.options.provider_options)
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -737,9 +736,11 @@ class ORTTrainer(object):
             optimizer_state_dict = self._load_state_dict()
 
         self._init_session(optimizer_state_dict,
-                           provider_options=self._provider_options)
+                           session_options=self.options.session_options,
+                           provider_options=self.options.provider_options)
 
     def _init_session(self, optimizer_state_dict={},
+                      session_options=None
                       provider_options=None):
         if self._onnx_model is None:
             return
@@ -750,6 +751,7 @@ class ORTTrainer(object):
         # Create training session used by train_step
         # pass all optimizer states to the backend
         self._create_ort_training_session(optimizer_state_dict,
+                                          session_options=session_options, 
                                           provider_options=provider_options)
 
         # Update model description to update dtype when mixed precision is enabled
@@ -1320,7 +1322,8 @@ class ORTTrainer(object):
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
         self._init_session(optimizer_state_dict,
-                           provider_options=self._provider_options)
+                           session_options=self.options.session_options,
+                           provider_options=self.options.provider_options)
 
     def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
         """Persists ORTTrainer state dictionary on disk along with user_dict.
