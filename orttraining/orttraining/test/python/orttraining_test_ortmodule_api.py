@@ -503,7 +503,7 @@ def test_gradient_correctness():
         x = torch.randn(N, D_in, device=device)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
-
+        
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
@@ -544,6 +544,39 @@ def test_multiple_forward_only_calls():
         ort_prediction = ort_model(x)
 
         assert torch.allclose(ort_prediction, pt_prediction)
+
+def test_nesting_forward_backward_calls():
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    # forward1
+    ort_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    pt_x1 = copy.deepcopy(ort_x1)
+    ort_prediction1 = ort_model(ort_x1)
+    pt_prediction1 = pt_model(pt_x1)
+    assert torch.allclose(ort_prediction1, pt_prediction1)
+    ort_loss1 = ort_prediction1.sum()
+    pt_loss1 = pt_prediction1.sum()
+    # forward2
+    ort_x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    pt_x2 = copy.deepcopy(ort_x2)
+    ort_prediction2 = ort_model(ort_x2)
+    ort_loss2 = ort_prediction2.sum()
+    pt_prediction2 = pt_model(pt_x2)
+    pt_loss2 = pt_prediction2.sum()
+    assert torch.allclose(ort_prediction2, pt_prediction2)
+    # backward2
+    ort_loss2.backward()
+    pt_loss2.backward()
+    assert torch.allclose(ort_x2.grad, ort_x2.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    # backward1
+    ort_loss1.backward()
+    pt_loss1.backward()
+    assert torch.allclose(ort_x1.grad, pt_x1.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_overlapping_forward_backward_calls():
     device = 'cuda'
