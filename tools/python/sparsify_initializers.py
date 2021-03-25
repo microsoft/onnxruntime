@@ -12,12 +12,11 @@ import numpy as np
 import sys
 from typing import Tuple, List
 import onnx
-from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
+from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper, mapping
 
 logger = logging.getLogger(__name__)
 
-real_types = set((np.float32, np.float64, np.double))
-
+real_types = set((int(TensorProto.FLOAT), int(TensorProto.DOUBLE)))
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -67,7 +66,7 @@ def convert_tensor_to_sparse(tensor, tolerance):  # type: (TensorProto) -> Tuple
     else:
         for index in range(data_len):
             el = tensor_data[index]
-            if el == 0:
+            if el != 0:
                 values.append(el)
                 indicies.append(index)
                 nnz_count += 1
