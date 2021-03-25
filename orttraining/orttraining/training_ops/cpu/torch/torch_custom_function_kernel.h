@@ -5,6 +5,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/language_interop_ops/pyop/pyop_lib_proxy.h"
+#include "core/torch_custom_function/torch_custom_function_register.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,6 +21,9 @@ class PythonOp final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  ~PythonOp() {
+  }
 
  private:
   // Name of containing class. For example, MyReLU.
