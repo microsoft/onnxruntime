@@ -562,7 +562,7 @@ class ORTTrainer(object):
 
     def _create_ort_training_session(self, 
                                      optimizer_state_dict={}, 
-                                     session_option=None, 
+                                     session_options=None, 
                                      provider_options=None):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
@@ -661,7 +661,7 @@ class ORTTrainer(object):
         ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
 
         # SessionOptions
-        session_options = ort.SessionOptions() if session_option is None else session_option
+        session_options = ort.SessionOptions() if session_options is None else session_options
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
         if (self.options.graph_transformer.attn_dropout_recompute or
             self.options.graph_transformer.gelu_recompute or
