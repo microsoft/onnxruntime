@@ -116,8 +116,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";  
+#ifndef DISABLE_CONTRIB_OPS  
   bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+#endif
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -161,7 +163,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 
-      if (enable_gelu_approximation){
+      if (enable_gelu_approximation) {
+        // Approximaion has side-effect that result is not exactly same. It could be enabled by session option configuration.
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_execution_providers));
       }
 
