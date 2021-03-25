@@ -964,8 +964,10 @@ if (onnxruntime_LINK_LIBATOMIC)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-add_library(custom_op_library SHARED
-                                     ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
+
+find_package(CUDA REQUIRED)
+include_directories("${CUDA_INCLUDE_DIRS}")
+add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
                                      ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.h
                                      ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.cu)
 

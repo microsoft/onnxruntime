@@ -9,8 +9,14 @@
 #include <mutex>
 #include "core/common/common.h"
 
-
 #include "sequence_pooling.h"
+#include <cuda_fp16.h>
+
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+//template <typename T1, typename T2, typename T3>
+//void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
+#endif
 
 static const char* c_OpDomain = "com.microsoft";
 
@@ -174,21 +180,113 @@ struct SequencePoolingKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
-#ifdef USE_CUDA
+
+    float* d_input_data;
+    int64_t* d_senlens_data;
+    float* d_output_data;
+
+    size_t size_input_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input)) * sizeof(float);
+    size_t size_senlens_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(senlens)) * sizeof(int64_t);
+    size_t size_output_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(output)) * sizeof(float);
+
+    cudaMalloc(&d_input_data, size_input_data);
+    cudaMalloc(&d_senlens_data, size_senlens_data);
+    cudaMalloc(&d_output_data, size_output_data);
+
+    cudaMemcpy(d_input_data, input_data, size_input_data, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_senlens_data, senlens_data, size_senlens_data, cudaMemcpyHostToDevice);
+
     SequencePoolingCuda(batch_size,
                         hidden_size,
                         num_sequences,
                         sequence_length_for_split,
-                        input_data,
-                        senlens_data,
-                        output_data);
-#endif
+                        d_input_data,
+                        d_senlens_data,
+                        d_output_data);
+
+    cudaMemcpy(output_data, d_output_data, size_output_data, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_input_data);
+    cudaFree(d_senlens_data);
+    cudaFree(d_output_data);
+
   }
 
  private:
   OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
+
+
+struct SequencePoolingKernel16 {
+  SequencePoolingKernel16(OrtApi api)
+      : api_(api),
+        ort_(api_) {
+  }
+
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    const OrtValue* input = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* senlens = ort_.KernelContext_GetInput(context, 1);
+    const half* input_data = ort_.GetTensorData<half>(input);
+    const int64_t* senlens_data = ort_.GetTensorData<int64_t>(senlens);
+
+    // Setup output
+    OrtTensorDimensions input_dim(ort_, input);
+    OrtTensorDimensions senlens_dim(ort_, senlens);
+
+    int batch_size = input_dim[0];
+    int hidden_size = input_dim[2];
+    int num_sequences = senlens_dim[1];
+    int sequence_length_for_split = input_dim[1];
+
+    std::vector<int64_t> output_dims = input_dim;
+    output_dims[1] = 256;
+
+    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
+    half* output_data = ort_.GetTensorMutableData<half>(output);
+
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+    // Do computation
+
+    half* d_input_data;
+    int64_t* d_senlens_data;
+    half* d_output_data;
+
+    size_t size_input_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input)) * sizeof(half);
+    size_t size_senlens_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(senlens)) * sizeof(int64_t);
+    size_t size_output_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(output)) * sizeof(half);
+
+    cudaMalloc(&d_input_data, size_input_data);
+    cudaMalloc(&d_senlens_data, size_senlens_data);
+    cudaMalloc(&d_output_data, size_output_data);
+
+    cudaMemcpy(d_input_data, input_data, size_input_data, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_senlens_data, senlens_data, size_senlens_data, cudaMemcpyHostToDevice);
+
+    SequencePoolingCuda(batch_size,
+                        hidden_size,
+                        num_sequences,
+                        sequence_length_for_split,
+                        d_input_data,
+                        d_senlens_data,
+                        d_output_data);
+
+    cudaMemcpy(output_data, d_output_data, size_output_data, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_input_data);
+    cudaFree(d_senlens_data);
+    cudaFree(d_output_data);
+
+  }
+
+ private:
+  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
+  Ort::CustomOpApi ort_;
+};
+
 
 struct SequencePooling : Ort::CustomOpBase<SequencePooling, SequencePoolingKernel> {
   void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
@@ -209,6 +307,26 @@ struct SequencePooling : Ort::CustomOpBase<SequencePooling, SequencePoolingKerne
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
 } c_SequencePooling;
+
+struct SequencePooling16 : Ort::CustomOpBase<SequencePooling16, SequencePoolingKernel16> {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+    return new SequencePoolingKernel(api);
+  };
+
+  const char* GetName() const { return "SequencePooling"; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/index) const {
+    if (index == 0) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    }
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+
+} c_SequencePooling16;
 
 // SequencePooling-------------------------------------------
 // SequencePooling-------------------------------------------
@@ -233,7 +351,11 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     return status;
   }
 
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling)) {
+  //if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling)) {
+  //  return status;
+  //}
+
+  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling16)) {
     return status;
   }
 
