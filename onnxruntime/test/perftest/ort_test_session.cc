@@ -8,6 +8,7 @@
 #ifdef _WIN32
 #define strdup _strdup
 #endif
+extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
@@ -61,8 +62,100 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    bool has_trt_options = false;
+    size_t trt_max_workspace_size = 1 << 30;
+    bool trt_fp16_enable = false;
+    bool trt_int8_enable = false;
+    std::string trt_int8_calibration_table_name = "";
+    bool trt_int8_use_native_calibration_table = false;
+
+    #ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    #else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    #endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if(token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0,pos);
+      auto value = token.substr(pos+1);
+      if (key == "has_trt_options") {
+        if(value == "true" || value == "True"){
+          has_trt_options = true;
+        } else if (value == "false" || value == "False") {
+          has_trt_options = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_max_workspace_size") {
+        if(!value.empty()) {
+          trt_max_workspace_size = std::stoull(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number.\n");
+        }
+      } else if (key == "trt_fp16_enable") {
+        if(value == "true" || value == "True"){
+          trt_fp16_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_fp16_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_int8_enable") {
+        if(value == "true" || value == "True"){
+          trt_int8_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_int8_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_int8_calibration_table_name") {
+        if(!value.empty()) {
+          trt_int8_calibration_table_name = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
+        }
+      } else if (key == "trt_int8_use_native_calibration_table") {
+        if(value == "true" || value == "True"){
+          trt_int8_use_native_calibration_table = true;
+        } else if (value == "false" || value == "False") {
+          trt_int8_use_native_calibration_table = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else {
+          ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table'] \n");
+      }
+    }
+    OrtTensorRTProviderOptions tensorrt_options;
+    tensorrt_options.device_id = 0;
+    tensorrt_options.has_user_compute_stream = 0;
+    tensorrt_options.user_compute_stream = nullptr;
+    tensorrt_options.has_trt_options = has_trt_options;
+    tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
+    tensorrt_options.trt_fp16_enable = trt_fp16_enable;
+    tensorrt_options.trt_int8_enable = trt_int8_enable;
+    tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
+    tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
+    session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
+
+    OrtCUDAProviderOptions cuda_options{
+        0,
+        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
+        std::numeric_limits<size_t>::max(),
+        0,
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
+        0,
+        nullptr};
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
@@ -162,6 +255,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions rocm_options{
+        0,
+        0,
+        std::numeric_limits<size_t>::max(),
+        0};
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
+#else
+    ORT_THROW("ROCM is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
@@ -201,6 +305,24 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
   if (performance_test_config.run_config.set_denormal_as_zero)
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
+  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
 
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
@@ -233,7 +355,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1
+      // free dimensions are treated as 1 if not overriden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

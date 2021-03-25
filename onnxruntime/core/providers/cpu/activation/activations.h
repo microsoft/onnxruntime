@@ -14,6 +14,23 @@ namespace onnxruntime {
 namespace functors {
 
 template <typename T>
+struct Celu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
+
+  float Cost() const final {
+    // TODO: Tune the cost
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.cwiseMax(0.0f) + (((T)alpha * ((xm / (T)alpha).exp() - 1)).cwiseMin(0.0f));
+  }
+};
+
+template <typename T>
 struct Elu : public ElementWiseRangedTransform<T> {
   ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
@@ -89,9 +106,9 @@ struct Relu : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
-  ElementWiseRangedTransform<T>* Copy() const { // replace it with a macro. why this?
+  ElementWiseRangedTransform<T>* Copy() const {  // replace it with a macro. why this?
     using T1 = typename std::remove_pointer<decltype(this)>::type;
-    using T2 = typename std::remove_const<T1>::type; //redundant?
+    using T2 = typename std::remove_const<T1>::type;  //redundant?
     return new T2(*this);
   }
   float Cost() const final {
@@ -212,6 +229,7 @@ struct Selu : public ElementWiseRangedTransform<T> {
 
 }  // namespace functors
 
+DEFINE_ELE_KERNEL(Celu);
 DEFINE_ELE_KERNEL(Elu);
 DEFINE_ELE_KERNEL(HardSigmoid);
 DEFINE_ELE_KERNEL(LeakyRelu);

@@ -6,6 +6,9 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
+
+using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
+
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
  *

@@ -22,7 +22,7 @@ namespace openvino_ep {
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
-  BasicBackend(const Provider_ModelProto& model_proto,
+  BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                GlobalContext& global_context,
                const SubGraphContext& subgraph_context);
 

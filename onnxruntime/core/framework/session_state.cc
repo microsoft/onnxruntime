@@ -1004,8 +1004,27 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
+  // Memory pattern tracer allocates all initializers on a single continous
+  // buffer. This has the effect of reducing memory fragementation. 
+  // Further more, NCCL kernels require initializers to be allocated
+  // continously. 
+  //
+  // In inferencing scenarios, however, we often want to pre-process and then
+  // release some initializers. See OpKernel::PrePack(). Letting all initializers
+  // sharing a single buffer makes it hard to release individual ones, leading
+  // to memory waste.
+  //
+  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  //  out of memory error in some training tests. Need to create kernel first,
+  //  and let the kernel tells us whether the initalizer needs to be traced.
+  //
+#if defined(ENABLE_TRAINING)
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+#else
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
+      ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_));
+#endif
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
@@ -1013,7 +1032,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
-          execution_providers_.GetDefaultCpuMemoryInfo(),
+          execution_providers_.GetDefaultCpuAllocator(),
           ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);

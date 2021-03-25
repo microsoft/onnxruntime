@@ -9,11 +9,12 @@ import numpy
 import os
 import torch
 from pathlib import Path
-from transformers import AutoConfig, AutoTokenizer, AutoModel
+from transformers import AutoConfig, AutoTokenizer, AutoModel, LxmertConfig, TransfoXLConfig
 from benchmark_helper import create_onnxruntime_session, Precision
-from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
+from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
 from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES, EXEMPT_MODELS
+from huggingface_models import MODEL_CLASSES
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def restore_torch_functions():
     torch.triu = torch_func["triu"]
 
 
-def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, data_type=numpy.int64):
+def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
 
     inputs = {'input_ids': input_ids}
@@ -53,13 +54,23 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
         segment_ids = numpy.zeros([batch_size, sequence_length], dtype=data_type)
         inputs['token_type_ids'] = segment_ids
 
+    if config.is_encoder_decoder:
+        inputs['decoder_input_ids'] = input_ids
+
+    if isinstance(config, LxmertConfig):
+        inputs["visual_feats"] = numpy.random.randn(1, 1, config.visual_feat_dim).astype(numpy.float32)
+        inputs["visual_pos"] = numpy.random.randn(1, 1, config.visual_pos_dim).astype(numpy.float32)
+    if isinstance(config, TransfoXLConfig):
+        inputs["tf_transfo_xl_model/transformer/pos_emb/einsum/Einsum/inputs_1:0"] = numpy.zeros([config.hidden_size],
+                                                                                                 dtype=numpy.float32)
     return inputs
 
 
 def filter_inputs(inputs, input_names):
     remaining_model_inputs = {}
     for input_name in input_names:
-        remaining_model_inputs[input_name] = inputs[input_name]
+        if input_name in inputs:
+            remaining_model_inputs[input_name] = inputs[input_name]
     return remaining_model_inputs
 
 
@@ -88,7 +99,7 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 
-def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu, fp16):
+def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu, fp16, output_names=None):
     test_session = create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=False)
     if test_session is None:
         logger.error(f"{onnx_model_path} is an invalid ONNX model")
@@ -97,8 +108,8 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
     logger.info(f"{onnx_model_path} is a valid ONNX model")
 
     # Compare the inference result with PyTorch or Tensorflow
-    example_ort_inputs = {k: t.cpu().numpy() for k, t in example_inputs.items()}
-    example_ort_outputs = test_session.run(None, example_ort_inputs)
+    example_ort_inputs = {k: t.numpy() for k, t in example_inputs.items()}
+    example_ort_outputs = test_session.run(output_names, example_ort_inputs)
     if len(example_outputs_flatten) != len(example_ort_outputs):
         logger.error(
             f"Number of output tensors expected {len(example_outputs_flatten)}, got {len(example_ort_outputs)}")
@@ -111,7 +122,7 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
 
         rtol = 5e-02 if fp16 else 1e-4
         atol = 1e-01 if fp16 else 1e-4
-        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=rtol, atol=atol):
+        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu().numpy(), rtol=rtol, atol=atol):
             logger.error(f"Output tensor {i} is not close: rtol={rtol}, atol={atol}")
             return False
 
@@ -195,16 +206,13 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
                                    optimization_options=optimization_options,
                                    use_gpu=use_gpu,
                                    only_onnxruntime=False)
-        if model_type == 'bert_keras':
+        if model_type == 'bert_keras' or model_type == "bert_tf":
             opt_model.use_dynamic_axes()
 
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
-
-        if model_name in EXEMPT_MODELS:
-            use_external_data_format = False
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
@@ -237,7 +245,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
 
     if model_class_name == "GPT2ModelNoPastState":
         if is_tf_model:
-            raise NotImplementedError("TFGPT2ModelNoPastState is currently not supported.")
+            return TFGPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
         else:
             return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
@@ -282,13 +290,27 @@ def load_pt_model_from_tf(model_name):
     return config, model
 
 
-def validate_and_optimize_onnx(model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu,
-                               precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite, config,
-                               model_fusion_statistics, onnx_model_path, example_inputs, example_outputs_flatten):
+def validate_and_optimize_onnx(model_name,
+                               use_external_data_format,
+                               model_type,
+                               onnx_dir,
+                               input_names,
+                               use_gpu,
+                               precision,
+                               optimize_onnx,
+                               validate_onnx,
+                               use_raw_attention_mask,
+                               overwrite,
+                               config,
+                               model_fusion_statistics,
+                               onnx_model_path,
+                               example_inputs,
+                               example_outputs_flatten,
+                               output_names=None):
     is_valid_onnx_model = True
     if validate_onnx:
         is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
-                                                  False)
+                                                  False, output_names)
 
     if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
@@ -300,7 +322,7 @@ def validate_and_optimize_onnx(model_name, use_external_data_format, model_type,
         onnx_model_path = optimized_model_path
         if validate_onnx:
             is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
-                                                      precision == Precision.FLOAT16)
+                                                      precision == Precision.FLOAT16, output_names)
 
         if precision == Precision.INT8:
             logger.info(f"Quantizing model: {onnx_model_path}")
@@ -378,46 +400,88 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
     import tensorflow as tf
     tf.config.set_visible_devices([], 'GPU')
 
-    config, model = load_tf_model(model_name, model_class, cache_dir)
-
-    model._saved_model_inputs_spec = None
-
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+    # Fix "Using pad_token, but it is not set yet" error.
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     max_input_size = tokenizer.max_model_input_sizes[
         model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
+    config, model = load_tf_model(model_name, model_class, cache_dir)
+    model.resize_token_embeddings(len(tokenizer))
 
     example_inputs = tokenizer.encode_plus("This is a sample input",
                                            return_tensors="tf",
                                            max_length=max_input_size,
-                                           pad_to_max_length=True,
+                                           padding="max_length",
                                            truncation=True)
-
     example_inputs = filter_inputs(example_inputs, input_names)
 
-    example_outputs = model(example_inputs, training=False).to_tuple()
+    if config.is_encoder_decoder:
+        example_inputs["decoder_input_ids"] = tokenizer.encode_plus("This is a sample input",
+                                                                    return_tensors="tf",
+                                                                    max_length=max_input_size,
+                                                                    padding="max_length",
+                                                                    truncation=True).input_ids
+    if model_name == "unc-nlp/lxmert-base-uncased":
+        example_inputs["visual_feats"] = tf.random.normal([1, 1, config.visual_feat_dim])
+        example_inputs["visual_pos"] = tf.random.normal([1, 1, config.visual_pos_dim])
 
-    # Flatten is needed for gpt2 and distilgpt2.
-    example_outputs_flatten = flatten(example_outputs)
-    example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
+    try:
+        # Use no past state for these models
+        if config.use_cache:
+            config.use_cache = False
+    except:
+        pass
+
+    example_outputs = model(example_inputs, training=False)
+    output_names = None
+    
+    # For xlnet models, only compare the last_hidden_state output. 
+    if model_name == "xlnet-base-cased" or model_name == "xlnet-large-cased":
+        output_names = ["last_hidden_state"]
+        example_outputs = example_outputs["last_hidden_state"]
+
+    # Flatten is needed for gpt2 and distilgpt2. Output name sorting is needed for tf2onnx outputs to match onnx outputs. 
+    from tensorflow.python.util import nest
+    example_outputs_flatten = nest.flatten(example_outputs)
 
     onnx_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), False, use_gpu, precision, False,
                                          use_external_data_format)
+    tf_internal_model_path = onnx_model_path[:-5] if use_external_data_format else onnx_model_path
 
-    if overwrite or not os.path.exists(onnx_model_path):
+    if overwrite or not os.path.exists(tf_internal_model_path):
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
-        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+        if not use_external_data_format:
+            Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        import keras2onnx
-        onnx_model = keras2onnx.convert_keras(model, model.name, target_opset=opset_version)
-        keras2onnx.save_model(onnx_model, onnx_model_path)
+        import tf2onnx, zipfile
+        tf2onnx.logging.set_level(tf2onnx.logging.ERROR)
+        specs = []
+        for name, value in example_inputs.items():
+            dims = [None] * len(value.shape)
+            specs.append(tf.TensorSpec(tuple(dims), value.dtype, name=name))
+        _, _ = tf2onnx.convert.from_keras(model,
+                                          input_signature=tuple(specs),
+                                          opset=opset_version,
+                                          large_model=use_external_data_format,
+                                          output_path=tf_internal_model_path)
+        if use_external_data_format:
+            # need to unpack the zip for run_onnxruntime()
+            with zipfile.ZipFile(tf_internal_model_path, 'r') as z:
+                z.extractall(os.path.dirname(tf_internal_model_path))
+            tf_internal_model_path = os.path.join(os.path.dirname(tf_internal_model_path), "__MODEL_PROTO.onnx")
+            if os.path.exists(onnx_model_path):
+                os.remove(onnx_model_path)
+            os.rename(tf_internal_model_path, onnx_model_path)
+
     else:
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
-    model_type = model_type + '_keras'
-
+    model_type = model_type + '_tf'
     onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
         model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimize_onnx,
         validate_onnx, use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path,
-        example_inputs, example_outputs_flatten)
+        example_inputs, example_outputs_flatten, output_names)
 
     return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
