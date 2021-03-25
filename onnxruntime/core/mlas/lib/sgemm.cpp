@@ -32,8 +32,8 @@ Abstract:
 //
 
 struct MLAS_SGEMM_WORK_BLOCK {
-    int32_t ThreadCountM;
-    int32_t ThreadCountN;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
     CBLAS_TRANSPOSE TransA;
     CBLAS_TRANSPOSE TransB;
     size_t M;
@@ -491,7 +491,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE SgemmTransposePackB16x4Routine =
+        MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
             MlasPlatform.TransposePackB16x4Routine;
 
         while (x >= 4) {
@@ -910,7 +910,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_KERNEL_M1_ROUTINE SgemmKernelM1Routine;
+        MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransB == CblasNoTrans) {
             SgemmKernelM1Routine = MlasPlatform.KernelM1Routine;
@@ -945,7 +945,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64)
 
-        PMLAS_SGEMM_KERNEL_M1_ROUTINE SgemmKernelM1Routine;
+        MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransA == CblasNoTrans) {
             SgemmKernelM1Routine = MlasPlatform.KernelM1TransposeBRoutine;
@@ -1206,7 +1206,7 @@ Return Value:
 void
 MlasSgemmThreaded(
     void* Context,
-    int32_t ThreadId
+    ptrdiff_t ThreadId
     )
 /*++
 
@@ -1229,11 +1229,11 @@ Return Value:
 {
     const auto* WorkBlock = (MLAS_SGEMM_WORK_BLOCK*)Context;
 
-    const int32_t ThreadCountM = WorkBlock->ThreadCountM;
-    const int32_t ThreadCountN = WorkBlock->ThreadCountN;
+    const ptrdiff_t ThreadCountM = WorkBlock->ThreadCountM;
+    const ptrdiff_t ThreadCountN = WorkBlock->ThreadCountN;
 
-    const int32_t ThreadIdM = ThreadId / ThreadCountN;
-    const int32_t ThreadIdN = ThreadId % ThreadCountN;
+    const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
+    const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
 
     //
     // Partition the operation along the M dimension.
@@ -1331,15 +1331,15 @@ Return Value:
 
     const double Complexity = double(M) * double(N) * double(K);
 
-    int32_t TargetThreadCount;
+    ptrdiff_t TargetThreadCount;
 
     if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-        TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
         TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }
 
-    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -1358,7 +1358,7 @@ Return Value:
             MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
 
         if (size_t(TargetThreadCount) > BlockedN) {
-            TargetThreadCount = int32_t(BlockedN);
+            TargetThreadCount = ptrdiff_t(BlockedN);
         }
 
         WorkBlock->ThreadCountM = 1;
@@ -1367,7 +1367,7 @@ Return Value:
     } else {
 
         if (size_t(TargetThreadCount) > M) {
-            TargetThreadCount = int32_t(M);
+            TargetThreadCount = ptrdiff_t(M);
         }
 
         WorkBlock->ThreadCountM = TargetThreadCount;

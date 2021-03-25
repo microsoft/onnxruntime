@@ -38,3 +38,6 @@ Support for sparse initializers. Sparse intializers are stored within ORT FlatBu
 
 ## Version 3. 
 Support for storing `graph_doc_string` field in Model (ORT FlatBuffers format).
+
+## Version 4.
+Update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE).

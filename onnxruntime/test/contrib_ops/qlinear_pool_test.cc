@@ -126,61 +126,70 @@ void RunQLinearAveragePoolNchwU8(
     const std::vector<int64_t> strides,
     const std::vector<int64_t> pads,
     const int64_t count_include_pad = 0) {
-  float x_scale = 1.0f / 255.0f;
-  uint8_t x_zero_point = 128;
-  RandomValueGenerator random{};
-  std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-  std::vector<uint8_t> x_data(x_data_fp32.size());
-  for (size_t i = 0; i < x_data.size(); ++i) {
-    x_data[i] = quantize_u8(x_data_fp32[i], x_scale, x_zero_point);
-  }
-
-  float y_scale = 1.0f / 255.0f;
-  uint8_t y_zero_point = 100;
-  int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
-  std::vector<uint8_t> y_data(y_size);
-  CalculateAvgPoolNchwU8(
-      x_data.data(), x_dims, x_scale, x_zero_point,
-      y_data.data(), y_dims, y_scale, y_zero_point,
-      kernel_shape, strides, pads, count_include_pad);
-
-  OpTester test("QLinearAveragePool", 1, onnxruntime::kMSDomain);
-
-  test.AddAttribute("auto_pad", "");
-  test.AddAttribute("strides", strides);
-  test.AddAttribute("pads", pads);
-  test.AddAttribute("kernel_shape", kernel_shape);
-  test.AddAttribute("count_include_pad", count_include_pad);
-
-  test.AddInput<uint8_t>("X", x_dims, x_data);
-  test.AddInput<float>("x_scale", {}, {x_scale});
-  test.AddInput<uint8_t>("x_zero_point", {}, {x_zero_point});
-  test.AddInput<float>("y_scale", {}, {y_scale});
-  test.AddInput<uint8_t>("y_zero_point", {}, {y_zero_point});
-  test.AddOutput<uint8_t>("Y", y_dims, y_data);
-
-  auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-    const OrtValue& ort_value = fetches[0];
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+  auto run_test = [&](bool only_x_not_initializer, bool x_y_same_zero_point) {
+    float x_scale = 1.0f / 255.0f;
+    uint8_t x_zero_point = 128;
+    RandomValueGenerator random{};
+    std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
+    std::vector<uint8_t> x_data(x_data_fp32.size());
+    for (size_t i = 0; i < x_data.size(); ++i) {
+      x_data[i] = quantize_u8(x_data_fp32[i], x_scale, x_zero_point);
     }
 
-    auto y_shape = TensorShape(y_dims);
-    const Tensor& output_tensor = ort_value.Get<Tensor>();
-    ORT_ENFORCE(y_shape == output_tensor.Shape(),
-                "Expected output shape [" + y_shape.ToString() + "] did not match run output shape [" +
-                    output_tensor.Shape().ToString() + "] for Y @" + provider_type);
-    auto* output = output_tensor.Data<uint8_t>();
-    auto size = static_cast<int>(output_tensor.Shape().Size());
-    for (int i = 0; i < size; ++i) {
-      int diff = abs(y_data[i] - output[i]);
-      EXPECT_LE(diff, 1) << "i:" << i << " expected:" << y_data[i] << " " << (int)y_data[i]
-                         << ", got:" << output[i] << " " << (int)output[i] << ", provider_type: " << provider_type;
-    }
+    float y_scale = 1.0f / 255.0f;
+    uint8_t y_zero_point = x_y_same_zero_point ? x_zero_point : 100;
+    int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
+    std::vector<uint8_t> y_data(y_size);
+    CalculateAvgPoolNchwU8(
+        x_data.data(), x_dims, x_scale, x_zero_point,
+        y_data.data(), y_dims, y_scale, y_zero_point,
+        kernel_shape, strides, pads, count_include_pad);
+
+    OpTester test("QLinearAveragePool", 1, onnxruntime::kMSDomain);
+
+    test.AddAttribute("auto_pad", "");
+    test.AddAttribute("strides", strides);
+    test.AddAttribute("pads", pads);
+    test.AddAttribute("kernel_shape", kernel_shape);
+    test.AddAttribute("count_include_pad", count_include_pad);
+
+    test.AddInput<uint8_t>("X", x_dims, x_data);
+    test.AddInput<float>("x_scale", {}, {x_scale}, only_x_not_initializer);
+    test.AddInput<uint8_t>("x_zero_point", {}, {x_zero_point}, only_x_not_initializer);
+    test.AddInput<float>("y_scale", {}, {y_scale}, only_x_not_initializer);
+    test.AddInput<uint8_t>("y_zero_point", {}, {y_zero_point}, only_x_not_initializer);
+    test.AddOutput<uint8_t>("Y", y_dims, y_data);
+
+    auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+      const OrtValue& ort_value = fetches[0];
+      if (ort_value.Fence()) {
+        ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+      }
+
+      auto y_shape = TensorShape(y_dims);
+      const Tensor& output_tensor = ort_value.Get<Tensor>();
+      ORT_ENFORCE(y_shape == output_tensor.Shape(),
+                  "Expected output shape [" + y_shape.ToString() + "] did not match run output shape [" +
+                      output_tensor.Shape().ToString() + "] for Y @" + provider_type);
+      auto* output = output_tensor.Data<uint8_t>();
+      auto size = static_cast<int>(output_tensor.Shape().Size());
+      for (int i = 0; i < size; ++i) {
+        int diff = abs(y_data[i] - output[i]);
+        EXPECT_LE(diff, 1) << "i:" << i << " expected:" << y_data[i] << " " << (int)y_data[i]
+                           << ", got:" << output[i] << " " << (int)output[i] << ", provider_type: " << provider_type;
+      }
+    };
+    test.SetCustomOutputVerifier(q8checker);
+
+    test.Run();
   };
-  test.SetCustomOutputVerifier(q8checker);
 
-  test.Run();
+  run_test(false /* only_x_not_initializer */, false /* x_y_same_zero_point */);
+
+  // NNAPI will require all inputs except X to be initializers
+  // Also NNAPI average pool will require output has the same scale and zero point as input
+  run_test(true /* only_x_not_initializer */, false /* x_y_same_zero_point */);
+  run_test(true /* only_x_not_initializer */, true /* x_y_same_zero_point */);
 }
 
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel) {

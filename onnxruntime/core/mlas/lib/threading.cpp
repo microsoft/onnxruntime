@@ -18,9 +18,9 @@ Abstract:
 
 void
 MlasExecuteThreaded(
-    PMLAS_THREADED_ROUTINE ThreadedRoutine,
+    MLAS_THREADED_ROUTINE* ThreadedRoutine,
     void* Context,
-    int32_t Iterations,
+    ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     )
 {
@@ -46,7 +46,7 @@ MlasExecuteThreaded(
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
-    for (int32_t tid = 0; tid < Iterations; tid++) {
+    for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
         ThreadedRoutine(Context, tid);
     }
 #else
@@ -55,7 +55,7 @@ MlasExecuteThreaded(
     //
 
     MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, [&](ptrdiff_t tid) {
-        ThreadedRoutine(Context, static_cast<int>(tid));
+        ThreadedRoutine(Context, tid);
     });
 #endif
 }
