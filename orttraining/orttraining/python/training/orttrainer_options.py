@@ -280,13 +280,12 @@ class ORTTrainerOptions(object):
                 },
                 'provider_options':{
                     'type': 'dict',
-                    'default_setter': lambda _: {},
+                    'default': {},
                     'required': False,
-                    'allow_unknown': True,
                     'schema': {}
                 },
                 'session_options': {
-                    'type': 'session_options',
+                    'type': 'SessionOptions',
                     'nullable': True,
                     'default': None
                 },
