@@ -2355,7 +2355,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         if (hasInputShape(ctx, 1)) {
           auto& input_shape = getInputShape(ctx, 1);
           for (int32_t i = 0; i < input_shape.dim_size(); i++) {
-            Dim input_dim_i = input_shape.dim(i);
+            input_dim_i = input_shape.dim(i);
             *outputs_shape.add_dim() = input_dim_i;
           }
         }
