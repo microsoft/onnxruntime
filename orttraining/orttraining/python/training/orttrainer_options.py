@@ -277,7 +277,19 @@ class ORTTrainerOptions(object):
                             'default' : True
                         }
                     }
-                }
+                },
+                'provider_options':{
+                    'type': 'dict',
+                    'default_setter': lambda _: {},
+                    'required': False,
+                    'allow_unknown': True,
+                    'schema': {}
+                },
+                'session_options': {
+                    'type': 'session_options',
+                    'nullable': True,
+                    'default': None
+                },
              }
 
     Keyword arguments:
@@ -383,6 +395,11 @@ class ORTTrainerOptions(object):
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        session_options (onnxruntime.SessionOptions):
+            The SessionOptions instance that TrainingSession will use.
+        provider_options (dict): 
+            The provider_options for customized execution providers. it is dict map from EP name to 
+            a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
         .. code-block:: python
