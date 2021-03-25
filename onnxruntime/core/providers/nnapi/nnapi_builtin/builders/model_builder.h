@@ -149,6 +149,10 @@ class ModelBuilder {
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
 
+  // Contains all quantized operators' input and the node(s) using the input
+  // In the form of {input_name, [node(s) using the input]}
+  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs_;
+
   std::unordered_set<std::string> unique_names_;
 
   TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};

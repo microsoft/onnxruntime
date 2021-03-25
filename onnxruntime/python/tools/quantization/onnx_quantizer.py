@@ -573,9 +573,16 @@ class ONNXQuantizer:
         packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         self.model.initializer().extend([packed_bias_scale_initializer])
 
+        # update zero initializer
+        quantized_bias_zp_name = quantized_bias_name + "_zero_point"
+        bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
+        packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
+        self.model.initializer().extend([packed_bias_zp_initializer])
+
         assert (bias_name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name, "",
-                                         QuantizedValueType.Initializer, 0 if bias_scale_data.size > 1 else None)
+        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name,
+                                         quantized_bias_zp_name, QuantizedValueType.Initializer,
+                                         0 if bias_scale_data.size > 1 else None)
         self.quantized_value_map[bias_name] = quantized_value
 
         return quantized_bias_name
