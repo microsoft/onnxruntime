@@ -105,6 +105,7 @@ struct KernelOneCuda {
     // Do computation
 #ifdef USE_CUDA
     cuda_add(size, out, X, Y, 0);
+    cudaDeviceSynchronize();
 #else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
