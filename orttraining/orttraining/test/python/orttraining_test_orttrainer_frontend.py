@@ -100,7 +100,9 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'extra_postprocess': None,
             'onnx_opset_version' : 12,
             'enable_onnx_contrib_ops': True,
-        }
+        },
+        'provider_options':{},
+        'session_options': None,
     }
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
