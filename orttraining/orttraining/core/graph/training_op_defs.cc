@@ -1120,54 +1120,6 @@ Example 4:
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc("BiasDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
-      .AllowUncheckedAttributes()
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
-      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
-      .Input(3, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Input(4, "training_mode",
-             "If set to true then it indicates dropout is being used for "
-             "training. It is an optional value hence unless specified explicitly, it is false. "
-             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
-             "will be dropped from the input data and if mask is requested as output it will contain "
-             "all ones.",
-             "T2",
-             OpSchema::Optional)
-      .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain output 'mask' types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        if (ctx.getNumOutputs() == 2) {
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-          if (hasNInputShapes(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 0, 1);
-          }
-        }
-      });
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

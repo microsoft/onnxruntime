@@ -3,22 +3,30 @@
 
 #pragma once
 
+#include "gsl/gsl"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "orttraining/training_ops/cuda/nn/dropout_impl.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/framework/random_generator.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-class DropoutGrad final : public CudaKernel {
- public:
-  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info) {
-  }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  static constexpr float default_ratio_ = 0.5f;
-};
+template <typename T>
+void BiasDropoutKernelImpl(
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
+    const int64_t N,
+    const fast_divmod fdm_dim,
+    const float ratio,
+    PhiloxGenerator& generator,
+    const T* X_data,
+    const T* bias_data,
+    const T* residual_data,
+    T* Y_data,
+    bool* mask_data);
 
 class BiasDropout final : public CudaKernel {
  public:
@@ -37,4 +45,5 @@ class BiasDropout final : public CudaKernel {
 };
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
