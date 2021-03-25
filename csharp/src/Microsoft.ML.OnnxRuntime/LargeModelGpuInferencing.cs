@@ -83,11 +83,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateResponseBatch(out handle));
         }
 
-        internal ResponseBatch(IntPtr handle)
-    : base(handle, true)
-        {
-        }
-
         public void AddToBatch(string[] outputNames, OrtValue[] outputs, OrtMemoryInfo[] memInfo)
         {
             if (outputs.Length != outputNames.Length)
@@ -113,9 +108,25 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 var outputNamesPinned = NativeOnnxValueHelper.ConvertToUtf8AndPin(outputNames, outputName => outputName, cleanupList);
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddResponseToBatch(handle, (UIntPtr)outputNames.Length,
-                    outputNamesPinned, outputNamesPinned, memInfoHandles));
+                    outputNamesPinned, outputHandles, memInfoHandles));
 
             }
+        }
+
+        public List<OrtValue> GetOutputValues(UIntPtr batchIdx, OrtAllocator allocator)
+        {
+            UIntPtr outputsSize = UIntPtr.Zero;
+            IntPtr outputsHandles = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOutputValues(handle, batchIdx, allocator.Pointer, out outputsHandles,out outputsSize));
+
+            List<OrtValue> outputs = new List<OrtValue>((int)outputsSize);
+            for(int i=0; i<(int)outputsSize; ++i)
+            {
+                outputs.Add(new OrtValue(Marshal.ReadIntPtr(outputsHandles, IntPtr.Size * i)));
+            }
+
+            // TODO: Release ortvalue pointer from native code ?
+            return outputs;
         }
 
         public void Clear()
@@ -168,11 +179,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public ResponseBatch Run(RequestBatch requestBatch, int numSteps)
+        public void Run(RequestBatch requestBatch, ResponseBatch responseBatch, int numSteps)
         {
-            IntPtr responseBatch = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtPipelineSessionRun(handle, requestBatch.Pointer, out responseBatch, numSteps));
-            return new ResponseBatch(responseBatch);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtPipelineSessionRun(handle, requestBatch.Pointer, responseBatch.Pointer, numSteps));
         }
 
         internal IntPtr Pointer

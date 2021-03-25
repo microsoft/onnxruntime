@@ -308,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Run inference with outputs pinned from buffers
                 using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
-                using(var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
+                using (var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
 
@@ -333,7 +333,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
                     byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
-                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer,
                         TensorElementType.Float, longShape, byteSize));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
@@ -393,6 +393,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+        /*
+        [Fact]
+        public void LargeModelGpuInferencing()
+        {
+            RequestBatch requestBatch;
+            ResponseBatch responseBatch;
+            PipelineSession pipelineSession;
+        }
+        */
 
         [Fact]
         public void InferenceSessionManualDisposeAfterUse()
@@ -458,6 +468,57 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Check the profiling's start time has been updated
             Assert.True(ProfilingStartTime != 0);
+        }
+
+        [Fact]
+        public void TestLargeModelGpuInferencing()
+        {
+            var ortCpuMemInfo = OrtMemoryInfo.DefaultInstance;
+            var dims = new long[] { 1, 1, 1 };
+            var dataBuffer = new Int64[] { 50264 };
+            var dataHandle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
+            unsafe
+            {
+                Int64* p = (Int64*)dataHandle.AddrOfPinnedObject();
+                for (int i = 0; i < dataBuffer.Length; ++i)
+                {
+                    *p++ = dataBuffer[i];
+                }
+            }
+            var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(Int64);
+            var ortValue = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Int64,
+                                    dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes);
+            var nullOrtValue = OrtValue.CreateNullOrtValue();
+
+            RequestBatch requestBatch = new RequestBatch();
+
+            int numRequests = 2;
+
+            for (int i = 0; i < numRequests; ++i)
+            {
+                requestBatch.AddToBatch(new string[] { "input1" }, new OrtValue[] { ortValue });
+            }
+
+            ResponseBatch responseBatch = new ResponseBatch();
+            for (int i = 0; i < numRequests; ++i)
+            {
+                responseBatch.AddToBatch(new string[] { "request_1" }, new OrtValue[] { nullOrtValue }, new OrtMemoryInfo[] { ortCpuMemInfo });
+            }
+
+            PipelineSession pipelineSession = new PipelineSession("C:\\Users\\shari\\OneDrive\\Desktop\\gistfile1.json");
+            pipelineSession.Run(requestBatch, responseBatch, 4);
+            for (int i = 0; i < numRequests; ++i)
+            {
+                List<OrtValue> outputs = responseBatch.GetOutputValues((UIntPtr)i, OrtAllocator.DefaultInstance);
+                // TODO 1: Validate output
+                // TODO 2: Release output OrtValues
+            }
+
+            pipelineSession.Dispose();
+
+            requestBatch.Dispose();
+            responseBatch.Dispose();
+            ortValue.Dispose();
         }
 
         [Fact]
@@ -1081,7 +1142,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    if(!FreeLibrary(libraryHandle))
+                    if (!FreeLibrary(libraryHandle))
                     {
                         throw new Exception("Could not unload the provided shared library using its handle");
                     }
@@ -2560,7 +2621,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             T[] typedArr = new T[rawData.Length / elemWidth];
             var typeOf = typeof(T);
-            if(typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
+            if (typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
             {
                 using (var memSrcHandle = new Memory<byte>(rawData).Pin())
                 using (var memDstHandle = new Memory<T>(typedArr).Pin())

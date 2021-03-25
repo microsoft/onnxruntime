@@ -1213,7 +1213,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtPipelineSessionRun(IntPtr /*(OrtPipelineSession*)*/ pipelineSession,
                                                                        IntPtr /*(const OrtRequestBatch*)*/ requestBatch,
-                                                                       out IntPtr /*(OrtResponseBatch*)*/ responseBatch,
+                                                                       IntPtr /*(OrtResponseBatch*)*/ responseBatch,
                                                                        int numSteps);
         public static DOrtPipelineSessionRun OrtPipelineSessionRun;
 
@@ -1245,7 +1245,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetOutputValues(IntPtr /*(const OrtResponseBatch*)*/ responseBatch,
                                                                   UIntPtr /*(size_t)*/ batchIdx,
                                                                   IntPtr /*(OrtAllocator*)*/ allocator,
-                                                                  out IntPtr[] /*(OrtValue***)*/ output,
+                                                                  out IntPtr /*(OrtValue***)*/ output,
                                                                   out UIntPtr /*(size_t*)*/ outputCount);
         public static DOrtGetOutputValues OrtGetOutputValues;
 
