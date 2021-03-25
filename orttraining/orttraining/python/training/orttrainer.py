@@ -201,7 +201,7 @@ class ORTTrainer(object):
         self._training_session = None
         self._load_state_dict = None
         self._init_session(provider_options=self.options._validated_opts['provider_options'],
-                           session_options=self.options.provider_options)
+                           session_options=self.options.session_options)
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -696,7 +696,7 @@ class ORTTrainer(object):
 
                 providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
 
-            return providers        
+            return providers
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
