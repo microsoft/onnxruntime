@@ -95,8 +95,6 @@ class ORTTrainer(object):
             Inputs to the combined PyTorch model are concatenation of the :py:attr:`model`'s input and :py:attr:`loss_fn`'s label input.
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
         options (ORTTrainerOptions, default is None): options for additional features.
-        session_option: the session option instance for training session. if it is None, the default instance will be used.
-        provider_options: a dict that map from provider name to its option, like {'EP1' : {'option1': val1, 'option2': val2, ...}} 
     Example:
 
         .. code-block:: python
@@ -124,9 +122,7 @@ class ORTTrainer(object):
 
     def __init__(self, model, model_desc, optim_config, 
                  loss_fn=None, 
-                 options=None, 
-                 session_option=None,
-                 provider_options=None):
+                 options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
@@ -204,7 +200,7 @@ class ORTTrainer(object):
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
         self._load_state_dict = None
-        self._init_session(provider_options=self.options.provider_options,
+        self._init_session(provider_options=self.options._validated_opts['provider_options'],
                            session_options=self.options.provider_options)
 
     def eval_step(self, *args, **kwargs):
@@ -737,7 +733,7 @@ class ORTTrainer(object):
 
         self._init_session(optimizer_state_dict,
                            session_options=self.options.session_options,
-                           provider_options=self.options.provider_options)
+                           provider_options=self.options._validated_opts['provider_options'])
 
     def _init_session(self, optimizer_state_dict={},
                       session_options=None,
@@ -1323,7 +1319,7 @@ class ORTTrainer(object):
         # pass the populated states to the training session to populate the backend graph
         self._init_session(optimizer_state_dict,
                            session_options=self.options.session_options,
-                           provider_options=self.options.provider_options)
+                           provider_options=self.options._validated_opts['provider_options'])
 
     def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
         """Persists ORTTrainer state dictionary on disk along with user_dict.
