@@ -2142,6 +2142,21 @@ static constexpr OrtExperimentalApi ort_experimental_apis = {
     &OrtExperimentalApis::ClearResponseBatch,
 };
 
+static constexpr OrtExperimentalApi ort_experimental_apis = {
+    &OrtExperimentalApis::CreatePipelineSession,
+    &OrtExperimentalApis::ReleasePipelineSession,
+    &OrtExperimentalApis::Run,
+    &OrtExperimentalApis::CreateOrtRequestBatch,
+    &OrtExperimentalApis::ReleaseRequestBatch,
+    &OrtExperimentalApis::CreateOrtResponseBatch,
+    &OrtExperimentalApis::ReleaseResponseBatch,
+    &OrtExperimentalApis::AddRequestToBatch,
+    &OrtExperimentalApis::AddResponseToBatch,
+    &OrtExperimentalApis::GetOutputValues,
+    &OrtExperimentalApis::ClearRequestBatch,
+    &OrtExperimentalApis::ClearResponseBatch,
+};
+
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");

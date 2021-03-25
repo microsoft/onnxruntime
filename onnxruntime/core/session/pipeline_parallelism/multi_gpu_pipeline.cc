@@ -52,6 +52,10 @@ static std::pair<bool, int> Contains(const std::vector<std::string>& vec, const 
   }
 }
 
+<<<<<<< HEAD
+=======
+// TODO optimize invocations of this function
+>>>>>>> origin/pipeline
 static std::vector<int64_t> GetShape(Ort::Session& sess,
                                      size_t io_idx,
                                      bool is_input) {
@@ -65,6 +69,34 @@ static std::vector<int64_t> GetShape(Ort::Session& sess,
   return retval;
 }
 
+<<<<<<< HEAD
+=======
+static size_t GetTypeSize(ONNXTensorElementDataType elem_type) {
+  static std::unordered_map<int, std::size_t> sizes(
+      {{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
+       {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, sizeof(Ort::Float16_t)}});
+  return sizes[elem_type];
+}
+
+// TODO optimize invocations of this function
+static void GetShapeAndType(Ort::Session& sess,
+                            size_t io_idx,
+                            bool is_input,
+                            ONNXTensorElementDataType& elem_type,
+                            std::vector<int64_t>& shape) {
+  Ort::TypeInfo type_info{nullptr};
+  if (is_input) {
+    type_info = sess.GetInputTypeInfo(io_idx);
+  } else {
+    type_info = sess.GetOutputTypeInfo(io_idx);
+  }
+
+  auto shape_and_type = type_info.GetTensorTypeAndShapeInfo();
+  elem_type = shape_and_type.GetElementType();
+  shape = shape_and_type.GetShape();
+}
+
+>>>>>>> origin/pipeline
 RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing by non-const exec_frame to create iobinding
                                              int req_idx0,
                                              ReqId req_id0,
@@ -90,6 +122,7 @@ RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing
     // Calcuate the amount of memory to allocate
     // For now assume all present and past states have the same shape and the same indices for batch and seq dimension
     // This allows us to calculate the shape only once.
+<<<<<<< HEAD
     auto rc = Contains(mcfg.input_names, mcfg.past_input_names[0]);
     auto io_idx = rc.second;
     auto past_present_state_shape = GetShape(session, io_idx, true);
@@ -116,6 +149,38 @@ RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing
           cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
           past_present_state_shape.data(), past_present_state_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);  // TODO remove hardcoded type
       rs.output_val_map[oname] = OrtValueHandle(ort_val.release());
+=======
+    if (!mcfg.past_input_names.empty() && !mcfg.present_output_names.empty()) {
+      auto rc = Contains(mcfg.input_names, mcfg.past_input_names[0]);
+      auto io_idx = rc.second;
+      std::vector<int64_t> past_present_state_shape;
+      ONNXTensorElementDataType elem_type{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
+      GetShapeAndType(session, io_idx, true, elem_type, past_present_state_shape);
+      // override batch and seq dims with batch_size and maximum seq len
+      past_present_state_shape[mcfg.batch_dim_index_in_state] = batch_size;
+      past_present_state_shape[mcfg.seq_len_dim_index_in_state] = psess.model_ensemble_cfg.max_seq_len;
+      auto num_elements = gsl::narrow_cast<int>(std::accumulate(
+          std::begin(past_present_state_shape), std::end(past_present_state_shape), static_cast<int64_t>(1), std::multiplies<int64_t>()));
+      size_t size_to_allocate = GetTypeSize(elem_type) * num_elements;
+
+      // pre-allocate buffers for input and output states
+      for (size_t i = 0, end = mcfg.past_input_names.size(); i < end; ++i) {
+        rs.present_past_prealloc_buffer_1_vec.push_back(cuda_allocator->GetAllocation(size_to_allocate));
+        rs.present_past_prealloc_buffer_2_vec.push_back(cuda_allocator->GetAllocation(size_to_allocate));
+      }
+
+      // initialize the output states
+      // intentionally 0 since when the model is run the first time, there's no past state to feed.
+      past_present_state_shape[mcfg.seq_len_dim_index_in_state] = 0;
+      for (size_t j = 0, end = mcfg.present_output_names.size(); j < end; ++j) {
+        const auto& oname = mcfg.present_output_names[j];
+        auto& mem_allocation = rs.present_past_prealloc_buffer_1_vec[j];  // careful, use buffer1 here
+        auto ort_val = Ort::Value::CreateTensor(
+            cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
+            past_present_state_shape.data(), past_present_state_shape.size(), elem_type);
+        rs.output_val_map[oname] = OrtValueHandle(ort_val.release());
+      }
+>>>>>>> origin/pipeline
     }
 
     // it's inefficient to allocate memory for the inter stage outputs for every step
@@ -125,7 +190,13 @@ RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing
         // get the shape of the output name
         const auto& oname = elem_pair.first;
         auto rc = Contains(mcfg.output_names, oname);
+<<<<<<< HEAD
         auto output_shape = GetShape(session, rc.second, false /*output*/);
+=======
+        std::vector<int64_t> output_shape;
+        ONNXTensorElementDataType output_elem_type;
+        GetShapeAndType(session, rc.second, false /*output*/, output_elem_type, output_shape);
+>>>>>>> origin/pipeline
 
         // replace seq_len dim with max_seq_len
         output_shape[mcfg.batch_dim_in_inter_stage_output] = batch_size;
@@ -134,7 +205,11 @@ RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing
         // get the total number of bytes to allocate
         auto num_elements = gsl::narrow_cast<int>(std::accumulate(
             std::begin(output_shape), std::end(output_shape), static_cast<int64_t>(1), std::multiplies<int64_t>()));
+<<<<<<< HEAD
         int size_to_allocate = sizeof(Ort::Float16_t) * num_elements;  // TODO don't hardcode type
+=======
+        size_t size_to_allocate = GetTypeSize(output_elem_type) * num_elements;
+>>>>>>> origin/pipeline
         // allocate and store in map
         rs.inter_stage_output_prealloc_buffer_map.emplace(oname, cuda_allocator->GetAllocation(size_to_allocate));
       }
@@ -220,6 +295,7 @@ static Token* ExecuteRequest(const ModelEnsembleConfig::ModelConfig& mcfg,
 
   // get past seq len
   // assume past_seq_len is same for all states
+<<<<<<< HEAD
   int64_t past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
                              .GetTensorTypeAndShapeInfo()
                              .GetShape()[mcfg.seq_len_dim_index_in_state];
@@ -236,6 +312,28 @@ static Token* ExecuteRequest(const ModelEnsembleConfig::ModelConfig& mcfg,
 
   // assume types are same for all states
   auto past_present_type = ort_sess.GetOutputTypeInfo(out_idx).GetTensorTypeAndShapeInfo().GetElementType();
+=======
+  std::vector<int64_t> past_present_state_shape;
+  ONNXTensorElementDataType past_present_type{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
+  if (!mcfg.present_output_names.empty()) {
+    int64_t past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
+                               .GetTensorTypeAndShapeInfo()
+                               .GetShape()[mcfg.seq_len_dim_index_in_state];
+    // new seq len for state output = seq len of input_ids + past_seq_len
+    int64_t new_seq_len = input_seq_len + past_seq_len;
+
+    // populate shape for state outputs
+    // assume same shape for all outputs
+    auto rc2 = Contains(mcfg.output_names, mcfg.present_output_names[0]);
+    auto out_idx = rc2.second;
+    past_present_state_shape = GetShape(ort_sess, out_idx, false /*output*/);
+    past_present_state_shape[mcfg.batch_dim_index_in_state] = exec_frame.batch_size;
+    past_present_state_shape[mcfg.seq_len_dim_index_in_state] = new_seq_len;
+
+    // assume types are same for all states
+    past_present_type = ort_sess.GetOutputTypeInfo(out_idx).GetTensorTypeAndShapeInfo().GetElementType();
+  }
+>>>>>>> origin/pipeline
 
   for (size_t oidx = 0, end = mcfg.output_names.size(); oidx < end; ++oidx) {
     // first check if the output name is a present state
@@ -696,8 +794,13 @@ void PipelineSession::Validate(const ModelEnsembleConfig& model_ensemble_cfg) {
     std::unordered_set<std::string> input_names_set(one_cfg.input_names.begin(), one_cfg.input_names.end());
     std::unordered_set<std::string> output_names_set(one_cfg.output_names.begin(), one_cfg.output_names.end());
 
+<<<<<<< HEAD
     ORT_ENFORCE(!one_cfg.past_input_names.empty(), "Past input names cannot be empty.");
     ORT_ENFORCE(!one_cfg.present_output_names.empty(), "Present output names cannot be empty.");
+=======
+    // ORT_ENFORCE(!one_cfg.past_input_names.empty(), "Past input names cannot be empty.");
+    // ORT_ENFORCE(!one_cfg.present_output_names.empty(), "Present output names cannot be empty.");
+>>>>>>> origin/pipeline
 
     // verify all past_input_names are valid input names
     for (const auto& elem : one_cfg.past_input_names) {
