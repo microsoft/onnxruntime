@@ -162,17 +162,19 @@ void GatherGradImpl(
 
   dim3 block(GPU_WARP_SIZE, 4);
   dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
-  if (param_itrs == 1)
-  {
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherAxis0GradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, stream,
-      indices_data_sorted.get(),
-      original_indices_sorted.get(),
-      grad_data,
-      output_data,
-      num_indices,
-      num_inputs,
-      stride); 
-  } else {
+
+// commented optimization resulted in increase variance of loss for BERT across multiple reasons
+//if (param_itrs == 1)
+//{
+//  hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherAxis0GradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, stream,
+//    indices_data_sorted.get(),
+//    original_indices_sorted.get(),
+//    grad_data,
+//    output_data,
+//    num_indices,
+//    num_inputs,
+//    stride); 
+//} else {
     hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherGradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, stream,
         indices_data_sorted.get(),
         original_indices_sorted.get(),
@@ -182,7 +184,7 @@ void GatherGradImpl(
         num_inputs,
         param_itrs,
         stride);
-  }
+//}
 }
 
 #define SPECIALIZED_GRAD_IMPL2(T)           \

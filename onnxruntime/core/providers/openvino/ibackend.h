@@ -20,7 +20,7 @@ class IBackend {
 class BackendFactory {
  public:
   static std::shared_ptr<IBackend>
-  MakeBackend(const Provider_ModelProto& model_proto,
+  MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 };

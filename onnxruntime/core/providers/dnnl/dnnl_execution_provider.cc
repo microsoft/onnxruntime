@@ -42,7 +42,7 @@ namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
 Status RegisterDNNLKernels(KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
 
@@ -398,7 +398,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
   std::unordered_set<std::string> input_initializers;
 
   // Create ng_required_initializers attribute of NGraphCustomOp
-  auto initializers = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto initializers = ONNX_NAMESPACE::AttributeProto::Create();
   initializers->set_name("initializers");
   initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
 
@@ -438,7 +438,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
     }
   }
 
-  auto ap = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto ap = ONNX_NAMESPACE::AttributeProto::Create();
   ap->set_s(subgraph_id);
   ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes()["subgraph_id"] = *ap;

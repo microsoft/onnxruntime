@@ -85,18 +85,21 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
                    int hidden_size,
                    int number_of_heads,
                    bool is_unidirectional = false,
-                   bool use_float16 = false) {
+                   bool use_float16 = false,
+                   int input_hidden_size = 0) {
+  input_hidden_size = (input_hidden_size == 0) ? hidden_size : input_hidden_size;
+
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
   if (is_unidirectional) {
     tester.AddAttribute<int64_t>("unidirectional", 1);
   }
 
-  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, input_hidden_size};
+  std::vector<int64_t> weights_dims = {input_hidden_size, 3 * hidden_size};
   std::vector<int64_t> bias_dims = {3 * hidden_size};
   std::vector<int64_t> mask_index_dims = {batch_size};
-  std::vector<int64_t> output_dims = input_dims;
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
   float input_scale = quantize_parameters.input_scale;
   float weight_scale = quantize_parameters.weight_scale;
@@ -121,10 +124,11 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     tester.AddOutput<float>("output", output_dims, output_data);
   }
 
-  if (mask_index_data.size() > 0) {  // mask index is optional.
+  if (mask_index_data.size() > 0) {
     tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-  } else {  // mask index is optional.
-    tester.AddInput<int32_t>("", mask_index_dims, {1});
+  } else {
+    // mask index is optional.
+    tester.AddMissingOptionalInput<int32_t>();
   }
 
   tester.AddInput<QInput>("input_zero_point", {1}, {input_zero_point});
@@ -153,7 +157,8 @@ static void RunQAttentionCUDA(
     int number_of_heads,
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
-    bool use_float16 = false) {
+    bool use_float16 = false,
+    int input_hidden_size = 0) {
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
@@ -165,7 +170,7 @@ static void RunQAttentionCUDA(
     }
     RunQAttention<int8_t, int8_t, EP::CUDA>(
         input_data, weights_data, bias_data, mask_index_data, output_data, qp,
-        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, use_float16);
+        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, use_float16, input_hidden_size);
   }
 }
 
@@ -180,7 +185,8 @@ static void RunQAttentionU8U8(
     int hidden_size,
     int number_of_heads,
     bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false) {
+    bool is_unidirectional = false,
+    int input_hidden_size = 0) {
   QuantizeParameters<uint8_t, uint8_t> qp_uint8{0.0f, 0.0f, 0, 0};
   if (use_special_quantize_parameter) {
     qp_uint8.input_scale = 0.1f;
@@ -191,7 +197,7 @@ static void RunQAttentionU8U8(
 
   RunQAttention<uint8_t, uint8_t, EP::CPU>(
       input_data, weights_data, bias_data, mask_index_data, output_data, qp_uint8,
-      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional);
+      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
 }
 
 static void RunQAttentionU8S8(
@@ -205,7 +211,8 @@ static void RunQAttentionU8S8(
     int hidden_size,
     int number_of_heads,
     bool use_special_quantize_parameter = true,
-    bool is_unidirectional = false) {
+    bool is_unidirectional = false,
+    int input_hidden_size = 0) {
   QuantizeParameters<uint8_t, int8_t> qp_int8{0.0f, 0.0f, 0, 0};
   if (use_special_quantize_parameter) {
     qp_int8.input_scale = 0.1f;
@@ -216,7 +223,7 @@ static void RunQAttentionU8S8(
 
   RunQAttention<uint8_t, int8_t, EP::CPU>(
       input_data, weights_data, bias_data, mask_index_data, output_data, qp_int8,
-      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional);
+      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
 }
 
 static void RunQAttentionAll(
@@ -231,16 +238,17 @@ static void RunQAttentionAll(
     int number_of_heads,
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
-    bool use_float16 = false) {
+    bool use_float16 = false,
+    int input_hidden_size = 0) {
   RunQAttentionU8U8(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional);
+                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
   RunQAttentionU8S8(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional);
+                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
   RunQAttentionCUDA(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, use_float16);
+                    use_special_quantize_parameter, is_unidirectional, use_float16, input_hidden_size);
 }
 
 TEST(QAttentionTest, QAttentionBatch1) {
@@ -779,6 +787,50 @@ TEST(QAttentionTest, QAttentionPastState_u8s8) {
   TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
                                                     "testdata/attention_past_state.u8u8.onnx",
                                                     true /*is_weight_constant*/);
+}
+
+TEST(QAttentionTest, QAttentionPrunedModel) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  // test input_hidden_size > hidden_size
+  int input_hidden_size = 6;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.5f, 0.2f, 0.3f, -0.6f, 0.0f, 1.0f,
+      0.8f, -0.5f, 0.0f, 1.f, 2.0f, 3.0f,
+      0.8f, -0.5f, 0.0f, 1.f, 4.0f, 5.0f,
+      0.5f, 0.2f, 0.3f, -0.6f, 6.0f, 7.0f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f,
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f,
+      1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f,
+      };
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_data = {};
+
+  std::vector<float> output_data = {
+      11.689527f, 2.769937f, 7.05f, 8.35f,
+      11.69f, 2.77f, 7.05f, 8.35f,
+      14.276558f, 5.374159f, 9.65f, 10.95f,
+      14.289073f, 5.370287f, 9.65f, 10.95f
+  };
+
+  bool use_special_quantize_parameter = true;
+  bool is_unidirectional = false;
+  bool use_float16 = false;
+  RunQAttentionAll(input_data, weight_data, bias_data, mask_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_special_quantize_parameter, is_unidirectional, use_float16,
+                   input_hidden_size);
 }
 
 }  // namespace test

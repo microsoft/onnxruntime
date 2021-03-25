@@ -13,6 +13,12 @@ namespace onnxruntime {
 
 class Node;
 
+// Get initialize tensort float/int32/int64 data without unpacking
+// NOTE!!! This will not work when the initializer has external data
+const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
+const int32_t* GetTensorInt32Data(const ONNX_NAMESPACE::TensorProto& tensor);
+const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor);
+
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
  */
