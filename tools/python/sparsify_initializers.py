@@ -12,11 +12,12 @@ import numpy as np
 import sys
 from typing import Tuple, List
 import onnx
-from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper, mapping
+from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
 real_types = set((int(TensorProto.FLOAT), int(TensorProto.DOUBLE)))
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
