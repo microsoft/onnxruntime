@@ -479,9 +479,20 @@ class ORTModule(torch.nn.Module):
                                   do_constant_folding=False,
                                   training=torch.onnx.TrainingMode.TRAINING,
                                   dynamic_axes=dynamic_axes,
+                                  operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
+                                  custom_opsets={"prim": 1},
                                   verbose=self._verbosity < Verbosity.WARNING)
         except RuntimeError as e:
             raise RuntimeError(
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
-        return onnx.load_model_from_string(f.getvalue())
+        my_model = onnx.load_model_from_string(f.getvalue())
+        my_model.opset_import[1].domain = 'com.microsoft'
+        for node in my_model.graph.node:
+            if node.domain == 'prim':
+                node.domain = 'com.microsoft'
+                output_names = list(node.output)
+                del node.output[:]
+                node.output.append(node.name + '_ctx')
+                node.output.extend(output_names)
+        return my_model
