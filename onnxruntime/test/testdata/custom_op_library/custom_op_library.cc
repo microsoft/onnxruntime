@@ -115,7 +115,6 @@ struct KernelOneCuda {
  private:
   OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
-  void* compute_stream_;
 };
 
 struct KernelTwo {
