@@ -1315,7 +1315,7 @@ def output_latency(results, csv_filename):
                         "CUDA fp16 \n90th percentile (ms)",
                         "CUDA EP fp16 \nmemory usage (MiB)",
                         "TRT EP fp16 \nmean (ms)",
-                        "TRT EP fp16 \n90 percentile (ms)",
+                        "TRT EP fp16 \n90th percentile (ms)",
                         "TRT EP fp16 \nmemory usage (MiB)",
                         "Standalone TRT fp16 \nmean (ms)",
                         "Standalone TRT fp16 \n90th percentile (ms)",
