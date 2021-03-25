@@ -179,36 +179,13 @@ struct SequencePoolingKernel {
     OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
-    // Do computation
-
-    float* d_input_data;
-    int64_t* d_senlens_data;
-    float* d_output_data;
-
-    size_t size_input_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input)) * sizeof(float);
-    size_t size_senlens_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(senlens)) * sizeof(int64_t);
-    size_t size_output_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(output)) * sizeof(float);
-
-    cudaMalloc(&d_input_data, size_input_data);
-    cudaMalloc(&d_senlens_data, size_senlens_data);
-    cudaMalloc(&d_output_data, size_output_data);
-
-    cudaMemcpy(d_input_data, input_data, size_input_data, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_senlens_data, senlens_data, size_senlens_data, cudaMemcpyHostToDevice);
-
     SequencePoolingCuda(batch_size,
                         hidden_size,
                         num_sequences,
                         sequence_length_for_split,
-                        d_input_data,
-                        d_senlens_data,
-                        d_output_data);
-
-    cudaMemcpy(output_data, d_output_data, size_output_data, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_input_data);
-    cudaFree(d_senlens_data);
-    cudaFree(d_output_data);
+                        input_data,
+                        senlens_data,
+                        output_data);
 
   }
 
@@ -250,36 +227,13 @@ struct SequencePoolingKernel16 {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
-
-    half* d_input_data;
-    int64_t* d_senlens_data;
-    half* d_output_data;
-
-    size_t size_input_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input)) * sizeof(half);
-    size_t size_senlens_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(senlens)) * sizeof(int64_t);
-    size_t size_output_data = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(output)) * sizeof(half);
-
-    cudaMalloc(&d_input_data, size_input_data);
-    cudaMalloc(&d_senlens_data, size_senlens_data);
-    cudaMalloc(&d_output_data, size_output_data);
-
-    cudaMemcpy(d_input_data, input_data, size_input_data, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_senlens_data, senlens_data, size_senlens_data, cudaMemcpyHostToDevice);
-
     SequencePoolingCuda(batch_size,
                         hidden_size,
                         num_sequences,
                         sequence_length_for_split,
-                        d_input_data,
-                        d_senlens_data,
-                        d_output_data);
-
-    cudaMemcpy(output_data, d_output_data, size_output_data, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_input_data);
-    cudaFree(d_senlens_data);
-    cudaFree(d_output_data);
-
+                        input_data,
+                        senlens_data,
+                        output_data);
   }
 
  private:
@@ -294,6 +248,7 @@ struct SequencePooling : Ort::CustomOpBase<SequencePooling, SequencePoolingKerne
   };
 
   const char* GetName() const { return "SequencePooling"; };
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/index) const {
@@ -314,6 +269,7 @@ struct SequencePooling16 : Ort::CustomOpBase<SequencePooling16, SequencePoolingK
   };
 
   const char* GetName() const { return "SequencePooling"; };
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/index) const {
