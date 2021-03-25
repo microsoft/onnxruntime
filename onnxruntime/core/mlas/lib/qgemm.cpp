@@ -85,8 +85,8 @@ MlasGemmU8X8GetDispatch(
 //
 
 struct MLAS_GEMM_U8X8_WORK_BLOCK {
-    int32_t ThreadCountM;
-    int32_t ThreadCountN;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
     const MLAS_GEMM_U8X8_PARAMETERS* Parameters;
 };
 
@@ -2660,7 +2660,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
 void
 MlasGemmU8X8Threaded(
     void* Context,
-    int32_t ThreadId
+    ptrdiff_t ThreadId
     )
 /*++
 
@@ -2684,8 +2684,8 @@ Return Value:
     const auto* WorkBlock = (MLAS_GEMM_U8X8_WORK_BLOCK*)Context;
     const auto* Parameters = WorkBlock->Parameters;
 
-    const int32_t ThreadIdM = ThreadId / WorkBlock->ThreadCountN;
-    const int32_t ThreadIdN = ThreadId % WorkBlock->ThreadCountN;
+    const ptrdiff_t ThreadIdM = ThreadId / WorkBlock->ThreadCountN;
+    const ptrdiff_t ThreadIdN = ThreadId % WorkBlock->ThreadCountN;
 
     //
     // Partition the operation along the M dimension.
@@ -2771,15 +2771,15 @@ Return Value:
 
     const double Complexity = double(M) * double(N) * double(K);
 
-    int32_t TargetThreadCount;
+    ptrdiff_t TargetThreadCount;
 
     if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-        TargetThreadCount = int32_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
         TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }
 
-    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -2802,7 +2802,7 @@ Return Value:
             MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 
         if (size_t(TargetThreadCount) > BlockedN) {
-            TargetThreadCount = int32_t(BlockedN);
+            TargetThreadCount = ptrdiff_t(BlockedN);
         }
 
         WorkBlock.ThreadCountM = 1;
@@ -2811,7 +2811,7 @@ Return Value:
     } else {
 
         if (size_t(TargetThreadCount) > M) {
-            TargetThreadCount = int32_t(M);
+            TargetThreadCount = ptrdiff_t(M);
         }
 
         WorkBlock.ThreadCountM = TargetThreadCount;
