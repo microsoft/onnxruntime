@@ -740,7 +740,7 @@ class ORTTrainer(object):
                            provider_options=self.options.provider_options)
 
     def _init_session(self, optimizer_state_dict={},
-                      session_options=None
+                      session_options=None,
                       provider_options=None):
         if self._onnx_model is None:
             return
