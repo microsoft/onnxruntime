@@ -19,8 +19,8 @@ typedef std::pair<bool, std::vector<OrtValue>> BackwardReturnType;
 class OrtTasks final {
  public:
   static OrtTasks& GetInstance() {
-    static OrtTasks* instance_ = new OrtTasks;
-    return *instance_;
+    static OrtTasks instance_;
+    return instance_;
   }
 
   void CreateBackgroundTask(int64_t run_id);
