@@ -103,8 +103,16 @@ PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOpti
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
   auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
-  const PathString file_path_str = file_path.ToPathString();
+  PathString file_path_str = file_path.ToPathString();
   int output_fd;
+  int i = 1;
+
+  while(Env::Default().FileOpenRd(file_path_str, output_fd).IsOK()) {
+    // file exists, create a new name to avoid overwrite
+    ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
+    std::string i_str = std::to_string(i++);
+    file_path_str.append(i_str);
+  }
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
   try {
     ORT_ENFORCE(

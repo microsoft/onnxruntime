@@ -142,8 +142,8 @@ set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRun
 
 # BERT
 file(GLOB_RECURSE training_bert_src
-    "${ORTTRAINING_SOURCE_DIR}/models/bert/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/models/bert/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/bert_tiny/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/bert_tiny/*.cc"
 )
 onnxruntime_add_executable(onnxruntime_training_bert ${training_bert_src})
 
