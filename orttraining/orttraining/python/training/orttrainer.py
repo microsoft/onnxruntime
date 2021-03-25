@@ -566,7 +566,7 @@ class ORTTrainer(object):
 
     def _create_ort_training_session(self, 
                                      optimizer_state_dict={}, 
-                                     session_option=None, 
+                                     session_options=None, 
                                      provider_options=None):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
