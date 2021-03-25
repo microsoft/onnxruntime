@@ -3,7 +3,8 @@
 
 #pragma once
 #include <unordered_map>
-#include <pybind11/pybind11.h>
+#include <mutex>
+#include <Python.h>
 
 namespace onnxruntime {
 namespace python {
@@ -11,13 +12,17 @@ namespace python {
 class OrtTorchFunctionPool final {
  public:
   static OrtTorchFunctionPool& GetInstance() {
-      static OrtTorchFunctionPool instance_;
-      return instance_;
+    static OrtTorchFunctionPool instance_;
+    return instance_;
   }
-  void RegisterForward(const std::string& custom_function_name, pybind11::object forward_fn);
-  void RegisterBackward(const std::string& custom_function_name, pybind11::object backward_fn);
-  pybind11::object GetForward(const std::string& custom_function_name);
-  pybind11::object GetBackward(const std::string& custom_function_name);
+  void RegisterForward(const std::string& custom_function_name, PyObject* forward_fn);
+  void RegisterBackward(const std::string& custom_function_name, PyObject* backward_fn);
+  PyObject* GetForward(const std::string& custom_function_name);
+  PyObject* GetBackward(const std::string& custom_function_name);
+
+  size_t RegisterContext(PyObject* auto_grad_context);
+
+  void UnRegisterContext(size_t context_index);
 
  private:
   OrtTorchFunctionPool() = default;
@@ -26,8 +31,11 @@ class OrtTorchFunctionPool final {
 
   OrtTorchFunctionPool& operator=(const OrtTorchFunctionPool&) = delete;
 
-  std::unordered_map<std::string, pybind11::object> forward_pool;
-  std::unordered_map<std::string, pybind11::object> backward_pool;
+  std::unordered_map<std::string, PyObject*> forward_pool;
+  std::unordered_map<std::string, PyObject*> backward_pool;
+
+  std::unordered_map<size_t, PyObject*> func_context_pool;
+  std::mutex func_context_pool_mutex_;
 };
-} // namespace python
-} // namespace onnxruntime
+}  // namespace python
+}  // namespace onnxruntime

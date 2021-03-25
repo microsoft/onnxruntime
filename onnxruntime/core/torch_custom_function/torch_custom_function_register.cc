@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "torch_custom_function_register.h"
+#include <Python.h>
+#include <mutex>
 
 namespace onnxruntime {
 namespace python {
 
 void OrtTorchFunctionPool::RegisterForward(
     const std::string& custom_function_name,
-    pybind11::object forward_fn) {
+    PyObject* forward_fn) {
   // This should be "apply" of
   // class custom_function_name(autograd.Function):
   //   @staticmethod
@@ -24,7 +26,7 @@ void OrtTorchFunctionPool::RegisterForward(
 
 void OrtTorchFunctionPool::RegisterBackward(
     const std::string& custom_function_name,
-    pybind11::object backward_fn) {
+    PyObject* backward_fn) {
   // This should be "backward" of
   // class custom_function_name(autograd.Function):
   //   @staticmethod
@@ -38,14 +40,30 @@ void OrtTorchFunctionPool::RegisterBackward(
   backward_pool[custom_function_name] = backward_fn;
 }
 
-pybind11::object OrtTorchFunctionPool::GetForward(
+PyObject* OrtTorchFunctionPool::GetForward(
     const std::string& custom_function_name) {
   return forward_pool.at(custom_function_name);
 };
 
-pybind11::object OrtTorchFunctionPool::GetBackward(
+PyObject* OrtTorchFunctionPool::GetBackward(
     const std::string& custom_function_name) {
   return backward_pool.at(custom_function_name);
+};
+
+size_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
+  static size_t index_ = 0;
+  std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
+  index_++;
+  func_context_pool.insert({index_, auto_grad_context});
+  Py_INCREF(auto_grad_context);
+  return index_;
+};
+
+void OrtTorchFunctionPool::UnRegisterContext(size_t context_index) {
+  std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
+  auto ctx = func_context_pool.find(context_index);
+  Py_XDECREF(ctx->second);
+  func_context_pool.erase(ctx);
 };
 
 }  // namespace python
