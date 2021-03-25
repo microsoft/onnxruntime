@@ -24,7 +24,7 @@
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
-#include "single_include/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
 using json = nlohmann::json;

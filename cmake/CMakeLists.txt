@@ -708,6 +708,10 @@ endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
 if(onnxruntime_PREFER_SYSTEM_LIB)
   find_package(re2)
 endif()
