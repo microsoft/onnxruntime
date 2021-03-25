@@ -8,3 +8,6 @@ from onnxruntime.capi.training.training_session import TrainingSession
 from .orttrainer_options import ORTTrainerOptions
 from .orttrainer import ORTTrainer, TrainStepInfo
 from . import amp, checkpoint, optim, model_desc_validation
+from .training_agent import TrainingAgent
+from .ortmodule import ORTModule
+from .runstateinfo import RunStateInfo

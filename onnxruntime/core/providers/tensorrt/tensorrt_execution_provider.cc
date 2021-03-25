@@ -307,20 +307,20 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
-class Memcpy final : public Provider_OpKernel {
+class Memcpy final : public OpKernel {
  public:
-  Memcpy(const OpKernelInfo&) {}
+  Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status Compute(OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
+  Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = base.GetInfo().GetDataTransferManager().CopyTensor(*X, *Y, base.GetInfo().GetKernelDef_ExecQueueId());
+    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     return retval;
   }
 };
 
 template <typename T>
-Provider_KernelCreateInfo BuildKernelCreateInfo();
+KernelCreateInfo BuildKernelCreateInfo();
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
@@ -348,7 +348,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
 static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
@@ -404,30 +404,50 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     min_subgraph_size_ = std::stoi(min_subgraph_size_env);
   }
 
-  const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
-  if (!max_workspace_size_env.empty()) {
-    max_workspace_size_ = std::stoull(max_workspace_size_env);
+  if (info.has_trt_options) {
+    max_workspace_size_ = info.max_workspace_size;
+  } else {
+    const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+    if (!max_workspace_size_env.empty()) {
+      max_workspace_size_ = std::stoull(max_workspace_size_env);
+    }
   }
 
-  const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
-  if (!fp16_enable_env.empty()) {
-    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+  if (info.has_trt_options) {
+    fp16_enable_ = info.fp16_enable;
+  } else {
+    const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+    if (!fp16_enable_env.empty()) {
+      fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+    }
   }
 
-  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
-  if (!int8_enable_env.empty()) {
-    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+  if (info.has_trt_options) {
+    int8_enable_ = info.int8_enable;
+  } else {
+    const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+    if (!int8_enable_env.empty()) {
+      int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+    }
   }
 
   if (int8_enable_) {
-    const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
-    if (!int8_calibration_cache_name_env.empty()) {
-      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    if (info.has_trt_options) {
+      int8_calibration_cache_name_ = info.int8_calibration_table_name;
+    } else {
+      const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+      if (!int8_calibration_cache_name_env.empty()) {
+        int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+      }
     }
 
-    const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
-    if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
-      int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
+    if (info.has_trt_options) {
+      int8_use_native_tensorrt_calibration_table_ = info.int8_use_native_calibration_table;
+    } else {
+      const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+      if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
+        int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
+      }
     }
   }
 
@@ -463,12 +483,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   if (engine_decryption_enable_) {
     std::string engine_decryption_lib_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
-	LIBTYPE handle = OPENLIB(engine_decryption_lib_path.c_str());
-	if (handle == nullptr) {
-	  ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-							 "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
-	}
-	engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
+    LIBTYPE handle = OPENLIB(engine_decryption_lib_path.c_str());
+    if (handle == nullptr) {
+      ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                      "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
+    }
+    engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
 }
 
@@ -531,7 +551,7 @@ Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
 }
 
 // Convert GraphViewer graph to GraphProto
-void ToGraphProtoInternal(const GraphViewer& graph, Provider_GraphProto& graph_proto) {
+void ToGraphProtoInternal(const GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
   for (const auto* input_arg : graph.GetInputs()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
@@ -552,7 +572,7 @@ void ToGraphProtoInternal(const GraphViewer& graph, Provider_GraphProto& graph_p
 
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
-    const gsl::not_null<Provider_NodeProto*> node_proto{graph_proto.add_node()};
+    const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
     p_node->ToProto(*node_proto);
   }
@@ -724,9 +744,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const Provider_TensorProto* initializer = nullptr;
+            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const Provider_TensorProto* subgraph_initializer = nullptr;
+              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
               }
@@ -734,9 +754,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const Provider_TensorProto* initializer = nullptr;
+            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const Provider_TensorProto* subgraph_initializer = nullptr;
+              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
               }
@@ -1289,7 +1309,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
           }
           trt_context = trt_state->context->get();
-        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) { 
+        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
           shape_ranges = DeserializeProfile(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
           // Decrypt engine

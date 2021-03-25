@@ -65,7 +65,7 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
-from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
+from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model, LxmertConfig)
 
 
 def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
@@ -128,8 +128,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
 
                     input_value_type = numpy.int64 if 'pt' in model_source else numpy.int32
                     ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names,
-                                                          input_value_type)
-
+                                                          config, input_value_type)
                     result_template = {
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
@@ -334,8 +333,18 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
                         return model(input_ids, decoder_input_ids=input_ids, training=False)
+                    
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+                    def lxmert_forward():
+                        feats = tf.random.normal([1, 1, config.visual_feat_dim])
+                        pos = tf.random.normal([1, 1, config.visual_pos_dim])
+                        return model(input_ids, visual_feats=feats, visual_pos=pos, training=False)
 
-                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
+                    inference = encoder_forward
+                    if config.is_encoder_decoder:
+                        inference = encoder_decoder_forward
+                    elif isinstance(config, LxmertConfig):
+                        inference = lxmert_forward
 
                     inference()
 
