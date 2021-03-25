@@ -501,19 +501,22 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       m, "ModuleGradientGraphBuilderConfiguration",
       R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
   module_gradient_graph_builder_config.def(py::init())
+      .def_readwrite("initializer_names", &ModuleGradientGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_invertible_layernorm_grad",
                      &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
-  py::class_<TrainingGraphInfo> split_graphs_info(m, "TrainingGraphInfo",
+  py::class_<TrainingGraphInfo> training_graph_info(m, "TrainingGraphInfo",
                                                 R"pbdoc(The information of split graphs for frontend.)pbdoc");
-  split_graphs_info.def(py::init())
+  training_graph_info.def(py::init())
       .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names", &TrainingGraphInfo::initializer_names)
       .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
+      .def_readwrite("output_grad_indices_non_differentiable", &TrainingGraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");

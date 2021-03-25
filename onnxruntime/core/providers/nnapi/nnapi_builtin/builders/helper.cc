@@ -326,19 +326,6 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
   return Status::OK();
 }
 
-#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                  \
-  const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
-    return tensor.DATA().empty()                                                        \
-               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())        \
-               : tensor.DATA().data();                                                  \
-  }
-
-GET_TENSOR_DATA(FloatData, float, float_data)
-GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
-GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
-
-#undef GET_TENSOR_DATA
-
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
   const auto* shape_proto = node_arg.Shape();

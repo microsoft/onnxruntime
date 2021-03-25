@@ -115,12 +115,6 @@ float GetQuantizationScale(const InitializedTensorSet& initializers, const Node&
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
-// Get initialize tensort float/int32/int64 data without unpacking
-// TODO, move to ort framework
-const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
-const int32_t* GetTensorInt32Data(const ONNX_NAMESPACE::TensorProto& tensor);
-const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor);
-
 // Get Shape/Type of a NodeArg
 bool GetShape(const NodeArg& node_arg, Shape& shape);
 bool GetType(const NodeArg& node_arg, int32_t& type);
