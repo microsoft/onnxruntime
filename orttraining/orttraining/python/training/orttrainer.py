@@ -122,7 +122,6 @@ class ORTTrainer(object):
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
-        # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
@@ -193,6 +192,12 @@ class ORTTrainer(object):
                         self.model_desc.add_type_to_output_description(idx_o, dtype)
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
+
+        try:
+            from torch.utils.cpp_extension import ROCM_HOME
+            self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        except ImportError:
+            self.is_rocm_pytorch = False
 
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
@@ -676,10 +681,13 @@ class ORTTrainer(object):
 
             if 'cuda' in self.options.device.id.lower():
                 cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
-                if self.options.device.mem_limit > 0:
-                    cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
 
-                cuda_ep_name = "CUDAExecutionProvider"
+                cuda_ep_name = ("ROCMExecutionProvider" if self.is_rocm_pytorch else "CUDAExecutionProvider")
+                if self.options.device.mem_limit > 0:
+                    if not self.is_rocm_pytorch:
+                        cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
+                    else:
+                        warnings.warn("Ignoring 'mem_limit' for {}".format(cuda_ep_name))
 
                 if cuda_ep_name not in providers:
                     raise RuntimeError(

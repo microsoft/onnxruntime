@@ -227,15 +227,19 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
     'onnxruntime.transformers.longformer',
 ]
+
+requirements_file = "requirements.txt"
 
 if '--enable_training' in sys.argv:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
+    requirements_file = "requirements-training.txt"
 
 package_data = {}
 data_files = []
@@ -309,12 +313,12 @@ if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-requirements_path = path.join(getcwd(), "requirements.txt")
+requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
-    requirements_path = path.join(this, "requirements.txt")
+    requirements_path = path.join(this, requirements_file)
 if not path.exists(requirements_path):
-    raise FileNotFoundError("Unable to find 'requirements.txt'")
+    raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 

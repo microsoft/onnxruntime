@@ -278,9 +278,9 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options)
-        except RuntimeError:
+        except ValueError:
             if self._enable_fallback:
-                print("EP Error using {}".format(self._providers))
+                print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
@@ -291,16 +291,16 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options):
         available_providers = C.get_available_providers()
 
-        # validate providers and provider_options before other initialization
-        providers, provider_options = check_and_normalize_provider_args(providers,
-                                                                        provider_options,
-                                                                        available_providers)
-
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
+
+        # validate providers and provider_options before other initialization
+        providers, provider_options = check_and_normalize_provider_args(providers,
+                                                                        provider_options,
+                                                                        available_providers)
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:

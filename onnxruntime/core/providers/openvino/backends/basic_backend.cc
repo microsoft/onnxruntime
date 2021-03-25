@@ -22,7 +22,7 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-BasicBackend::BasicBackend(const Provider_ModelProto& model_proto,
+BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            GlobalContext& global_context,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
@@ -173,7 +173,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
   if (subgraph_context_.is_constant) {
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)  || defined(OPENVINO_2021_2)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
@@ -184,25 +184,25 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     // Get Output tensors
     LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   } else {
-      //Requesting for an idle infer_request from a pool of infer_requests_
-      std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue_->getIdleRequest();
-      if (!infer_request) {
-        LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
-        THROW_IE_EXCEPTION << "No idle Infer Requests!";
-      }
-      StartAsyncInference(ort, context, infer_request);
-      CompleteAsyncInference(ort, context, infer_request);
-  
-      // Get Output tensors
-      LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-      //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
-      inferRequestsQueue_->putIdleRequest(infer_request);
+    //Requesting for an idle infer_request from a pool of infer_requests_
+    std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue_->getIdleRequest();
+    if (!infer_request) {
+      LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
+      THROW_IE_EXCEPTION << "No idle Infer Requests!";
+    }
+    StartAsyncInference(ort, context, infer_request);
+    CompleteAsyncInference(ort, context, infer_request);
+
+    // Get Output tensors
+    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+    //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
+    inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
-    std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-    printPerformanceCounts(infer_request, std::cout, hw_target);
-  }
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
+      std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+      printPerformanceCounts(infer_request, std::cout, hw_target);
+    }
 #endif
   }
 }

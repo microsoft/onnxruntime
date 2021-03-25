@@ -5,6 +5,7 @@
 
 set -e
 set -x
+export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
@@ -21,7 +22,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --build_wheel \
     --skip_tests \
-    --enable_pybind
+    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
 
 # Install the ORT python wheel
 python3 -m pip install --user /build/Debug/dist/*

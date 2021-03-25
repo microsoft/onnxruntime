@@ -19,14 +19,14 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
-void SetIODefs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto,
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
                std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
                std::string device);
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
@@ -44,7 +44,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
 #endif
 
 InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::Provider_TypeProto& onnx_type, std::string device);
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
