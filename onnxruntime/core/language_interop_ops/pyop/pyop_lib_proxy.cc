@@ -285,21 +285,15 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
   return true;
 }  //bool InvokePythonFunc
 
-bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
-                                            const char* function,
-                                            const std::vector<OrtValue*>& inputs,
-                                            std::vector<void*>& outputs,
-                                            std::function<void(const char*)> logging_func) {
+bool PyOpLibProxy::InvokePythonAutoGradFunc(void* function,
+                                            const std::vector<const OrtValue*>& inputs,
+                                            std::vector<void*>& outputs) {
   Scope scope;
-  auto instance = static_cast<PyObject*>(raw_inst);
-  if (nullptr == instance || nullptr == function) {
-    logging_func("InvokePythonFunc: found invalid instance or function");
-    return false;
-  }
+  PyObject* pyFunc;
 
-  auto pyFunc = PyObject_GetAttrString(instance, function);
-  if (nullptr == pyFunc) {
-    logging_func("InvokePythonFunc: failed to create function object");
+  pyFunc = static_cast<PyObject*>(function);
+  if (nullptr == function || nullptr == pyFunc) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: found invalid instance or function";
     return false;
   }
 
@@ -315,7 +309,7 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
   scope.Add(pyArgs);
   auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
   if (nullptr == pyResult) {
-    logging_func("InvokePythonFunc: no result");
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: no result";
     return false;
   }
 
@@ -323,12 +317,12 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
   if (PyTuple_Check(pyResult)) {
     for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
       if (!ExtractPointerOutput(PyTuple_GetItem(pyResult, i), outputs)) {
-        logging_func("InvokePythonFunc: failed to extract address from output");
+        LOGS_DEFAULT(WARNING) << "InvokePythonFunc: failed to extract address from output";
         return false;
       }
     }
   } else {
-    logging_func("InvokePythonFunc: returned value must be numpy(s)");
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: returned value must be numpy(s)";
     return false;
   }
   return true;
