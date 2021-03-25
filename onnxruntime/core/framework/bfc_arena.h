@@ -55,13 +55,15 @@ class BFCArena : public IArenaAllocator {
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+  static const int DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES = 128 * 1024 * 1024;
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
   BFCArena(std::unique_ptr<IAllocator> resource_allocator,
            size_t total_memory,
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
-           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK);
+           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+           int intial_regrowth_chunk_size_bytes = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
@@ -72,6 +74,8 @@ class BFCArena : public IArenaAllocator {
 
   //If p is NULL, no operation is performed.
   void Free(void* p) override;
+
+  Status OnRunEnd() override;
 
   void* Reserve(size_t size) override;
 
@@ -97,6 +101,13 @@ class BFCArena : public IArenaAllocator {
  private:
   void* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
+
+  // Frees all allocation regions in which no chunk is in use.
+  // Does not free any reserved chunks.
+  // Resets the size that the arena will grow by in the next allocation to
+  // `intial_regrowth_chunk_size_bytes_`.
+  // All further allocation sizes are determined by the arena growth strategy
+  Status Shrink();
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
@@ -280,6 +291,19 @@ class BFCArena : public IArenaAllocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
+    Status RemoveAllocationRegion(void* ptr) {
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+
+      if (entry == regions_.end()) {
+        LOGS_DEFAULT(FATAL) << "Could not find Region for " << ptr;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Could not find Region for ", ptr);
+      }
+
+      regions_.erase(entry);
+      return Status::OK();
+    }
+
     ChunkHandle get_handle(const void* p) const {
       return RegionFor(p)->get_handle(p);
     }
@@ -450,6 +474,7 @@ class BFCArena : public IArenaAllocator {
 
   const int initial_chunk_size_bytes_;
   const int max_dead_bytes_per_chunk_;
+  const int intial_regrowth_chunk_size_bytes_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
