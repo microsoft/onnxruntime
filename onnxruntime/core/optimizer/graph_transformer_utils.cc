@@ -119,7 +119,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";  
+#ifndef DISABLE_CONTRIB_OPS  
+  bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+#endif
+
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
@@ -169,6 +173,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_rocm_execution_providers));
 
+      if (enable_gelu_approximation){
+        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_rocm_execution_providers));
+      }
+
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_execution_providers));
 #endif
     } break;
@@ -197,15 +205,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     }
     return transformers;
   }
-
-// Some transformers have side-effect like result is not exactly same.
-// These transformers could only be enabled by custom transformer list.
-#ifndef DISABLE_CONTRIB_OPS
-  if (level == TransformerLevel::Level2) {
-    std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
-    transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_rocm_execution_providers));
-  }
-#endif
 
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
   // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
