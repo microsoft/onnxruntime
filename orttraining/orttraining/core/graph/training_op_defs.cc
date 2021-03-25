@@ -2341,17 +2341,24 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
+          "name",
+          "Name of custom class.",
+          AttributeProto::STRING)
+      .Attr(
           "require_grads",
           "Flags to indicate which inputs has gradient",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "input_shape_types",
           "Input types of autograd.Function.apply.",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "output_shape_types",
           "Output types of autograd.Function.apply.",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "input_shapes",
           "Input shapes of autograd.Function.apply.",
@@ -2362,6 +2369,11 @@ Return true if all elements are true and false otherwise.
           "Output shapes of autograd.Function.apply.",
           AttributeProto::INTS,
           false)
+      .Attr(
+          "inplace",
+          "Dummy.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -2369,7 +2381,11 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain input type to 64-bit integer.");
+          "Constrain input type to 64-bit integer.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(PythonOpGrad)
       .SetDomain(kMSDomain)
@@ -2398,17 +2414,24 @@ Return true if all elements are true and false otherwise.
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Attr(
+          "name",
+          "Name of custom class.",
+          AttributeProto::STRING)
+      .Attr(
           "require_grads",
           "Flags to indicate which output has valid gradient",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "input_shape_types",
           "Input types of autograd.Function.apply. They are output types of PythonOpBackward",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "output_shape_types",
           "Output types of autograd.Function.apply.",
-          AttributeProto::INTS)
+          AttributeProto::INTS,
+          false)
       .Attr(
           "input_shapes",
           "Input shapes of autograd.Function.backward.",
@@ -2419,6 +2442,11 @@ Return true if all elements are true and false otherwise.
           "Output types of autograd.Function.backward.",
           AttributeProto::INTS,
           false)
+      .Attr(
+          "inplace",
+          "Dummy.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -2426,7 +2454,10 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain input type to 64-bit integer.");
+          "Constrain input type to 64-bit integer.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

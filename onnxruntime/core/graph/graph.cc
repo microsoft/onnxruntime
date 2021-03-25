@@ -2132,7 +2132,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
       Status status(ONNXRUNTIME, FAIL,
-                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    node.OpType() + " node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
       return status;
     }
 
@@ -2292,6 +2292,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     node.ToProto(node_proto);
     auto& node_name = node.Name();
     auto& domain = node.Domain();
+
+    std::cout << "[graph.cc, VerifyNodeAndOpMatch] " << node_name << ", " << domain << ", " << node_proto.DebugString() << std::endl;
 
     if (!node.Op()) {
       {

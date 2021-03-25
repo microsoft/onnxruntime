@@ -72,6 +72,7 @@ DECLARE_GRADIENT_BUILDER(GetClipGradient)
 DECLARE_GRADIENT_BUILDER(GetAbsGradient)
 DECLARE_GRADIENT_BUILDER(GetMinMaxGradient)
 DECLARE_GRADIENT_BUILDER(GetTileGradient)
+DECLARE_GRADIENT_BUILDER(GetPythonOpGradient)
 
 }  // namespace training
 }  // namespace onnxruntime
