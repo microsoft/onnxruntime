@@ -2302,7 +2302,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Input(
           0,
           "weight",
-          "The embedding matrix of size N x M. 'N' should be equal to the maximum index + 1, and 'M' should "
+          "The embedding matrix of size N x M. 'N' is equal to the maximum possible index + 1, and 'M' is "
           "equal to the embedding size",
           "T")
       .Input(
@@ -2328,7 +2328,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Output(
           0,
           "Y",
-          "Output tensor of the same type and shape as the input tensor.",
+          "Output tensor of the same type as the input tensor. Shape of the output is * x M, where '*' is the shape of "
+          "input indices, and 'M' is the embedding size.",
           "T")
       .TypeConstraint(
           "T",
