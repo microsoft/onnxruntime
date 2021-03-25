@@ -696,7 +696,7 @@ class ORTTrainer(object):
 
                 providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
 
-            return providers        
+            return providers
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
