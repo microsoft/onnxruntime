@@ -40,6 +40,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
+    case AllocKind::kAllocatedExternally:
+      out << "AllocatedExternally";
+      break;
     case AllocKind::kNotSet:
       out << "NotSet";
       break;
@@ -721,7 +724,7 @@ class PlannerImpl {
           }
         } else if (external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
-          AllocPlan(current).alloc_kind = AllocKind::kPreExisting;
+          AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           AllocPlan(current).life_interval.second = execution_plan.size();
 #endif
