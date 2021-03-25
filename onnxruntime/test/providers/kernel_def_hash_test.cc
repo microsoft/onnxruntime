@@ -38,8 +38,10 @@
  * Please do that if appropriate.
  *
  * In the unlikely event that we need to make a change to the kernel def
- * hashing that breaks backward compatibility, the expected values here may
- * need to be updated.
+ * hashing that breaks backward compatibility, the expected values may need to
+ * be updated.
+ * The expected value files are in this directory:
+ *     onnxruntime/test/testdata/kernel_def_hashes
  */
 
 #include <algorithm>
