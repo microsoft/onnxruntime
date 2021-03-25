@@ -29,8 +29,8 @@ class ROCMExternalAllocator : public ROCMAllocator {
  public:
   ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
       : ROCMAllocator(device_id, name) {
-    alloc_ = const_cast<ExternalAlloc>(reinterpret_cast<ExternalAlloc>(alloc));
-    free_ = const_cast<ExternalAlloc>(reinterpret_cast<ExternalFree>(free));
+    alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<ExternalAlloc>(alloc));
+    free_ = reinterpret_cast<ExternalFree>(const_cast<ExternalFree>(free));
   }
 
   void* Alloc(size_t size) override;
