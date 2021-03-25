@@ -45,21 +45,27 @@ class IExecutor {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger,
                          int64_t run_id) {
+#ifdef ENABLE_TRAINING
     if (run_id > DEFAULT_RUN_ID) {
       return ExecutePartial(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, run_id);
     } else {
       return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
     }
+#else
+  ORT_UNUSED_PARAMETER(run_id);
+  return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
+#endif
   }
 
   virtual common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                  const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) = 0;
-
+#ifdef ENABLE_TRAINING
   virtual common::Status ExecutePartial(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                         const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                         std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                         const logging::Logger& logger, int64_t run_id) = 0;
+#endif
 };
 }  // namespace onnxruntime

@@ -61,12 +61,6 @@ class MemoryInfo;
 #endif
 
 struct PartialGraphExecutionManager {
-  OrtMutex lock_;
-  std::map<int64_t, std::pair<std::shared_ptr<onnxruntime::ExecutionFrame>, size_t>> graph_runs_;
-  std::vector<int64_t> available_run_ids_;
-  int64_t graph_runs_counter_;
-  std::unordered_set<int64_t> to_be_executed_runs_;
-
   PartialGraphExecutionManager() {
     graph_runs_counter_ = 0;
   }
@@ -144,6 +138,13 @@ struct PartialGraphExecutionManager {
 
     it->second.second = program_counter;
   }
+
+ private:
+  OrtMutex lock_;
+  std::map<int64_t, std::pair<std::shared_ptr<onnxruntime::ExecutionFrame>, size_t>> graph_runs_;
+  std::vector<int64_t> available_run_ids_;
+  int64_t graph_runs_counter_;
+  std::unordered_set<int64_t> to_be_executed_runs_;
 };
 
 /**
@@ -305,9 +306,11 @@ class SessionState {
 
   bool GetEnableMemoryReuse() const;
 
-  bool GetTransferIntermidiateTensorOwnership() const;
+  bool GetTransferIntermediateTensorOwnership() const;
 
+#ifdef ENABLE_TRAINING
   PartialGraphExecutionManager& GetPartialGraphExecutionManager();
+#endif
 
   /**
   Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
@@ -537,7 +540,9 @@ class SessionState {
   bool use_deterministic_compute_;
   bool enable_mem_reuse_;
   bool transfer_ownership_intermediate_output_tensors_;
+#ifdef ENABLE_TRAINING
   mutable PartialGraphExecutionManager partial_graph_runs_manager_;
+#endif
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
 

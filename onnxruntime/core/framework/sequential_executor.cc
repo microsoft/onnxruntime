@@ -131,126 +131,66 @@ static Status FetchOutputsFromExecutionFrame(ExecutionFrame& frame, bool release
   return Status::OK();
 }
 
-static Status SynchronizeNodeInputs(const SequentialExecutionPlan& seq_exec_plan, size_t program_counter,
-                                    const SessionState& session_state, ExecutionFrame& frame, bool terminate_flag,
-                                    const logging::Logger& logger) {
-  const auto& node_exec_plan = seq_exec_plan.execution_plan[program_counter];
-  auto node_index = node_exec_plan.node_index;
-  const auto& graph_viewer = session_state.GetGraphViewer();
-  const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
-  auto p_op_kernel = session_state.GetKernel(node_index);
-  if (p_op_kernel == nullptr)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                           node.Name());
-
-  OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag);
-  int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-  if (seq_exec_plan.NodeHasFence(node_index)) {
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
-        }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+static Status SynchronizeNodeInputs(const OpKernel* p_op_kernel, OpKernelContextInternal& op_kernel_context, int queue_id) {
+  for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+    Fence_t fence = op_kernel_context.InputFence(input_index);
+    if (fence) {
+      auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+      if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+        execution_provider_type = kCpuExecutionProvider;
       }
+      fence->BeforeUsingAsInput(execution_provider_type, queue_id);
     }
+  }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
-        }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+  for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+    Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+    if (fence) {
+      auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+      if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+        execution_provider_type = kCpuExecutionProvider;
       }
+      fence->BeforeUsingAsInput(execution_provider_type, queue_id);
     }
   }
 
   return Status::OK();
 }
 
-static Status PostSynchronizeNodeInputs(const SequentialExecutionPlan& seq_exec_plan, size_t program_counter,
-                                        const SessionState& session_state, ExecutionFrame& frame, bool terminate_flag,
-                                        const logging::Logger& logger) {
-  const auto& node_exec_plan = seq_exec_plan.execution_plan[program_counter];
-  auto node_index = node_exec_plan.node_index;
-  const auto& graph_viewer = session_state.GetGraphViewer();
-  const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
-  auto p_op_kernel = session_state.GetKernel(node_index);
-  if (p_op_kernel == nullptr)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                           node.Name());
-
-  OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag);
-  int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-  if (seq_exec_plan.NodeHasFence(node_index)) {
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
-      }
+static Status PostSynchronizeNodeInputs(OpKernelContextInternal& op_kernel_context, int queue_id) {
+  for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+    Fence_t fence = op_kernel_context.InputFence(input_index);
+    if (fence) {
+      fence->AfterUsedAsInput(queue_id);
     }
+  }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
-      }
+  for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+    Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+    if (fence) {
+      fence->AfterUsedAsInput(queue_id);
     }
   }
 
   return Status::OK();
 }
 
-static Status SynchronizeNodeOutputs(const SequentialExecutionPlan& seq_exec_plan, size_t program_counter,
-                                     const SessionState& session_state, ExecutionFrame& frame, bool terminate_flag,
-                                     const logging::Logger& logger) {
-  const auto& node_exec_plan = seq_exec_plan.execution_plan[program_counter];
-  auto node_index = node_exec_plan.node_index;
-  const auto& graph_viewer = session_state.GetGraphViewer();
-  const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
-  auto p_op_kernel = session_state.GetKernel(node_index);
-  if (p_op_kernel == nullptr)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                           node.Name());
-
-  OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag);
-  int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-  if (seq_exec_plan.NodeHasFence(node_index)) {
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
-      }
+static Status SynchronizeNodeOutputs(const OpKernel* p_op_kernel, OpKernelContextInternal& op_kernel_context, int queue_id) {
+  for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+    Fence_t fence = op_kernel_context.OutputFence(output_index);
+    if (fence) {
+      fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
     }
   }
 
   return Status::OK();
 }
 
-static Status PostSynchronizeNodeOutputs(const SequentialExecutionPlan& seq_exec_plan, size_t program_counter,
-                                         const SessionState& session_state, ExecutionFrame& frame, bool terminate_flag,
-                                         const logging::Logger& logger) {
-  const auto& node_exec_plan = seq_exec_plan.execution_plan[program_counter];
-  auto node_index = node_exec_plan.node_index;
-  const auto& graph_viewer = session_state.GetGraphViewer();
-  const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
-  auto p_op_kernel = session_state.GetKernel(node_index);
-  if (p_op_kernel == nullptr)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                           node.Name());
-
-  OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag);
-  int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-  if (seq_exec_plan.NodeHasFence(node_index)) {
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->AfterUsedAsOutput(queue_id);
-      }
+static Status PostSynchronizeNodeOutputs(OpKernelContextInternal& op_kernel_context, int queue_id) {
+  for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+    Fence_t fence = op_kernel_context.OutputFence(output_index);
+    if (fence) {
+      fence->AfterUsedAsOutput(queue_id);
     }
   }
 
@@ -266,10 +206,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto exec_plan_size = exec_plan_vec.size();
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
   ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, frame, 0, exec_plan_size));
-  ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(frame, session_state.GetTransferIntermidiateTensorOwnership(), fetches, logger));
+  ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(frame, session_state.GetTransferIntermediateTensorOwnership(), fetches, logger));
   return Status::OK();
 }
 
+#ifdef ENABLE_TRAINING
 Status SequentialExecutor::ExecutePartial(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                           const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
@@ -305,15 +246,26 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
   ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, *frame, program_counter, program_counter_end));
 
   // Make sure intermediate outputs (Break Op node inputs in this case) are ready in the event they are being asynchronously computed.
-  if (program_counter_end < exec_plan_size) {
-    ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(seq_exec_plan, program_counter_end, session_state, *frame, terminate_flag_, logger));
+  const auto& node_exec_plan = exec_plan_vec[program_counter_end];
+  auto node_index = node_exec_plan.node_index;
+  if ((program_counter_end < exec_plan_size) && (seq_exec_plan.NodeHasFence(node_index))) {
+    const auto& graph_viewer = session_state.GetGraphViewer();
+    const auto& node = *graph_viewer.GetNode(node_index);
+    auto p_op_kernel = session_state.GetKernel(node_index);
+    if (p_op_kernel == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+                             node.Name());
+    }
+
+    OpKernelContextInternal op_kernel_context(session_state, *frame, *p_op_kernel, logger, terminate_flag_);
+    ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(p_op_kernel, op_kernel_context, p_op_kernel->KernelDef().ExecQueueId()));
   }
 
   // Fetch the outputs.
-  ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(*frame, session_state.GetTransferIntermidiateTensorOwnership(), fetches, logger));
+  ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(*frame, session_state.GetTransferIntermediateTensorOwnership(), fetches, logger));
 
   // Update the program counter.
-  if (session_state.GetTransferIntermidiateTensorOwnership()) {
+  if (session_state.GetTransferIntermediateTensorOwnership()) {
     program_counter = program_counter_end + 1;
   } else {
     program_counter = program_counter_end;
@@ -330,6 +282,7 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
 
   return Status::OK();
 }
+#endif
 
 Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -449,10 +402,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
-
+    int queue_id = p_op_kernel->KernelDef().ExecQueueId();
+    bool has_fence = seq_exec_plan.NodeHasFence(node_index);
     // sync before compute
-    ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(seq_exec_plan, program_counter, session_state, frame, terminate_flag_, logger));
-    ORT_RETURN_IF_ERROR(SynchronizeNodeOutputs(seq_exec_plan, program_counter, session_state, frame, terminate_flag_, logger));
+    if (has_fence) {
+      ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(p_op_kernel, op_kernel_context, queue_id));
+      ORT_RETURN_IF_ERROR(SynchronizeNodeOutputs(p_op_kernel, op_kernel_context, queue_id));
+    }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
@@ -559,8 +515,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     }
 
     // sync after compute for outputs
-    ORT_RETURN_IF_ERROR(PostSynchronizeNodeInputs(seq_exec_plan, program_counter, session_state, frame, terminate_flag_, logger));
-    ORT_RETURN_IF_ERROR(PostSynchronizeNodeOutputs(seq_exec_plan, program_counter, session_state, frame, terminate_flag_, logger));
+    if (has_fence) {
+      ORT_RETURN_IF_ERROR(PostSynchronizeNodeInputs(op_kernel_context, queue_id));
+      ORT_RETURN_IF_ERROR(PostSynchronizeNodeOutputs(op_kernel_context, queue_id));
+    }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_stop;

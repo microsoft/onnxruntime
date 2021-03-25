@@ -26,18 +26,19 @@ class SequentialExecutor : public IExecutor {
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
-
+#ifdef ENABLE_TRAINING
   common::Status ExecutePartial(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                 std::vector<OrtValue>& fetches, const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                 const logging::Logger& logger, int64_t run_id) override;
+#endif
 
+ private:
   common::Status Execute(const SessionState& session_state,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          const logging::Logger& logger, ExecutionFrame& frame, size_t program_counter_start,
                          size_t program_counter_end);
 
- private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
   const bool& terminate_flag_;
   const bool only_execute_path_to_fetches_;

@@ -1738,12 +1738,12 @@ int64_t InferenceSession::CreatePartialRun() {
   return session_state_->GetPartialGraphExecutionManager().GetNewPartialGraphRunId();
 }
 
-common::Status InferenceSession::PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t run_id) {
-  ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
+common::Status InferenceSession::PartialRun(IOBinding& io_binding, int64_t run_id) {
   ORT_ENFORCE(session_state_->GetEnableMemoryPattern() == false);
   ORT_ENFORCE(session_state_->GetEnableMemoryReuse() == false);
   ORT_ENFORCE(session_state_->GetPartialGraphExecutionManager().IsValidRunId(run_id));
-
+  
+  RunOptions run_options;
   return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
              &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), run_id);
 }

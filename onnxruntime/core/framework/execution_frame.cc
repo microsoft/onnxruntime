@@ -128,7 +128,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // 1. resize the all_value_ vector
-  all_values_.resize(all_values_size_);
+  all_values_.resize(all_values_size_, OrtValue());
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -189,10 +189,14 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   }
 }
 
+#ifdef ENABLE_TRAINING 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underlying tensor/object for MLValue
+
+    ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
     all_values_[ort_value_idx] = feeds[idx];
   }
 }
@@ -205,10 +209,14 @@ void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, 
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs_[idx];
+
+      ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
       all_values_[ort_value_idx] = fetches[idx];
     }
   }
 }
+#endif
 
 Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches, bool release) {
   auto num_fetches = fetch_mlvalue_idxs_.size();
@@ -243,7 +251,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
-    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), const_cast<std::vector<int>&>(fetch_mlvalue_idxs)),
+    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {

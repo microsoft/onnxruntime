@@ -64,8 +64,14 @@ struct SessionOptions {
   // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
+  // Enable memory resue in memory planning. Allows to reuse tensor buffer between tensors if they are of
+  // the same size. The issue with this is it can lead to memory being held for longer than needed and 
+  // can impact peak memory consumption.
   bool enable_mem_reuse = true;
 
+  // Indicates if the graph execution's fetch tensor's ownership should be transfered to the user, this
+  // is usually the case but it is a special case with partial graph execution where these tensors 
+  // are usually intermediate tensors. 
   bool transfer_ownership_intermediate_output_tensors = false;
 
   // enable the memory arena on CPU

@@ -185,7 +185,7 @@ class ORTModule(torch.nn.Module):
                     _create_forward_iobinding(self._training_foward_io_binding, inputs, self._onnx_training, self._device, self._onnx_graphs_info.user_output_names)
 
                     # Run and return module outputs.
-                    run_id = self._training_session.run_forward(self._training_foward_io_binding, self._run_options)
+                    run_id = self._training_session.run_forward(self._training_foward_io_binding)
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
                         forward_output) for forward_output in self._training_foward_io_binding.get_outputs())
 
@@ -239,7 +239,7 @@ class ORTModule(torch.nn.Module):
                     # Run and get results
                     run_id = ctx.run_id
                     _create_backward_iobinding(self._training_backward_io_binding, contiguous_grad_outputs, self._onnx_training, self._device, self._onnx_graphs_info.ort_break_op_output_names)
-                    self._training_session.run_backward(self._training_backward_io_binding, self._run_options, np.int64(run_id))
+                    self._training_session.run_backward(self._training_backward_io_binding, np.int64(run_id))
                     backward_outputs = self._training_backward_io_binding.get_outputs()
 
                     # Return input and initializer gradients
@@ -330,7 +330,6 @@ class ORTModule(torch.nn.Module):
         self._training_session = None
         self._training_foward_io_binding = None
         self._training_backward_io_binding = None
-        self._run_options = None
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
@@ -416,9 +415,6 @@ class ORTModule(torch.nn.Module):
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
-
-        # Use this global run_options for now
-        self._run_options = C.RunOptions()
 
         # IO binding
         # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.

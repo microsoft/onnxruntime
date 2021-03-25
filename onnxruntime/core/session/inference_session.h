@@ -291,25 +291,30 @@ class InferenceSession {
   /**
     * Create a partial run. This merely generates a unique id for the run that can 
     * be used to initiate the partial run using PartialRun call.
-    * Multiple threads are allowed to run this function; hence its thread-safe.
+    * Multiple threads are allowed to run this function; hence it's thread-safe.
     * @return a unique partial run id.
     */
   int64_t CreatePartialRun();
 
   /**
-    * Partially train a model until 'break' operator is reached. The execution can 
+    * Partially execute a graph until 'break' operator is reached. The execution can 
     * be resumed with this call. 
-    * Multiple threads are allowed to run this function; hence its thread-safe.
-    * @param run_options Misc. options for graph execution.
+    * Multiple threads are allowed to run this function; hence it's thread-safe.
     * @param io_binding Contains feeds and fetches.
+    *
+    * The feeds will be graph inputs for the initial call, after which it will be
+    * break op outputs (intermediate tensors).
+    * 
+    * Fetches will be break op inputs but for the final call that completes the graph execution
+    * it will be graph outputs.
     * @param run_id Unique id for a given partial run.
     * @return OK if success.
     */
-  common::Status PartialRun(const RunOptions& run_options, IOBinding& io_binding, int64_t run_id);
+  common::Status PartialRun(IOBinding& io_binding, int64_t run_id);
 
   /**
     * Cancel an existing partial run that has not completed.
-    * Multiple threads are allowed to run this function; hence its thread-safe.
+    * Multiple threads are allowed to run this function; hence it's thread-safe.
     * @param run_id Unique id for a given partial run.
     */
   void CancelPartialRun(int64_t run_id);

@@ -215,7 +215,7 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
 
   NodeAttributes attributes{};
 
-  // StopOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
+  // BreakOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
   const auto& non_differentiable_indices = training_graph_info_.output_grad_indices_non_differentiable;
   if (non_differentiable_indices.size() > 0) {
     ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
@@ -228,7 +228,7 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
     attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
   }
 
-  // StopOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
+  // BreakOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
   // We need this info to set make TypeAndShapeInferenceFunction work properly.
   ONNX_NAMESPACE::AttributeProto full_shape_outputs;
   const std::string full_shape_outputs_name = "full_shape_outputs";

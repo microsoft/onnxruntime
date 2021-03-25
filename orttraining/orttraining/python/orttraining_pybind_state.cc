@@ -481,16 +481,16 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def(py::init([](PyInferenceSession * session) {
         return onnxruntime::make_unique<TrainingAgent>(session->GetSessionHandle());
       }))
-      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
+      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding) -> py::tuple {
         int64_t run_id;
-        Status status = agent->RunForward(run_options, *io_binding.Get(), run_id);
+        Status status = agent->RunForward(*io_binding.Get(), run_id);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
         return py::make_tuple(run_id);
       })
-      .def("run_backward", [](TrainingAgent* agent,  SessionIOBinding& io_binding, RunOptions& run_options, int64_t run_id) -> void {
-        Status status = agent->RunBackward(run_options, *io_binding.Get(), run_id);
+      .def("run_backward", [](TrainingAgent* agent,  SessionIOBinding& io_binding, int64_t run_id) -> void {
+        Status status = agent->RunBackward(*io_binding.Get(), run_id);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })

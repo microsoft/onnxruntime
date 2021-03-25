@@ -40,9 +40,11 @@ class IExecutionFrame {
  public:
   virtual ~IExecutionFrame();
 
+#ifdef ENABLE_TRAINING 
   void UpdateFeeds(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches);
 
   void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches);
+#endif
 
   // Get the index for the first entry of the given node.
   int GetNodeOffset(NodeIndex index) const {

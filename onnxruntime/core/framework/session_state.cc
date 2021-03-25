@@ -582,9 +582,11 @@ bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; 
 
 bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
-bool SessionState::GetTransferIntermidiateTensorOwnership() const { return transfer_ownership_intermediate_output_tensors_; }
+bool SessionState::GetTransferIntermediateTensorOwnership() const { return transfer_ownership_intermediate_output_tensors_; }
 
+#ifdef ENABLE_TRAINING
 PartialGraphExecutionManager& SessionState::GetPartialGraphExecutionManager() { return partial_graph_runs_manager_; }
+#endif
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
@@ -1011,16 +1013,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #endif
 
   // Memory pattern tracer allocates all initializers on a single continous
-  // buffer. This has the effect of reducing memory fragementation.
+  // buffer. This has the effect of reducing memory fragmentation.
   // Further more, NCCL kernels require initializers to be allocated
-  // continously.
+  // contiguously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
   // release some initializers. See OpKernel::PrePack(). Letting all initializers
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
   //
-  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  // TODO!! disabling memory pattern tracer increases fragmentation, leading to
   //  out of memory error in some training tests. Need to create kernel first,
   //  and let the kernel tells us whether the initalizer needs to be traced.
   //
