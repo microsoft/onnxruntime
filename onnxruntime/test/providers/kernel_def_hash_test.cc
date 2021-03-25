@@ -129,6 +129,9 @@ const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
       AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/contrib.nchwc.cpu.json"), result);
     }
 #endif  // !DISABLE_CONTRIB_OPS
+#ifdef ENABLE_TRAINING_OPS
+    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/training_ops.cpu.json"), result);
+#endif  // ENABLE_TRAINING_OPS
     std::sort(result.begin(), result.end());
 
     return result;
