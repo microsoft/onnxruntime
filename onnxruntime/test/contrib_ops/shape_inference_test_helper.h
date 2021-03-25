@@ -9,11 +9,11 @@
 namespace onnxruntime {
 namespace test {
 
-auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+static auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
 const std::string MS_DOMAIN = "com.microsoft";
 
-void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
+inline void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
   EXPECT_NE(shape1, nullptr);
   EXPECT_NE(shape2, nullptr);
   if ((shape1 != nullptr) && (shape2 != nullptr)) {
@@ -55,6 +55,7 @@ inline void TestShapeInference(
     const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
     ONNX_NAMESPACE::ValueInfoProto& output) {
+
   ONNX_NAMESPACE::ModelProto model;
   // Set opset (domain + version)
   ONNX_NAMESPACE::OperatorSetIdProto* op_set_id = model.add_opset_import();
@@ -78,6 +79,7 @@ inline void TestShapeInference(
   for (auto const& n_ : inputs) {
     node.add_input(n_.name());
     *graph->add_input() = n_;
+    std::cout << "nnn  " << n_.name() << "\n";
   }
 
   // Add node attributes
@@ -91,8 +93,7 @@ inline void TestShapeInference(
   ONNX_NAMESPACE::shape_inference::InferShapes(model, false, schema_registry);
 
   auto inferredGraph = model.graph();
-  int index = static_cast<int>(inputs.size());  // index for value_info of output
-  auto inferred_output = inferredGraph.value_info(index);
+  auto inferred_output = inferredGraph.value_info(1);
 
   auto elem_type = output.mutable_type()->mutable_tensor_type()->elem_type();
   auto inferred_elem_type = inferred_output.mutable_type()->mutable_tensor_type()->elem_type();
