@@ -373,6 +373,8 @@ ThreadPool::ThreadPool(Env* env,
   }
 }
 
+ThreadPool::ThreadPool() {}
+
 ThreadPool::~ThreadPool() = default;
 
 // Base case for parallel loops, running iterations 0..total, divided into blocks
