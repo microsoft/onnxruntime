@@ -68,7 +68,7 @@ struct KernelOne {
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
-  // Do computation
+    // Do computation
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
@@ -79,7 +79,6 @@ struct KernelOne {
   Ort::CustomOpApi ort_;
 };
 
-#ifdef USE_CUDA
 struct KernelOneCuda {
   KernelOneCuda(OrtApi api)
       : api_(api),
@@ -104,28 +103,13 @@ struct KernelOneCuda {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
-    float* d_X;
-    float* d_Y;
-    float* d_O;
-
-    size_t size_X = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input_X)) * sizeof(float);
-    size_t size_Y = ort_.GetTensorShapeElementCount(ort_.GetTensorTypeAndShape(input_Y)) * sizeof(float);
-    size_t size_O = size * sizeof(float);
-
-    cudaMalloc(&d_X, size_X);
-    cudaMalloc(&d_Y, size_Y);
-    cudaMalloc(&d_O, size_O);
-
-    cudaMemcpy(d_X, X, size_X, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_Y, Y, size_Y, cudaMemcpyHostToDevice);
-
-    cuda_add(size, d_O, d_X, d_Y, 0);
-
-    cudaMemcpy(out, d_O, size_O, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_X);
-    cudaFree(d_Y);
-    cudaFree(d_O);
+#ifdef USE_CUDA
+    cuda_add(size, out, X, Y, 0);
+#else
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] + Y[i];
+    }
+#endif
   }
 
  private:
@@ -133,7 +117,6 @@ struct KernelOneCuda {
   Ort::CustomOpApi ort_;
   void* compute_stream_;
 };
-#endif
 
 struct KernelTwo {
   KernelTwo(OrtApi api)
@@ -182,13 +165,17 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 
 } c_CustomOpOne;
 
-#ifdef USE_CUDA
+
 struct CustomOpOneCuda : Ort::CustomOpBase<CustomOpOneCuda, KernelOneCuda> {
   void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
     return new KernelOneCuda(api);
   };
 
   const char* GetName() const { return "CustomOpOneCuda"; };
+
+#ifdef USE_CUDA
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
+#endif
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
@@ -197,7 +184,6 @@ struct CustomOpOneCuda : Ort::CustomOpBase<CustomOpOneCuda, KernelOneCuda> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
 } c_CustomOpOneCuda;
-#endif
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
@@ -228,11 +214,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     return status;
   }
 
-#ifdef USE_CUDA
   if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpOneCuda)) {
     return status;
   }
-#endif
 
   if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpTwo)) {
     return status;
