@@ -5,7 +5,17 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/pipeline_parallelism/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/pipeline_parallelism/*.cc"
     )
+
+if (onnxruntime_USE_CUDA)
+  file(GLOB onnxruntime_pipeline_parallelism_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/session/pipeline_parallelism/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/pipeline_parallelism/*.cc"
+    )
+  list (APPEND onnxruntime_session_srcs ${onnxruntime_pipeline_parallelism_srcs})
+endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
