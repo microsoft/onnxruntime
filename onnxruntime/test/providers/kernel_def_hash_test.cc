@@ -60,11 +60,12 @@
 #pragma warning(pop)
 #endif
 
+#include "asserts.h"
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
-#include "default_providers.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 using json = nlohmann::json;
 
@@ -72,26 +73,23 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-std::ostream& operator<<(std::ostream& out, const KernelDefHashes& kernel_def_hashes) {
+std::string DumpKernelDefHashes(const onnxruntime::KernelDefHashes& kernel_def_hashes) {
   const json j(kernel_def_hashes);
-  out << j.dump(/* indent */ 4);
-  return out;
+  return j.dump(/* indent */ 4);
 }
 
-std::istream& operator>>(std::istream& in, KernelDefHashes& kernel_def_hashes) {
+KernelDefHashes ParseKernelDefHashes(std::istream& in) {
+  KernelDefHashes kernel_def_hashes{};
   const json j = json::parse(in);
-  j.get_to<KernelDefHashes>(kernel_def_hashes);
-  return in;
+  j.get_to<onnxruntime::KernelDefHashes>(kernel_def_hashes);
+  return kernel_def_hashes;
 }
 
-void AppendKernelDefHashesFromFile(const PathString& path, KernelDefHashes& kernel_def_hashes) {
-  KernelDefHashes hashes_to_append{};
-  {
-    std::ifstream in{path};
-    in >> hashes_to_append;
-    ASSERT_TRUE(in) << "Failed to get kernel def hashes from file: " << path;
-  }
-  kernel_def_hashes.insert(kernel_def_hashes.end(), hashes_to_append.begin(), hashes_to_append.end());
+KernelDefHashes ReadKernelDefHashesFromFile(const PathString& path) {
+  std::ifstream in{path};
+  ORT_ENFORCE(in, "Failed to open file: ", ToMBString(path));
+  const auto kernel_def_hashes = ParseKernelDefHashes(in);
+  return kernel_def_hashes;
 }
 
 void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& expected) {
@@ -103,68 +101,37 @@ void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& 
   KernelDefHashes expected_minus_actual{};
   std::set_difference(expected.begin(), expected.end(), actual.begin(), actual.end(),
                       std::back_inserter(expected_minus_actual));
-  EXPECT_EQ(expected_minus_actual, KernelDefHashes{})
+  EXPECT_TRUE(expected_minus_actual.empty())
       << "Some expected kernel def hashes were not found.\n"
-      << kNoteReference;
+      << kNoteReference << "\n"
+      << DumpKernelDefHashes(expected_minus_actual);
 
   KernelDefHashes actual_minus_expected{};
   std::set_difference(actual.begin(), actual.end(), expected.begin(), expected.end(),
                       std::back_inserter(actual_minus_expected));
-  if (!actual_minus_expected.empty()) {
-    std::cerr << "Extra actual kernel def hashes were found, please update the expected values as needed "
-                 "(see the output below).\n"
-              << kNoteReference << "\n"
-              << actual_minus_expected << "\n";
-  }
-}
-
-const KernelDefHashes& GetExpectedCpuKernelDefHashes() {
-  static const KernelDefHashes expected_cpu_kernel_def_hashes = []() {
-    KernelDefHashes result{};
-    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/onnx.cpu.json"), result);
-#ifndef DISABLE_ML_OPS
-    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/onnx.ml.cpu.json"), result);
-#endif  // !DISABLE_ML_OPS
-#ifndef DISABLE_CONTRIB_OPS
-    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/contrib.cpu.json"), result);
-    if (MlasNchwcGetBlockSize() > 1) {
-      AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/contrib.nchwc.cpu.json"), result);
-    }
-#endif  // !DISABLE_CONTRIB_OPS
-#ifdef ENABLE_TRAINING_OPS
-    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/training_ops.cpu.json"), result);
-#endif  // ENABLE_TRAINING_OPS
-    std::sort(result.begin(), result.end());
-
-    return result;
-  }();
-
-  return expected_cpu_kernel_def_hashes;
+  EXPECT_TRUE(actual_minus_expected.empty())
+      << "Unexpected kernel def hashes were found, please update the expected values as needed "
+         "(see the output below).\n"
+      << kNoteReference << "\n"
+      << DumpKernelDefHashes(actual_minus_expected);
 }
 }  // namespace
 
 TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  auto kernel_registry = cpu_ep->GetKernelRegistry();
-  const auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
-  std::cout << cpu_kernel_def_hashes << "\n";
+  KernelRegistry kernel_registry{};
+  ASSERT_STATUS_OK(RegisterCPUKernels(kernel_registry));
+  const auto cpu_kernel_def_hashes = kernel_registry.ExportKernelDefHashes();
+  std::cout << DumpKernelDefHashes(cpu_kernel_def_hashes) << "\n";
 }
 
-TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  auto kernel_registry = cpu_ep->GetKernelRegistry();
-  auto cpu_kernel_def_hashes = kernel_registry->ExportKernelDefHashes();
-  const auto& expected_cpu_kernel_def_hashes = GetExpectedCpuKernelDefHashes();
-
-  // remove kernel def hash added by another test
-  cpu_kernel_def_hashes.erase(
-      std::remove_if(
-          cpu_kernel_def_hashes.begin(), cpu_kernel_def_hashes.end(),
-          [](const KernelDefHashes::value_type& key_and_hash) {
-            return key_and_hash.first == "OpaqueCApiTestKernel com.microsoft.mlfeaturizers CPUExecutionProvider";
-          }),
-      cpu_kernel_def_hashes.end());
-
+// disabled by default because not all builds have the expected kernels
+// run with --gtest_also_run_disabled_tests
+TEST(KernelDefHashTest, DISABLED_ExpectedCpuKernelDefHashes) {
+  KernelRegistry kernel_registry{};
+  ASSERT_STATUS_OK(RegisterCPUKernels(kernel_registry));
+  auto cpu_kernel_def_hashes = kernel_registry.ExportKernelDefHashes();
+  const auto expected_cpu_kernel_def_hashes =
+      ReadKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/cpu.json"));
   CheckKernelDefHashes(cpu_kernel_def_hashes, expected_cpu_kernel_def_hashes);
 }
 
