@@ -33,7 +33,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
-              cuda::provider_option_names::krocmExternalAlloc,
+              rocm::provider_option_names::krocmExternalAlloc,
               [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
@@ -41,7 +41,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddValueParser(
-              cuda::provider_option_names::krocmExternalFree,
+              rocm::provider_option_names::krocmExternalFree,
               [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));

@@ -29,8 +29,8 @@ class ROCMExternalAllocator : public ROCMAllocator {
  public:
   ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
       : ROCMAllocator(device_id, name) {
-    alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<ExternalAlloc>(alloc));
-    free_ = reinterpret_cast<ExternalFree>(const_cast<ExternalFree>(free));
+    alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<void*>(alloc));
+    free_ = reinterpret_cast<ExternalFree>(const_cast<void*>(free));
   }
 
   void* Alloc(size_t size) override;
@@ -47,7 +47,7 @@ class ROCMPinnedAllocator : public IAllocator {
   ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;

@@ -153,6 +153,7 @@ onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{
 
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_allocator.h"
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
 
@@ -512,7 +513,7 @@ static AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, hip_mem_limit, arena_extend_strategy, external_allocator_info)});
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, cuda_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
   return id_to_allocator_map[id];
@@ -1277,6 +1278,15 @@ void addObjectMethods(py::module& m, Environment& env) {
           // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
           // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+#elif USE_ROCM
+          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+          CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
 
 #else
       throw std::runtime_error(
@@ -1392,6 +1402,8 @@ void addObjectMethods(py::module& m, Environment& env) {
 
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+#elif USE_ROCM
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
 #else
     GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif

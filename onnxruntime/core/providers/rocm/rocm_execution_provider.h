@@ -88,7 +88,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
-
+  
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);

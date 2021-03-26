@@ -63,7 +63,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<ROCMExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free);
+          return onnxruntime::make_unique<ROCMExternalAllocator>(id, MIGRAPHX, external_allocator_info.alloc, external_allocator_info.free);
         },
         device_id,
         false);
@@ -73,7 +73,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<ROCMAllocator>(id, CUDA);
+          return onnxruntime::make_unique<ROCMAllocator>(id, MIGRAPHX);
         },
         device_id,
         true,
@@ -81,12 +81,13 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
          static_cast<int>(arena_extend_strategy),
          -1, -1});
 
-    // CUDA malloc/free is expensive so always use an arena
+    // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, 
+                                                          ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   stream_ = stream;
 
@@ -97,7 +98,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
-        return onnxruntime::make_unique<ROCMAllocator>(id, CUDA);
+        return onnxruntime::make_unique<ROCMAllocator>(id, MIGRAPHX);
       },
       device_id,
       true,
@@ -106,7 +107,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
        -1, -1});
 
   // HIP malloc/free is expensive so always use an arena
-  allocator_ = CreateAllocator(default_memory_info);
+  allocator_ = CreateRocmAllocator(device_id, hip_mem_limit, arena_extend_strategy, external_allocator_info);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -152,7 +153,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMAllocator>(device_id, CUDA);
+        return onnxruntime::make_unique<ROCMAllocator>(device_id, MIGRAPHX);
       },
       info_.device_id,
       true,
@@ -164,7 +165,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, MIGRAPHX_PINNED);
       },
       DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
@@ -1870,7 +1871,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   if (nullptr == rocm_pinned_alloc) {
     AllocatorCreationInfo pinned_memory_info(
         [](OrtDevice::DeviceId device_id) {
-          return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, HIP_PINNED);
+          return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, MIGRAPHX_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
@@ -1894,7 +1895,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
-    rocm_cpu_alloc = CreateAllocator(rocm_memory_info);
+    rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
     allocator_manager->InsertAllocator(rocm_cpu_alloc);
   }
   TryInsertAllocator(rocm_cpu_alloc);
