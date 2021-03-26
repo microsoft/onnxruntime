@@ -94,7 +94,7 @@ TEST(ShapeInferenceTests, embedding_with_scale_grad) {
   CreateValueInfo(padding_idx, "Pad", ONNX_NAMESPACE::TensorProto_DataType_INT64, {});
   ONNX_NAMESPACE::ValueInfoProto scale_grad;
   CreateValueInfo(scale_grad, "Scale", ONNX_NAMESPACE::TensorProto_DataType_BOOL, {});
-  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {weight, input, padding_idx};
+  std::vector<ONNX_NAMESPACE::ValueInfoProto> inputs = {weight, input, padding_idx, scale_grad};
 
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
