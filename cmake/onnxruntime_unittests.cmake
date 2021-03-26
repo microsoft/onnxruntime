@@ -966,7 +966,7 @@ include_directories("${CUDA_INCLUDE_DIRS}")
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
                                      ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.h
                                      ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.cu)
-add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
+
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
