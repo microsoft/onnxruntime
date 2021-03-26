@@ -79,7 +79,6 @@ inline void TestShapeInference(
   for (auto const& n_ : inputs) {
     node.add_input(n_.name());
     *graph->add_input() = n_;
-    std::cout << "nnn  " << n_.name() << "\n";
   }
 
   // Add node attributes
