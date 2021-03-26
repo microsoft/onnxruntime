@@ -2293,8 +2293,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node_name = node.Name();
     auto& domain = node.Domain();
 
-    std::cout << "[graph.cc, VerifyNodeAndOpMatch] " << node_name << ", " << domain << ", " << node_proto.DebugString() << std::endl;
-
     if (!node.Op()) {
       {
         auto status = Status::OK();
