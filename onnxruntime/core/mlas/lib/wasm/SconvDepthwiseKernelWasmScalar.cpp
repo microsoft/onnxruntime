@@ -46,66 +46,113 @@ Arguments:
 
 --*/
 {
-    const float w00 = Filter[0];
-    const float w01 = Filter[1];
-    const float w02 = Filter[2];
-    const float w10 = Filter[3];
-    const float w11 = Filter[4];
-    const float w12 = Filter[5];
-    const float w20 = Filter[6];
-    const float w21 = Filter[7];
-    const float w22 = Filter[8];
-
-    const size_t pad_top = Parameters->Padding[0];
-    const size_t pad_left = Parameters->Padding[1];
-    const size_t pad_right = Parameters->Padding[3];
-    const size_t H = Parameters->InputShape[0];
     const size_t W = Parameters->InputShape[1];
-    const size_t stride_h = Parameters->StrideShape[0];
-    const size_t stride_w = Parameters->StrideShape[1];
 
-    const float* row0 = (pad_top > 0) ? Zeros : (Input - pad_left);
-    const float* row1 = (Input + (1 - pad_top) * W) - pad_left;
-    const float* row2 = (H + pad_top <= 2) ? Zeros : (row1 + W);
+    if (W > 1) {
 
-    for (size_t h = 0, out_row = Parameters->OutputShape[0]; out_row > 0; --out_row) {
-        auto out_col = Parameters->OutputShape[1];
+        const float w00 = Filter[0];
+        const float w01 = Filter[1];
+        const float w02 = Filter[2];
+        const float w10 = Filter[3];
+        const float w11 = Filter[4];
+        const float w12 = Filter[5];
+        const float w20 = Filter[6];
+        const float w21 = Filter[7];
+        const float w22 = Filter[8];
 
-        if (pad_left == 1) {
-            float dotsum = w01 * row0[1] + w02 * row0[2] +
-                           w11 * row1[1] + w12 * row1[2] +
-                           w21 * row2[1] + w22 * row2[2];
-            *Output++ = dotsum;
-            out_col--;
-            row0 += stride_w;
-            row1 += stride_w;
-            row2 += stride_w;
+        const size_t H = Parameters->InputShape[0];
+        const size_t pad_top = Parameters->Padding[0];
+        const size_t pad_left = Parameters->Padding[1];
+        const size_t stride_h = Parameters->StrideShape[0];
+        const size_t stride_w = Parameters->StrideShape[1];
+
+        // We treat pad_left, pad_top are hard require.
+        // While pad_right and pad_bottom could be adjusted if they do not 100% match other parameters.
+        const size_t pad_right = (((Parameters->OutputShape[1] - 1) * stride_w + 3) > (pad_left + W)) ? 1 : 0;
+
+        const float* row0 = (pad_top > 0) ? Zeros : (Input - pad_left);
+        // Need to handle effective pad_bottom is 2 when H == 1
+        const float* row1 = (H + pad_top <= 1) ? Zeros : (Input + (1 - pad_top) * W) - pad_left;
+        const float* row2 = (H + pad_top <= 2) ? Zeros : (row1 + W);
+
+        for (size_t h = 0, out_row = Parameters->OutputShape[0]; out_row > 0; --out_row) {
+            auto out_col = Parameters->OutputShape[1];
+
+            if (pad_left == 1) {
+                float dotsum = w01 * row0[1] + w02 * row0[2] +
+                            w11 * row1[1] + w12 * row1[2] +
+                            w21 * row2[1] + w22 * row2[2];
+                *Output++ = dotsum;
+                out_col--;
+                row0 += stride_w;
+                row1 += stride_w;
+                row2 += stride_w;
+            }
+
+            for (; out_col > pad_right; out_col--) {
+                float dotsum =
+                    w00 * row0[0] + w01 * row0[1] + w02 * row0[2] +
+                    w10 * row1[0] + w11 * row1[1] + w12 * row1[2] +
+                    w20 * row2[0] + w21 * row2[1] + w22 * row2[2];
+                *Output++ = dotsum;
+                row0 += stride_w;
+                row1 += stride_w;
+                row2 += stride_w;
+            }
+
+            if (out_col == 1) { // pad_right == 1
+                float dotsum =
+                    w00 * row0[0] + w01 * row0[1] +
+                    w10 * row1[0] + w11 * row1[1] +
+                    w20 * row2[0] + w21 * row2[1];
+                *Output++ = dotsum;
+            }
+
+            h += stride_h;
+            row0 = (Input + (h - pad_top) * W) - pad_left;
+            row1 = row0 + W;
+            row2 = (h + 2 >= H + pad_top) ? Zeros : (row1 + W);
         }
 
-        for (; out_col > pad_right; out_col--) {
-            float dotsum =
-                w00 * row0[0] + w01 * row0[1] + w02 * row0[2] +
-                w10 * row1[0] + w11 * row1[1] + w12 * row1[2] +
-                w20 * row2[0] + w21 * row2[1] + w22 * row2[2];
-            *Output++ = dotsum;
-            row0 += stride_w;
-            row1 += stride_w;
-            row2 += stride_w;
+    } else { // W == 1
+
+        const size_t H = Parameters->InputShape[0];
+        const size_t pad_left = Parameters->Padding[1];
+        const size_t pad_top = Parameters->Padding[0];
+        const size_t stride_h = Parameters->StrideShape[0];
+        size_t out_row = Parameters->OutputShape[0];
+
+        // Make sure pad_bottom is consistent with other parameters.
+        size_t pad_bottom = ((out_row - 1) * stride_h + 3) > (pad_top + H) ?
+                                ((out_row - 1) * stride_h + 3) - (pad_top + H) : 0;
+
+        const float w0 = Filter[pad_left ? 1 : 0];
+        const float w1 = Filter[pad_left ? 4 : 3];
+        const float w2 = Filter[pad_left ? 7 : 6];
+
+        if (pad_top == 1) {
+            *Output++ = w1 * Input[0] + w2 * ((H + pad_top <= 2) ? 0.0f : Input[1]);
+            out_row--;
         }
 
-        if (out_col == 1) { // pad_right == 1
-            float dotsum =
-                w00 * row0[0] + w01 * row0[1] +
-                w10 * row1[0] + w11 * row1[1] +
-                w20 * row2[0] + w21 * row2[1];
-            *Output++ = dotsum;
+        for (const float* row = Input + pad_top * stride_h - pad_top; out_row > pad_bottom; --out_row) {
+            // All pixels are in the input col
+            *Output++ = w0 * row[0] + w1 * row[1] + w2 * row[2];
+            row += stride_h;
         }
 
-        h += stride_h;
-        row0 = (Input + (h - pad_top) * W) - pad_left;
-        row1 = row0 + W;
-        row2 = (h + 2 >= H + pad_top) ? Zeros : (row1 + W);
+        if (out_row > 0) {
+            // last 1 or 2 rows are from the padding zero row.
+            // out_row == 1 when arrive here
+            if (pad_bottom == 1) {
+                const float* row = Input + H - 2;
+                *Output++ = w0 * row[0] + w1 * row[1];
+            } else { // pad_bottom == 2 and H == 1 and padding_top == 0
+                *Output++ = w0 * Input[0];
+            }
+        }
     }
+
 }
 
 
