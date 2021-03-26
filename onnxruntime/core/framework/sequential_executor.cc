@@ -236,6 +236,16 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
     frame = run.first;
   }
 
+  // If the user has NOT requested to transfer ownership then reelease tensors that go out of scope starting from the last seen BreakOp.
+  // These tensors are BreakOp inputs that were given to the user as fetches in the last partial graph execution and it is possible
+  // they are are part of deallocation plan for the last seen BreakOp.
+  if ((program_counter > 0) &&
+      (session_state.GetKernel(exec_plan_vec[program_counter - 1].node_index)->KernelDef().OpName() == "BreakOp") &&
+      !session_state.GetTransferIntermediateTensorOwnership()) {
+    VLOGS(logger, 1) << "Releasing node ML values.";
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(*frame, seq_exec_plan, exec_plan_vec[program_counter - 1], logger));
+  }
+
   // Determine partial graph execution start and end nodes.
   size_t program_counter_end;
   for (program_counter_end = program_counter;
@@ -274,12 +284,6 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
 
   // Fetch the outputs.
   ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(*frame, session_state.GetTransferIntermediateTensorOwnership(), fetches, logger));
-
-  // Release tensors that go out of scope starting from BreakOp if the user has requested to transfer ownership.
-  if (last_node_break_op && session_state.GetTransferIntermediateTensorOwnership()) {
-    VLOGS(logger, 1) << "Releasing node ML values.";
-    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(*frame, seq_exec_plan, exec_plan_vec[program_counter_end], logger));
-  }
 
   // Release the frame upon the completion of "full" graph execution.
   if (program_counter_end == exec_plan_last_index) {
