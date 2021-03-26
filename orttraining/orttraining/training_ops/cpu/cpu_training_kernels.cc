@@ -76,6 +76,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float_float, ReduceAllL2);
 
+// the kernels within the following ifdef are not included in a build with
+// --enable_training_ops but without --enable_training
 #ifdef ENABLE_TRAINING
 #ifdef USE_MPI
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AdasumAllReduce);
@@ -170,6 +172,8 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float_float, ReduceAllL2)>,
 
+// the kernels within the following ifdef are not included in a build with
+// --enable_training_ops but without --enable_training
 #ifdef ENABLE_TRAINING
 #ifdef USE_MPI
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AdasumAllReduce)>,
