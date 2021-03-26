@@ -2314,8 +2314,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           2,
           "padding_idx",
           "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
-          "therefore, the embedding vector at `padding_idx` is not updated during training, ",
-          "i.e. it remains as a fixed pad."
+          "therefore, the embedding vector at `padding_idx` is not updated during training, "
+          "i.e. it remains as a fixed pad.",
           "tensor(int64)",
           OpSchema::Optional)
       .Input(
