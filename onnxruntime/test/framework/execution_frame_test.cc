@@ -359,19 +359,19 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   }
 
   {
-    SessionOptions so;
-    so.session_logid = "MemPatternWithExternalOutputsTest2";
-    so.enable_mem_pattern = false;
-    so.enable_mem_reuse = false;
-    InferenceSession session_obj{so, GetEnvironment()};
-    std::stringstream buffer;
-    model.ToProto().SerializeToOstream(&buffer);
-    ASSERT_STATUS_OK(session_obj.Load(buffer));
-    ASSERT_STATUS_OK(session_obj.Initialize());
+    SessionOptions so2;
+    so2.session_logid = "MemPatternWithExternalOutputsTest2";
+    so2.enable_mem_pattern = false;
+    so2.enable_mem_reuse = false;
+    InferenceSession session_obj2{so2, GetEnvironment()};
+    std::stringstream buffer2;
+    model.ToProto().SerializeToOstream(&buffer2);
+    ASSERT_STATUS_OK(session_obj2.Load(buffer2));
+    ASSERT_STATUS_OK(session_obj2.Initialize());
     // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(&session_obj);
+    training::TrainingAgent training_agent(&session_obj2);
     unique_ptr<IOBinding> io_binding;
-    ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
+    ASSERT_STATUS_OK(session_obj2.NewIOBinding(&io_binding));
     io_binding->BindInput("X", x_value);
     OrtValue output;
     io_binding->BindOutput("X", output);
@@ -382,7 +382,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
                 ::testing::ContainerEq(gsl::make_span(break_input_expected)));
 
     unique_ptr<IOBinding> backward_io_binding;
-    ASSERT_STATUS_OK(session_obj.NewIOBinding(&backward_io_binding));
+    ASSERT_STATUS_OK(session_obj2.NewIOBinding(&backward_io_binding));
     backward_io_binding->BindInput("T", t_value);
     backward_io_binding->BindOutput("Y", output);
     ASSERT_STATUS_OK(training_agent.RunBackward(*backward_io_binding, run_id));
