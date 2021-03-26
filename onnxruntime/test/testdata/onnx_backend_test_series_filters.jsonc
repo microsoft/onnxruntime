@@ -82,7 +82,8 @@
         "^test_scatter_elements_with_negative_indices", // Does not support negative indices
         "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_neg"
+        "^test_neg",
+        "^test_nllloss.*"
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
