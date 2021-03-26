@@ -2345,33 +2345,24 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "require_grads",
+          "input_requires_grads",
           "Flags to indicate which inputs has gradient",
-          AttributeProto::INTS,
-          false)
+          AttributeProto::INTS)
       .Attr(
-          "input_shape_types",
+          "output_requires_grads",
+          "Flags to indicate which output has gradient",
+          AttributeProto::INTS)
+      .Attr(
+          "input_types",
           "Input types of autograd.Function.apply.",
-          AttributeProto::INTS,
-          false)
+          AttributeProto::INTS)
       .Attr(
-          "output_shape_types",
+          "output_types",
           "Output types of autograd.Function.apply.",
-          AttributeProto::INTS,
-          false)
-      .Attr(
-          "input_shapes",
-          "Input shapes of autograd.Function.apply.",
-          AttributeProto::INTS,
-          false)
-      .Attr(
-          "output_shapes",
-          "Output shapes of autograd.Function.apply.",
-          AttributeProto::INTS,
-          false)
+          AttributeProto::INTS)
       .Attr(
           "inplace",
-          "Dummy.",
+          "Indicate if the output should reuse input memory.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .TypeConstraint(
@@ -2383,8 +2374,38 @@ Return true if all elements are true and false otherwise.
           {"tensor(int64)"},
           "Constrain input type to 64-bit integer.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected input types.
+        const auto input_types_proto = ctx.getAttribute("input_types");
+        // This is a required field.
+        ORT_ENFORCE(input_types_proto, "PythonOp's must have \"input_types\" attribute.");
+        // Check if the inferred input types match those described in the
+        // "input_types" attributes.
+        ORT_ENFORCE(static_cast<size_t>(input_types_proto->ints_size()) == ctx.getNumInputs(),
+                    "PythonOp's input list and \"input_types\" attribute should have the same length.");
+        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
+          const auto inferred_input_type = ctx.getInputType(i);
+          ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
+                      "PythonOp's ", i, "th input type must be a tensor.");
+          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_types_proto->ints().at(i),
+                      "PythonOp's ", i, "th input type must be ", input_types_proto->ints().at(i));
+        }
+
+        // The first output is a pointer which points to
+        // a Python object created by torch.autograd.Function.apply.
+        // For details, see how we interpret it (the 1st input of PythonOpGrad)
+        // in PythonOpGrad's implementation.
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
-        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT);
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs() - 1,
+                    "PythonOp's output list has one more element than \"output_types\" attribute.");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "PythonOp's must have \"output_types\" attribute.");
+        // Set inferred output types.
+        for (size_t i = 1; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, output_types_proto->ints().at(i - 1));
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(PythonOpGrad)
@@ -2418,35 +2439,15 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "require_grads",
-          "Flags to indicate which output has valid gradient",
+          "input_types",
+          "Input types of autograd.Function.backward.",
           AttributeProto::INTS,
           false)
       .Attr(
-          "input_shape_types",
-          "Input types of autograd.Function.apply. They are output types of PythonOpBackward",
-          AttributeProto::INTS,
-          false)
-      .Attr(
-          "output_shape_types",
-          "Output types of autograd.Function.apply.",
-          AttributeProto::INTS,
-          false)
-      .Attr(
-          "input_shapes",
-          "Input shapes of autograd.Function.backward.",
-          AttributeProto::INTS,
-          false)
-      .Attr(
-          "output_shapes",
+          "output_types",
           "Output types of autograd.Function.backward.",
           AttributeProto::INTS,
           false)
-      .Attr(
-          "inplace",
-          "Dummy.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -2456,7 +2457,36 @@ Return true if all elements are true and false otherwise.
           {"tensor(int64)"},
           "Constrain input type to 64-bit integer.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
+        // Load expected input types.
+        const auto input_types_proto = ctx.getAttribute("input_types");
+        // This is a required field.
+        ORT_ENFORCE(input_types_proto, "PythonOpGrad's must have \"input_types\" attribute.");
+        // Check if the inferred input types match those described in the
+        // "input_types" attributes.
+        ORT_ENFORCE(static_cast<size_t>(input_types_proto->ints_size()) == ctx.getNumInputs() - 1,
+                    "PythonOp's input list should have one more element than \"input_types\" attribute.");
+        // The first input is a pointer which points to
+        // a Python object created by torch.autograd.Function.apply.
+        // For details, see how we interpret it in PythonOpGrad implementation.
+        for (size_t i = 1; i < ctx.getNumInputs(); ++i) {
+          const auto inferred_input_type = ctx.getInputType(i);
+          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
+                      "PythonOpGrad's ", i, "th input type must be a tensor.");
+          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_types_proto->ints().at(i - 1),
+                      "PythonOpGrad's ", i, "th input type must be ", input_types_proto->ints().at(i - 1));
+        }
+
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
+                    "PythonOpGrad's output list and \"output_types\" attribute should have the same length.");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "PythonOp's must have \"output_types\" attribute.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, output_types_proto->ints().at(i));
+        }
       });
 }
 }  // namespace training
