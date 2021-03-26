@@ -502,10 +502,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ResponseBatch responseBatch = new ResponseBatch();
             for (int i = 0; i < numRequests; ++i)
             {
-                responseBatch.AddToBatch(new string[] { "request_1" }, new OrtValue[] { nullOrtValue }, new OrtMemoryInfo[] { ortCpuMemInfo });
+                responseBatch.AddToBatch(new string[] { "output1" }, new OrtValue[] { nullOrtValue }, new OrtMemoryInfo[] { ortCpuMemInfo });
             }
 
-            PipelineSession pipelineSession = new PipelineSession("C:\\Users\\shari\\OneDrive\\Desktop\\gistfile1.json");
+            PipelineSession pipelineSession = new PipelineSession("D:\\gistfile1.json");
             pipelineSession.Run(requestBatch, responseBatch, 4);
             for (int i = 0; i < numRequests; ++i)
             {
