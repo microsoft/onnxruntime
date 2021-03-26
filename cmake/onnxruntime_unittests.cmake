@@ -814,9 +814,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs 
-          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
-          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+  set(onnxruntime_perf_test_libs
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
@@ -960,6 +960,12 @@ if (onnxruntime_LINK_LIBATOMIC)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
+
+find_package(CUDA REQUIRED)
+include_directories("${CUDA_INCLUDE_DIRS}")
+add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
+                                     ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.h
+                                     ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.cu)
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
