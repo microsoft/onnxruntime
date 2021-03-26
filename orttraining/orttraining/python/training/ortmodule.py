@@ -93,7 +93,7 @@ def _load_torch_cuda_allocator_cpp_extension(verbosity):
 def _load_torch_rocm_allocator_cpp_extension(verbosity):
     torch_rocm_allocator_addresses_cpp_source = """
     #include <torch/extension.h>
-    #include <c10/hip/HIPMCachingAllocator.h>
+    #include <c10/hip/HIPCachingAllocator.h>
     size_t rocm_caching_allocator_raw_alloc_address() {
         return reinterpret_cast<size_t>(&c10::hip::HIPCachingAllocator::raw_alloc);
     }
@@ -103,7 +103,8 @@ def _load_torch_rocm_allocator_cpp_extension(verbosity):
     """
 
     return load_inline(name='inline_extension', cpp_sources=[torch_rocm_allocator_addresses_cpp_source],
-                       functions=['rocm_caching_allocator_raw_alloc_address',
+                      extra_cflags=['-D__HIP_PLATFORM_HCC__=1'],
+                      functions=['rocm_caching_allocator_raw_alloc_address',
                                   'rocm_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
