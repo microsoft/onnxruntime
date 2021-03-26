@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -343,7 +344,7 @@ void RegisterTrainingOpSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
+      .Input(1, "Y", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
@@ -356,7 +357,54 @@ void RegisterTrainingOpSchemas() {
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
+            // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
+            // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
+            // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
+            // reduction for "ReduceSum", after accounting for negative-axis specification.
+            // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
+            // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
+            auto zero1d = ToTensor(std::vector<int64_t>({0}));
+            zero1d.add_dims(1);
+
+            // nodes: {outputs, op, inputs, attributes}
+
+            // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                FunctionBodyHelper::Const<int64_t>("one", 1),
+                FunctionBodyHelper::Const<int64_t>("k", axis),
+                {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
+                {{"shape"}, "Shape", {"dY"}},
+                {{"n_as_vector"}, "Shape", {"shape"}},
+                {{"n"}, "Squeeze", {"n_as_vector", "axis_zero"}},
+            };
+
+            // For negative axis, add n to axis-value k; then use Range(...).
+            if (axis >= 0) {
+              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+            } else {
+              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
+              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
+            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
+            body.push_back({{"c"}, "Sub", {"dY", "b"}});
+            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
@@ -1119,54 +1167,6 @@ Example 4:
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc("BiasDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
-      .AllowUncheckedAttributes()
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
-      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
-      .Input(3, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Input(4, "training_mode",
-             "If set to true then it indicates dropout is being used for "
-             "training. It is an optional value hence unless specified explicitly, it is false. "
-             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
-             "will be dropped from the input data and if mask is requested as output it will contain "
-             "all ones.",
-             "T2",
-             OpSchema::Optional)
-      .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain output 'mask' types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        if (ctx.getNumOutputs() == 2) {
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-          if (hasNInputShapes(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 0, 1);
-          }
-        }
-      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
       .SetDomain(kMSDomain)
