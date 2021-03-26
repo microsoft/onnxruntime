@@ -69,12 +69,41 @@ PyCustomKernel::~PyCustomKernel() {
 void PyCustomKernel::GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
 
 Status PyCustomKernel::Compute(OrtKernelContext* context) {
+  bool is_generic_python_call = false;
+  if (is_generic_python_call) {
+    ORT_ENFORCE(nullptr != context);
+    auto inputs_count = (size_t) reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+    std::vector<OrtValue*> inputs;
+    std::vector<std::unique_ptr<char[]>> outputs;
+    std::vector<int32_t> outputs_elem_size;
+    std::vector<std::vector<int64_t>> outputs_dim;
+
+    for (size_t i = 0; i < inputs_count; ++i) {
+      auto ort_value = ort_.KernelContext_GetInput(context, i);
+      inputs.push_back(const_cast<OrtValue*>(ort_value));
+    }
+
+    std::string err;
+    auto state = PyOpLibProxy::GetInstance().GetGil();
+    ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, outputs, outputs_elem_size,
+                                                             outputs_dim, logging_func_),
+                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
+    PyOpLibProxy::GetInstance().PutGil(state);
+
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
+      auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
+      auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
+      memcpy(output_mem_addr, outputs[i].get(), output_len);
+    }
+    return Status::OK();
+  }
+
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   ORT_ENFORCE(nullptr != context);
-  auto inputs_count = (size_t) reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+  auto inputs_count = (size_t)ctx_internal->InputCount();
   std::vector<OrtValue*> inputs;
-  std::vector<std::unique_ptr<char[]>> outputs;
-  std::vector<int32_t> outputs_elem_size;
-  std::vector<std::vector<int64_t>> outputs_dim;
+  std::vector<void*> outputs;
 
   for (size_t i = 0; i < inputs_count; ++i) {
     auto ort_value = ort_.KernelContext_GetInput(context, i);
@@ -83,17 +112,18 @@ Status PyCustomKernel::Compute(OrtKernelContext* context) {
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, outputs, outputs_elem_size,
-                                                           outputs_dim, logging_func_),
-              PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), inputs, outputs,
+                                                                   logging_func_),
+              PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
-    auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
-    auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
-    memcpy(output_mem_addr, outputs[i].get(), output_len);
-  }
+  // We had the assumption:
+  // The 1st output is address of ctx.grad_fn function.
+  // The 2nd output is address of OrtValue we got from Python script run.
+  void* forward_ret_ortvalue_addr = outputs[1];
+  auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
+  ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(0, *forward_ret_ortvalue_ptr));
+  // TODO: handle the output, maing sure its lifetime is still there untill the backward operation completed.
   return Status::OK();
 }
 
