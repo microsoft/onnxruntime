@@ -51,6 +51,7 @@ PyCustomKernel::PyCustomKernel(
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
   instance_ = PyOpLibProxy::GetInstance().NewInstance(module.c_str(), class_name_.c_str(), attrs_);
+  ORT_ENFORCE(instance_ != nullptr, "Python run instance_ should not be nullptr");
   PyOpLibProxy::GetInstance().PutGil(state);
   ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
 }
@@ -86,7 +87,7 @@ Status PyCustomKernel::Compute(OrtKernelContext* context) {
     auto state = PyOpLibProxy::GetInstance().GetGil();
     ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, outputs, outputs_elem_size,
                                                              outputs_dim, logging_func_),
-                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
+                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
     PyOpLibProxy::GetInstance().PutGil(state);
 
     for (size_t i = 0; i < outputs.size(); ++i) {

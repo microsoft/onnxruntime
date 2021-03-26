@@ -285,6 +285,49 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
   return true;
 }  //bool InvokePythonFunc
 
+bool PyOpLibProxy::InvokePythonAutoGradFunc(void* function,
+                                            const std::vector<const OrtValue*>& inputs,
+                                            std::vector<void*>& outputs) {
+  Scope scope;
+  PyObject* pyFunc;
+
+  pyFunc = static_cast<PyObject*>(function);
+  if (nullptr == function || nullptr == pyFunc) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: found invalid instance or function";
+    return false;
+  }
+
+  scope.Add(pyFunc);
+  auto pyArgs = PyTuple_New(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    // Wrap with DLPack, then transfer to Python for its release.
+    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
+    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+    PyTuple_SetItem(pyArgs, i, dltensor);
+  }
+
+  scope.Add(pyArgs);
+  auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+  if (nullptr == pyResult) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: no result";
+    return false;
+  }
+
+  scope.Add(pyResult);
+  if (PyTuple_Check(pyResult)) {
+    for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
+      if (!ExtractPointerOutput(PyTuple_GetItem(pyResult, i), outputs)) {
+        LOGS_DEFAULT(WARNING) << "InvokePythonFunc: failed to extract address from output";
+        return false;
+      }
+    }
+  } else {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: returned value must be numpy(s)";
+    return false;
+  }
+  return true;
+}
+
 bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
                                             const char* function,
                                             const std::vector<OrtValue*>& inputs,
