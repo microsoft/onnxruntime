@@ -432,7 +432,7 @@ class ORTModule(torch.nn.Module):
         '''
         # User inputs
         non_none_inputs = [inp for inp in inputs if inp is not None]
-        named_buffers_iter = iter(self._original_module.named_buffers())
+        named_buffers_iter = iter(self._flattened_output_module.named_buffers())
         result = []
         for input_idx, name in enumerate(self._onnx_graphs_info.user_input_names):
             inp = None
@@ -442,9 +442,9 @@ class ORTModule(torch.nn.Module):
                 inp = kwargs[name]
             elif input_idx >= len(non_none_inputs):
                 # Registered buffers are translated to user_input+initializer in ONNX
+                # TODO: Check what happens when the number of inputs change form one call to the next
                 buffer_name, inp = next(named_buffers_iter)
-                # `name` contains a `_base_module` prefix from `FlattenedOutputModule`
-                assert buffer_name in name, f'Input name {name} expected, but {buffer_name} found!'
+                assert buffer_name == name, f'Input name {name} expected, but {buffer_name} found!'
 
             if inp is not None:
                 result.append(inp)
