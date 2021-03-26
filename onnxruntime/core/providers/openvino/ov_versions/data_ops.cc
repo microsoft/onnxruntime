@@ -38,6 +38,7 @@ std::set<std::string> ops_supported_only_in_model = {
       "Exp",
       "GatherND",
       "Identity",
+      "Loop",
       "NonMaxSuppression",
       "NonZero",
       "Not",
@@ -49,6 +50,7 @@ std::set<std::string> ops_supported_only_in_model = {
       "Round",
       "Shape",
       "Split",
+      "Tile",
       "TopK"
 }; 
 
@@ -132,6 +134,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"ReduceSumSquare", V_2020_4,{"CPU", "MYRIAD"}},
     {"Relu", V_2020_4,{"All"}},
     {"Resize", V_2020_4,{"CPU"}},
+    {"Resize", V_2021_3,{"MYRIAD"}},
     {"Reshape", V_2020_4,{"All"}},
     {"RoiAlign", V_2021_1,{"All"}},
     {"Round", V_2021_2,{"MYRIAD"}},
@@ -155,7 +158,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Sum", V_2020_4,{"All"}},
     {"Tan", V_2020_4,{"CPU", "GPU"}},
     {"Tanh", V_2020_4,{"All"}},
-    {"Tile", V_2021_3,{"All"}},
+    {"Tile", V_2021_3,{"MYRIAD"}},
     {"Transpose", V_2020_4,{"All"}},
     {"TopK", V_2020_4,{"All"}},
     {"Unsqueeze", V_2020_4,{"All"}},
@@ -433,6 +436,22 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Gather", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2021_3},
+      [this](const Node* node, const Provider_InitializedTensorSet& ) {
+        const auto& indices_arg = node->InputDefs()[0];
+        const auto& output_arg = node->OutputDefs()[0];
+        if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
+          return true;
+        if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+            (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) ||
+            (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
+          return false;
+        } 
+        return true;
+    }};
+    op_list_.insert({"GatherElements", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2, V_2021_3},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
         const auto& input = node->InputDefs()[0];
@@ -457,6 +476,29 @@ void DataOps::populate_op_mode_supported() {
       }
     };
     op_list_.insert({"Loop", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_3}, 
+     [this](const Node* node, const Provider_InitializedTensorSet&) {
+      //MaxPool "indices" output is not currently supported.  
+      //if (node->OutputDefs().size() > 1)
+      //  return true;
+      const auto& attributes = node->GetAttributes();
+      /* default value of ceil_mode (0) is supported.
+      auto ceil_attr = attributes.find("ceil_mode");
+      if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0)
+        return true;*/
+      auto auto_attr = attributes.find("auto_pad");
+      //auto pad null value is not supported
+      if (auto_attr->second().s() == "") 
+        return true;
+      // dilations attrs are not supported in nGraph  
+      if (attributes.find("dilations") != attributes.end()) 
+        return true;
+      return(!this->dimension_unsupported(node));
+    }
+  };
+    op_list_.insert({"MaxPool", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2}, 
@@ -773,11 +815,19 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& ) {
-      //float data type is not supported
-      const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
-      return data_is_float;
+        //float data type is not supported
+        const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
+          return data_is_float;
     } };
     op_list_.insert({"Where", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_3},
+      [this](const Node* node, const Provider_InitializedTensorSet&) {
+        return (!this->dimension_unsupported(node));
+      }
+    };
+    op_list_.insert({"ReduceSum", obj});
   }
 }  
 
@@ -914,7 +964,14 @@ bool DataOps::dimension_unsupported(const Node* node) {
     if (node->OpType() == "Unsqueeze") {
       auto& attributes = node->GetAttributes();
       int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
-      if (input_dims + axes_size > 5)
+      if (input_dims + axes_size > 5 || axes_size == 0)
+        return false;
+    }
+
+    if (node->OpType() == "ReduceSum") {
+      auto& attributes = node->GetAttributes();
+      int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
+      if (axes_size == 0)
         return false;
     }
   }
@@ -1055,13 +1112,18 @@ bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
 
-bool DataOps::SpecialConditionForClusterSizeOne(const Node* node) {
-    /*if (node->OpType() == "Reshape") {
-      const auto& shape_arg = node->InputDefs()[1];
-      if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
-        return true;
+bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node) {
+    if (node->OpType() == "Where") {
+      if (device_id_.find("MYRIAD") != std::string::npos) {
+        if (node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+          return true;
       }
-    } else */if (node->OpType() == "Expand") {
+    } else if (node->OpType() == "Reshape") {
+        const auto& shape_arg = node->InputDefs()[1];
+        if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
+          return true;
+        }
+    } else if (node->OpType() == "Expand") {
         // nGraph only supports constant shape input values
         const auto& output = node->OutputDefs()[0];
         if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
