@@ -2324,6 +2324,35 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
+static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_options) {
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  bool has_gelu_approximation = false;
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), {});
+  for (auto& transformer : transformers) {
+    if (transformer->Name() == "GeluApproximation") {
+      has_gelu_approximation = true;
+    }
+  }
+
+  EXPECT_EQ(has_gelu_approximation, is_enabled);
+}
+
+// Test session option configuration for GeluApproximation
+TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
+  SessionOptions session_options;
+
+  // GeluApproximation is not enabled by default.
+  VerifyGeluApproximation(false, session_options);
+
+  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
+  VerifyGeluApproximation(true, session_options);
+
+  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
+  VerifyGeluApproximation(false, session_options);
+}
+
 // Test Gelu -> FastGelu
 TEST_F(GraphTransformationTests, GeluApproximation_Gelu) {
   auto model_uri = MODEL_FOLDER "approximation/gelu.onnx";
