@@ -77,7 +77,7 @@ option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
-option(onnxruntime_ENABLE_NSYNC "Enable nsync if appliable" ON)
+option(onnxruntime_ENABLE_NSYNC "Enable nsync if applicable" ON)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
