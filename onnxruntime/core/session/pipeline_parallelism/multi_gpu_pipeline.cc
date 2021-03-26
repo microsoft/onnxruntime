@@ -773,7 +773,7 @@ void PipelineSession::Init(const OrtEnv& env, ModelEnsembleConfig& model_ensembl
 
   for (auto& mcfg : model_ensemble_cfg.model_config_vec) {
     Ort::SessionOptions session_options;
-    session_options.DisablePerSessionThreads();
+    //session_options.DisablePerSessionThreads();
     CheckStatus(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, mcfg.device_id));
     Ort::Session session{nullptr};
     {

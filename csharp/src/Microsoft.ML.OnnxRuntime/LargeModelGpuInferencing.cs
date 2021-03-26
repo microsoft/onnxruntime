@@ -113,20 +113,36 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public List<OrtValue> GetOutputValues(UIntPtr batchIdx, OrtAllocator allocator)
+        public IDisposableReadOnlyCollection<OrtValue> GetOutputValues(UIntPtr batchIdx, OrtAllocator allocator)
         {
-            UIntPtr outputsSize = UIntPtr.Zero;
-            IntPtr outputsHandles = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOutputValues(handle, batchIdx, allocator.Pointer, out outputsHandles,out outputsSize));
+            UIntPtr count = UIntPtr.Zero;
+            IntPtr ortValues = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOutputValues(handle, batchIdx, allocator.Pointer, out ortValues, out count));
 
-            List<OrtValue> outputs = new List<OrtValue>((int)outputsSize);
-            for(int i=0; i<(int)outputsSize; ++i)
+            if (count.Equals(UIntPtr.Zero))
             {
-                outputs.Add(new OrtValue(Marshal.ReadIntPtr(outputsHandles, IntPtr.Size * i)));
+                return new DisposableList<OrtValue>();
             }
 
-            // TODO: Release ortvalue pointer from native code ?
-            return outputs;
+            using (var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
+            {
+                int outputCount = (int)count;
+                var ortList = new DisposableList<OrtValue>(outputCount);
+                try
+                {
+                    for (int i = 0; i < outputCount; ++i)
+                    {
+                        IntPtr ortValue = Marshal.ReadIntPtr(ortValues, IntPtr.Size * i);
+                        ortList.Add(new OrtValue(ortValue));
+                    }
+                }
+                catch (Exception e)
+                {
+                    ortList.Dispose();
+                    throw e;
+                }
+                return ortList;
+            }
         }
 
         public void Clear()

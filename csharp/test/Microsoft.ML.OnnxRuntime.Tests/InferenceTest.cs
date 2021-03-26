@@ -473,6 +473,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void TestLargeModelGpuInferencing()
         {
+            int numRequests = 2;
+            int numSteps = 1;
+
             var ortCpuMemInfo = OrtMemoryInfo.DefaultInstance;
             var dims = new long[] { 1, 1, 1 };
             var dataBuffer = new Int64[] { 50264 };
@@ -492,8 +495,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             RequestBatch requestBatch = new RequestBatch();
 
-            int numRequests = 2;
-
             for (int i = 0; i < numRequests; ++i)
             {
                 requestBatch.AddToBatch(new string[] { "input1" }, new OrtValue[] { ortValue });
@@ -506,12 +507,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
 
             PipelineSession pipelineSession = new PipelineSession("D:\\gistfile1.json");
-            pipelineSession.Run(requestBatch, responseBatch, 4);
+            pipelineSession.Run(requestBatch, responseBatch, numSteps);
             for (int i = 0; i < numRequests; ++i)
             {
-                List<OrtValue> outputs = responseBatch.GetOutputValues((UIntPtr)i, OrtAllocator.DefaultInstance);
-                // TODO 1: Validate output
-                // TODO 2: Release output OrtValues
+                var outputs = responseBatch.GetOutputValues((UIntPtr)i, OrtAllocator.DefaultInstance);
+
+                outputs.Dispose();
             }
 
             pipelineSession.Dispose();
