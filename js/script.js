@@ -10,10 +10,10 @@ var supportedOperatingSystemsNew = [
 ]
 
 var opts = {
-    os: getAnchorSelectedOS() || getDefaultSelectedOS(),
-    architecture: 'X64',
-    language: 'Python(3.6-3.9)',
-    hardwareAcceleration: 'DefaultCPU',
+    os: '',
+    architecture: '',
+    language: '',
+    hardwareAcceleration: '',
 };
 var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
@@ -36,7 +36,7 @@ var ot_language = $(".ot_language > .r-option");
 var ot_hardwareAcceleration = $(".ot_hardwareAcceleration > .r-option");
 
 var supported = true;
-var default_selection = false;
+var ot_defaultSelection = true;
 
 function checkKeyPress(event) {
     var keycode = (event.keyCode ? event.keyCode : event.which);
@@ -118,7 +118,6 @@ ot_hardwareAcceleration.on("keypress keyup", function (event) {
 $(document).ready(function () {
     var userOsOption = document.getElementById(opts.os);
     var ot_userOsOption = document.getElementById(ot_opts.ot_os);
-    default_selection = true;
     if (userOsOption) {
         selectedOption(os, userOsOption, "os");
         
@@ -131,7 +130,6 @@ $(document).ready(function () {
 
 // determine os (mac, linux, windows) based on user's platform
 function getDefaultSelectedOS() {
-    default_selection = true;
     var platform = navigator.platform.toLowerCase();
     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
         if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
@@ -173,89 +171,183 @@ function checkValidity(){
 
     var valid = Object.getOwnPropertyNames(validCombos);
   
+
     //os section
     for(var i =0; i<os.length; i++){
-        var found=false;
+        //disable other selections once item in category selected
+        if(os[i].id!=current_os && current_os!=''){
+            $(os[i]).addClass("gray");
+            continue;
+        }
+        var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
             if(valid[k].indexOf(os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
-                found=true;
+                isvalidcombo=true;
                 break;       
             }
         }
-     
-        if(found==false && os[i].id!=current_os){
+        if(isvalidcombo==false && os[i].id!=current_os){
             $(os[i]).addClass("gray"); 
         }
     }
 
         //language section
         for(var i =0; i<language.length; i++){
-            var found=false;
+               //disable other selections once item in category selected
+             if(language[i].id!=current_lang && current_lang!=''){
+                $(language[i]).addClass("gray");
+                 continue;
+              }   
+            var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
                 if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
-                    found=true;
+                    isvalidcombo=true;
                     break;       
                 }
             }
-           
-            if(found==false && language[i].id!=current_lang){
+            if(isvalidcombo==false && language[i].id!=current_lang){
                 $(language[i]).addClass("gray"); 
             }
         }
 
        //architecture section
        for(var i =0; i<architecture.length; i++){
-        var found=false;
+             //disable other selections once item in category selected
+        if(architecture[i].id!=current_arch && current_arch!=''){
+            $(architecture[i]).addClass("gray");
+            continue;
+        }
+        var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
             if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
-                found=true;
+                isvalidcombo=true;
                 break;       
             }
         }
-      
-        if(found==false && architecture[i].id!=current_arch){
+        if(isvalidcombo==false && architecture[i].id!=current_arch){
             $(architecture[i]).addClass("gray"); 
         }
     }
 
           //accelerator section
           for(var i =0; i<hardwareAcceleration.length; i++){
-            var found=false;
+                //disable other selections once item in category selected
+             if(hardwareAcceleration[i].id!=current_hw && current_hw!=''){
+              $(hardwareAcceleration[i]).addClass("gray");
+              continue;
+        }
+            var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
                 if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(hardwareAcceleration[i].id)!=-1){
-                    found=true;
+                    isvalidcombo=true;
                     break;       
                 }
             }
             
-            if(found==false && hardwareAcceleration[i].id!=current_hw){
+            if(isvalidcombo==false && hardwareAcceleration[i].id!=current_hw){
                 $(hardwareAcceleration[i]).addClass("gray"); 
             }
         } 
 }
 
-function resetOptions(){
-  for(var i=0; i<os.length;i++){
-    $(os[i]).removeClass("gray");
-  }
-  for(var i=0; i<language.length;i++){
-    $(language[i]).removeClass("gray");
-  }
-  for(var i=0; i<architecture.length;i++){
-    $(architecture[i]).removeClass("gray");
-  }
-  for(var i=0; i<hardwareAcceleration.length;i++){
-    $(hardwareAcceleration[i]).removeClass("gray");
-  }
+function ot_checkValidity(){
+    var current_os = ot_opts['ot_os'];
+    var current_lang = ot_opts['ot_language'];
+    var current_arch = ot_opts['ot_architecture'];
+    var current_hw = ot_opts['ot_hardwareAcceleration'];
+    
+    // console.log("current: "+current_os);
+    // console.log("current: "+current_arch);
+    // console.log("current: "+current_lang);
+    // console.log("current: "+current_hw);
 
-  default_selection=false;
+    var valid = Object.getOwnPropertyNames(ot_validCombos);
+
+    //os section
+    for(var i =0; i<ot_os.length; i++){
+        //disable other selections once item in category selected
+        if(ot_os[i].id!=current_os && current_os!=''){
+            $(ot_os[i]).addClass("gray");
+            continue;
+        }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && ot_os[i].id!=current_os){
+            $(ot_os[i]).addClass("gray"); 
+        }
+    }
+
+        //language section
+        for(var i =0; i<ot_language.length; i++){
+               //disable other selections once item in category selected
+             if(ot_language[i].id!=current_lang && current_lang!=''){
+                $(ot_language[i]).addClass("gray");
+                 continue;
+              }   
+            var isvalidcombo=false;
+            for(var k=0; k<valid.length;k++){
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+            }
+            if(isvalidcombo==false && ot_language[i].id!=current_lang){
+                $(ot_language[i]).addClass("gray"); 
+            }
+        }
+
+       //architecture section
+       for(var i =0; i<ot_architecture.length; i++){
+             //disable other selections once item in category selected
+        if(ot_architecture[i].id!=current_arch && current_arch!=''){
+            $(ot_architecture[i]).addClass("gray");
+            continue;
+        }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && ot_architecture[i].id!=current_arch){
+            $(ot_architecture[i]).addClass("gray"); 
+        }
+    }
+
+          //accelerator section
+          for(var i =0; i<ot_hardwareAcceleration.length; i++){
+                //disable other selections once item in category selected
+             if(ot_hardwareAcceleration[i].id!=current_hw && current_hw!=''){
+              $(ot_hardwareAcceleration[i]).addClass("gray");
+              continue;
+        }
+            var isvalidcombo=false;
+            for(var k=0; k<valid.length;k++){
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+            }
+            
+            if(isvalidcombo==false && ot_hardwareAcceleration[i].id!=current_hw){
+                $(ot_hardwareAcceleration[i]).addClass("gray"); 
+            }
+        } 
 }
+
+
 
 
 function selectedOption(option, selection, category) {
 
     // console.log(opts[category]);
-    if(selection.id==opts[category] && default_selection==false){
+    if(selection.id==opts[category]){
         $(selection).removeClass("selected");
         $(selection).removeClass("unsupported");
         opts[category] = '';
@@ -270,13 +362,16 @@ function selectedOption(option, selection, category) {
     resetOptions();
 
     var all_selected = document.getElementsByClassName('selected r-option');
-    
+    // console.log(all_selected[0]);
+    // console.log(opts);
+
     var isSupported = commandMessage(buildMatcher());
   
     //mark unsupported combos
-    
+  
     if (isSupported==false){
-        mark_unsupported(all_selected);
+
+        mark_unsupported(all_selected, false);
     }
     else{
         for(var i = 0; i<all_selected.length; i++){
@@ -288,21 +383,94 @@ function selectedOption(option, selection, category) {
 }
 
 
-function mark_unsupported(selection){
-    for(var i = 0; i<selection.length; i++){
-       if(selection[i].id.indexOf('ot_') == -1){
-            $(selection[i]).addClass("unsupported");
-       }
-    }
+function mark_unsupported(selection, training){
     
+    if(training==true){
+        for(var i = 0; i<selection.length; i++){
+            if(selection[i].id.indexOf('ot_') != -1){
+                 $(selection[i]).addClass("unsupported");
+            }
+        }
+
+    }
+    else{
+        for(var i = 0; i<selection.length; i++){
+        if(selection[i].id.indexOf('ot_') == -1){
+                $(selection[i]).addClass("unsupported");
+        }
+        }
+    }
 }
 
 function ot_selectedOption(option, selection, category) {
-    $(option).removeClass("selected");
-    $(selection).addClass("selected");
-    ot_opts[category] = selection.id;
-    ot_commandMessage(ot_buildMatcher());
+    // $(option).removeClass("selected");
+    // $(selection).addClass("selected");
+    // ot_opts[category] = selection.id;
+    // ot_commandMessage(ot_buildMatcher());
+
+    //allow deselect, disable for acceleration and architecture since they only have 1 item
+    if(selection.id==ot_opts[category] && ot_defaultSelection==false && category!='ot_hardwareAcceleration' && category!='ot_architecture'){
+        $(selection).removeClass("selected");
+        $(selection).removeClass("unsupported");
+        ot_opts[category] = '';
+        // console.log("deselected");
+    }
+    else{
+        $(option).removeClass("selected");
+        $(option).removeClass("unsupported");
+        $(selection).addClass("selected");
+        ot_opts[category] = selection.id;
+    }
+
+    ot_resetOptions();
+
+    var all_selected = document.getElementsByClassName('selected r-option');
+    var isSupported = ot_commandMessage(ot_buildMatcher());
+  
+    //mark unsupported combos
+    if (isSupported==false){
+        mark_unsupported(all_selected, true);
+    }
+    else{
+        for(var i = 0; i<all_selected.length; i++){
+            $(all_selected[i]).removeClass("unsupported");
+        }
+    }
+
+    ot_checkValidity();  
 }
+
+function resetOptions(){
+    for(var i=0; i<os.length;i++){
+      $(os[i]).removeClass("gray");
+    }
+    for(var i=0; i<language.length;i++){
+      $(language[i]).removeClass("gray");
+    }
+    for(var i=0; i<architecture.length;i++){
+      $(architecture[i]).removeClass("gray");
+    }
+    for(var i=0; i<hardwareAcceleration.length;i++){
+      $(hardwareAcceleration[i]).removeClass("gray");
+    }
+  
+  }
+
+  function ot_resetOptions(){
+    for(var i=0; i<ot_os.length;i++){
+      $(ot_os[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_language.length;i++){
+      $(ot_language[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_architecture.length;i++){
+      $(ot_architecture[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_hardwareAcceleration.length;i++){
+      $(ot_hardwareAcceleration[i]).removeClass("gray");
+    }
+    ot_defaultSelection = false;
+  }
 
 function display(selection, id, category) {
     var container = document.getElementById(id);
@@ -349,13 +517,14 @@ var ot_validCombos = {
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
 "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
-    "Coming Soon"
+    "<i>Coming soon!"
 };
 
 function ot_commandMessage(key) {
-    if(ot_opts['os']=='' || ot_opts['architecture'] == '' || ot_opts['language']=='' || ot_opts['hardwareAcceleration'] == ''){
+    
+    if(ot_opts['ot_os']=='' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
         $("#ot_command span").html(
-            "Please complete your selection"
+            "Please select a combination of resources"
         ) 
     }
     else if (!ot_validCombos.hasOwnProperty(key)) {
@@ -910,7 +1079,7 @@ function commandMessage(key) {
 
     if(opts['os']=='' || opts['architecture'] == '' || opts['language']=='' || opts['hardwareAcceleration'] == ''){
         $("#command span").html(
-            "Please complete your selection"
+            "Please select a combination of resources"
         ) 
     }
     else if (!validCombos.hasOwnProperty(key)) {

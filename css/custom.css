@@ -484,7 +484,7 @@ a .abbr[data-original-title], a abbr[title]{
   .r-wrap .r-content .r-option.gray span:focus,
   .r-wrap .r-content .r-option.gray span:active{
     background-color: #eee;
-    color: #000;
+    color: #999;
   }
 
   .r-wrap .r-content .r-option.command-container a{
