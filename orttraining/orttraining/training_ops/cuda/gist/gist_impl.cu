@@ -73,7 +73,7 @@ __global__ void _GistPack8EncoderKernel(
   T X = input_data[id];
 
   if (X == (T)0) {
-    output_data = (uint8_t)(0);
+    output_data[id] = (uint8_t)(0);
     return;
   }
   uint32_t i = (uint32_t)__float_as_uint(X);
@@ -387,7 +387,7 @@ void GistBinarizeDecoderImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _GistBinarizeDecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistBinarizeDecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -398,7 +398,7 @@ void GistPack1EncoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   cudaMemset(output_data, 0, N);
-  _GistPack1EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
+  _GistPack1EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -409,7 +409,7 @@ void GistPack1DecoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack1DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
+  _GistPack1DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -420,7 +420,7 @@ void GistPack8EncoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   
-  _GistPack8EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack8EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -431,7 +431,7 @@ void GistPack8DecoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack8DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack8DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -442,7 +442,7 @@ void GistPack16EncoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack16EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack16EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -453,7 +453,7 @@ void GistPack16DecoderImpl(
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack16DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack16DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
@@ -471,7 +471,7 @@ void GistPackMsfp15EncoderImpl(
   const int threads = pre_axis_size * num_tiles;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
-  _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
+  _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
     input_data, 
     output_data, 
     (CUDA_LONG)threads,
@@ -497,7 +497,7 @@ void GistPackMsfp15DecoderImpl(
   const int threads = pre_axis_size * num_tiles;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
-  _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
+  _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
     input_data,
     output_data,
     (CUDA_LONG)threads,
