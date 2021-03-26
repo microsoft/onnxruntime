@@ -63,7 +63,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<ROCMExternalAllocator>(id, MIGRAPHX, external_allocator_info.alloc, external_allocator_info.free);
+          return onnxruntime::make_unique<ROCMExternalAllocator>(id, ROCM, external_allocator_info.alloc, external_allocator_info.free);
         },
         device_id,
         false);
@@ -73,7 +73,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<ROCMAllocator>(id, MIGRAPHX);
+          return onnxruntime::make_unique<ROCMAllocator>(id, ROCM);
         },
         device_id,
         true,
@@ -98,7 +98,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
-        return onnxruntime::make_unique<ROCMAllocator>(id, MIGRAPHX);
+        return onnxruntime::make_unique<ROCMAllocator>(id, ROCM);
       },
       device_id,
       true,
@@ -153,7 +153,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMAllocator>(device_id, MIGRAPHX);
+        return onnxruntime::make_unique<ROCMAllocator>(device_id, ROCM);
       },
       info_.device_id,
       true,
@@ -165,7 +165,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, MIGRAPHX_PINNED);
+        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, ROCM_PINNED);
       },
       DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
@@ -1871,7 +1871,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   if (nullptr == rocm_pinned_alloc) {
     AllocatorCreationInfo pinned_memory_info(
         [](OrtDevice::DeviceId device_id) {
-          return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, MIGRAPHX_PINNED);
+          return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, ROCM_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
