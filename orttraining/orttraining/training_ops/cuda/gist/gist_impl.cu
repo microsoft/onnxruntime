@@ -372,84 +372,93 @@ __global__ void _GistPackMsfp15DecoderKernel(
 
 template <typename T>
 void GistBinarizeEncoderImpl(
+    cudaStream_t stream,
     const T* input_data,
     bool* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _GistBinarizeEncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistBinarizeEncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistBinarizeDecoderImpl(
+    cudaStream_t stream,
     const bool* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _GistBinarizeDecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistBinarizeDecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack1EncoderImpl(
+    cudaStream_t stream,
     const T* input_data,
     uint8_t* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   cudaMemset(output_data, 0, N);
-  _GistPack1EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
+  _GistPack1EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack1DecoderImpl(
+    cudaStream_t stream,
     const uint8_t* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack1DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
+  _GistPack1DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, GIST_PACK1_FACTOR, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack8EncoderImpl(
+    cudaStream_t stream,
     const T* input_data,
     uint8_t* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   
-  _GistPack8EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack8EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack8DecoderImpl(
+    cudaStream_t stream,
     const uint8_t* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack8DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack8DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack16EncoderImpl(
+    cudaStream_t stream,
     const T* input_data,
     half* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack16EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack16EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPack16DecoderImpl(
+    cudaStream_t stream,
     const half* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _GistPack16DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
+  _GistPack16DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
 template <typename T>
 void GistPackMsfp15EncoderImpl(
+    cudaStream_t stream,
     const T* input_data,
     uint8_t* output_data,
     const size_t pre_axis_size,
@@ -462,7 +471,7 @@ void GistPackMsfp15EncoderImpl(
   const int threads = pre_axis_size * num_tiles;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
-  _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
     input_data, 
     output_data, 
     (CUDA_LONG)threads,
@@ -475,6 +484,7 @@ void GistPackMsfp15EncoderImpl(
 
 template <typename T>
 void GistPackMsfp15DecoderImpl(
+  cudaStream_t stream,
   const uint8_t* input_data,
   T* output_data,
   const size_t pre_axis_size,
@@ -487,7 +497,7 @@ void GistPackMsfp15DecoderImpl(
   const int threads = pre_axis_size * num_tiles;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
-  _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
     input_data,
     output_data,
     (CUDA_LONG)threads,
@@ -499,25 +509,25 @@ void GistPackMsfp15DecoderImpl(
 }
 
 #define SPECIALIZED_IMPL_BIN_ENC(T) \
-  template void GistBinarizeEncoderImpl<T>(const T* input_data, bool* output_data, const size_t N);
+  template void GistBinarizeEncoderImpl<T>(cudaStream_t stream, const T* input_data, bool* output_data, const size_t N);
 #define SPECIALIZED_IMPL_BIN_DEC(T) \
-  template void GistBinarizeDecoderImpl<T>(const bool* input_data, T* output_data, const size_t N);
+  template void GistBinarizeDecoderImpl<T>(cudaStream_t stream, const bool* input_data, T* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK1_ENC(T) \
-  template void GistPack1EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t N);
+  template void GistPack1EncoderImpl<T>(cudaStream_t stream, const T* input_data, uint8_t* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK1_DEC(T) \
-  template void GistPack1DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t N);
+  template void GistPack1DecoderImpl<T>(cudaStream_t stream, const uint8_t* input_data, T* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK8_ENC(T) \
-  template void GistPack8EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t N);
+  template void GistPack8EncoderImpl<T>(cudaStream_t stream, const T* input_data, uint8_t* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK8_DEC(T) \
-  template void GistPack8DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t N);
+  template void GistPack8DecoderImpl<T>(cudaStream_t stream, const uint8_t* input_data, T* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK16_ENC(T) \
-  template void GistPack16EncoderImpl<T>(const T* input_data, half* output_data, const size_t N);
+  template void GistPack16EncoderImpl<T>(cudaStream_t stream, const T* input_data, half* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK16_DEC(T) \
-  template void GistPack16DecoderImpl<T>(const half* input_data, T* output_data, const size_t N);
+  template void GistPack16DecoderImpl<T>(cudaStream_t stream, const half* input_data, T* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACKMSFP15_ENC(T) \
-  template void GistPackMsfp15EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
+  template void GistPackMsfp15EncoderImpl<T>(cudaStream_t stream, const T* input_data, uint8_t* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
 #define SPECIALIZED_IMPL_PACKMSFP15_DEC(T) \
-  template void GistPackMsfp15DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
+  template void GistPackMsfp15DecoderImpl<T>(cudaStream_t stream, const uint8_t* input_data, T* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
 
 SPECIALIZED_IMPL_BIN_ENC(float)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 700

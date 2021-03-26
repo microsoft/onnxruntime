@@ -25,11 +25,12 @@ REGISTER_KERNEL_TYPED_BIN_ENC(double)
 template <typename T>
 Status GistBinarizeEncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistBinarizeEncoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<bool*>(Y->template MutableData<bool>()),
       Y->Shape().Size());
@@ -54,11 +55,12 @@ REGISTER_KERNEL_TYPED_BIN_DEC(double)
 template <typename T>
 Status GistBinarizeDecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistBinarizeDecoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const bool*>(X->template Data<bool>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       Y->Shape().Size());
@@ -83,12 +85,13 @@ REGISTER_KERNEL_TYPED_PACK1_ENC(float)
 template <typename T>
 Status GistPack1EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
   long int n = (X->Shape().Size() + GIST_PACK1_FACTOR -1)/ GIST_PACK1_FACTOR;
   Tensor* Y = context->Output(0, TensorShape({n}));
   typedef typename ToCudaType<T>::MappedType CudaT;
   GistPack1EncoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
       n);
@@ -112,11 +115,12 @@ REGISTER_KERNEL_TYPED_PACK1_DEC(float)
 template <typename T>
 Status GistPack1DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
   Tensor* Y = context->Output(0, TensorShape({X->Shape().Size()*GIST_PACK1_FACTOR}));
   typedef typename ToCudaType<T>::MappedType CudaT;
   GistPack1DecoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const uint8_t*>(X->template Data<uint8_t>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       Y->Shape().Size());
@@ -141,13 +145,14 @@ REGISTER_KERNEL_TYPED_PACK8_ENC(MLFloat16)
 template <typename T>
 Status GistPack8EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
   Tensor* Y = context->Output(0, X->Shape());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack8EncoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
       Y->Shape().Size());
@@ -171,12 +176,13 @@ REGISTER_KERNEL_TYPED_PACK8_DEC(MLFloat16)
 template <typename T>
 Status GistPack8DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
   
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack8DecoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const uint8_t*>(X->template Data<uint8_t>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       Y->Shape().Size());
@@ -200,13 +206,14 @@ REGISTER_KERNEL_TYPED_PACK16_ENC(float)
 template <typename T>
 Status GistPack16EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
   Tensor* Y = context->Output(0, X->Shape());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack16EncoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<half*>(Y->template MutableData<MLFloat16>()),
       Y->Shape().Size());
@@ -229,12 +236,13 @@ REGISTER_KERNEL_TYPED_PACK16_DEC(float)
 template <typename T>
 Status GistPack16DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
   
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack16DecoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const half*>(X->template Data<MLFloat16>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       Y->Shape().Size());
@@ -258,7 +266,7 @@ REGISTER_KERNEL_TYPED_PACKMSFP15_ENC(float)
 template <typename T>
 Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
   Tensor* Y = context->Output(0, X->Shape());
 
@@ -273,6 +281,7 @@ Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) con
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPackMsfp15EncoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
       pre_axis_size,
@@ -297,7 +306,7 @@ REGISTER_KERNEL_TYPED_PACKMSFP15_DEC(float)
 template <typename T>
 Status GistPackMsfp15DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(X != nullptr);
+  ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
 
   const auto shape = X->Shape();
@@ -310,6 +319,7 @@ Status GistPackMsfp15DecoderOp<T>::ComputeInternal(OpKernelContext* context) con
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPackMsfp15DecoderImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const uint8_t*>(X->template Data<uint8_t>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       pre_axis_size,
