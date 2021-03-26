@@ -70,9 +70,9 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   }
 }
 
-bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
-                                 const std::vector<int64_t>& input_dims,
-                                 std::vector<int64_t>& new_shape) {
+static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
+                                        const std::vector<int64_t>& input_dims,
+                                        std::vector<int64_t>& new_shape) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -197,8 +197,13 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     if (current_left && IsTransposeReshapeForEinsum(left_permutation,
                                                     current_left->Shape().GetDims(),
                                                     reshaped_dims)) {
+      // This can be done because curent_* tensors (if they exist) and output tensors are
+      // intermediate tensors and cannot be input tensors to the Einsum node itself
+      // (which are immutable).
+      // Not covered by a unit test but other similar shortcuts are.
       current_left->Reshape(reshaped_dims);
     } else {
+      // Covered by ExplicitEinsumAsTensorContraction, DiagonalWithMatmul, ...
       current_left = EinsumOp::Transpose(current_left ? *current_left : left,
                                          current_left ? current_left->Shape().GetDims() : left_dims,
                                          left_permutation, allocator_, einsum_ep_assets_,
@@ -218,8 +223,11 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     if (current_right && IsTransposeReshapeForEinsum(right_permutation,
                                                      current_right->Shape().GetDims(),
                                                      reshaped_dims)) {
+      // See note following the previous call of function IsTransposeReshapeForEinsum.
+      // Covered by ExplicitEinsumAsBatchedMatmulWithBroadcasting_1, ExplicitEinsumAsMatmul_2, ...
       current_right->Reshape(reshaped_dims);
     } else {
+      // Covered by DiagonalWithMatmul, ExplicitEinsumAsBatchedMatmul, ...
       current_right = EinsumOp::Transpose(current_right ? *current_right : right,
                                           current_right ? current_right->Shape().GetDims() : right_dims,
                                           right_permutation, allocator_, einsum_ep_assets_,
@@ -294,6 +302,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       if (IsTransposeReshapeForEinsum(output_permutation,
                                       output_dims,
                                       reshaped_dims)) {
+        // See note following the previous call of function IsTransposeReshapeForEinsum.
+        // Covered by ExplicitEinsumAsTensorContractionReshape.
         output->Reshape(reshaped_dims);
       } else {
         output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,

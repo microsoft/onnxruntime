@@ -510,6 +510,16 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsTensorContractionReshape) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "sbcd,es,eh->bce");
+  test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, -6.f, 2.f});
+  test.AddInput<float>("z", {2, 2}, {3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {63.f, -132.f, 63.f, -132.f, 63.f, -132.f, 63.f, -132.f});
+  test.Run();
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsTensorContraction) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -519,7 +529,6 @@ TEST(Einsum, ImplicitEinsumAsTensorContraction) {
   test.AddOutput<float>("o", {2, 2, 2, 2}, {3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f});
   test.Run();
 }
-
 
 // Test each theme for half support
 TEST(Einsum, ExplicitEinsumAsIdentity_1D_input_Half) {
