@@ -393,7 +393,7 @@ class ThreadPool {
 
   // Returns the number of threads created in the pool.  This may be different from the
   // value returned by DegreeOfParallelism to code using the pool.
-  int NumThreads() const;
+  virtual int NumThreads() const;
 
   // Returns current thread id between 0 and NumThreads() - 1, if called from a
   // thread in the pool. Returns -1 otherwise.
