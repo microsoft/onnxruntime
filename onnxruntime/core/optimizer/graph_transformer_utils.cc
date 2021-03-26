@@ -37,6 +37,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -123,6 +124,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+#ifndef DISABLE_CONTRIB_OPS
+  bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+#endif
+
   switch (level) {
     case TransformerLevel::Level1: {
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
@@ -148,6 +153,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const std::unordered_set<std::string> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
                                                                  onnxruntime::kCudaExecutionProvider,
                                                                  onnxruntime::kRocmExecutionProvider};
+      if (enable_quant_qdq) {
+        transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
+      }
+
       const std::unordered_set<std::string> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                            onnxruntime::kCudaExecutionProvider,
                                                                            onnxruntime::kRocmExecutionProvider,
@@ -176,12 +185,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_eps));
 
-      // GeluApproximation has side effects which may change results. It needs to be manually registered,
-      // via InferenceSession::RegisterGraphTransformer, or alternatively the model can be updated offline
-      // using a model conversion script (e.g. onnxruntime/python/tools/transformers/onnx_model_bert.py uses
-      // fusion_gelu_approximation)
-      //
-      // transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_rocm_eps));
+      // GeluApproximation has side effects which may change results. It needs to be manually enabled,
+      // or alternatively the model can be updated offline using a model conversion script
+      //   e.g. fusion_gelu_approximation function used by onnxruntime/python/tools/transformers/onnx_model_bert.py
+      if (enable_gelu_approximation) {
+        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
+      }
 
 #endif
     } break;
