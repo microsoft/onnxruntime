@@ -475,26 +475,26 @@ void addObjectMethodsForTraining(py::module& m) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
-py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
+  py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](PyInferenceSession * session) {
+      .def(py::init([](PyInferenceSession* session) {
         return onnxruntime::make_unique<TrainingAgent>(session->GetSessionHandle());
       }))
       .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
         int64_t run_id;
+        std::cout << "std::this_thread::get_id() is : " << std::this_thread::get_id() << std::endl;
         Status status = agent->RunForward(run_options, *io_binding.Get(), run_id);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
         return py::make_tuple(run_id);
       })
-      .def("run_backward", [](TrainingAgent* agent,  SessionIOBinding& io_binding, RunOptions& run_options, int64_t run_id) -> void {
+      .def("run_backward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options, int64_t run_id) -> void {
         Status status = agent->RunBackward(run_options, *io_binding.Get(), run_id);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-      ;
+      });
 
   py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
       m, "ModuleGradientGraphBuilderConfiguration",
@@ -507,7 +507,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
                      &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
   py::class_<TrainingGraphInfo> training_graph_info(m, "TrainingGraphInfo",
-                                                R"pbdoc(The information of split graphs for frontend.)pbdoc");
+                                                    R"pbdoc(The information of split graphs for frontend.)pbdoc");
   training_graph_info.def(py::init())
       .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
