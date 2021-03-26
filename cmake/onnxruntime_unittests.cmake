@@ -808,11 +808,13 @@ set(onnxruntime_eager_mode_libs
         protobuf::libprotobuf
         GTest::gtest
         re2::re2
-        nsync_cpp
         ${CMAKE_DL_LIBS}
         )
 if(onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+endif()
+IF(NOT WIN32)
+  list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
 endif()
 target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
 
