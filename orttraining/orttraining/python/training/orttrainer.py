@@ -678,7 +678,7 @@ class ORTTrainer(object):
         def get_providers(provider_options):
             providers = ort.get_available_providers()
             
-            if provider_options is not None:
+            if provider_options:
                 for provider_name in provider_options:
                     providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
             #default: using cuda
