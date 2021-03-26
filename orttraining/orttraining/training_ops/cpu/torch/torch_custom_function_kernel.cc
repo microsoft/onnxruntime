@@ -4,6 +4,7 @@
 #include "torch_custom_function_kernel.h"
 #include "core/language_interop_ops/pyop/pyop_lib_proxy.h"
 #include "core/torch_custom_function/torch_custom_function_register.h"
+#include <thread>
 
 namespace onnxruntime {
 namespace contrib {
@@ -30,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status PythonOp::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(context);
-
+  std::cout << "std::this_thread::get_id() is : " << std::this_thread::get_id() << std::endl;
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(context);
   ORT_ENFORCE(nullptr != context);
   auto inputs_count = (size_t)ctx_internal->InputCount();
