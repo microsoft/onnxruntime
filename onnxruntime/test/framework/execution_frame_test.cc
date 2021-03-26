@@ -271,7 +271,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  onnxruntime::NodeArg input_def("X", &tensor_float), yield_out_def("T", &tensor_float),
+  onnxruntime::NodeArg input_def("X", &tensor_float), break_out_def("T", &tensor_float),
       gemm_out_def("Y", &tensor_float);
 
   ONNX_NAMESPACE::AttributeProto full_shape_outputs;
@@ -280,10 +280,10 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
   full_shape_outputs.add_ints(static_cast<int64_t>(0));
   NodeAttributes attributes({{attribute_name, full_shape_outputs}});
-  graph.AddNode("node1", "BreakOp", "stop", ArgMap{&input_def}, ArgMap{&yield_out_def}, &attributes, kMSDomain)
+  graph.AddNode("node1", "BreakOp", "stop", ArgMap{&input_def}, ArgMap{&break_out_def}, &attributes, kMSDomain)
       .SetExecutionProviderType(xp_type);
   // Add another node after BreakOp as BreakOp should not be graph output.
-  graph.AddNode("node2", "MatMul", "gemm1", ArgMap{&yield_out_def, &input_def}, ArgMap{&gemm_out_def})
+  graph.AddNode("node2", "MatMul", "gemm1", ArgMap{&break_out_def, &input_def}, ArgMap{&gemm_out_def})
       .SetExecutionProviderType(xp_type);
 
   ASSERT_STATUS_OK(graph.Resolve());
@@ -342,7 +342,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_STATUS_OK(session_obj.Initialize());
 
   {
-    // Run with original InferenceSession::Run, it should fail due to the YieldOp.
+    // Run with original InferenceSession::Run, it should fail because regular Run call
+    // will try to run the full graph and MatMul won't have its desired inputs.
     NameMLValMap feeds;
     feeds.insert(std::make_pair("X", x_value));
 
@@ -354,28 +355,40 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
     RunOptions run_options;
     auto st = session_obj.Run(run_options, feeds, output_names, &fetches);
     EXPECT_FALSE(st.IsOK());
-    EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Non-zero status code returned while running YieldOp node."));
+    EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Non-zero status code returned while running MatMul node."));
   }
 
   {
+    SessionOptions so;
+    so.session_logid = "MemPatternWithExternalOutputsTest2";
+    so.enable_mem_pattern = false;
+    so.enable_mem_reuse = false;
+    InferenceSession session_obj{so, GetEnvironment()};
+    std::stringstream buffer;
+    model.ToProto().SerializeToOstream(&buffer);
+    ASSERT_STATUS_OK(session_obj.Load(buffer));
+    ASSERT_STATUS_OK(session_obj.Initialize());
     // Run with new RunForward/RunBackward.
     training::TrainingAgent training_agent(&session_obj);
     unique_ptr<IOBinding> io_binding;
     ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
     io_binding->BindInput("X", x_value);
     OrtValue output;
-    io_binding->BindOutput("Y", output);
-    RunOptions run_options;
-    std::vector<OrtValue> user_outputs;
+    io_binding->BindOutput("X", output);
     int64_t run_id;
-    ASSERT_STATUS_OK(training_agent.RunForward(run_options, *io_binding, user_outputs, run_id));
-    const std::vector<float> yield_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
-    EXPECT_THAT(user_outputs[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(yield_input_expected)));
-    ASSERT_STATUS_OK(training_agent.RunBackward(run_id, {t_value}));
+    ASSERT_STATUS_OK(training_agent.RunForward(*io_binding, run_id));
+    const std::vector<float> break_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
+    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
+                ::testing::ContainerEq(gsl::make_span(break_input_expected)));
+
+    unique_ptr<IOBinding> backward_io_binding;
+    ASSERT_STATUS_OK(session_obj.NewIOBinding(&backward_io_binding));
+    backward_io_binding->BindInput("T", t_value);
+    backward_io_binding->BindOutput("Y", output);
+    ASSERT_STATUS_OK(training_agent.RunBackward(*backward_io_binding, run_id));
     // The output is MatMul(x_value, t_value);
     const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
-    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
+    EXPECT_THAT(backward_io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
                 ::testing::ContainerEq(gsl::make_span(output_expected)));
   }
 }

@@ -205,7 +205,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   const auto exec_plan_size = exec_plan_vec.size();
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-  ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, frame, 0, exec_plan_size));
+  if (exec_plan_size > 0) {
+    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, frame, 0, exec_plan_size - 1));
+  }
   ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(frame, session_state.GetTransferIntermediateTensorOwnership(), fetches, logger));
   return Status::OK();
 }
@@ -217,7 +219,7 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
                                           const logging::Logger& logger, int64_t run_id) {
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
-  const auto exec_plan_size = exec_plan_vec.size();
+  const auto exec_plan_last_index = exec_plan_vec.size() - 1;
   std::shared_ptr<ExecutionFrame> frame = nullptr;
   std::map<int64_t, std::pair<std::unique_ptr<onnxruntime::ExecutionFrame>, size_t>>::iterator it;
   size_t program_counter = 0;
@@ -237,47 +239,57 @@ Status SequentialExecutor::ExecutePartial(const SessionState& session_state, con
   // Determine partial graph execution start and end nodes.
   size_t program_counter_end;
   for (program_counter_end = program_counter;
-       (program_counter_end < exec_plan_size) &&
-       ((session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "BreakOp") ||
-        (program_counter_end == program_counter));
+       (program_counter_end < exec_plan_last_index) &&
+       (session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() != "BreakOp");
        program_counter_end += 1)
     ;
 
-  ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, *frame, program_counter, program_counter_end));
+  ORT_ENFORCE(program_counter_end <= exec_plan_last_index);
+
+  bool last_node_break_op = session_state.GetKernel(exec_plan_vec[program_counter_end].node_index)->KernelDef().OpName() == "BreakOp";
+
+  // Do not execute if the first op of the graph is BreakOp (unlikely but legal corner case)
+  if (!last_node_break_op || program_counter_end > 0) {
+    // Execute until but not including the BreakOp.
+    ORT_RETURN_IF_ERROR(Execute(session_state, feeds, fetch_mlvalue_idxs, logger, *frame, program_counter, last_node_break_op ? program_counter_end - 1 : program_counter_end));
+  }
 
   // Make sure intermediate outputs (Break Op node inputs in this case) are ready in the event they are being asynchronously computed.
-  const auto& node_exec_plan = exec_plan_vec[program_counter_end];
-  auto node_index = node_exec_plan.node_index;
-  if ((program_counter_end < exec_plan_size) && (seq_exec_plan.NodeHasFence(node_index))) {
-    const auto& graph_viewer = session_state.GetGraphViewer();
-    const auto& node = *graph_viewer.GetNode(node_index);
-    auto p_op_kernel = session_state.GetKernel(node_index);
-    if (p_op_kernel == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                             node.Name());
-    }
+  if (last_node_break_op) {
+    const auto& node_exec_plan = exec_plan_vec[program_counter_end];
+    auto node_index = node_exec_plan.node_index;
+    if (seq_exec_plan.NodeHasFence(node_index)) {
+      const auto& graph_viewer = session_state.GetGraphViewer();
+      const auto& node = *graph_viewer.GetNode(node_index);
+      auto p_op_kernel = session_state.GetKernel(node_index);
+      if (p_op_kernel == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+                               node.Name());
+      }
 
-    OpKernelContextInternal op_kernel_context(session_state, *frame, *p_op_kernel, logger, terminate_flag_);
-    ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(p_op_kernel, op_kernel_context, p_op_kernel->KernelDef().ExecQueueId()));
+      OpKernelContextInternal op_kernel_context(session_state, *frame, *p_op_kernel, logger, terminate_flag_);
+      ORT_RETURN_IF_ERROR(SynchronizeNodeInputs(p_op_kernel, op_kernel_context, p_op_kernel->KernelDef().ExecQueueId()));
+    }
   }
 
   // Fetch the outputs.
   ORT_RETURN_IF_ERROR(FetchOutputsFromExecutionFrame(*frame, session_state.GetTransferIntermediateTensorOwnership(), fetches, logger));
 
-  // Update the program counter.
-  if (session_state.GetTransferIntermediateTensorOwnership()) {
-    program_counter = program_counter_end + 1;
-  } else {
-    program_counter = program_counter_end;
+  // Release tensors that go out of scope starting from BreakOp if the user has requested to transfer ownership.
+  if (last_node_break_op && session_state.GetTransferIntermediateTensorOwnership()) {
+    VLOGS(logger, 1) << "Releasing node ML values.";
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(*frame, seq_exec_plan, exec_plan_vec[program_counter_end], logger));
   }
 
   // Release the frame upon the completion of "full" graph execution.
-  if (program_counter == exec_plan_size) {
+  if (program_counter_end == exec_plan_last_index) {
     partial_graph_runs_manager.CancelPartialGraphRun(run_id);
   } else {
-    ORT_ENFORCE(program_counter < exec_plan_size);
+    // Update the program counter otherwise.
 
-    partial_graph_runs_manager.UpdatePartialRunProgramCounter(run_id, program_counter);
+    ORT_ENFORCE(program_counter_end < exec_plan_last_index);
+
+    partial_graph_runs_manager.UpdatePartialRunProgramCounter(run_id, program_counter_end + 1);
   }
 
   return Status::OK();
@@ -321,7 +333,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
   VLOGS(logger, 1) << "Executing from: " << program_counter_start;
-  VLOGS(logger, 1) << "Executing until but not including: " << program_counter_end;
+  VLOGS(logger, 1) << "Executing until: " << program_counter_end;
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
@@ -352,7 +364,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       profile::Color::Black);
 #endif
 
-  for (size_t program_counter = program_counter_start; program_counter < program_counter_end; program_counter += 1) {
+  for (size_t program_counter = program_counter_start; program_counter <= program_counter_end; program_counter += 1) {
     const auto& node_exec_plan = exec_plan_vec[program_counter];
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
