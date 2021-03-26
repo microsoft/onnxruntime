@@ -153,15 +153,15 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const std::unordered_set<std::string> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
                                                                  onnxruntime::kCudaExecutionProvider,
                                                                  onnxruntime::kRocmExecutionProvider};
-      if (enable_quant_qdq) {
-        transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
-      }
-
       const std::unordered_set<std::string> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                            onnxruntime::kCudaExecutionProvider,
                                                                            onnxruntime::kRocmExecutionProvider,
                                                                            onnxruntime::kAclExecutionProvider,
                                                                            onnxruntime::kArmNNExecutionProvider};
+
+      if (enable_quant_qdq) {
+        transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
+      }
 
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(onnxruntime::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
