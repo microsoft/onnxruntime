@@ -171,7 +171,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
