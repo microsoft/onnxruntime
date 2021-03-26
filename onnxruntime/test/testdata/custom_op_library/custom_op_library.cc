@@ -165,10 +165,10 @@ struct SequencePoolingKernel {
     OrtTensorDimensions input_dim(ort_, input);
     OrtTensorDimensions senlens_dim(ort_, senlens);
 
-    int batch_size = input_dim[0];
-    int hidden_size = input_dim[2];
-    int num_sequences = senlens_dim[1];
-    int sequence_length_for_split = input_dim[1];
+    int batch_size = static_cast<int>(input_dim[0]);
+    int hidden_size = static_cast<int>(input_dim[2]);
+    int num_sequences = static_cast<int>(senlens_dim[1]);
+    int sequence_length_for_split = static_cast<int>(input_dim[1]);
 
     std::vector<int64_t> output_dims = input_dim;
     output_dims[1] = 256;
@@ -212,10 +212,10 @@ struct SequencePoolingKernel16 {
     OrtTensorDimensions input_dim(ort_, input);
     OrtTensorDimensions senlens_dim(ort_, senlens);
 
-    int batch_size = input_dim[0];
-    int hidden_size = input_dim[2];
-    int num_sequences = senlens_dim[1];
-    int sequence_length_for_split = input_dim[1];
+    int batch_size = static_cast<int>(input_dim[0]);
+    int hidden_size = static_cast<int>(input_dim[2]);
+    int num_sequences = static_cast<int>(senlens_dim[1]);
+    int sequence_length_for_split = static_cast<int>(input_dim[1]);
 
     std::vector<int64_t> output_dims = input_dim;
     output_dims[1] = 256;
