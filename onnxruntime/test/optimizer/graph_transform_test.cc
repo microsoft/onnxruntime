@@ -918,10 +918,12 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
 
-TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
+TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidInput) {
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_perm.onnx",
       MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_default_perm.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_datatype_int32.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_datatype_int64.onnx",
   };
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
