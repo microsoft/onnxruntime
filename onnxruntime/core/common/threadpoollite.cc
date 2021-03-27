@@ -72,8 +72,7 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
       for (int i = 0; i < total; ++i) {
         fn(i);
       }
-      profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-      profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+      profiler_.LogEnd(ThreadPoolProfiler::RUN);
     } else {
       Task& task = tasks_[insert_at];
       long long progress = -1;
@@ -108,16 +107,15 @@ void ThreadPoolLite::MainLoop(int idx) {
   while (!exit_) {
     for (int i = 0; i < MAX_NUM_TASK; ++i) {
       Task& task = tasks_[i];
-      if (task.status_.load(std::memory_order_acquire) == Ready) {
+      long long progress = -1;
+      while (task.status_.load(std::memory_order_acquire) == Ready &&
+             (progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
+        const SimpleFn& simple_fn = *task.fn_;
+        simple_fn(progress);
         profiler_.LogRun(idx);
-        long long progress = -1;
-        while ((progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
-          const SimpleFn& simple_fn = *task.fn_;
-          simple_fn(progress);
-          task.done_.fetch_add(1, std::memory_order_relaxed);
-          if (0 == progress) {
-            break;
-          }
+        task.done_.fetch_add(1, std::memory_order_relaxed);
+        if (0 == progress) {
+          break;
         }
       }
     }
