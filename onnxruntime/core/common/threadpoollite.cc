@@ -76,11 +76,10 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
       profiler_.LogEnd(ThreadPoolProfiler::WAIT);
     } else {
       Task& task = tasks_[insert_at];
-      auto progress = task.progress_.fetch_sub(1, std::memory_order_relaxed);
-      while (progress > -1) {
+      long long progress = -1;
+      while ((progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
         fn(progress);
         task.done_.fetch_add(1, std::memory_order_relaxed);
-        progress = task.progress_.fetch_sub(1, std::memory_order_relaxed);
       }
       profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
       while (task.done_.load(std::memory_order_relaxed) < total) {
@@ -110,13 +109,15 @@ void ThreadPoolLite::MainLoop(int idx) {
     for (int i = 0; i < MAX_NUM_TASK; ++i) {
       Task& task = tasks_[i];
       if (task.status_.load(std::memory_order_acquire) == Ready) {
-        auto progress = task.progress_.fetch_sub(1, std::memory_order_relaxed);
-        while (progress > -1) {
+        profiler_.LogRun(idx);
+        long long progress = -1;
+        while ((progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
           const SimpleFn& simple_fn = *task.fn_;
           simple_fn(progress);
-          profiler_.LogRun(idx);
           task.done_.fetch_add(1, std::memory_order_relaxed);
-          progress = task.progress_.fetch_sub(1, std::memory_order_relaxed);
+          if (0 == progress) {
+            break;
+          }
         }
       }
     }
