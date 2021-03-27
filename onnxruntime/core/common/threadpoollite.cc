@@ -60,8 +60,8 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
       Task& task = tasks_[insert_at];
       Status status{Empty};
       if (task.status_.compare_exchange_weak(status, Loading, std::memory_order_relaxed)) {
-        task.progress_.store(total - 1);
-        task.done_.store(0);
+        task.progress_.store(total - 1, std::memory_order_relaxed);
+        task.done_.store(0, std::memory_order_relaxed);
         task.fn_ = &fn;
         task.status_.store(Ready, std::memory_order_release);
         break;
