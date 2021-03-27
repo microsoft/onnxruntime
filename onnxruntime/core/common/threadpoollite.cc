@@ -85,6 +85,7 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
         onnxruntime::concurrency::SpinPause();
       }
       task.status_.store(Empty, std::memory_order_relaxed);
+      task.fn_ = nullptr;
       profiler_.LogEnd(ThreadPoolProfiler::WAIT);
     }
   }
@@ -108,7 +109,7 @@ void ThreadPoolLite::MainLoop(int idx) {
     for (int i = 0; i < MAX_NUM_TASK; ++i) {
       Task& task = tasks_[i];
       long long progress = -1;
-      while (task.status_.load(std::memory_order_acquire) == Ready &&
+      while (task.status_.load(std::memory_order_acquire) == Ready && task.fn_ &&
              (progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
         const SimpleFn& simple_fn = *task.fn_;
         simple_fn(progress);
