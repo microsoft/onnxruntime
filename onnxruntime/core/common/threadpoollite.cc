@@ -48,46 +48,49 @@ void ThreadPoolLite::ParallelFor(std::ptrdiff_t total, const TensorOpCost&, cons
 }
 
 void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
-  profiler_.LogCoreAndBlock(1);
+  profiler_.LogStartAndCoreAndBlock(1);
   if (total <= 0) {
     return;
   } else if (1 == total) {
     fn(0);
+    profiler_.LogEnd(ThreadPoolProfiler::RUN);
   } else {
-    int insert_at = 0;
-    profiler_.LogStart();
-    for (; insert_at < MAX_NUM_TASK; ++insert_at) {
-      Task& task = tasks_[insert_at];
-      Status status{Empty};
-      if (task.status_.compare_exchange_weak(status, Loading, std::memory_order_relaxed)) {
-        task.progress_.store(total - 1, std::memory_order_relaxed);
-        task.done_.store(0, std::memory_order_relaxed);
-        task.fn_ = &fn;
-        task.status_.store(Ready, std::memory_order_release);
-        break;
+    int at = 0;
+    Task task{(std::ptrdiff_t)(&fn), total - 1, 0};
+    for (; at < MAX_NUM_TASK; ++at) {
+      Task candidate = tasks_[at].load(std::memory_order_relaxed);
+      if (0 == candidate.fn_) {
+        if (tasks_[at].compare_exchange_weak(candidate, task, std::memory_order_relaxed)) {
+          break;
+        }
       }
     }
     profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
-    if (insert_at == MAX_NUM_TASK) {
+    if (at == MAX_NUM_TASK) {
       for (int i = 0; i < total; ++i) {
         fn(i);
       }
-      profiler_.LogEnd(ThreadPoolProfiler::RUN);
     } else {
-      Task& task = tasks_[insert_at];
-      long long progress = -1;
-      while ((progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
-        fn(progress);
-        task.done_.fetch_add(1, std::memory_order_relaxed);
+      while (true) {
+        Task inserted = tasks_[at].load(std::memory_order_relaxed);
+        ORT_ENFORCE(0 != inserted.fn_, "function ptr must be non-empty!");
+        if (total == inserted.done_) {
+          if (tasks_[at].compare_exchange_weak(inserted, {0, 0, 0}, std::memory_order_relaxed)) {
+            break;
+          }
+        } else if (inserted.progress_ >= 0) {
+          Task next = {inserted.fn_, inserted.progress_ - 1, inserted.done_};
+          if (tasks_[at].compare_exchange_weak(inserted, next, std::memory_order_relaxed)) {
+            fn(inserted.progress_);
+            while (!tasks_[at].compare_exchange_weak(next,
+                                                     {next.fn_, next.progress_, next.done_ + 1},
+                                                     std::memory_order_relaxed))
+              ;
+          }
+        }
       }
-      profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-      while (task.done_.load(std::memory_order_relaxed) < total) {
-        onnxruntime::concurrency::SpinPause();
-      }
-      task.status_.store(Empty, std::memory_order_relaxed);
-      task.fn_ = nullptr;
-      profiler_.LogEnd(ThreadPoolProfiler::WAIT);
     }
+    profiler_.LogEnd(ThreadPoolProfiler::RUN);
   }
 }
 
@@ -107,16 +110,18 @@ void ThreadPoolLite::MainLoop(int idx) {
   profiler_.LogThreadId(idx);
   while (!exit_) {
     for (int i = 0; i < MAX_NUM_TASK; ++i) {
-      Task& task = tasks_[i];
-      long long progress = -1;
-      while (task.status_.load(std::memory_order_acquire) == Ready && task.fn_ &&
-             (progress = task.progress_.fetch_sub(1, std::memory_order_relaxed)) > -1) {
-        const SimpleFn& simple_fn = *task.fn_;
-        simple_fn(progress);
-        profiler_.LogRun(idx);
-        task.done_.fetch_add(1, std::memory_order_relaxed);
-        if (0 == progress) {
-          break;
+      Task task = tasks_[i].load(std::memory_order_relaxed);
+      if (0 != task.fn_ && task.progress_ >= 0) {
+        if (tasks_[i].compare_exchange_weak(task,
+                                            {task.fn_, task.progress_ - 1, task.done_},
+                                            std::memory_order_relaxed)) {
+          const SimpleFn* fn = (const SimpleFn*)(task.fn_);
+          (*fn)(task.progress_--);
+          profiler_.LogRun(idx);
+          while (!tasks_[i].compare_exchange_weak(task,
+                                                  {task.fn_, task.progress_, task.done_ + 1},
+                                                  std::memory_order_relaxed))
+            ;
         }
       }
     }

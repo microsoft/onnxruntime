@@ -24,22 +24,15 @@ class ThreadPoolLite final : public ThreadPool {
   using SimpleFn = std::function<void(std::ptrdiff_t)>;
   using SchdFn = std::function<void()>;
 
-  enum Status {
-    Empty = 0,
-    Loading,
-    Ready
-  };
-
   struct Task {
-    std::atomic<Status> status_ = Empty;
-    std::atomic_llong progress_ = 0;
-    std::atomic_int done_ = 0;
-    const SimpleFn* fn_ = nullptr;
+    std::ptrdiff_t fn_ = 0;
+    std::ptrdiff_t progress_ = 0;
+    std::ptrdiff_t done_ = 0;
     char padding_[64] = "\0";
   };
 
   int num_tasks = 0;
-  Task tasks_[MAX_NUM_TASK];
+  std::atomic<Task> tasks_[MAX_NUM_TASK];
   int NumThreads() const override { return num_sub_threads_; }
   void ParallelFor(std::ptrdiff_t, double, const Fn&) override;
   void ParallelFor(std::ptrdiff_t, const TensorOpCost&, const Fn&) override;
