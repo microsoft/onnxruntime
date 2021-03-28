@@ -152,6 +152,7 @@ void DlpackCapsuleDestructor(PyObject* data) {
 
 bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   void* prt = PyLong_AsVoidPtr(pyObj);
+  std::cout << "ExtractPointerOutput:" << prt << std::endl;
   outputs.push_back(prt);
   return true;
 }
@@ -202,6 +203,20 @@ void* PyOpLibProxy::NewInstance(const char* module, const char* class_name, cons
   for (const auto& iter : args) {
     PyDict_SetItemString(named_args, iter.first.c_str(), PyUnicode_FromString(iter.second.c_str()));
   }
+
+  return PyObject_Call(pyClass, empty_args, named_args);
+}
+
+void* PyOpLibProxy::NewInstance(void* py_class) {
+  Scope scope;
+  if (nullptr == py_class) {
+    return nullptr;
+  }
+  PyObject* pyClass = reinterpret_cast<PyObject*>(py_class);
+  auto empty_args = PyTuple_New(0);
+  scope.Add(empty_args);
+  auto named_args = PyDict_New();
+  scope.Add(named_args);
 
   return PyObject_Call(pyClass, empty_args, named_args);
 }
@@ -280,6 +295,60 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
     }
   } else {
     logging_func("InvokePythonFunc: returned value must be numpy(s)");
+    return false;
+  }
+  return true;
+}  //bool InvokePythonFunc
+
+bool PyOpLibProxy::InvokePythonFunc(const char* module,
+                                    const char* function,
+                                    const std::vector<const OrtValue*>& inputs,
+                                    std::vector<void*>& outputs) {
+  Scope scope;
+  auto pyModule = PyImport_ImportModule(module);
+  if (nullptr == pyModule) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: found invalid module";
+    return false;
+  }
+
+  scope.Add(pyModule);
+
+  if (nullptr == function) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: found invalid instance or function";
+    return false;
+  }
+
+  auto pyFunc = PyObject_GetAttrString(pyModule, function);
+  if (nullptr == pyFunc) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: failed to create function object";
+    return false;
+  }
+
+  scope.Add(pyFunc);
+  auto pyArgs = PyTuple_New(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], GetType(inputs[i]), inputs[i]->Get<Tensor>().Shape().GetDims()));
+  }
+
+  scope.Add(pyArgs);
+  auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+  if (nullptr == pyResult) {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: no result";
+    return false;
+  }
+
+  scope.Add(pyResult);
+  if (PyArray_Check(pyResult)) {
+    ExtractPointerOutput(pyResult, outputs);
+  } else if (PyTuple_Check(pyResult)) {
+    for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
+      if (!ExtractPointerOutput(PyTuple_GetItem(pyResult, i), outputs)) {
+        LOGS_DEFAULT(WARNING) << "InvokePythonFunc: failed to extract output";
+        return false;
+      }
+    }
+  } else {
+    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: returned value must be numpy(s)";
     return false;
   }
   return true;

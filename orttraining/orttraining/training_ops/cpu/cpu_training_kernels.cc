@@ -200,11 +200,11 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
 #endif
   };
 
-for (auto& function_table_entry : function_table) {
-  ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
-}
-return Status::OK();
+  for (auto& function_table_entry : function_table) {
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
+  }
+  return Status::OK();
 }  // namespace contrib
 
-}  // namespace onnxruntime
+}  // namespace contrib
 }  // namespace onnxruntime

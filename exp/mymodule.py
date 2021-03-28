@@ -7,7 +7,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
 def _ortvalue_from_dlpack(dlpack_tensor):
-    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))
+    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
 
 class MyReLU(torch.autograd.Function):
     @staticmethod
