@@ -50,8 +50,8 @@ PyObject* OrtTorchFunctionPool::GetBackward(
   return backward_pool.at(custom_function_name);
 };
 
-size_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
-  static size_t index_ = 0;
+int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
+  static int64_t index_ = 0;
   std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
   index_++;
   func_context_pool.insert({index_, auto_grad_context});
@@ -59,7 +59,7 @@ size_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   return index_;
 };
 
-void OrtTorchFunctionPool::UnRegisterContext(size_t context_index) {
+void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
   auto ctx = func_context_pool.find(context_index);
   Py_XDECREF(ctx->second);

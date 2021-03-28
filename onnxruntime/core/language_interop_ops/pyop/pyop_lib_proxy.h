@@ -28,6 +28,11 @@ class PyOpLibProxy {
                         std::vector<std::vector<int64_t>>&,
                         std::function<void(const char*)>);
 
+  bool InvokePythonFunc(const char* module,
+                        const char* function,
+                        const std::vector<const OrtValue*>& inputs,
+                        std::vector<void*>& outputs);
+
   bool InvokePythonAutoGradFunc(void* function,
                                 const std::vector<const OrtValue*>&,
                                 std::vector<void*>& outputs);
@@ -39,6 +44,7 @@ class PyOpLibProxy {
                                 std::function<void(const char*)>);
   const char* GetLastErrorMessage(std::string&);
   void* NewInstance(const char*, const char*, const OnnxAttrs&);
+  void* NewInstance(void* pyClass);
   bool Initialized() const { return initialized_; };
   int32_t GetGil() const;
   void PutGil(int32_t) const;

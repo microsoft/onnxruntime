@@ -18,11 +18,26 @@ class PythonOp final : public OpKernel {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
     input_types_ = info.GetAttrsOrDefault("input_types", std::vector<int64_t>());
     output_types_ = info.GetAttrsOrDefault("output_types", std::vector<int64_t>());
+
+    std::string err;
+    auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForward(name_);
+    auto state = PyOpLibProxy::GetInstance().GetGil();
+    ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
+    instance_ = PyOpLibProxy::GetInstance().NewInstance(reinterpret_cast<void*>(py_func));
+    ORT_ENFORCE(instance_ != nullptr, "Python run instance_ should not be nullptr");
+    PyOpLibProxy::GetInstance().PutGil(state);
+    ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
   }
 
   Status Compute(OpKernelContext* context) const override;
 
   ~PythonOp() {
+    if (nullptr != instance_) {
+      auto state = PyOpLibProxy::GetInstance().GetGil();
+      PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
+      PyOpLibProxy::GetInstance().PutGil(state);
+      instance_ = nullptr;
+    }
   }
 
  private:
@@ -32,6 +47,7 @@ class PythonOp final : public OpKernel {
   std::vector<int64_t> input_types_;
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_types_;
+  void* instance_ = nullptr;
 };
 
 // Pytorch's torch.autograd.Function.backward(...) wrapper.

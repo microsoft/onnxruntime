@@ -20,9 +20,9 @@ class OrtTorchFunctionPool final {
   PyObject* GetForward(const std::string& custom_function_name);
   PyObject* GetBackward(const std::string& custom_function_name);
 
-  size_t RegisterContext(PyObject* auto_grad_context);
+  int64_t RegisterContext(PyObject* auto_grad_context);
 
-  void UnRegisterContext(size_t context_index);
+  void UnRegisterContext(int64_t context_index);
 
  private:
   OrtTorchFunctionPool() = default;
@@ -34,7 +34,7 @@ class OrtTorchFunctionPool final {
   std::unordered_map<std::string, PyObject*> forward_pool;
   std::unordered_map<std::string, PyObject*> backward_pool;
 
-  std::unordered_map<size_t, PyObject*> func_context_pool;
+  std::unordered_map<int64_t, PyObject*> func_context_pool;
   std::mutex func_context_pool_mutex_;
 };
 }  // namespace python
