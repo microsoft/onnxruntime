@@ -84,6 +84,7 @@ def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
     f"}}\n"
 
     return load_inline(name='inline_extension', cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
+                       extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
                        functions=['gpu_caching_allocator_raw_alloc_address',
                                   'gpu_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
