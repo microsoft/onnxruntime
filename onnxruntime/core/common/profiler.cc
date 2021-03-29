@@ -2,10 +2,147 @@
 // Licensed under the MIT License.
 
 #include "profiler.h"
+#include <cmath>
+
+#ifdef USE_CUDA
+#include <cupti.h>
+#endif
 
 namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
+
+class DeviceProfiler {
+ public:
+  static DeviceProfiler* GetDeviceProfiler();
+  virtual void StartProfiling(TimePoint start_time, int pid, int tid) = 0;
+  virtual std::vector<EventRecord> EndProfiling() = 0;
+  virtual ~DeviceProfiler() = default;
+};
+
+#ifdef USE_CUDA
+#define BUF_SIZE (32 * 1024)
+#define ALIGN_SIZE (8)
+#define ALIGN_BUFFER(buffer, align) \
+  (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
+#define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
+
+class CudaProfiler final: public DeviceProfiler {
+ public:
+  friend class DeviceProfiler;
+  ~CudaProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
+  void StartProfiling(TimePoint start_time, int pid, int tid) override;
+  std::vector<EventRecord> EndProfiling() override;
+ private:
+  CudaProfiler() = default;
+  static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
+  static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t);
+  struct KernelStat {
+    std::string name_ = {};
+    uint32_t stream_ = 0;
+    int32_t grid_x_ = 0;
+    int32_t grid_y_ = 0;
+    int32_t grid_z_ = 0;
+    int32_t block_x_ = 0;
+    int32_t block_y_ = 0;
+    int32_t block_z_ = 0;
+    int64_t start_ = 0;
+    int64_t stop_ = 0;
+  };
+  static OrtMutex mutex_;
+  static std::vector<KernelStat> stats_;
+  bool initialized_ = false;
+  TimePoint start_time_;
+  int pid_ = 0;
+  int tid_ = 0;
+  static std::atomic_flag enabled_;
+};
+
+OrtMutex CudaProfiler::mutex_;
+std::vector<CudaProfiler::KernelStat> CudaProfiler::stats_;
+std::atomic_flag CudaProfiler::enabled_;
+
+void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
+  uint8_t* bfr = (uint8_t*)malloc(BUF_SIZE + ALIGN_SIZE);
+  ORT_ENFORCE(bfr, "Failed to allocate memory for cuda kernel profiling.");
+  *size = BUF_SIZE;
+  *buffer = ALIGN_BUFFER(bfr, ALIGN_SIZE);
+  *maxNumRecords = 0;
+}
+
+void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t validSize) {
+  CUptiResult status;
+  CUpti_Activity* record = NULL;
+  if (validSize > 0) {
+    std::unique_lock<OrtMutex> lock(mutex_);
+    do {
+      status = cuptiActivityGetNextRecord(buffer, validSize, &record);
+      if (status == CUPTI_SUCCESS) {
+        if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
+          CUpti_ActivityKernel4* kernel = (CUpti_ActivityKernel4*)record;
+          stats_.push_back({kernel->name, kernel->streamId,
+                            kernel->gridX, kernel->gridY, kernel->gridZ,
+                            kernel->blockX, kernel->blockY, kernel->blockZ,
+                            static_cast<int64_t>(kernel->start),
+                            static_cast<int64_t>(kernel->end)});
+        }
+      } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
+        break;
+      }
+    } while (1);
+  }
+  free(buffer);
+}
+
+void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
+  if (!enabled_.test_and_set()) {
+    start_time_ = start_time;
+    pid_ = pid;
+    tid_ = tid;
+    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+        cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
+      initialized_ = true;
+    }
+  }
+}
+
+std::vector<EventRecord> CudaProfiler::EndProfiling() {
+  std::vector<EventRecord> events;
+  if (enabled_.test_and_set()) {
+    if (initialized_) {
+      cuptiActivityFlushAll(1);
+      std::unique_lock<OrtMutex> lock(mutex_);
+      int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
+      for (const auto& stat : stats_) {
+        std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
+                                                                           {"grid_x", std::to_string(stat.grid_x_)},
+                                                                           {"grid_y", std::to_string(stat.grid_y_)},
+                                                                           {"grid_z", std::to_string(stat.grid_z_)},
+                                                                           {"block_x", std::to_string(stat.block_x_)},
+                                                                           {"block_y", std::to_string(stat.block_y_)},
+                                                                           {"block_z", std::to_string(stat.block_z_)}};
+        events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+      }
+      stats_.clear();
+    } else {
+      std::initializer_list<std::pair<std::string, std::string>> args;
+      events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
+    }
+  }
+  enabled_.clear();
+  return events;
+}
+#endif //USE_CUDA
+
+DeviceProfiler* DeviceProfiler::GetDeviceProfiler() {
+#ifdef USE_CUDA
+  static CudaProfiler cuda_profiler;
+  return &cuda_profiler;
+#else
+  return nullptr;
+#endif
+}
 
 std::atomic<size_t> Profiler::global_max_num_events_{1000 * 1000};
 
@@ -16,7 +153,8 @@ profiling::Profiler::~Profiler() {
   instance_ = nullptr;
 }
 #else
-profiling::Profiler::~Profiler() {}
+profiling::Profiler::~Profiler() {
+}
 #endif
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
@@ -43,6 +181,10 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
   profiling_start_time_ = StartTime();
+  DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
+  if (device_profiler) {
+    device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
+  }
 }
 
 template <typename T>
@@ -51,6 +193,10 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = ToMBString(file_name);
   profiling_start_time_ = StartTime();
+  DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
+  if (device_profiler) {
+    device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
+  }
 }
 
 template void Profiler::StartProfiling<char>(const std::basic_string<char>& file_name);
@@ -100,6 +246,12 @@ std::string Profiler::EndProfiling() {
 
   std::lock_guard<OrtMutex> lock(mutex_);
   profile_stream_ << "[\n";
+
+  DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
+  if (device_profiler) {
+    std::vector<EventRecord> device_events = device_profiler->EndProfiling();
+    std::copy(device_events.begin(), device_events.end(), std::back_inserter(events_));
+  }
 
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];
