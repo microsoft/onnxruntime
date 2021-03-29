@@ -9,6 +9,21 @@
 namespace onnxruntime {
 namespace test {
 
+void TestShapeInference(
+    const std::string& op_type,
+    const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+    ONNX_NAMESPACE::ValueInfoProto& output) {
+
+#ifndef DISABLE_CONTRIB_OPS
+  // test trilu contrib op for maintaining backward compatibility
+  TestShapeInference(op_type, kMSDomain, 1, 6, inputs, attributes, output);
+#endif
+
+  // test trilu onnx domain op
+  TestShapeInference(op_type, kOnnxDomain, 14, 7, inputs, attributes, output);
+}
+
 TEST(ShapeInferenceTests, tri_upper_float) {
   std::vector<int64_t> shape = {4, 7};
   ONNX_NAMESPACE::ValueInfoProto input;
