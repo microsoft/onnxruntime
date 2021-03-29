@@ -128,6 +128,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Atanh | Yes | No | No |
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
+| Ceil | No | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
@@ -148,6 +149,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
+| GatherElements | No | No | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
@@ -157,6 +159,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | LeakyRelu | Yes | Yes | Yes |
 | Less | Yes | Yes | Yes |
 | Log | Yes | Yes | Yes |
+| Loop | No | No | Yes |
 | LRN | Yes | Yes | Yes |
 | MatMul | Yes | Yes | Yes |
 | Max | Yes | Yes | Yes |
@@ -202,6 +205,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Sum | Yes | Yes | Yes |
 | Tan | Yes | Yes | No |
 | Tanh | Yes | Yes | Yes |
+| Tile | No | No | Yes |
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
@@ -250,6 +254,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
+| yolov3 | No | No | Yes | No* |
+| mask_rcnn | No | No | Yes | No* |
 
 ## Image Manipulation Networks
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
