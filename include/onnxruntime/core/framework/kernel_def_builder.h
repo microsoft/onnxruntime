@@ -88,7 +88,7 @@ class KernelDef {
 
   bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
 
-  bool ExternalOutputs() const { return external_outputs_; }
+  bool HasExternalOutputs() const { return external_outputs_; }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
@@ -288,7 +288,8 @@ class KernelDefBuilder {
   }
 
   /**
-     Specify that this kernel's outputs are passed from external.
+     Specify that this kernel's output buffers are passed from external, 
+     i.e. not created or managed by ORT's memory allocator.
   */
   KernelDefBuilder& ExternalOutputs() {
     kernel_def_->external_outputs_ = true;

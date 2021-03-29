@@ -178,12 +178,17 @@ class InferenceSession {
                                           TransformerLevel level = TransformerLevel::Level2) ORT_MUST_USE_RESULT;
 
   /**
-    * Enable a custom set of transformers. Call this before invoking Initialize().
+    * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
+    * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
+    * session options), and NOT in optimizers_to_disable. 
+    * This allows finer grained control of the enabled/disabled optimizations.
+    * Must be called before Initialize() to take effect.
+    * 
     * Calling this API is optional.
-    * When this list is provided ORT ignores the levels set in session options.
     * @return OK if success.
     */
-  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
+  common::Status FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable)
+      ORT_MUST_USE_RESULT;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -530,8 +535,7 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
+                                         TransformerLevel graph_optimization_level);
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
@@ -544,10 +548,8 @@ class InferenceSession {
 
   InsertCastTransformer insert_cast_transformer_;
 
-  // List of transformers to run. When this list is not empty only the transformers in this list
-  // will be run regardless of the level set.
-  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
-  std::vector<std::string> transformers_to_enable_;
+  // Any GraphTransformer/RewriteRule name in this set will not be enabled.
+  std::unordered_set<std::string> optimizers_to_disable_;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

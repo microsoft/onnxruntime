@@ -11,12 +11,23 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+#ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     Trilu,
     kMSDomain,
     1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t>()),
+    Trilu);
+} // namespace contrib
+#endif
+
+ONNX_OPERATOR_KERNEL_EX(
+    Trilu,
+    kOnnxDomain,
+    14,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t>()),
     Trilu);
@@ -103,5 +114,4 @@ Status Trilu::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-}  // namespace contrib
 }  // namespace onnxruntime

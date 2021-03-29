@@ -354,10 +354,6 @@ class ORTModule(torch.nn.Module):
         if self._is_training():
             initializer_names_to_train = [name
                 for name, param in self._flattened_output_module.named_parameters() if param.requires_grad]
-        onnx_initializer_names = {
-            p.name for p in self._onnx_inference.graph.initializer}
-        initializer_names_to_train = [
-            p for p in initializer_names_to_train if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
@@ -436,6 +432,7 @@ class ORTModule(torch.nn.Module):
         '''
         # User inputs
         non_none_inputs = [inp for inp in inputs if inp is not None]
+        named_buffers_iter = iter(self._flattened_output_module.named_buffers())
         result = []
         for input_idx, name in enumerate(self._onnx_graphs_info.user_input_names):
             inp = None
@@ -443,6 +440,12 @@ class ORTModule(torch.nn.Module):
                 inp = non_none_inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
+            elif input_idx >= len(non_none_inputs):
+                # Registered buffers are translated to user_input+initializer in ONNX
+                # TODO: Check what happens when the number of inputs change form one call to the next
+                buffer_name, inp = next(named_buffers_iter)
+                assert buffer_name == name, f'Input name {name} expected, but {buffer_name} found!'
+
             if inp is not None:
                 result.append(inp)
             else:
@@ -492,7 +495,9 @@ class ORTModule(torch.nn.Module):
                                   do_constant_folding=False,
                                   training=torch.onnx.TrainingMode.TRAINING,
                                   dynamic_axes=dynamic_axes,
-                                  verbose=self._verbosity < Verbosity.WARNING)
+                                  verbose=self._verbosity < Verbosity.WARNING,
+                                  export_params=False,
+                                  keep_initializers_as_inputs=True)
         except RuntimeError as e:
             raise RuntimeError(
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))

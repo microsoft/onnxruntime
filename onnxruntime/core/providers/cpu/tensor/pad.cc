@@ -244,7 +244,7 @@ static Status PadImpl(OpKernelContext* ctx,
                       const std::vector<int64_t>& slices,
                       const Mode& mode,
                       T value) {
-  if (!utils::HasType<AllEnabledPadTypes, T>()) {
+  if (!utils::HasTypeWithSameSize<AllEnabledPadTypes, T>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type not supported in this build.");
   }
 
@@ -517,22 +517,15 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     slices_to_use = &slices_;
   }
 
-  Status pad_status{};
   switch (element_size) {
     case sizeof(uint32_t):
-      pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
-      break;
+      return PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
     case sizeof(uint64_t):
-      pad_status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
-      break;
+      return PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
     case sizeof(uint8_t):
-      pad_status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
-      break;
+      return PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
     default:
-      pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
   }
-
-  return pad_status;
 }
 };  // namespace onnxruntime

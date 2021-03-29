@@ -27,7 +27,7 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack_convertor.h"
+#include "python/dlpack/dlpack_converter.h"
 #endif
 
 // execution provider factory creator headers
@@ -513,7 +513,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
             }
-          } else if (option.first == "trt_fp16_enable") {	
+          } else if (option.first == "trt_fp16_enable") {
             if (option.second == "True" || option.second == "true") {
               params.trt_fp16_enable = true;
             } else if (option.second == "False" || option.second == "false") {
@@ -572,7 +572,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -732,7 +732,8 @@ static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const 
 #endif
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                       const ProviderOptionsVector& provider_options) {
+                       const ProviderOptionsVector& provider_options,
+                       const std::unordered_set<std::string>& disabled_optimizer_names) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
@@ -742,6 +743,11 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
+
+  if (!disabled_optimizer_names.empty()) {
+    OrtPybindThrowIfError(sess->FilterEnabledOptimizers(disabled_optimizer_names));
+  }
+
   OrtPybindThrowIfError(sess->Initialize());
 }
 
@@ -1785,8 +1791,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           "initialize_session",
           [](PyInferenceSession* sess,
              const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {}) {
-            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+             const ProviderOptionsVector& provider_options = {},
+             const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options, disabled_optimizer_names);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
@@ -1873,8 +1880,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-      ;
+      });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
