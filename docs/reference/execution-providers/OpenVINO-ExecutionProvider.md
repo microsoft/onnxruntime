@@ -41,6 +41,8 @@ options.device_type = "CPU_FP32";
 options.enable_vpu_fast_compile = 0;
 options.device_id = "";
 options.num_of_threads = 8;
+options.use_compiled_network = false;
+options.blob_dump_path = "";
 SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
@@ -53,6 +55,8 @@ The following table lists all the available configuratoin optoins and the Key-Va
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
+| use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
+| blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
 
 Valid Hetero or Multi-Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
@@ -286,3 +290,30 @@ More consistent performance, since the devices can now share the inference burde
 For more information on Multi-Device plugin of OpenVINO, please refer to the following
 [documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html#introducing_multi_device_execution).
 
+## Save/Load blob feature for OpenVINO EP
+
+This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target and not supported for other plugin's like CPU, GPU, etc.
+
+Improved overall inferencing time, since this feature eliminates the preliminary steps of creating a network from the model. Here, the pre-compiled blob is directly imported on to the device target.
+
+There are two different methods of exercising this feature:
+
+option 1. Enabling via Runtime options using c++/python API's.
+
+This flow can be enabled by the runtime option 'use_compiled_network' using the c++/python API'S. This acts like a switch to on and off this feature.
+
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path can be overridden using another runtime option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature.
+
+Refer to 'Available configuration options' section at the top for more information about using these runtime options.
+
+option 2. Importing the pre-compiled blobs directly from the path set by the user.
+
+This flow enables users to import/load the pre-compiled blob directly if available readily. This option is enabled by explicitly setting the path to the blob using environment variables and setting the OV_USE_COMPILED_NETWORK flag to true.
+
+For Linux:
+export OV_USE_COMPILED_NETWORK=1
+export OV_BLOB_PATH =<path to the blob>
+
+For Windows:
+set OV_USE_COMPILED_NETWORK=1
+set OV_BLOB_PATH =<path to the blob>
