@@ -26,8 +26,9 @@ class ThreadPoolLite final : public ThreadPool {
 
   struct Task {
     std::ptrdiff_t fn_ = 0;
-    std::ptrdiff_t progress_ = 0;
-    std::ptrdiff_t done_ = 0;
+    std::int16_t progress_ = 0;
+    std::int16_t step_ = 0;
+    std::int16_t done_ = 0;
   };
 
   int num_tasks = 0;

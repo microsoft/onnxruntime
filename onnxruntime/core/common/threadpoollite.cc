@@ -56,7 +56,11 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
     profiler_.LogEnd(ThreadPoolProfiler::RUN);
   } else {
     int at = 0;
-    Task task{(std::ptrdiff_t)(&fn), total - 1, 0};
+    assert(total < (1UL << 15));
+    int16_t progress = static_cast<int16_t>(total);
+    int16_t num_threads = static_cast<int16_t>(num_sub_threads_) + 1;
+    int16_t step = progress / num_threads + ((progress % num_threads) ? 1 : 0);
+    Task task{(std::ptrdiff_t)(&fn), progress - 1, step, 0};
     for (; at < MAX_NUM_TASK; ++at) {
       Task candidate = tasks_[at].load(std::memory_order_relaxed);
       if (0 == candidate.fn_) {
@@ -75,15 +79,19 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
         Task inserted = tasks_[at].load(std::memory_order_relaxed);
         ORT_ENFORCE(0 != inserted.fn_, "function ptr must be non-empty!");
         if (total == inserted.done_) {
-          if (tasks_[at].compare_exchange_weak(inserted, {0, 0, 0}, std::memory_order_relaxed)) {
+          if (tasks_[at].compare_exchange_weak(inserted, {0, 0, 0, 0}, std::memory_order_relaxed)) {
             break;
           }
         } else if (inserted.progress_ >= 0) {
-          Task next = {inserted.fn_, inserted.progress_ - 1, inserted.done_};
+          Task next = {inserted.fn_, inserted.progress_ - inserted.step_, inserted.step_, inserted.done_};
           if (tasks_[at].compare_exchange_weak(inserted, next, std::memory_order_relaxed)) {
-            fn(inserted.progress_);
+            int16_t run_to = std::max<int16_t>(next.progress_, -1);
+            int16_t run_count = inserted.progress_ - run_to;
+            for (int16_t i = inserted.progress_; i > run_to; --i) {
+              fn(static_cast<std::ptrdiff_t>(i));
+            }
             while (!tasks_[at].compare_exchange_weak(next,
-                                                     {next.fn_, next.progress_, next.done_ + 1},
+                                                     {next.fn_, next.progress_, next.step_, next.done_ + run_count},
                                                      std::memory_order_relaxed))
               ;
           }
@@ -113,13 +121,18 @@ void ThreadPoolLite::MainLoop(int idx) {
       Task task = tasks_[i].load(std::memory_order_relaxed);
       if (0 != task.fn_ && task.progress_ >= 0) {
         if (tasks_[i].compare_exchange_weak(task,
-                                            {task.fn_, task.progress_ - 1, task.done_},
+                                            {task.fn_, task.progress_ - task.step_, task.step_, task.done_},
                                             std::memory_order_relaxed)) {
           const SimpleFn* fn = (const SimpleFn*)(task.fn_);
-          (*fn)(task.progress_--);
+          int16_t run_to = std::max<int16_t>(task.progress_ - task.step_, -1);
+          int16_t run_count = task.progress_ - run_to;
+          for (int16_t j = task.progress_; j > run_to; --j) {
+            (*fn)(static_cast<std::ptrdiff_t>(j));
+          }
           profiler_.LogRun(idx);
+          task.progress_ -= task.step_;
           while (!tasks_[i].compare_exchange_weak(task,
-                                                  {task.fn_, task.progress_, task.done_ + 1},
+                                                  {task.fn_, task.progress_, task.step_, task.done_ + run_count},
                                                   std::memory_order_relaxed))
             ;
         }
