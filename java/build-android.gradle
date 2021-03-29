@@ -4,6 +4,8 @@ apply plugin: 'maven-publish'
 def jniLibsDir = System.properties['jniLibsDir']
 def buildDir = System.properties['buildDir']
 def publishDir = System.properties['publishDir']
+def minSdkVer = System.properties['minSdkVer']
+def targetSdkVer = System.properties['targetSdkVer']
 
 // Since Android requires a higher numbers indicating more recent versions
 // This function assume ORT version number will be in formart of A.B.C such as 1.7.0
@@ -21,7 +23,7 @@ project.buildDir = buildDir
 project.version = rootProject.file('../VERSION_NUMBER').text.trim()
 project.group = "com.microsoft.onnxruntime"
 
-def mavenArtifactId = project.name + '_mobile'
+def mavenArtifactId = project.name + '-mobile'
 
 buildscript {
 	repositories {
@@ -48,8 +50,8 @@ android {
 	buildToolsVersion "29.0.2"
 
 	defaultConfig {
-		minSdkVersion 21
-		targetSdkVersion 28
+		minSdkVersion minSdkVer
+		targetSdkVersion targetSdkVer
 		versionCode = getVersionCode(project.version)
 		versionName = project.version
 

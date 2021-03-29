@@ -12,8 +12,13 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.normpath(os.path.join(REPO_DIR, "tools", "ci_build", "build.py"))
 JAVA_ROOT = os.path.normpath(os.path.join(REPO_DIR, "java"))
+
+# We by default will build all 4 ABIs
 DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
-DEFAULT_ANDROID_API = 21
+# Android API 21 is the lowest API version we support
+DEFAULT_ANDROID_MIN_SDK_VER = 21
+# Android API 28 is the default target API version for Android builds
+DEFAULT_ANDROID_TARGET_SDK_VER = 28
 
 
 def _parse_build_settings(args):
@@ -45,10 +50,22 @@ def _parse_build_settings(args):
     else:
         raise ValueError('build_params is required in the build config file')
 
-    if 'android_api' in _build_settings_data:
-        build_params += ['--android_api=' + str(_build_settings_data['android_api'])]
+    if 'android_min_sdk_version' in _build_settings_data:
+        build_settings['android_min_sdk_version'] = _build_settings_data['android_min_sdk_version']
     else:
-        build_params += ['--android_api=' + str(DEFAULT_ANDROID_API)]
+        build_settings['android_min_sdk_version'] = DEFAULT_ANDROID_MIN_SDK_VER
+    build_params += ['--android_api=' + str(build_settings['android_min_sdk_version'])]
+
+    if 'android_target_sdk_version' in _build_settings_data:
+        build_settings['android_target_sdk_version'] = _build_settings_data['android_target_sdk_version']
+    else:
+        build_settings['android_target_sdk_version'] = DEFAULT_ANDROID_TARGET_SDK_VER
+
+    if build_settings['android_min_sdk_version'] > build_settings['android_target_sdk_version']:
+        raise ValueError(
+            'android_min_sdk_version {} cannot be larger than android_target_sdk_version {}'.format(
+                build_settings['android_min_sdk_version'], build_settings['android_target_sdk_version']
+            ))
 
     build_settings['build_params'] = build_params
     return build_settings
@@ -108,7 +125,9 @@ def _build_aar(args):
         '-c=settings-android.gradle',
         '-DjniLibsDir=' + _jnilibs_dir,
         '-DbuildDir=' + _aar_dir,
-        '-DpublishDir=' + _aar_publish_dir
+        '-DpublishDir=' + _aar_publish_dir,
+        '-DminSdkVer=' + str(build_settings['android_min_sdk_version']),
+        '-DtargetSdkVer=' + str(build_settings['android_target_sdk_version'])
     ]
 
     # clean, build, and publish to a local directory
@@ -126,26 +145,21 @@ def parse_args():
         '''
     )
 
-    parser.add_argument(
-        "--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
-        help="Path to the Android SDK")
+    parser.add_argument("--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
+                        help="Path to the Android SDK")
 
-    parser.add_argument(
-        "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
-        help="Path to the Android NDK")
+    parser.add_argument("--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
+                        help="Path to the Android NDK")
 
-    parser.add_argument(
-        '--build_dir', type=pathlib.Path,
-        default=os.path.join(REPO_DIR, 'build_android_aar'),
-        help='Provide the root directory for build output')
+    parser.add_argument('--build_dir', type=pathlib.Path, default=os.path.join(REPO_DIR, 'build_android_aar'),
+                        help='Provide the root directory for build output')
 
     parser.add_argument(
         "--include_ops_by_config", type=str,
         help="Include ops from config file. See /docs/Reduced_Operator_Kernel_build.md for more information.")
 
-    parser.add_argument(
-        'build_settings_file', type=pathlib.Path,
-        help='Provide the file contains settings for building AARs')
+    parser.add_argument('build_settings_file', type=pathlib.Path,
+                        help='Provide the file contains settings for building AAR')
 
     return parser.parse_args()
 
