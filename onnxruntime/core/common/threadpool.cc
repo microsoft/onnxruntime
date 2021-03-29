@@ -27,7 +27,9 @@ limitations under the License.
 #include <codecvt>
 #include <locale>
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
+#endif
 #else
 #include <sched.h>
 #endif
@@ -122,11 +124,13 @@ void ThreadPoolProfiler::MainThreadStat::LogCore() {
 #ifdef _WIN32
   core_ = GetCurrentProcessorNumber();
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
   uint32_t CPUInfo[4];
   __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
   if ((CPUInfo[3] & (1 << 9)) != 0) {
     core_ = (unsigned)CPUInfo[1] >> 24;
   }
+#endif
 #else
   core_ = sched_getcpu();
 #endif
