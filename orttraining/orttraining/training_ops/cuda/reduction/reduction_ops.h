@@ -16,6 +16,7 @@ class ReduceSumTraining final : public ReduceKernel<true> {
   ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     fast_reduction_ = true;
   }
+  
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImplEx<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
