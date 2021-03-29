@@ -37,6 +37,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -118,7 +119,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";  
+#ifndef DISABLE_CONTRIB_OPS  
+  bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+#endif
+
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
@@ -143,28 +148,36 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<MatMulIntegerToFloatFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
 
+      if (enable_quant_qdq) {
+        transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
+      }
+
       std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
-      std::unordered_set<std::string> cpu_cuda_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
+      std::unordered_set<std::string> cpu_cuda_rocm_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_acl_armnn_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_execution_providers));
 
-      const std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      const std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
+      const std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      const std::unordered_set<std::string> cpu_cuda_rocm_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_rocm_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_rocm_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers));
+      if (enable_gelu_approximation){
+        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cpu_cuda_rocm_execution_providers));
+      }
+
+      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_execution_providers));
 #endif
     } break;
 
@@ -192,15 +205,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     }
     return transformers;
   }
-
-// Some transformers have side-effect like result is not exactly same.
-// These transformers could only be enabled by custom transformer list.
-#ifndef DISABLE_CONTRIB_OPS
-  if (level == TransformerLevel::Level2) {
-    std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-    transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
-  }
-#endif
 
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
   // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
