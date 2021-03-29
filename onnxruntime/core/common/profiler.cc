@@ -26,6 +26,7 @@ class DeviceProfiler {
 #define ALIGN_BUFFER(buffer, align) \
   (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
 #define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
+#define U64(n) static_cast<uint64_t>(n)
 
 class CudaProfiler final: public DeviceProfiler {
  public:
@@ -38,15 +39,16 @@ class CudaProfiler final: public DeviceProfiler {
   CudaProfiler() = default;
   static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
   static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t);
+  static const char* CudaProfiler::GetMemcpyKindString(CUpti_ActivityMemcpyKind);
   struct KernelStat {
     std::string name_ = {};
     uint32_t stream_ = 0;
-    int32_t grid_x_ = 0;
-    int32_t grid_y_ = 0;
-    int32_t grid_z_ = 0;
-    int32_t block_x_ = 0;
-    int32_t block_y_ = 0;
-    int32_t block_z_ = 0;
+    uint64_t info_0_ = 0;
+    uint64_t info_1_ = 0;
+    uint64_t info_2_ = 0;
+    uint64_t info_3_ = 0;
+    uint64_t info_4_ = 0;
+    uint64_t info_5_ = 0;
     int64_t start_ = 0;
     int64_t stop_ = 0;
   };
@@ -79,13 +81,22 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
+        if (record->kind == CUPTI_ACTIVITY_KIND_KERNEL) {
           CUpti_ActivityKernel4* kernel = (CUpti_ActivityKernel4*)record;
           stats_.push_back({kernel->name, kernel->streamId,
-                            kernel->gridX, kernel->gridY, kernel->gridZ,
-                            kernel->blockX, kernel->blockY, kernel->blockZ,
+                            U64(kernel->gridX), U64(kernel->gridY), U64(kernel->gridZ),
+                            U64(kernel->blockX), U64(kernel->blockY), U64(kernel->blockZ),
                             static_cast<int64_t>(kernel->start),
                             static_cast<int64_t>(kernel->end)});
+        } else if (record->kind == CUPTI_ACTIVITY_KIND_MEMCPY) {
+          CUpti_ActivityMemcpy* memcpy_activity = (CUpti_ActivityMemcpy*)record;
+          stats_.push_back({"memcpy", memcpy_activity->streamId,
+                            U64(memcpy_activity->copyKind),
+                            U64(memcpy_activity->deviceId),
+                            U64(memcpy_activity->bytes),
+                            0UL, 0UL, 0UL,
+                            static_cast<int64_t>(memcpy_activity->start),
+                            static_cast<int64_t>(memcpy_activity->end)});
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
         break;
@@ -95,12 +106,39 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   free(buffer);
 }
 
+const char* CudaProfiler::GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
+  switch (kind) {
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
+      return "HtoD";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOH:
+      return "DtoH";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOA:
+      return "HtoA";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOH:
+      return "AtoH";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOA:
+      return "AtoA";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOD:
+      return "AtoD";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOA:
+      return "DtoA";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOD:
+      return "DtoD";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOH:
+      return "HtoH";
+    default:
+      break;
+  }
+  return "Unknown";
+}
+
 void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
   if (!enabled_.test_and_set()) {
     start_time_ = start_time;
     pid_ = pid;
     tid_ = tid;
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+        cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
       initialized_ = true;
     }
@@ -115,14 +153,22 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
       std::unique_lock<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
       for (const auto& stat : stats_) {
-        std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
-                                                                           {"grid_x", std::to_string(stat.grid_x_)},
-                                                                           {"grid_y", std::to_string(stat.grid_y_)},
-                                                                           {"grid_z", std::to_string(stat.grid_z_)},
-                                                                           {"block_x", std::to_string(stat.block_x_)},
-                                                                           {"block_y", std::to_string(stat.block_y_)},
-                                                                           {"block_z", std::to_string(stat.block_z_)}};
-        events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+        if ("memcpy" == stat.name_) {
+          std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
+                                                                             {"kind", CudaProfiler::GetMemcpyKindString((CUpti_ActivityMemcpyKind)stat.info_0_)},
+                                                                             {"device_id", std::to_string(stat.info_1_)},
+                                                                             {"bytes", std::to_string(stat.info_2_)}};
+          events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+        } else {
+          std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
+                                                                             {"grid_x", std::to_string(stat.info_0_)},
+                                                                             {"grid_y", std::to_string(stat.info_1_)},
+                                                                             {"grid_z", std::to_string(stat.info_2_)},
+                                                                             {"block_x", std::to_string(stat.info_3_)},
+                                                                             {"block_y", std::to_string(stat.info_4_)},
+                                                                             {"block_z", std::to_string(stat.info_5_)}};
+          events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+        }
       }
       stats_.clear();
     } else {
