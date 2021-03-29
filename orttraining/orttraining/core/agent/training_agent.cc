@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace training {
 
-TrainingAgent::TrainingAgent(InferenceSession *session) : inference_session_(session) {}
+TrainingAgent::TrainingAgent(InferenceSession& session) : inference_session_(session) {}
 
 TrainingAgent::~TrainingAgent() {
   // TODO: Properly cancel outstanding background tasks
@@ -39,7 +39,7 @@ common::Status TrainingAgent::RunForward(const RunOptions& run_options, onnxrunt
     // wait until task is properly setup
     setup_future.get();
 
-    common::Status status = inference_session_->Run(run_options, io_binding);
+    common::Status status = inference_session_.Run(run_options, io_binding);
 
     onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(status);
 
@@ -52,7 +52,8 @@ common::Status TrainingAgent::RunForward(const RunOptions& run_options, onnxrunt
       // signal main thread for background thread completion
       onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs(status, {});
     }
-  }, std::move(setup_future), std::cref(run_options), std::ref(io_binding));
+  },
+                               std::move(setup_future), std::cref(run_options), std::ref(io_binding));
 
   run_id = std::hash<std::thread::id>()(bg_thread.get_id());
   {
@@ -62,7 +63,7 @@ common::Status TrainingAgent::RunForward(const RunOptions& run_options, onnxrunt
 
   onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(run_id);
 
-  LOGS(*inference_session_->GetLogger(), VERBOSE) << "InferenceSession::Forward() call created a task with run_id " << run_id;
+  LOGS(*inference_session_.GetLogger(), VERBOSE) << "InferenceSession::Forward() call created a task with run_id " << run_id;
 
   // background task is setup, unblock background thread to continue
   setup_promise.set_value();
@@ -92,7 +93,7 @@ common::Status TrainingAgent::RunForward(const RunOptions& run_options, onnxrunt
 }
 
 common::Status TrainingAgent::RunBackward(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) {
-  LOGS(*inference_session_->GetLogger(), VERBOSE) << "Running TrainingAgent::Backward() with run_id " << run_id;
+  LOGS(*inference_session_.GetLogger(), VERBOSE) << "Running TrainingAgent::Backward() with run_id " << run_id;
 
   // resume background thread
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads, false);
@@ -115,7 +116,7 @@ common::Status TrainingAgent::RunBackward(int64_t run_id, const std::vector<OrtV
 }
 
 void TrainingAgent::CancelPendingBackwardRun(int64_t run_id) {
-  LOGS(*inference_session_->GetLogger(), INFO) << "Canceling background task with run_id " << run_id;
+  LOGS(*inference_session_.GetLogger(), INFO) << "Canceling background task with run_id " << run_id;
 
   // resume background thread with terminate = true
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, {}, true);
