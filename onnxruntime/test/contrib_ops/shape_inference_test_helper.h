@@ -50,6 +50,7 @@ inline void CreateValueInfo(
   }
 }
 
+
 inline void TestShapeInference(
     const std::string& op_type,
     const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
@@ -67,33 +68,29 @@ inline void TestShapeInference(
   // Set model graph
   ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
   graph->set_name("test-op");
-  graph->add_value_info();
 
   // Set add operator node to graph
-  auto& node = *graph->add_node();
-  node.set_op_type(op_type);
-  node.set_domain(MS_DOMAIN);
-  node.set_name("test_node");
+  auto node = graph->add_node();
+  node->set_op_type(op_type);
+  node->set_domain(MS_DOMAIN);
+  node->set_name("test_node");
 
   // Add node inputs and graph inputs
-  for (auto const& n_ : inputs) {
-    node.add_input(n_.name());
-    *graph->add_input() = n_;
-    std::cout << "nnn  " << n_.name() << "\n";
-  }
+	for (auto const& n_ : inputs) {
+	  node->add_input(n_.name());
+	  auto in = graph->add_input();
+	  *in = n_;
+	  auto v_ = graph->add_value_info();
+	  *v_ = n_;
+	}
 
-  // Add node attributes
-  for (auto const& attr : attributes) {
-    node.add_attribute()->CopyFrom(attr);
-  }
+  node->add_output("Output");
 
-  node.add_output("Output");
-
+  ONNX_NAMESPACE::shape_inference::InferShapes(model, true, schema_registry);
   ONNX_NAMESPACE::checker::check_model(model);
-  ONNX_NAMESPACE::shape_inference::InferShapes(model, false, schema_registry);
 
   auto inferredGraph = model.graph();
-  auto inferred_output = inferredGraph.value_info(1);
+  auto inferred_output = inferredGraph.value_info(inputs.size());
 
   auto elem_type = output.mutable_type()->mutable_tensor_type()->elem_type();
   auto inferred_elem_type = inferred_output.mutable_type()->mutable_tensor_type()->elem_type();
