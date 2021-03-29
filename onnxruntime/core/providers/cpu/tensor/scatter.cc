@@ -95,24 +95,20 @@ struct Func_Assignment {
   }
 };
 
-template <typename EnabledDataTypes, class Tin, class Tdata, typename FuncT>
-Status CopyScatterData(const FuncT& func, const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-                       const int64_t axis, Tensor* data_output) {
-  if (!utils::HasType<EnabledDataTypes, Tdata>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type is not supported in this build.");
-  }
+template <class TIndex>
+Status GetIndices(
+    const Tensor& data_input, const Tensor& indices_input, int64_t axis,
+    std::vector<int64_t>& indices_data) {
+  const auto& input_data_shape = data_input.Shape();
+  const auto* indices_data_raw = indices_input.template Data<TIndex>();
+  const auto num_indices = indices_input.Shape().Size();
+  const auto axis_dim_limit = input_data_shape[axis];
 
-  const TensorShape& input_data_shape = data_input->Shape();
-  const Tin* indices_data_raw = indices_input->template Data<Tin>();
-  const auto num_indices = indices_input->Shape().Size();
-
-  std::vector<Tin> indices_data;
-  indices_data.reserve(num_indices);
-
-  auto axis_dim_limit = input_data_shape[axis];
+  std::vector<int64_t> indices_data_result;
+  indices_data_result.reserve(num_indices);
 
   for (int64_t i = 0; i < num_indices; ++i) {
-    Tin idx = indices_data_raw[i];
+    const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
 
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -121,20 +117,32 @@ Status CopyScatterData(const FuncT& func, const Tensor* data_input, const Tensor
                              ",", axis_dim_limit - 1, "]");
     }
 
-    indices_data.push_back(idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx);
+    indices_data_result.push_back(idx < 0 ? idx + axis_dim_limit : idx);
   }
+
+  indices_data = std::move(indices_data_result);
+  return Status::OK();
+}
+
+template <class Tdata, typename FuncT>
+Status CopyScatterData(
+    const FuncT& func,
+    const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+    Tensor* data_output) {
+  const TensorShape& input_data_shape = data_input->Shape();
 
   const auto input_elements = input_data_shape.Size();
   const auto total_input_bytes = data_input->SizeInBytes();
 
+  const auto num_indices = gsl::narrow<int64_t>(indices_data.size());
+
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
-  const bool is_string_type = data_input->IsDataTypeString();
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
   if (src_base != dst_base) {
-    if (is_string_type) {
+    if (std::is_same<Tdata, std::string>::value) {
       const auto* str_begin = data_input->template Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
       auto* dst = data_output->template MutableData<std::string>();
@@ -192,7 +200,7 @@ Status CopyScatterData(const FuncT& func, const Tensor* data_input, const Tensor
   const auto* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
   // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
-    const Tin axis_idx = indices_data[index];
+    const auto axis_idx = indices_data[index];
 
     // Compute the offset
     // See comments above for dim_block_size
@@ -228,23 +236,14 @@ Status CopyScatterData(const FuncT& func, const Tensor* data_input, const Tensor
   return Status::OK();
 }
 
-template <typename EnabledDataTypes>
-template <typename T>
-Status Scatter<EnabledDataTypes>::CopyInt32Index(
-    const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-    const int64_t axis, Tensor* data_output) const {
-  return CopyScatterData<EnabledDataTypes, int32_t, T>(
-      Func_Assignment<T>(), data_input, indices_input, updates_input, axis, data_output);
-}
-
-template <typename EnabledDataTypes>
-template <typename T>
-Status Scatter<EnabledDataTypes>::CopyInt64Index(
-    const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-    const int64_t axis, Tensor* data_output) const {
-  return CopyScatterData<EnabledDataTypes, int64_t, T>(
-      Func_Assignment<T>(), data_input, indices_input, updates_input, axis, data_output);
-}
+template <typename TData>
+struct CopyScatterDataDispatchTarget {
+  Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+                    Tensor* data_output) const {
+    return CopyScatterData<TData>(
+        Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
+  }
+};
 
 template <typename EnabledDataTypes>
 Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
@@ -289,17 +288,29 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
     }
   }
 
-  auto* data_output = context->Output(0, input_data_shape);
+  Status status{};
+  const auto index_type = indices_input->GetElementType();
+  std::vector<int64_t> indices_data{};
 
-  MLDataType Tdata_type = data_input->DataType();
-  Status status;
-  if (indices_input->IsDataType<int32_t>()) {
-    DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt32Index, data_input, indices_input, updates_input, axis, data_output);
-  } else if (indices_input->IsDataType<int64_t>()) {
-    DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt64Index, data_input, indices_input, updates_input, axis, data_output);
+  if (index_type == utils::ToTensorProtoElementType<int32_t>()) {
+    status = GetIndices<int32_t>(*data_input, *indices_input, axis, indices_data);
+  } else if (index_type == utils::ToTensorProtoElementType<int64_t>()) {
+    status = GetIndices<int64_t>(*data_input, *indices_input, axis, indices_data);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Indices type is not supported.");
   }
+
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  auto* data_output = context->Output(0, input_data_shape);
+  const auto data_type = data_input->GetElementType();
+
+  utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
+  status = dispatcher.InvokeRet<Status, CopyScatterDataDispatchTarget>(
+      data_input, indices_data, updates_input, axis, data_output);
+
   return status;
 }
 
@@ -317,8 +328,9 @@ struct Func_Add {
 template <class Tin, class Tdata>
 Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
                               const int64_t axis, Tensor* data_output) {
-  return CopyScatterData<element_type_lists::All, Tin, Tdata>(
-      Func_Add<Tdata>(), data_output, indices_input, updates_input, axis, data_output);
+  std::vector<int64_t> indices_data{};
+  ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, indices_data));
+  return CopyScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
 }
 
 #define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata)         \
