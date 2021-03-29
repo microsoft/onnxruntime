@@ -115,48 +115,48 @@ ot_hardwareAcceleration.on("keypress keyup", function (event) {
     }
 });
 // Pre-select user's operating system
-$(document).ready(function () {
-    var userOsOption = document.getElementById(opts.os);
-    var ot_userOsOption = document.getElementById(ot_opts.ot_os);
-    if (userOsOption) {
-        selectedOption(os, userOsOption, "os");
+// $(document).ready(function () {
+//     var userOsOption = document.getElementById(opts.os);
+//     var ot_userOsOption = document.getElementById(ot_opts.ot_os);
+//     if (userOsOption) {
+//         selectedOption(os, userOsOption, "os");
         
-    }
-    if (ot_userOsOption) {
-        ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
-    }
-});
+//     }
+//     if (ot_userOsOption) {
+//         ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
+//     }
+// });
 
 
 // determine os (mac, linux, windows) based on user's platform
-function getDefaultSelectedOS() {
-    var platform = navigator.platform.toLowerCase();
-    for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-        if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-            return supportedOperatingSystemsNew[idx].value;
-        }
-    }
-    // Just return something if user platform is not in our supported map
-    return supportedOperatingSystemsNew[0].value;
-}
+// function getDefaultSelectedOS() {
+//     var platform = navigator.platform.toLowerCase();
+//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
+//         if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
+//             return supportedOperatingSystemsNew[idx].value;
+//         }
+//     }
+//     // Just return something if user platform is not in our supported map
+//     return supportedOperatingSystemsNew[0].value;
+// }
 
 // determine os based on location hash
-function getAnchorSelectedOS() {
-    var anchor = location.hash; 
-    var ANCHOR_REGEX = /^#[^ ]+$/;
-    // Look for anchor in the href
-    if (!ANCHOR_REGEX.test(anchor)) {
-        return false;
-    }
-    // Look for anchor with OS in the first portion
-    var testOS = anchor.slice(1).split("-")[0];
-    for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-        if (testOS.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-            return supportedOperatingSystemsNew[idx].value;
-        }
-    }
-    return false;
-}
+// function getAnchorSelectedOS() {
+//     var anchor = location.hash; 
+//     var ANCHOR_REGEX = /^#[^ ]+$/;
+//     // Look for anchor in the href
+//     if (!ANCHOR_REGEX.test(anchor)) {
+//         return false;
+//     }
+//     // Look for anchor with OS in the first portion
+//     var testOS = anchor.slice(1).split("-")[0];
+//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
+//         if (testOS.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
+//             return supportedOperatingSystemsNew[idx].value;
+//         }
+//     }
+//     return false;
+// }
 
 function checkValidity(){
     var current_os = opts['os'];
@@ -922,6 +922,33 @@ var validCombos = {
     "android,Java,ARM64,DefaultCPU":
         "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
+    "android,C,ARM32,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,ARM32,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,ARM32,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "android,C,X86,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,X86,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,X86,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+    
+    "android,C,X64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,X64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,X64,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
     "ios,C,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
     
@@ -1015,52 +1042,10 @@ var validCombos = {
     "linux,C++,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
     
-    "mac,C#,X64,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,C,X64,CoreML":
-        "<i>Coming soon!</i>",
-
-    "mac,C++,X64,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,Python(3.6-3.9),X64,CoreML":
-        "<i>Coming soon!</i>",
-
-    "mac,Java,X64,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,C,X86,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,C#,X86,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,C,86,CoreML":
-        "<i>Coming soon!</i>",
-
-    "mac,C++,X86,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,Python(3.6-3.9),X86,CoreML":
-        "<i>Coming soon!</i>",
-
-    "mac,Java,X86,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,C,X86,CoreML":
-        "<i>Coming soon!</i>",
-
-    "mac,C#,ARM64,CoreML":
-        "<i>Coming soon!</i>",
-    
     "mac,C,ARM64,CoreML":
         "<i>Coming soon!</i>",
 
     "mac,C++,ARM64,CoreML":
-        "<i>Coming soon!</i>",
-    
-    "mac,Python(3.6-3.9),ARM64,CoreML":
         "<i>Coming soon!</i>",
 
     "mac,Java,ARM64,CoreML":
