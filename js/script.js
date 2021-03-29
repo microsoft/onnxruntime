@@ -905,25 +905,34 @@ var validCombos = {
         "npm install onnxruntime",
     
     "android,C,ARM64,NNAPI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
     
     "android,C++,ARM64,NNAPI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
     
     "android,Java,ARM64,NNAPI":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
     
+    "android,C,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,ARM64,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
     "ios,C,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
     
     "ios,C++,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
     
     "ios,C,ARM64,CoreML":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_for_Mobile_Platforms.md' target='_blank'>here</a>",
+        "<i>Coming soon!</i>",
     
     "ios,C++,ARM64,CoreML":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_for_Mobile_Platforms.md' target='_blank'>here</a>",
+        "<i>Coming soon!</i>",
     
     "windows,Python(3.6-3.9),X86,VitisAI":
         "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
