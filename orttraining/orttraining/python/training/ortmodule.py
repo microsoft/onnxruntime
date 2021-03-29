@@ -315,10 +315,12 @@ class ORTModule(torch.nn.Module):
         self.is_rocm_pytorch = (True if (
             (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        # CPP extension to get torch GPU allocator's alloc and free function addresses
-        self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
-        self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
-        self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+        self._use_external_cuda_allocator = True
+        if self._use_external_cuda_allocator:
+            # CPP extension to get torch GPU allocator's alloc and free function addresses
+            self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
+            self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
