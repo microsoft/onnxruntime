@@ -47,6 +47,10 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "1"
 static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
 
+// Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
+// GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
+
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
 // "1": default, thread will spin a number of times before blocking

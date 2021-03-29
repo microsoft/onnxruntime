@@ -86,6 +86,188 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
   }
 }
 
+/* ReorderCastAndTranspose:
+*  Interchange Cast and Transpose nodes in the graph and return the new Transpose node if possible else nullptr.
+*
+*
+*  Transform the following pattern
+*                              |
+*                         _____|______
+*                         |Transpose |
+*                         |__________|
+*                              |
+*                              |
+*                         _____V______
+*                         |  Cast    |
+*                         |__________|
+*                              |
+*                              V
+*
+*  to
+*                              |
+*                         _____|______
+*                         |  Cast    |
+*                         |__________|
+*                              |
+*                              |
+*                         _____V______
+*                         | Transpose|
+*                         |__________|
+*                              |
+*                              V
+*/
+static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
+                                    std::unordered_map<NodeArg*, size_t>& consumer_count,
+                                    std::deque<onnxruntime::NodeIndex>& removed_nodes) {
+
+  ORT_ENFORCE(cast != nullptr);
+  auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
+  if (transpose == nullptr) {
+    return nullptr;
+  }
+  NodeArg* cast_output = cast->MutableOutputDefs()[0];
+  NodeArg* transpose_input = transpose->MutableInputDefs()[0];
+
+  // Create a new NodeArg to feed the output from the new Cast to the new Transpose.
+  // The shape of the new NodeArg is same as the original input to Transport but type
+  // should match that of the output from the original Cast.
+
+  auto new_cast_output_type_proto = *transpose_input->TypeAsProto();
+  const ONNX_NAMESPACE::TensorProto_DataType element_type =
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_output->TypeAsProto()->tensor_type().elem_type());
+  new_cast_output_type_proto.mutable_tensor_type()->set_elem_type(element_type);
+  auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "_transformed", &new_cast_output_type_proto);
+
+  const std::vector<NodeArg*> new_cast_input_defs {transpose_input};
+  const std::vector<NodeArg*> new_cast_output_defs {&new_cast_output};
+  const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
+  const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
+
+  (void) graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+                                 cast->OpType(),
+                                 "Created a new Cast node to interchange Cast and Transpose nodes",
+                                 new_cast_input_defs,
+                                 new_cast_output_defs,
+                                 &cast->GetAttributes(),
+                                 cast->Domain());
+
+  Node& new_transpose = graph.AddNode(graph.GenerateNodeName(transpose->Name() + "_transformed"),
+                                      transpose->OpType(),
+                                      "Created a new Transpose node to interchange Cast and Transpose nodes",
+                                      new_transpose_input_defs,
+                                      new_transpose_output_defs,
+                                      &transpose->GetAttributes(),
+                                      transpose->Domain());
+
+  size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
+  graph_utils::RemoveNodeOutputEdges(graph, *cast);
+  graph.RemoveNode(cast->Index());
+  if (consumers == 0) {
+    removed_nodes.push_front(transpose->Index());
+  }
+  return &new_transpose;
+}
+
+// Check whether the element_type is an allowed FusedMatMul data type or not.
+static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type)
+{
+  return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+
+/*********************************************************************************************
+
+Case I: The followin is a scenario where Transpose output feeds MatMul. The Transpose input can be either on the left or right.
+   The input graph
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                         _____V______                                |
+                         |Transpose |                                |
+                         |__________|                                |
+                              |                                      |
+                              |                                      |
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
+                                          |    MatMul     |
+                                          |_______________|
+                                                  |
+                                                  V
+    is transformed to the following
+
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                              |_____________            _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
+                                          |  FusedMatMul  |
+                                          |_______________|
+                                                  |
+                                                  V
+
+Case II: The output of Tanspose feeds Cast and the output from the Cast feeds MatMul
+   The input graph
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                         _____V______                                |
+                         |Transpose |                                |
+                         |__________|                                |
+                              |                                      |
+                              |                                      |
+                         _____V______                                |
+                         |  Cast    |                                |
+                         |__________|                                |
+                              |                                      |
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
+                                          |    MatMul     |
+                                          |_______________|
+                                                  |
+                                                  V
+    is transformed to the following
+
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                         _____V______                                |
+                         |  Cast    |                                |
+                         |__________|                                |
+                              |                                      |
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
+                                          |  FusedMatMul  |
+                                          |_______________|
+                                                  |
+                                                  V
+
+********************************************************************************************************************/
+
 Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -104,10 +286,32 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     }
 
     NodeArg* left_input = node.MutableInputDefs()[0];
+    auto left_type = left_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type))) {
+      continue;
+    }
     auto left = GetTransposeNodeFromOutput(graph, *left_input);
 
     NodeArg* right_input = node.MutableInputDefs()[1];
+    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+      continue;
+    }
     auto right = GetTransposeNodeFromOutput(graph, *right_input);
+
+    if (!left) {
+      Node* left_node = graph.GetMutableProducerNode(left_input->Name());
+      if (left_node && left_node->OpType() == "Cast") {
+        left = ReorderCastAndTranspose(graph, left_node, consumer_count, removed_nodes);
+      }
+    }
+
+    if (!right) {
+      Node* right_node = graph.GetMutableProducerNode(right_input->Name());
+      if (right_node && right_node->OpType() == "Cast") {
+        right = ReorderCastAndTranspose(graph, right_node, consumer_count, removed_nodes);
+      }
+    }
 
     if (!left && !right) {
       continue;

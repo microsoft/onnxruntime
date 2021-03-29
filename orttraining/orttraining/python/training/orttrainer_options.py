@@ -269,7 +269,7 @@ class ORTTrainerOptions(object):
                         'onnx_opset_version': {
                             'type': 'integer',
                             'min' : 12,
-                            'max' : 12,
+                            'max' : 13,
                             'default': 12
                         },
                         'enable_onnx_contrib_ops' : {
@@ -723,7 +723,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'onnx_opset_version': {
                 'type': 'integer',
                 'min': 12,
-                'max': 12,
+                'max': 13,
                 'default': 12
             },
             'enable_onnx_contrib_ops': {

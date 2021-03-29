@@ -202,15 +202,6 @@ typedef struct OrtAllocator {
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
-typedef struct OrtAllocatorArena {
-  OrtAllocator *device_allocator;
-  void*(ORT_API_CALL* Alloc)(size_t size);
-  void(ORT_API_CALL* Free)(void* p);
-  void*(ORT_API_CALL* Reserve)(size_t size);
-  size_t(ORT_API_CALL* Used)();
-  size_t(ORT_API_CALL* Max)();
-} OrtAllocatorArena;
-
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message);
@@ -285,12 +276,28 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 /// <summary>
+/// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
+/// </summary>
+typedef struct OrtROCMProviderOptions {
+  int device_id;                                    // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
+  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+} OrtROCMProviderOptions;
+
+/// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
-  int has_user_compute_stream;
-  void* user_compute_stream;
+  int device_id;                                  // cuda device id.
+  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                      // user specified CUDA compute stream.
+  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -737,10 +744,40 @@ struct OrtApi {
   ORT_API2_STATUS(GetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name, _In_ const OrtValue* in,
                   _Out_ void* data_container, size_t data_container_size);
 
+  /**
+     * Fetch a float stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ float* out);
+
+  /**
+     * Fetch a 64-bit int stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out);
+  /**
+     * Fetch a string stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of string attribute
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string
+        attribute, and a success status is returned.
+
+        If the `size` parameter is greater than or equal to the actual string attribute's size,
+        the value of `size` is set to the true size of the string attribute, the provided memory
+        is filled with the attribute's contents, and a success status is returned.
+
+        If the `size` parameter is lesser than the actual string attribute's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the string attribute
+        and a failure status is returned.)
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
                   _Inout_ size_t* size);
 
@@ -1130,6 +1167,13 @@ struct OrtApi {
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
 
   /**
+   * Append ROCM execution provider to the session options
+   * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
+
+  /**
    * Append OpenVINO execution provider to the session options
    * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
    */
@@ -1190,49 +1234,46 @@ struct OrtApi {
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 
   /**
-  * Use this API to obtain a new allocated OrtAllocator* object whose inner field are the given inputs.
-  * It is the user responsibility to release the returned OrtAllocator*.
-  * \param version - C_API version (available from 7)
-  * \param AllocFunc - A function pointer to the callback that will be called upon every memory allocation.
-  * \param FreeFunc - A function pointer to the callback that will be called upon memory free.
-  * \param InfoFunc - A function pointer to a callback that returns OrtMemoryInfo* with OrtAllocatorType set to OrtDeviceAllocator.
-  * \param out - A place holder for the custom OrtAllocator.
-    The caller is responsible for freeing it.
-  */
-  ORT_API2_STATUS(CreateCustomDeviceAllocator, uint32_t version, void* AllocFunc(OrtAllocator*, size_t), void FreeFunc(OrtAllocator*, void*),
-      const OrtMemoryInfo* InfoFunc(const OrtAllocator*), _Outptr_ OrtAllocator** out);
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
+        array's size, and a success status is returned.
+
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents,
+        and a success status is returned.
+
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ float* out, _Inout_ size_t* size);
 
   /**
-  * Use this API to obtain a new allocated OrtAllocatorArena* object whose inner field are the given inputs.
-  * It is the user responsibility to release the returned OrtAllocatorArena*.
-  * \param device_allocator - This is the underline device allocator that the arena allocator will use in. The Info inner field
-  * should return OrtMemoryInfo* with OrtAllocatorType set to OrtDeviceAllocator.
-  * \param AllocFunc - A function pointer to the callback that will be called upon calling Alloc from within arena context.
-  * \param FreeFunc - A function pointer to the callback that will be called upon calling Free from within arena context.
-  * \param ReserveFunc - A function pointer to the callback that will be called upon calling for reserving memory from within arena context.
-  * \param UsedFunc - A function pointer to the callback that will be called to get the total size of allocated memory from within arena context.
-  * \param FreeFunc - A function pointer to the callback that will be called to get the memory limit from within arena context.
-  * \param out - A place holder for the custom OrtAllocatorArena.
-    The caller is responsible for freeing it.
-  */
-  ORT_API2_STATUS(CreateCustomArenaAllocator, _In_ OrtAllocator* device_allocator, void* AllocFunc(size_t), void FreeFunc(void*), void* ReserveFunc(size_t),
-      size_t UsedFunc(void), size_t MaxFunc(void), _Outptr_ OrtAllocatorArena** out);
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
+        array's size, and a success status is returned.
 
-/**
-  * Use this API to register a custom OrtAllocator* to the given env. Whenever a new session is created
-  * and associated with this env, if session_options is configured to use the env allocator instead of the default one,
-  * and not to use an arena allocator, then the memory management will be done by the given allocator.
-  * It is the user responsibility to release the OrtAllocator*.
-  */
-  ORT_API2_STATUS(RegisterCustomDeviceAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator *CustomAllocator);
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents,
+        and a success status is returned.
 
-  /**
-  * Use this API to register a custom OrtAllocatorArena* to the given env. Whenever a new session is created
-  * and associated with this env, if session_options is configured to use the env allocator instead of the default one,
-  * the memory management (which is set to as arena by default) will be done by the given allocator.
-  * It is the user responsibility to release the OrtAllocatorArena*.
-  */
-  ORT_API2_STATUS(RegisterCustomArenaAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocatorArena *CustomArenaAllocator);
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ int64_t* out, _Inout_ size_t* size);
 };
 
 /*

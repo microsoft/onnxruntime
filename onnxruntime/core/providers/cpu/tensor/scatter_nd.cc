@@ -1,25 +1,44 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "scatter_nd.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
+
+#include "core/framework/element_type_lists.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0,
+    element_type_lists::All);
+}
+
+using ScatterNDDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
+using EnabledScatterNDDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
 ONNX_CPU_OPERATOR_KERNEL(
     ScatterND,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
 Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
@@ -148,6 +167,15 @@ Status ScatterND::Compute(OpKernelContext* context) const {
 }
 
 Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
+  constexpr bool has_non_string_enabled_type =
+      !boost::mp11::mp_empty<
+          boost::mp11::mp_remove<
+              EnabledScatterNDDataTypes,
+              std::string>>::value;
+  if (!has_non_string_enabled_type) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-string data types are not supported in this build.");
+  }
+
   auto lambda = [&](int64_t i) {
     memcpy(p.output_base + p.element_offsets[i] * p.element_bytes,
            p.input_base + i * p.bytes_to_copy,
@@ -163,6 +191,10 @@ Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) c
 }
 
 Status ScatterND::ScatterString(const Prepare& p, concurrency::ThreadPool* tp) const {
+  if (!utils::HasType<EnabledScatterNDDataTypes, std::string>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "String data type is not supported in this build.");
+  }
+
   auto lambda = [&](int64_t i) {
     for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
       p.output_str_base[p.element_offsets[i] + j] = p.input_str_base[i * p.element_to_copy + j];

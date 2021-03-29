@@ -262,13 +262,22 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
 //--- end of local helpers ---
 //----------------------------
 
-int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
-  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
-                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
-  ORT_ENFORCE(itr != node.InputDefs().end(),
-              "Attempting to get index for an input which does not exist.");
-  auto index = std::distance(node.InputDefs().begin(), itr);
+int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
+  const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
+  auto itr = std::find_if(node_args.begin(), node_args.end(),
+                          [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
+  ORT_ENFORCE(itr != node_args.end(),
+              "Attempting to get index by a name which does not exist.");
+  auto index = std::distance(node_args.begin(), itr);
   return static_cast<int>(index);
+}
+
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  return GetIndexFromName(node, input_name, true);
+}
+
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
+  return GetIndexFromName(node, output_name, false);
 }
 
 const std::string& GetNodeInputName(const Node& node, int index) {
@@ -556,6 +565,26 @@ const Node* FirstChildByType(const Node& node, const std::string& child_type) {
   return nullptr;
 }
 
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
+  // find children and sort them by source argument index:
+  //     Create a 2D vector to hold the result.
+  //     1st dimension index is output index,
+  //     and the 2nd dimension stores the edges from the output.
+  std::vector<std::vector<const Node*>> children(node.OutputDefs().size(), std::vector<const Node*>());
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(child_type) == 0) {
+      children[it->GetSrcArgIndex()].push_back(&(it->GetNode()));
+    }
+  }
+
+  // aggregate children
+  std::vector<const Node*> agg_res;
+  for (size_t output_idx = 0; output_idx < children.size(); output_idx++) {
+    agg_res.insert(agg_res.end(), children[output_idx].begin(), children[output_idx].end());
+  }
+  return agg_res;
+}
+
 const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
@@ -563,6 +592,22 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
     }
   }
   return nullptr;
+}
+
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
+  // find parents and sort them by destination argument index
+  // as there is at most one input edge for each input argument,
+  // there is no need of extra work like FindChildrenByType
+  std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(parent_type) == 0) {
+      parents[it->GetDstArgIndex()] = &(it->GetNode());
+    }
+  }
+
+  // remove unmatched nodes
+  parents.erase(std::remove(parents.begin(), parents.end(), nullptr), parents.end());
+  return parents;
 }
 
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
