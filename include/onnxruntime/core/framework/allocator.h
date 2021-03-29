@@ -24,8 +24,6 @@ constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
-constexpr const char* ROCM = "Rocm";
-constexpr const char* ROCM_PINNED = "RocmPinned";
 
 constexpr size_t kAllocAlignment = 256;
 

@@ -71,42 +71,23 @@ def _check_same_device(device, argument_str, *args):
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
+def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
+    gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
+    gpu_allocator_header = "HIPCachingAllocator.h" if is_rocm_pytorch else "CUDACachingAllocator.h"
+    torch_gpu_allocator_addresses_cpp_source = f"#include <torch/extension.h>\n" \
+    f"#include <c10/{gpu_identifier}/{gpu_allocator_header}>\n" \
+    f"size_t gpu_caching_allocator_raw_alloc_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);\n" \
+    f"}}\n" \
+    f"size_t gpu_caching_allocator_raw_delete_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);\n" \
+    f"}}\n"
 
-def _load_torch_cuda_allocator_cpp_extension(verbosity):
-    torch_cuda_allocator_addresses_cpp_source = """
-    #include <torch/extension.h>
-    #include <c10/cuda/CUDACachingAllocator.h>
-    size_t cuda_caching_allocator_raw_alloc_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
-    }
-    size_t cuda_caching_allocator_raw_delete_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
-    }
-    """
-
-    return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
-                       functions=['cuda_caching_allocator_raw_alloc_address',
-                                  'cuda_caching_allocator_raw_delete_address'],
+    return load_inline(name='inline_extension', cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
+                       functions=['gpu_caching_allocator_raw_alloc_address',
+                                  'gpu_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
-
-def _load_torch_rocm_allocator_cpp_extension(verbosity):
-    torch_rocm_allocator_addresses_cpp_source = """
-    #include <torch/extension.h>
-    #include <c10/hip/HIPCachingAllocator.h>
-    size_t rocm_caching_allocator_raw_alloc_address() {
-        return reinterpret_cast<size_t>(&c10::hip::HIPCachingAllocator::raw_alloc);
-    }
-    size_t rocm_caching_allocator_raw_delete_address() {
-        return reinterpret_cast<size_t>(&c10::hip::HIPCachingAllocator::raw_delete);
-    }
-    """
-
-    return load_inline(name='inline_extension', cpp_sources=[torch_rocm_allocator_addresses_cpp_source],
-                      extra_cflags=['-D__HIP_PLATFORM_HCC__=1'],
-                      functions=['rocm_caching_allocator_raw_alloc_address',
-                                  'rocm_caching_allocator_raw_delete_address'],
-                       verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
 class ORTModule(torch.nn.Module):
 
@@ -333,18 +314,10 @@ class ORTModule(torch.nn.Module):
         self.is_rocm_pytorch = (True if (
             (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        # CPP extension to get torch CUDA allocator's alloc and free function addresses
-        # Disable external allocator for ROCM EP since external allocator is not supported yet.
-        self._use_external_cuda_allocator = True
-        if self._use_external_cuda_allocator:
-            if self.is_rocm_pytorch:
-                self._torch_rocm_allocator = _load_torch_rocm_allocator_cpp_extension(self._verbosity)
-                self._torch_alloc = self._torch_rocm_allocator.rocm_caching_allocator_raw_alloc_address()
-                self._torch_free = self._torch_rocm_allocator.rocm_caching_allocator_raw_delete_address()
-            else:
-                self._torch_cuda_allocator = _load_torch_cuda_allocator_cpp_extension(self._verbosity)
-                self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
-                self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+        # CPP extension to get torch GPU allocator's alloc and free function addresses
+        self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
+        self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+        self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
