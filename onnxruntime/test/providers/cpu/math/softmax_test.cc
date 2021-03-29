@@ -98,7 +98,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider});  // Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -124,7 +124,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider});
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
