@@ -73,9 +73,9 @@ def _check_same_device(device, argument_str, *args):
 
 def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
     gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
-    gpu_allocator_header = "HIPCachingAllocator.h" if is_rocm_pytorch else "CUDACachingAllocator.h"
+    gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
     torch_gpu_allocator_addresses_cpp_source = f"#include <torch/extension.h>\n" \
-    f"#include <c10/{gpu_identifier}/{gpu_allocator_header}>\n" \
+    f"#include <c10/{gpu_identifier}/{gpu_allocator_header}.h>\n" \
     f"size_t gpu_caching_allocator_raw_alloc_address() {{\n" \
     f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);\n" \
     f"}}\n" \
