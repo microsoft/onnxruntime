@@ -200,7 +200,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
       // This can be done because curent_* tensors (if they exist) and output tensors are
       // intermediate tensors and cannot be input tensors to the Einsum node itself
       // (which are immutable).
-      // Not covered by a unit test but other similar shortcuts are.
+      // Covered by ExplicitEinsumAsTensorContractionReshapeLeft.
       current_left->Reshape(reshaped_dims);
     } else {
       // Covered by ExplicitEinsumAsTensorContraction, DiagonalWithMatmul, ...
@@ -303,7 +303,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
                                       output_dims,
                                       reshaped_dims)) {
         // See note following the previous call of function IsTransposeReshapeForEinsum.
-        // Covered by ExplicitEinsumAsTensorContractionReshape.
+        // Covered by ExplicitEinsumAsTensorContractionReshapeFinal.
         output->Reshape(reshaped_dims);
       } else {
         output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
