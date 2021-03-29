@@ -48,6 +48,7 @@ endif()
 # )
 # list(REMOVE_ITEM onnx_src ${onnx_exclude_src})  
 file(GLOB onnx_src CONFIGURE_DEPENDS
+"${ONNX_SOURCE_ROOT}/onnx/common/common.h"
 "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
 )
 
