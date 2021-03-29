@@ -562,6 +562,7 @@ void SessionState::ResolveMemoryPatternFlag() {
         break;
       }
     }
+    
   }
 }
 
