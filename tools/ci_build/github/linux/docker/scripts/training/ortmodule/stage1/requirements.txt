@@ -1,4 +1,5 @@
 --pre
+-f https://download.pytorch.org/whl/torch_stable.html
 # transformers requires sklearn
 pandas
 sklearn
@@ -10,5 +11,4 @@ torchtext==0.9.1
 tensorboard==v2.0.0
 h5py
 wget
-# PyTorch Lightning (nightly) is used for CI tests only
-https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
+pytorch-lightning==1.2.5
