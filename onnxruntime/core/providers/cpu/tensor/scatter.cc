@@ -2,6 +2,10 @@
 // Licensed under the MIT License.
 
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+#include <type_traits>
+
+#include "gsl/gsl"
+
 #include "core/common/common.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
