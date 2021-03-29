@@ -204,11 +204,13 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
 #ifdef _WIN32
       child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
       uint32_t CPUInfo[4];
       __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
       if ((CPUInfo[3] & (1 << 9)) != 0) {
         child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
       }
+#endif
 #else
       child_thread_stats_[thread_idx].core_ = sched_getcpu();
 #endif
