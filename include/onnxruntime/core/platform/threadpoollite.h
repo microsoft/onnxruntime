@@ -28,7 +28,6 @@ class ThreadPoolLite final : public ThreadPool {
     std::ptrdiff_t fn_ = 0;
     std::ptrdiff_t progress_ = 0;
     std::ptrdiff_t done_ = 0;
-    char padding_[64] = "\0";
   };
 
   int num_tasks = 0;
