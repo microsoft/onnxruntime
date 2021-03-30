@@ -22,6 +22,7 @@ class OrtTorchFunctionPool final {
 
   int64_t RegisterContext(PyObject* auto_grad_context);
 
+  PyObject* GetContext(int64_t context_index);
   void UnRegisterContext(int64_t context_index);
 
  private:

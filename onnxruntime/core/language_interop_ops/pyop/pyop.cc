@@ -112,7 +112,7 @@ Status PyCustomKernel::Compute(OrtKernelContext* context) {
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), inputs, outputs,
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), nullptr, inputs, outputs,
                                                                    logging_func_),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
