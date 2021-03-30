@@ -65,6 +65,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 using json = nlohmann::json;
@@ -73,6 +74,9 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+static constexpr const char* kRunKernelDefHashTestOrFailEnvVar =
+    "ORT_TEST_RUN_KERNEL_DEF_HASH_TEST_OR_FAIL";
+
 std::string DumpKernelDefHashes(const onnxruntime::KernelDefHashes& kernel_def_hashes) {
   const json j(kernel_def_hashes);
   return j.dump(/* indent */ 4);
@@ -124,9 +128,29 @@ TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
   std::cout << DumpKernelDefHashes(cpu_kernel_def_hashes) << "\n";
 }
 
-// disabled by default because not all builds have the expected kernels
-// run with --gtest_also_run_disabled_tests
-TEST(KernelDefHashTest, DISABLED_ExpectedCpuKernelDefHashes) {
+TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
+  // this test should only run in a build containing exactly the set of CPU
+  // kernels that can be used in ORT format models
+  const bool is_enabled = []() {
+#if !defined(DISABLE_CONTRIB_OPS) &&       \
+    !defined(DISABLE_ML_OPS) &&            \
+    !defined(ML_FEATURIZERS) &&            \
+    !defined(BUILD_MS_EXPERIMENTAL_OPS) && \
+    !defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_OPS)
+    return MlasNchwcGetBlockSize() > 1;
+#else
+    return false;
+#endif
+  }();
+
+  if (!is_enabled) {
+    std::cout << "This build might not have the expected CPU kernels, skipping test...\n";
+    if (ParseEnvironmentVariableWithDefault<bool>(kRunKernelDefHashTestOrFailEnvVar, false)) {
+      FAIL() << "Skipped test is treated as a failure.";
+    }
+    return;
+  }
+
   KernelRegistry kernel_registry{};
   ASSERT_STATUS_OK(RegisterCPUKernels(kernel_registry));
   auto cpu_kernel_def_hashes = kernel_registry.ExportKernelDefHashes();
