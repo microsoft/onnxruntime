@@ -480,6 +480,8 @@ struct ProviderHost {
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+
+  virtual std::vector<std::shared_ptr<IExecutionProviderFactory>>& GetProviders() = 0;
 };
 
 extern ProviderHost* g_host;

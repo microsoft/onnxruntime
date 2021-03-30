@@ -559,6 +559,10 @@ struct ProviderHostImpl : ProviderHost {
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
+  std::vector<std::shared_ptr<IExecutionProviderFactory>>& GetProviders() override {
+    static std::vector<std::shared_ptr<IExecutionProviderFactory>> providers;
+    return providers;
+  }
 
 } provider_host_;
 
@@ -579,6 +583,16 @@ struct ProviderSharedLibrary {
 
     PProvider_SetHost(&provider_host_);
     return true;
+  }
+
+  ProviderHost* GetProviderHost() {
+    if (!handle_)
+      Ensure();
+
+    ProviderHost* (*PProvider_GetHost)(void);
+    Env::Default().GetSymbolFromLibrary(handle_, "Provider_GetHost", (void**)&PProvider_GetHost);
+
+    return PProvider_GetHost();
   }
 
   void Unload() {
@@ -683,6 +697,10 @@ const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return nullptr;
 }
 
+std::vector<std::shared_ptr<IExecutionProviderFactory>>& GetRegisteredProviders() {
+  return s_library_shared.GetProviderHost()->GetProviders();
+}
+
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -726,3 +744,4 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtS
   options->provider_factories.push_back(factory);
   return nullptr;
 }
+

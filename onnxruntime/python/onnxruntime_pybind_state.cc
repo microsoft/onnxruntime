@@ -24,6 +24,23 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/graph/indexed_sub_graph.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+
+
+namespace onnxruntime {
+
+struct Provider {
+  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
+
+  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+
+  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+  virtual void Shutdown() = 0;
+};
+}  // namespace onnxruntime
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -200,6 +217,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
+std::vector<std::shared_ptr<IExecutionProviderFactory>>& GetRegisteredProviders();
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -691,9 +709,30 @@ static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const 
 #endif
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                       const ProviderOptionsVector& provider_options) {
+                       const ProviderOptionsVector& provider_options, const std::string dll_path) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
+  if (!dll_path.empty()) {
+    void* handle;
+    auto error = Env::Default().LoadDynamicLibrary(dll_path, &handle);
+    if (!error.IsOK()) {
+      throw std::runtime_error(error.ErrorMessage());
+    }
+
+    Provider* (*PGetProvider)();
+    Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+
+    Provider* provider = PGetProvider();
+    int device_id = 0;
+    std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(device_id);
+    sess->RegisterExecutionProvider(std::move(ep_factory->CreateProvider()));
+  }
+
+  auto& additional_provider_list = GetRegisteredProviders();
+  for (auto& provider : additional_provider_list) {
+    std::cout << "Register dynamic providers" << std::endl;
+    sess->RegisterExecutionProvider(std::move(provider->CreateProvider()));
+  }
 
   if (provider_types.empty()) {
     // use default registration priority.
@@ -701,6 +740,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
+  
   OrtPybindThrowIfError(sess->Initialize());
 }
 
@@ -1709,8 +1749,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           "initialize_session",
           [](PyInferenceSession* sess,
              const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {}) {
-            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+             const ProviderOptionsVector& provider_options = {},
+             const std::string dll_path= "") {
+            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options, dll_path);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
@@ -1884,6 +1925,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
+  Ort::SessionOptions tmp_options;
+  OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0);
 }
 
 // static variable used to create inference session and training session.
