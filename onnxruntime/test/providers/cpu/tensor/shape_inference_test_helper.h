@@ -84,6 +84,11 @@ inline void TestShapeInference(const std::string& op_type,
 	  *v_ = n_;
 	}
 
+  // Add node attributes
+  for (auto const& attr : attributes) {
+    node->add_attribute()->CopyFrom(attr);
+  }
+
   node->add_output("Output");
 
   ONNX_NAMESPACE::shape_inference::InferShapes(model, true, schema_registry);
