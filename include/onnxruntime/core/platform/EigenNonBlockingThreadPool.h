@@ -38,6 +38,8 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+#include <iostream>
+
 // ORT thread pool overview
 // ------------------------
 //
@@ -1024,6 +1026,11 @@ void SummonWorkers(PerThread &pt,
   }
 }
 
+int& GetThreadIdx() {
+  thread_local int idx = -1;
+  return idx;
+}
+
 // Run a single parallel loop in an existing parallel section.  This
 // maps directly onto SummonWorkers to create sufficient worker
 // threads for the desired degree of parallelism, followed by
@@ -1079,23 +1086,68 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
 
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
+  //std::atomic<bool> distribution_down{false};
 
-  // Summon workers to run the function (n is the desired maximum
-  // degree of parallelism, including the main thread).  Unlike the
-  // multi-loop RunInParallelSection, this single-loop worker can run
-  // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(*pt, ps, n, fn);
+  using Fn = std::function<void()>;
+  std::function<bool(int, Fn&)> enqueue_fn = [&, this](int idx, Fn& w) {
+    WorkerData& td = worker_data_[idx];
+    Queue& q = td.queue;
+    unsigned w_idx;
+    Task t = q.PushBackWithTag(w, pt->tag, w_idx);
+    if (t) {
+      return false;
+    } else {
+      ps.tasks.push_back({idx, w_idx});
+      td.EnsureAwake();
+      return true;
+    } 
+  };
+
+  std::function<void()> dispatch_worker_fn = [&, this]() {
+    int& thread_idx = GetThreadIdx();
+    int rc = (thread_idx + 1) << 1;
+    int lc = rc - 1;
+    bool lc_distributed = false;
+    bool rc_distributed = false;
+    if (lc < num_threads_) {
+      lc_distributed = enqueue_fn(lc, dispatch_worker_fn);
+      if (lc_distributed) {
+        std::cout << "distributed to lc" << std::endl;
+      } else {
+        std::cout << "failed distribute to lc" << std::endl;
+      }
+    } 
+    if (rc < num_threads_) {
+      rc_distributed = enqueue_fn(rc, dispatch_worker_fn);
+      if (rc_distributed) {
+        std::cout << "distributed to rc" << std::endl;
+      } else {
+        std::cout << "failed distribute to rc" << std::endl;
+      }
+    }
+    /*
+    if (!lc_distributed && !rc_distributed) {
+      distribution_down.store(true, std::memory_order_relaxed);
+    }*/
+    fn(1 + ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    ps.tasks_finished.fetch_add(1, std::memory_order_relaxed);
+  };
+
+  enqueue_fn(0, dispatch_worker_fn);
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   fn(0);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-
+  /*
+  while (!distribution_down.load(std::memory_order_relaxed)) {
+    onnxruntime::concurrency::SpinPause();
+  }*/
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
@@ -1316,6 +1368,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   // Main worker thread loop.
   void WorkerLoop(int thread_id) {
+    GetThreadIdx() = thread_id;
     PerThread* pt = GetPerThread();
     WorkerData& td = worker_data_[thread_id];
     Queue& q = td.queue;
@@ -1333,7 +1386,6 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
-
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
         if (!t) {
@@ -1431,6 +1483,10 @@ int CurrentThreadId() const EIGEN_FINAL {
   //   to be spinning.  In these cases, even though the victim thread is
   //   looking for work itself, it may have been pre-empted.
 
+    Task Steal(bool) {
+      return Task();
+    }
+  /*
   Task Steal(bool check_all) {
     PerThread* pt = GetPerThread();
     unsigned size = static_cast<unsigned>(num_threads_);
@@ -1459,7 +1515,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     }
 
     return Task();
-  }
+  }*/
 
   Task TrySteal() {
     return Steal(false);
