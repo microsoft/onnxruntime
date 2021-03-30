@@ -395,7 +395,7 @@ class ORTTrainerOptions(object):
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
         session_options (onnxruntime.SessionOptions):
-            The SessionOptions instance that TrainingSession will use .
+            The SessionOptions instance that TrainingSession will use.
         provider_options (dict): 
             The provider_options for customized execution providers. it is dict map from EP name to 
             a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
