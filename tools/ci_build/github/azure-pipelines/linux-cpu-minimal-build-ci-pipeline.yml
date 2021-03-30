@@ -1,4 +1,4 @@
-# This CI has 5 major steps
+# This CI has 4 major steps
 # 1. Build full ORT, install the full ORT python wheel and use it to generate ort format test models
 #    and include ops config file for step 3
 # 2. Build minimal ORT including all the kernels and disable exceptions.
