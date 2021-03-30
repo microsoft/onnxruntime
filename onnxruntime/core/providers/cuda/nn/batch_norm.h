@@ -35,6 +35,13 @@ class BatchNorm final : public CudaKernel {
     if (op_kernel_info.GetAttr<float>("momentum", &tmp_momentum).IsOK()) {
       momentum_ = static_cast<double>(tmp_momentum);
     }
+
+    int64_t tmp_training_mode;
+    if (op_kernel_info.GetAttr<int64_t>("training_mode", &tmp_training_mode).IsOK()) {
+      is_training_mode_ = (tmp_training_mode == 1);
+    } else {
+      is_training_mode_ = false;
+    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -44,6 +51,7 @@ class BatchNorm final : public CudaKernel {
   int64_t spatial_ = 1;  // default as per spec
   cudnnBatchNormMode_t cudnn_batch_norm_mode_;
   double momentum_;
+  bool is_training_mode_;
 };
 
 }  // namespace cuda

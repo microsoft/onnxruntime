@@ -3,6 +3,7 @@
 
 #include "batch_norm.h"
 #include "core/providers/common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
@@ -11,24 +12,33 @@ using namespace std;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                     \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
-      BatchNormalization,                                            \
-      kOnnxDomain,                                                   \
-      7, 8,                                                          \
-      T,                                                             \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
-      BatchNorm<T>);                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      BatchNormalization,                                            \
-      kOnnxDomain,                                                   \
-      9,                                                             \
-      T,                                                             \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      7, 8,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      BatchNorm<T>);                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      9, 13,                                                      \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      BatchNorm<T>);                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      14,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
 template <typename T>
@@ -109,9 +119,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
   // in BatchNorm Forward Training mode if all 5 outputs present
-  if (running_mean && running_var && saved_mean && saved_var) {
+  if (is_training_mode_) {
     auto running_mean_data = reinterpret_cast<CudaT*>(running_mean->template MutableData<T>());
     auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
+
     auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->template MutableData<T>());
 
