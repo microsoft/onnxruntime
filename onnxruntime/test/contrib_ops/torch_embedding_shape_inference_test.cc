@@ -4,7 +4,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "onnx/shape_inference/implementation.h"
 #include "onnx/checker.h"
-#include "shape_inference_test_helper.h"
+#include "test/providers/cpu/tensor/shape_inference_test_helper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -24,7 +24,7 @@ TEST(ShapeInferenceTests, embedding_float) {
   ONNX_NAMESPACE::ValueInfoProto output;
   CreateValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape_y);
 
-  TestShapeInference("TorchEmbedding", inputs, attributes, output);
+  TestShapeInference("TorchEmbedding", kMSDomain, 1, 6, inputs, attributes, output);
 }
 
 TEST(ShapeInferenceTests, embedding_zero_dim_int) {
@@ -42,7 +42,7 @@ TEST(ShapeInferenceTests, embedding_zero_dim_int) {
   ONNX_NAMESPACE::ValueInfoProto output;
   CreateValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT32, shape_y);
 
-  TestShapeInference("TorchEmbedding", inputs, attributes, output);
+  TestShapeInference("TorchEmbedding", kMSDomain, 1, 6, inputs, attributes, output);
 }
 
 TEST(ShapeInferenceTests, embedding_long) {
@@ -60,7 +60,7 @@ TEST(ShapeInferenceTests, embedding_long) {
   ONNX_NAMESPACE::ValueInfoProto output;
   CreateValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape_y);
 
-  TestShapeInference("TorchEmbedding", inputs, attributes, output);
+  TestShapeInference("TorchEmbedding", kMSDomain, 1, 6, inputs, attributes, output);
 }
 
 TEST(ShapeInferenceTests, embedding_with_padding) {
@@ -80,7 +80,7 @@ TEST(ShapeInferenceTests, embedding_with_padding) {
   ONNX_NAMESPACE::ValueInfoProto output;
   CreateValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape_y);
 
-  TestShapeInference("TorchEmbedding", inputs, attributes, output);
+  TestShapeInference("TorchEmbedding", kMSDomain, 1, 6, inputs, attributes, output);
 }
 
 TEST(ShapeInferenceTests, embedding_with_scale_grad) {
@@ -102,7 +102,7 @@ TEST(ShapeInferenceTests, embedding_with_scale_grad) {
   ONNX_NAMESPACE::ValueInfoProto output;
   CreateValueInfo(output, "Y", ONNX_NAMESPACE::TensorProto_DataType_INT64, shape_y);
 
-  TestShapeInference("TorchEmbedding", inputs, attributes, output);
+  TestShapeInference("TorchEmbedding", kMSDomain, 1, 6, inputs, attributes, output);
 }
 
 }  // namespace test
