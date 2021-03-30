@@ -39,6 +39,7 @@ struct CUDAExecutionProviderInfo {
   bool do_copy_in_default_stream{true};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  OrtArenaCfg* arena_cfg{nullptr};
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

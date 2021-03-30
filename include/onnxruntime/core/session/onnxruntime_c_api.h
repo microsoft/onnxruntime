@@ -273,31 +273,32 @@ typedef struct OrtCUDAProviderOptions {
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
+  OrtArenaCfg* arena_cfg = nullptr;
 } OrtCUDAProviderOptions;
 
 /// <summary>
 /// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
 /// </summary>
 typedef struct OrtROCMProviderOptions {
-  int device_id;                                    // hip device with id=0 as default device.
-  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
-  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
-  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+  int device_id;                      // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;  // miopen conv algo exhaustive search option
+  size_t hip_mem_limit;               // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;          // default area extend strategy to KNextPowerOfTwo.
 } OrtROCMProviderOptions;
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;                                  // cuda device id.
-  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                      // user specified CUDA compute stream.
-  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
-  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
-  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
-  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
-  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int device_id;                                // cuda device id.
+  int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                    // user specified CUDA compute stream.
+  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -1274,6 +1275,22 @@ struct OrtApi {
      */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out, _Inout_ size_t* size);
+
+  /**
+  * Use this API to create the configuration of an arena that can eventually be used to define
+  * an arena based allocator's behavior
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
+  * \param initial_regrowth_chunk_size_bytes_after_shrink - use -1 to allow ORT to choose the default
+  * \param shrink_on_every_run - a flag indicating if ORT is to de-allocate unused allocations after every Run() 
+  * \param out - a pointer to an OrtArenaCfg instance
+  * \return a nullptr in case of success or a pointer to an OrtStatus instance in case of failure
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  */
+  ORT_API2_STATUS(CreateArenaCfgV2, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                  int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink, bool shrink_on_every_run, _Outptr_ OrtArenaCfg** out);
 };
 
 /*

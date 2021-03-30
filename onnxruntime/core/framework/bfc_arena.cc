@@ -10,7 +10,8 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
-                   int intial_regrowth_chunk_size_bytes)
+                   int intial_regrowth_chunk_size_bytes_after_shrink,
+                   bool shrink_on_every_run)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -19,14 +20,18 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      intial_regrowth_chunk_size_bytes_(),
+      intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
-      initial_chunk_size_bytes_(initial_chunk_size_bytes) {
+      initial_chunk_size_bytes_(initial_chunk_size_bytes),
+      shrink_on_every_run_(shrink_on_every_run) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
+                     << " intial_regrowth_chunk_size_bytes_after_shrink: " << intial_regrowth_chunk_size_bytes_after_shrink_
                      << " memory limit: " << total_memory
-                     << " arena_extend_strategy " << static_cast<int32_t>(arena_extend_strategy);
+                     << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy)
+                     << " shrink on every run: " << shrink_on_every_run_;
+
   // static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy); doesn't work on this compiler
 
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(initial_chunk_size_bytes_)));
@@ -411,7 +416,10 @@ void BFCArena::Free(void* p) {
 
 Status BFCArena::OnRunEnd() {
   std::lock_guard<OrtMutex> lock(lock_);
-  return Shrink();
+  if (shrink_on_every_run_) {
+    return Shrink();
+  }
+  return Status::OK();
 }
 
 Status BFCArena::Shrink() {
@@ -467,7 +475,10 @@ Status BFCArena::Shrink() {
     ++i;
   }
 
-  // TODO : Change next allocation size value for arena growth
+  // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
+  // In case the extend strategy is kSameAsrequested, the arena growth is exactly the size of the memory request itself
+  curr_region_allocation_bytes_ = intial_regrowth_chunk_size_bytes_after_shrink_;
+
   return Status::OK();
 }
 

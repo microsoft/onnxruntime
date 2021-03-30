@@ -12,10 +12,12 @@
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
 struct OrtArenaCfg {
-  size_t max_mem;                // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
+  size_t max_mem;                                      // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;                           // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;                        // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;                        // use -1 to allow ORT to choose the default
+  int initial_regrowth_chunk_size_bytes_after_shrink;  // use -1 to allow ORT to choose the default
+  bool shrink_on_every_run;                            // default `false`
 };
 
 namespace onnxruntime {

@@ -1868,6 +1868,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                    int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes, bool shrink_on_every_run, _Outptr_ OrtArenaCfg** out) {
+  API_IMPL_BEGIN
+  *out = new OrtArenaCfg();
+  (*out)->max_mem = max_mem;
+  (*out)->arena_extend_strategy = arena_extend_strategy;
+  (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
+  (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
@@ -2123,6 +2135,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
+    &OrtApis::CreateArenaCfgV2,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
