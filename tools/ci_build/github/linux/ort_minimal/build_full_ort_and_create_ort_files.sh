@@ -26,10 +26,9 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
 
 # Run kernel def hash verification test
-pushd /build && \
-    ORT_TEST_RUN_KERNEL_DEF_HASH_TEST_OR_FAIL=1 \
-        ./onnxruntime_test_all --gtest_filter="KernelDefHashTest.ExpectedCpuKernelDefHashes" && \
-    popd
+pushd /build/Debug
+ORT_TEST_RUN_KERNEL_DEF_HASH_TEST_OR_FAIL=1 ./onnxruntime_test_all --gtest_filter="KernelDefHashTest.ExpectedCpuKernelDefHashes"
+popd
 
 # Install the ORT python wheel
 python3 -m pip install --user /build/Debug/dist/*
