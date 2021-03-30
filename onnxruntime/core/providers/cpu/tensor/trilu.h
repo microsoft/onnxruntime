@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 namespace onnxruntime {
-namespace contrib {
 
 class Trilu final : public OpKernel {
  public:
@@ -17,5 +16,4 @@ class Trilu final : public OpKernel {
    bool upper_;
 };
 
-}  // namespace contrib
 }  // namespace onnxruntime

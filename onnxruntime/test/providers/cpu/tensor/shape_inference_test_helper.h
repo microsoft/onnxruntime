@@ -50,19 +50,19 @@ inline void CreateValueInfo(
   }
 }
 
-
-inline void TestShapeInference(
-    const std::string& op_type,
-    const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
-    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
-    ONNX_NAMESPACE::ValueInfoProto& output) {
-
+inline void TestShapeInference(const std::string& op_type,
+                               const std::string& op_domain,
+                               int op_version,
+                               int ir_version,
+                               const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
+                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+                               ONNX_NAMESPACE::ValueInfoProto& output) {
   ONNX_NAMESPACE::ModelProto model;
   // Set opset (domain + version)
   ONNX_NAMESPACE::OperatorSetIdProto* op_set_id = model.add_opset_import();
-  op_set_id->set_domain(MS_DOMAIN);
-  op_set_id->set_version(1);
-  model.set_ir_version(6);
+  op_set_id->set_domain(op_domain);
+  op_set_id->set_version(op_version);
+  model.set_ir_version(ir_version);
   model.set_producer_name("onnx");
 
   // Set model graph
@@ -100,6 +100,5 @@ inline void TestShapeInference(
   auto inferred_shape = inferred_output.mutable_type()->mutable_tensor_type()->mutable_shape();
   CheckShapeEquality(shape, inferred_shape);
 }
-
 }  // namespace test
 }  // namespace onnxruntime

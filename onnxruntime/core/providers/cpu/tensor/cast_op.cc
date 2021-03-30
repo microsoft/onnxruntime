@@ -22,7 +22,7 @@
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 #include "core/mlas/inc/mlas.h"
 #endif
 
@@ -207,7 +207,7 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 // MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
 

@@ -479,7 +479,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([](PyInferenceSession * session) {
-        return onnxruntime::make_unique<TrainingAgent>(session->GetSessionHandle());
+        return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
       }))
       .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
         std::vector<OrtValue> module_outputs;
