@@ -34,12 +34,12 @@ def get_failures(fail, model_group):
 
 def get_memory(memory, model_group): 
     memory_columns = ['Model', \
-                      'CUDA EP fp32 \nmemory usage (MiB)', \
-                      'TRT EP fp32 \nmemory usage (MiB)', \
-                      'Standalone TRT fp32 \nmemory usage (MiB)', \
-                      'CUDA EP fp16 \nmemory usage (MiB)', \
-                      'TRT EP fp16 \nmemory usage (MiB)', \
-                      'Standalone TRT fp16 \nmemory usage (MiB)' \
+                      'CUDA EP fp32 \npeak memory usage (MiB)', \
+                      'TRT EP fp32 \npeak memory usage (MiB)', \
+                      'Standalone TRT fp32 \npeak memory usage (MiB)', \
+                      'CUDA EP fp16 \npeak memory usage (MiB)', \
+                      'TRT EP fp16 \npeak memory usage (MiB)', \
+                      'Standalone TRT fp16 \npeak memory usage (MiB)' \
                       ]
     memory_db_columns = ['Model', 'CudaFp32', 'TrtFp32', 'StandaloneFp32', 'CudaFp16', 'TrtFp16', 'StandaloneFp16']
     memory = adjust_columns(memory, memory_columns, memory_db_columns, model_group)
@@ -47,33 +47,32 @@ def get_memory(memory, model_group):
                     
 def get_latency_fp32(latency, model_group):
     latency_fp32_columns = ['Model', \
-                            'CPU \nmean (ms)', \
+                            'CPU fp32 \nmean (ms)', \
                             'CUDA fp32 \nmean (ms)', \
                             'TRT EP fp32 \nmean (ms)', \
                             'Standalone TRT fp32 \nmean (ms)', \
                             'TRT v CUDA EP fp32 \ngain (mean) (%)', \
-                            'EP v Native TRT fp32 \ngain (mean) (%)' \
+                            'EP v Standalone TRT fp32 \ngain (mean) (%)' \
                             ]    
-    latency_db_columns = ['Model', 'Cpu', 'CudaEp', 'TrtEp', 'Standalone', 'CudaTrtGain', 'NativeEpGain']
+    latency_db_columns = ['Model', 'Cpu', 'CudaEp', 'TrtEp', 'Standalone', 'TrtGain-Cuda', 'EpGain-Trt']
     latency = adjust_columns(latency, latency_fp32_columns, latency_db_columns, model_group)
     return latency
 
 def get_latency_fp16(latency, model_group):
     latency_fp16_columns = ['Model', \
-                            'CPU \nmean (ms)', \
                             'CUDA fp16 \nmean (ms)', \
                             'TRT EP fp16 \nmean (ms)', \
                             'Standalone TRT fp16 \nmean (ms)', \
                             'TRT v CUDA EP fp16 \ngain (mean) (%)', \
-                            'EP v Native TRT fp16 \ngain (mean) (%)' \
+                            'EP v Standalone TRT fp16 \ngain (mean) (%)' \
                             ]    
-    latency_db_columns = ['Model', 'Cpu', 'CudaEp', 'TrtEp', 'Standalone', 'CudaTrtGain', 'NativeEpGain']
+    latency_db_columns = ['Model', 'CudaEp', 'TrtEp', 'Standalone', 'TrtGain-Cuda', 'EpGain-Trt']
     latency = adjust_columns(latency, latency_fp16_columns, latency_db_columns, model_group)
     return latency
     
 def get_status(status, model_group):
     status_columns = status.keys()
-    status_db_columns = ['Model', 'Cpu', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
+    status_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
 
@@ -105,7 +104,6 @@ def main():
         folders = os.listdir(result_file)
         os.chdir(result_file)
        
-        
         fail = pd.DataFrame()
         memory = pd.DataFrame()
         latency_fp32 = pd.DataFrame()
