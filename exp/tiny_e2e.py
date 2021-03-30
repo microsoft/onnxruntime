@@ -24,6 +24,7 @@ class MyReLU(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         print('MyReLU backward.')
+        print(ctx.saved_tensors)
         input, = ctx.saved_tensors
         grad_input = grad_output.clone()
         grad_input[input < 0] = 0
@@ -65,27 +66,36 @@ class CustomFnWrapperModule(torch.nn.Module):
         super(CustomFnWrapperModule, self).__init__()
         self.x_t = None
         self.forward_outputs = []
+        self.y = None
 
     def compute(self, x):
         try:
             self.x_t = from_dlpack(x)
             # what if custom function modify x, and in ORT is using an unexpected value at the same time.
             self.x_t.requires_grad = True
-            print("Current process id is ", os.getpid())
-            (ret) = self.forward(self.x_t)
-            print("device: ", ret.device)
-            v = ret.data_ptr()
-            print("v : ", v)
-            forward_outputs = [ret] #[ret.contiguous()]
-            [print("CustomFnWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-            # need hold the forward outputs before PythonOp Compute completed.
-            self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-            [print("CustomFnWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
+            with torch.enable_grad():
+                # self.x_t = torch.tensor([1.0, 2.0, 3.0, -4.0])
+                # self.x_t.requires_grad = True
+                print("Current process id is ", os.getpid())
+                self.y = MyReLU.apply(self.x_t) #(self.x_t)
+                print(self.y)
+                print("====================", self.y.grad_fn)
+                (ret) = self.y
+                print("device: ", ret.device)
+                v = ret.data_ptr()
+                print("v : ", v)
+                forward_outputs = [ret] #[ret.contiguous()]
+                [print("CustomFnWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+                # need hold the forward outputs before PythonOp Compute completed.
+                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
+                [print("CustomFnWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
 
-            ctx_ptr = int(id(ret.grad_fn))
-            return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-            print(return_vals)
-            return tuple(return_vals)
+                ctx_ptr = int(id(ret.grad_fn))
+                # ctx_ptr = int(id(ret))
+                #print(self.y.grad_fn.saved_tensors)
+                return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
+                print(return_vals)
+                return tuple(return_vals)
         except Exception as e:
             print(e)
             return []
@@ -93,6 +103,22 @@ class CustomFnWrapperModule(torch.nn.Module):
     def forward(self, x):
         return MyReLU.apply(x)
 
+    def backward_compute(self, ctx, x):
+        print(ctx, ctx.saved_tensors)
+        self.x_t = from_dlpack(x)
+        # this should be False
+        #self.x_t.requires_grad = False
+        
+        ret = MyReLU.backward(ctx, self.x_t)
+        forward_outputs = [ret] #[ret.contiguous()]
+        [print("CustomFnWrapperModule.backward_compute: shape: ", a.shape) for a in forward_outputs]
+        # need hold the forward outputs before PythonOp Compute completed.
+        self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
+        [print("CustomFnWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
+
+        return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
+        print(return_vals)
+        return tuple(return_vals)
 
 # def forward_wrapper(x):
 #     x_t = from_dlpack(x)
@@ -106,10 +132,10 @@ class CustomFnWrapperModule(torch.nn.Module):
 #     return tuple(return_vals)
 
 ort.register_custom_torch_function_forward("MyReLU", CustomFnWrapperModule)
-ort.register_custom_torch_function_backward("MyReLU", MyReLU.backward)
+ort.register_custom_torch_function_backward("MyReLU", CustomFnWrapperModule)
  
 y = model(x)
- 
+
 y.sum().backward()
  
 print('x:\n', x)
