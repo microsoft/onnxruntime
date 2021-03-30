@@ -11,8 +11,6 @@ namespace test {
 
 static auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
-const std::string MS_DOMAIN = "com.microsoft";
-
 inline void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
   EXPECT_NE(shape1, nullptr);
   EXPECT_NE(shape2, nullptr);
@@ -72,7 +70,7 @@ inline void TestShapeInference(const std::string& op_type,
   // Set add operator node to graph
   auto node = graph->add_node();
   node->set_op_type(op_type);
-  node->set_domain(MS_DOMAIN);
+  node->set_domain(op_domain);
   node->set_name("test_node");
 
   // Add node inputs and graph inputs
