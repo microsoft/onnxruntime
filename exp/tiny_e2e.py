@@ -75,11 +75,12 @@ class CustomFnWrapperModule(torch.nn.Module):
             (ret) = self.forward(self.x_t)
             print("device: ", ret.device)
             v = ret.data_ptr()
-            print("address: ", v)
-            grad_outputs = [ret.contiguous()]
-
+            print("v : ", v)
+            forward_outputs = [ret] #[ret.contiguous()]
+            [print("CustomFnWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
             # need hold the forward outputs before PythonOp Compute completed.
-            self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in grad_outputs]
+            self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
+            [print("CustomFnWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
 
             ctx_ptr = int(id(ret.grad_fn))
             return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]

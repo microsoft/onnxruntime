@@ -70,7 +70,18 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   void* forward_ret_ortvalue_addr = outputs[1];
   auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
   ORT_ENFORCE(forward_ret_ortvalue_ptr != nullptr, "forward_ret_ortvalue_ptr should not be null");
-  Py_INCREF(forward_ret_ortvalue_addr);
+  // Py_INCREF(forward_ret_ortvalue_addr);
+
+  Tensor* t = forward_ret_ortvalue_ptr->GetMutable<Tensor>();
+  const auto& input_shape = t->Shape();
+  const auto num_dim = input_shape.NumDimensions();
+  std::cout << "prtvalue addr:" << forward_ret_ortvalue_ptr << ", tenosr addr: " << t
+            << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
+            << ", num_dim: " << num_dim << std::endl;
+
+  for (size_t i = 0; i < num_dim; ++i) {
+    std::cout << "PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
+  }
   ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(1, *forward_ret_ortvalue_ptr));
   return Status::OK();
 }
