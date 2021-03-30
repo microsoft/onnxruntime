@@ -86,7 +86,7 @@ def _openvino_verify_device_type(device_read):
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(',')
         if (len(comma_separated_devices) < 2):
-            print("Atleast two devices required in Hetero Mode")
+            print("At least two devices required in Hetero Mode")
             status_hetero = False
         dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
         for dev in comma_separated_devices:
@@ -183,10 +183,14 @@ def parse_arguments():
         help="""When running the Test phase, run symbolic shape inference against
         available test data directories.""")
 
-    # generate documentaiton
+    # generate documentation
     parser.add_argument(
         "--gen_doc", action='store_true',
         help="Generate documentation on contrib ops")
+
+    parser.add_argument(
+        "--gen-api-doc", action='store_true',
+        help="Generate API documentation for PyTorch frontend")
 
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
@@ -263,6 +267,10 @@ def parse_arguments():
     parser.add_argument(
         "--arm64", action='store_true',
         help="Create ARM64 makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument(
+        "--arm64ec", action='store_true',
+        help="Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -675,7 +683,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for ARM/ARM64
         # (no native compilation supported through this script).
-        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
@@ -1399,8 +1407,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
-                run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
-                               cwd=cwd, dll_path=dll_path)
+                if not args.disable_contrib_ops:
+                    run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
+                                   cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1621,7 +1630,7 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -1733,7 +1742,7 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
-    cross_compiling = args.arm or args.arm64 or args.android
+    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -1783,6 +1792,9 @@ def main():
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
+    if args.gen_api_doc and len(args.config) != 1:
+        raise BuildError('Using --get-api-doc requires a single build config')
+
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
@@ -1829,7 +1841,7 @@ def main():
             update_submodules(source_dir)
         if is_windows():
             if args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64:
+                if args.x86 or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
@@ -1839,7 +1851,7 @@ def main():
                 cmake_extra_args = [
                     '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
                 ]
-            elif args.arm or args.arm64:
+            elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
                 if path_to_protoc_exe is None:
@@ -1847,8 +1859,10 @@ def main():
                         cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ['-A', 'ARM']
-                else:
+                elif args.arm64:
                     cmake_extra_args = ['-A', 'ARM64']
+                elif args.arm64ec:
+                    cmake_extra_args = ['-A', 'ARM64EC']
                 cmake_extra_args += ['-G', args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -1994,6 +2008,12 @@ def main():
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
+
+    if args.gen_api_doc and (args.build or args.test):
+        print('Generating Python doc for ORTModule...')
+        docbuild_dir = os.path.join(source_dir, 'tools', 'doc')
+        run_subprocess(['bash', 'builddoc.sh', os.path.dirname(sys.executable),
+                        source_dir, build_dir, args.config[0]], cwd=docbuild_dir)
 
     log.info("Build complete")
 
