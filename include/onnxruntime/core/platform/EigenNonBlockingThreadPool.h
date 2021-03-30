@@ -1121,7 +1121,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
       } else {
         std::cout << "failed distribute to lc" << std::endl;
       }
-    } 
+    }
     if (rc < num_threads_) {
       rc_distributed = enqueue_fn(rc, dispatch_worker_fn);
       if (rc_distributed) {
