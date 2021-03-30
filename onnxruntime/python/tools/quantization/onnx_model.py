@@ -172,14 +172,14 @@ class ONNXModel:
                         'MatMul',
                         inputs=[node.input[0], inputB],
                         outputs=[node.output[0] + ('_MatMul' if len(node.input) > 2 else '')],
-                        name=node.name + '_MatMul')
+                        name=node.name + '_MatMul' if node.name else "")
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
                         add_node = onnx.helper.make_node('Add',
                                                          inputs=[node.output[0] + '_MatMul', node.input[2]],
                                                          outputs=node.output,
-                                                         name=node.name + '_Add')
+                                                         name=node.name + '_Add' if node.name else "")
                         new_nodes.append(add_node)
 
                 # unsupported

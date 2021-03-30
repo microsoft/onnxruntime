@@ -32,12 +32,17 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
     ORT_THROW("Terminating backward run, since the terminate is set to true.");
   } else {
     ORT_ENFORCE(backward_inputs.second.size() == static_cast<size_t>(ctx->OutputCount()));
-    for (int i = 0; i < ctx->OutputCount(); ++i) {
-      if (std::find(full_shape_outputs_.begin(), full_shape_outputs_.end(), static_cast<int64_t>(i)) !=
-          full_shape_outputs_.end()) {
-        ORT_ENFORCE(ctx->Input<Tensor>(i)->Shape() == backward_inputs.second[i].Get<Tensor>().Shape());
+
+    for (int i = 0, j = 0; i < ctx->InputCount(); ++i) {
+      if (non_differentiable_outputs_[i]) {
+        continue;
       }
-      ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]));
+
+      if (full_shape_outputs_[i]) {
+        ORT_ENFORCE(ctx->Input<Tensor>(i)->Shape() == backward_inputs.second[j].Get<Tensor>().Shape());
+      }
+      ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(j, backward_inputs.second[j]));
+      j++;
     }
   }
 

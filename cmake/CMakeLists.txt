@@ -152,6 +152,9 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+# Single output director for all binaries
+set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+
 function(set_msvc_c_cpp_compiler_warning_level warning_level)
   if (NOT "${warning_level}" MATCHES "^[0-4]$")
     message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
@@ -349,6 +352,7 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
 
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
+  add_compile_definitions("ONNX_NO_EXCEPTIONS")
 
   if(MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -1123,10 +1127,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-# DLPack is a header-only dependency
-set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-include_directories(${DLPACK_INCLUDE_DIR})
-
 if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
@@ -1593,3 +1593,15 @@ if (WINDOWS_STORE)
 endif()
 
 include(flake8.cmake)
+
+if(UNIX)
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
+else()
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" OFF)
+endif()
+if(BUILD_PKGCONFIG_FILES)
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libonnxruntime.pc.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
+  install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
+    ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
