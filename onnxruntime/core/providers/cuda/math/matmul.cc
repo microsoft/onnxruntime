@@ -122,16 +122,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
 
   if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2) {
-    std::cout << "left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2" << std::endl;
-
     void* workspace;
     size_t workspaceSize = 4194304;
     cudaMalloc(&workspace, workspaceSize);
-    cublasLtHandle_t ltHandle;
-    cublasLtCreate(&ltHandle);
+    //cublasLtHandle_t ltHandle;
+    //cublasLtCreate(&ltHandle);
     CUBLAS_RETURN_IF_ERROR(
       cublasLtGemmHelper(
-        ltHandle,
+        reinterpret_cast<cublasLtHandle_t>(Base::CublasHandle()),
         transB,
         transA,
         static_cast<int>(helper.N()),
@@ -146,11 +144,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<float*>(Y->template MutableData<float>()),
         ldc,
         workspace,
-        workspaceSize
+        workspaceSize,
+        Stream()
       )
     );
 
-    std::cout << "cublasLtGemmHelper() finished" << std::endl;
+    cudaFree(workspace);
+
     return Status::OK();
   }
 
