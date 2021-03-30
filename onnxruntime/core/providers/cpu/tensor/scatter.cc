@@ -48,13 +48,6 @@ class Scatter final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  template <typename T>
-  Status CopyInt32Index(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-                        const int64_t axis, Tensor* data_output) const;
-  template <typename T>
-  Status CopyInt64Index(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-                        const int64_t axis, Tensor* data_output) const;
-
   int64_t axis_;
 };
 
