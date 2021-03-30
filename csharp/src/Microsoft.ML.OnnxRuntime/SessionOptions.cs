@@ -38,6 +38,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         // Delay-loaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
         private static string[] cudaDelayLoadedLibs = { };
+        private static string[] trtDelayLoadedLibs = { };
 
         #region Constructor and Factory methods
 
@@ -71,6 +72,63 @@ namespace Microsoft.ML.OnnxRuntime
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0)
+        {
+            CheckTensorrtExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        /// 
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trt_options)
+        {
+            CheckTensorrtExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+
+            OrtTensorRTProviderOptionsNative trt_options_native;
+            trt_options_native.device_id = trt_options.device_id;
+            trt_options_native.has_user_compute_stream = 0;
+            trt_options_native.user_compute_stream = IntPtr.Zero;
+            trt_options_native.has_trt_options = trt_options.has_trt_options;
+            if ((ulong)trt_options.trt_max_workspace_size > (1 << 30))
+            {
+                trt_options_native.trt_max_workspace_size = (UIntPtr)(1 << 30);
+            }
+            else
+            {
+                trt_options_native.trt_max_workspace_size = trt_options.trt_max_workspace_size;
+            }
+            trt_options_native.trt_fp16_enable = trt_options.trt_fp16_enable;
+            trt_options_native.trt_int8_enable = trt_options.trt_int8_enable;
+            var tableNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(trt_options.trt_int8_calibration_table_name), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(tableNamePinned))
+            {
+                trt_options_native.trt_int8_calibration_table_name = pinnedSettingsName.Pointer;
+            }
+            trt_options_native.trt_int8_use_native_calibration_table = trt_options.trt_int8_use_native_calibration_table;
+
+
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(options.Handle, ref trt_options_native));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, trt_options.device_id));
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
             return options;
         }
@@ -592,6 +650,31 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
+
+        /// <summary>
+        /// Provider options for TensorRT.
+        /// </summary>
+        /// 
+        //  Example for setting:
+        //    SessionOptions.OrtTensorRTProviderOptions trt_options;
+        //    trt_options.device_id = 0;
+        //    trt_options.has_trt_options = 1;
+        //    trt_options.trt_max_workspace_size = (UIntPtr) (1<<30);
+        //    trt_options.trt_fp16_enable = 1;
+        //    trt_options.trt_int8_enable = 1;
+        //    trt_options.trt_int8_calibration_table_name = "C:\calibration.flatbuffers";
+        //    trt_options.trt_int8_use_native_calibration_table = 0;
+        public struct OrtTensorRTProviderOptions
+        {
+            public int device_id;                                  // cuda device id. Default is 0.
+            public int has_trt_options;                            // override environment variables with following TensorRT settings at runtime. Default 0 = false, nonzero = true.
+            public UIntPtr trt_max_workspace_size;                 // maximum workspace size for TensorRT. ORT C++ DLL has this field to be the type of size_t, hence using UIntPtr for conversion.
+            public int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true.
+            public int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true.
+            public String trt_int8_calibration_table_name;         // TensorRT INT8 calibration table name.
+            public int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+        }
+
         #endregion
 
         #region Private Methods
@@ -617,6 +700,27 @@ namespace Microsoft.ML.OnnxRuntime
                     throw new OnnxRuntimeException(
                         ErrorCode.NoSuchFile,
                         $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                        );
+                }
+            }
+            return true;
+        }
+
+        private static bool CheckTensorrtExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in trtDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle != IntPtr.Zero)
+                        continue;
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile,
+                        $"kernel32.LoadLibrary():'{dll}' not found. TensorRT/CUDA are required for GPU execution. " +
                         $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
                         );
                 }

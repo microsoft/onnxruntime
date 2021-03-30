@@ -192,6 +192,24 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataGetGraphDescription;
     }
 
+    #region ORT Provider options
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OrtTensorRTProviderOptionsNative
+    {
+        public int device_id;                                  // cuda device id.
+        public int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+        public IntPtr user_compute_stream;                     // user specified CUDA compute stream.
+        public int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+        public UIntPtr trt_max_workspace_size;                 // maximum workspace size for TensorRT.
+        public int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+        public int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+        public IntPtr trt_int8_calibration_table_name;         // TensorRT INT8 calibration table name.
+        public int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+    }
+    #endregion
+
+
+
     internal static class NativeMethods
     {
         private const string nativeLib = "onnxruntime";
@@ -573,6 +591,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ SessionOptionsAppendExecutionProvider_TensorRT(IntPtr /*(OrtSessionOptions*)*/ options, ref OrtTensorRTProviderOptionsNative trt_options);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
