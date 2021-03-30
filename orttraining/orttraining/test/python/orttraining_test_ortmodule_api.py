@@ -1347,8 +1347,7 @@ def test_nested_return_value_module(device):
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetNestedOutput(D_in, H, D_out).to(device)
     model = ORTModule(model)
-    model._save_onnx = True
-    model._save_onnx_prefix = 'nested_model_output'
+
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
@@ -1506,3 +1505,64 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     assert training_session1 != training_session2
     assert torch.equal(weight_grad_2, weight_grad_3)
     assert torch.equal(bias_grad_2, bias_grad_3)
+
+def test_model_with_registered_buffers():
+    class NeuralNetWithRegisteredBuffer(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetWithRegisteredBuffer, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.register_buffer("buffer1s", torch.ones(num_classes))
+            self.register_buffer("buffer2s", 1+torch.ones(num_classes))
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            out += self.buffer1s
+            out += self.buffer2s
+            return out
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetWithRegisteredBuffer(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    output = ort_model(x)
+    assert output is not None
+
+def test_model_with_constant_and_registered_parameters():
+    class NeuralNetWithRegisteredParamsWithConstant(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetWithRegisteredParamsWithConstant, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.register_parameter("param1", torch.nn.Parameter(torch.ones(num_classes)))
+            self.register_parameter("param2", torch.nn.Parameter(1+torch.ones(num_classes)))
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            out += self.param1
+            out += self.param2
+            out += torch.tensor([3.], device=next(self.parameters()).device)
+            return out
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetWithRegisteredParamsWithConstant(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    output = ort_model(x)
+    assert output is not None

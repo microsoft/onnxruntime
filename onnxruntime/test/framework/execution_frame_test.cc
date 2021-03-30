@@ -359,7 +359,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   {
     // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(&session_obj);
+    training::TrainingAgent training_agent(session_obj);
     unique_ptr<IOBinding> io_binding;
     ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
     io_binding->BindInput("X", x_value);
