@@ -121,6 +121,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
 
+  std::cout << "----------------------Node Name: " << ctx->GetNodeName() << "----------------------" << std::endl;
+
   if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2) {
     void* workspace;
     size_t workspaceSize = 4194304;
@@ -148,9 +150,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         Stream()
       )
     );
-
     cudaFree(workspace);
-
     return Status::OK();
   }
 
