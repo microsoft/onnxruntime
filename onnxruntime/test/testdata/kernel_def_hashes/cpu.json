@@ -445,11 +445,27 @@
     ],
     [
         "CumSum ai.onnx CPUExecutionProvider",
+        10469673094092328264
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
         10623377395346323656
     ],
     [
         "CumSum ai.onnx CPUExecutionProvider",
+        11339703050808462936
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        12655022500731400520
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
         13407812519646293824
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        14253657812461767552
     ],
     [
         "CumSum ai.onnx CPUExecutionProvider",
@@ -1069,7 +1085,7 @@
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
-        16879814636194901248
+        14918681384698747488
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
@@ -2341,7 +2357,15 @@
     ],
     [
         "Relu ai.onnx CPUExecutionProvider",
+        9308941683254701488
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
         11010461083452725976
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        12612615492664612000
     ],
     [
         "Relu ai.onnx CPUExecutionProvider",
@@ -2966,6 +2990,10 @@
     [
         "TreeEnsembleRegressor ai.onnx.ml CPUExecutionProvider",
         12993125630596348064
+    ],
+    [
+        "Trilu ai.onnx CPUExecutionProvider",
+        9981347960818883600
     ],
     [
         "Trilu com.microsoft CPUExecutionProvider",
