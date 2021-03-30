@@ -149,7 +149,7 @@ class ONNXModel:
                         transA = onnx.helper.get_attribute_value(attr)
                     elif attr.name == 'transB':
                         transB = onnx.helper.get_attribute_value(attr)
-                if alpha == 1.0 and beta == 1.0 and transA == 0:
+                if 1 == self.input_name_to_nodes()[node.input[1]] and alpha == 1.0 and beta == 1.0 and transA == 0:
                     inputB = node.input[1]
                     if transB == 1:
                         B = self.get_initializer(node.input[1])
