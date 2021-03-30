@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_c_api.h"
-#include "core/session/ort_apis.h"
 
 #ifdef __cplusplus
 extern "C" {
