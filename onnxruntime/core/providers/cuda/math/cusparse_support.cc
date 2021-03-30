@@ -110,6 +110,10 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
     }
   }
 
+  // column len that includes all non-zero blocks
+  const auto column_length = static_cast<int64_t>(max_cols) * ell_block_size;
+  const auto column_length_bytes = column_length * element_size;
+
   // Indicies array of rows X max_cols
   const int64_t nnz_blocks = dst_block_rows * static_cast<int64_t>(max_cols);
   std::unique_ptr<int[]> col_ind(new int[nnz_blocks]);
@@ -129,27 +133,25 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
     // XXX: This currently copies block bytes together. Transposed.
     if (!transpose) {
       const auto src_block_col_idx = e.first;
+      const auto* const block_col_start = input + src_block_col_idx * ell_block_row_bytes;
+      auto* const block_output = values_out + blocks_copied * block_bytes;
+      auto* row_output = block_output;
       for (auto src_block_row_idx : e.second) {
-        const auto* const block_row_start = input + src_block_row_idx * src_block_row_bytes +
-                                            src_block_col_idx * ell_block_row_bytes;
-        auto* const block_output = values_out + block_bytes * blocks_copied;
-        // Copy row by row transposed
-        for (int64_t row = 0; row < ell_block_size; ++row) {
-          const auto* row_start = block_row_start + row * src_row_element_bytes;
-          // Shift each row one element to the right
-          auto* row_output = block_output + row * element_size;
-          // Element by element with ell_block_size distance
-          for (int64_t element = 0; element < ell_block_size; ++element) {
+        const auto* const src_block_row_start = block_col_start + src_block_row_idx * src_block_row_bytes;
+        // Shift each row one element to the right
+        for (int64_t row = 0; row < ell_block_size; ++row, row_output += element_size) {
+          const auto* src_element = src_block_row_start + row * src_row_element_bytes;
+          auto* element_output = row_output;
+          // Copy elements coolumn_length apart
+          for (int64_t element = 0; element < ell_block_size; ++element, element_output += column_length_bytes) {
             // Spread output ell_block_row_bytes apart
-            auto* element_output = row_output + element * ell_block_row_bytes;
-            memcpy(element_output, row_start, element_size);
-            row_start += element_size;
+            memcpy(element_output, src_element, element_size);
+            src_element += element_size;
           }
         }
-        // Becomes col index
         *col_ind_out++ = gsl::narrow_cast<int>(src_block_row_idx);
-        ++blocks_copied;
       }
+      blocks_copied += static_cast<int64_t>(max_cols);
     } else {
       // Copy entire block row by row
       const auto src_block_row_idx = e.first;
@@ -305,7 +307,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
                                             tensor.DataRaw(), ell_ind_buffer, ell_values_buffer, ell_cols));
 
     /// XXX:
-    ///  return Status::OK();
+    // return Status::OK();
 
     CUSPARSE_RETURN_IF_ERROR(cusparseCreateBlockedEll(&sparse_desc,
                                                       num_rows,
@@ -320,8 +322,8 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     sparse_guard.reset(&sparse_desc);
     sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
     sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
-  } 
-  
+  }
+
   //else if (param.UseEllFormat()) {
   //  // XXX: Right now we just choose some format
   //  // How do we log here?
