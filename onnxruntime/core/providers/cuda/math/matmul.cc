@@ -372,7 +372,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (sparse_info_->param_.UseCooFormat() ||
         sparse_info_->param_.UseCsrFormat() ||
         sparse_info_->param_.UseEllFormat()) {
-      return cusparse_helper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
+      auto status = cusparse_helper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
+      return status;
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + " : Unsupported sparse format specified");
   }
@@ -425,6 +426,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         device_prop));
 
+    CUDA_CALL(cudaDeviceSynchronize());
     DUMP_ARRAY(T, std::cout, "Offsets 1 output", Y->DataRaw(), Y->Shape().Size(), helper.K());
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),

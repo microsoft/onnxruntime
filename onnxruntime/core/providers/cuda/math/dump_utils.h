@@ -53,7 +53,7 @@ struct DumpArray {
   }
 };
 
-#if 0
+#if 1
 #define DUMP_TYPE(T, ...) DumpType<T>()(__VA_ARGS__)
 #define DUMP_ARRAY(T, ...) DumpArray<T>()(__VA_ARGS__)
 #define DUMP_DISP(var, t, ...) utils::MLTypeCallDispatcher<__VA_ARGS__> var(t)

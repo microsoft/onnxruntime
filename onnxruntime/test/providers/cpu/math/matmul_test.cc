@@ -261,16 +261,16 @@ TEST(MathOpTest, SparseInitializerTests) {
   const bool is_b_constant = true;
   test.AddInput<float>("B", initializer_shape, initializer_data, is_b_constant);
   const std::vector<int64_t> output_shape = {9, 9};
-  const std::vector<float> non_t_output = {
-      546, 561, 576, 552, 564, 576, 39, 42, 45,
-      1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
-      2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
-      2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
-      3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187,
-      4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709,
-      678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725,
-      786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
-      894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
+  //const std::vector<float> non_t_output = {
+  //    546, 561, 576, 552, 564, 576, 39, 42, 45,
+  //    1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
+  //    2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
+  //    2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
+  //    3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187,
+  //    4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709,
+  //    678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725,
+  //    786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
+  //    894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
 
  //const std::vector<float> t_a_output = {
  //     5544, 5688, 5832, 5742, 5868, 5994, 234, 252, 270,
@@ -283,16 +283,16 @@ TEST(MathOpTest, SparseInitializerTests) {
  //     252, 282, 312, 2088, 2172, 2256, 2682, 2796, 2910,
  //     270, 303, 336, 2160, 2247, 2334, 2790, 2910, 3030};
 
-  //const std::vector<float> t_b_output = {
-  //    55,  145, 235,  266,  338,  410,  113,  131,  149,
-  //    145, 451, 757,  662,  842,  1022, 779,  905,  1031,
-  //    235, 757, 1279, 1058, 1346, 1634, 1445, 1679, 1913,
-  //    266, 662, 1058, 2539, 3277, 4015, 2282, 2624, 2966,
-  //    338, 842, 1346, 3277, 4231, 5185, 3002, 3452, 3902,
-  //    410, 1022, 1634, 4015, 5185, 6355, 3722, 4280, 4838,
-  //    113, 779, 1445, 2282, 3002, 3722, 8911, 10297, 11683,
-  //    131, 905, 1679, 2624, 3452, 4280, 10297, 11899, 13501,
-  //    149, 1031, 1913, 2966, 3902, 4838, 11683, 13501, 15319};
+  const std::vector<float> t_b_output = {
+      55,  145, 235,  266,  338,  410,  113,  131,  149,
+      145, 451, 757,  662,  842,  1022, 779,  905,  1031,
+      235, 757, 1279, 1058, 1346, 1634, 1445, 1679, 1913,
+      266, 662, 1058, 2539, 3277, 4015, 2282, 2624, 2966,
+      338, 842, 1346, 3277, 4231, 5185, 3002, 3452, 3902,
+      410, 1022, 1634, 4015, 5185, 6355, 3722, 4280, 4838,
+      113, 779, 1445, 2282, 3002, 3722, 8911, 10297, 11683,
+      131, 905, 1679, 2624, 3452, 4280, 10297, 11899, 13501,
+      149, 1031, 1913, 2966, 3902, 4838, 11683, 13501, 15319};
 
   //const std::vector<float> t_a_b_output = {
   //    546, 1410, 2274, 2784, 3540, 4296, 678, 786, 894,
@@ -306,17 +306,19 @@ TEST(MathOpTest, SparseInitializerTests) {
   //    45,  243,  441,  1665, 2187, 2709, 4725, 5445, 6165
   //};
 
-   test.AddOutput<float>("Y", output_shape, non_t_output);
+   const auto& output_data = t_b_output;
+   test.AddOutput<float>("Y", output_shape, output_data);
 
   // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
   // Disable TensorRT because of unsupported data type
-  std::unordered_set<std::string> excluded_providers{kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   if (is_b_constant) {
     // NNAPI: currently fails for the "test 2D empty input" case
     excluded_providers.insert(kNnapiExecutionProvider);
   }
   SessionOptions opts;
-  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_CSR_FORMAT;
+  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_ELL_FORMAT;
+  // opts.constant_initializers_sparse_flags = OrtSparseFlags::NOTHING;
   opts.constant_initializers_ell_block_size = 3; // Valid only for ELL
   test.Run(opts, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }

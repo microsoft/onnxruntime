@@ -126,6 +126,7 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
     ORT_ENFORCE(e.second.size() == max_cols, "Failed to check for equal columns");
     // Copy the block, we do the opposite of the transpose flag
     // as we intend to swap the args.
+    // XXX: This currently copies block bytes together. Transposed.
     if (!transpose) {
       const auto src_block_col_idx = e.first;
       for (auto src_block_row_idx : e.second) {
@@ -152,19 +153,28 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
     } else {
       // Copy entire block row by row
       const auto src_block_row_idx = e.first;
-      for (auto src_block_col_idx : e.second) {
-        const auto* const block_row_start = input + src_block_row_idx * src_block_row_bytes +
-                                            src_block_col_idx * ell_block_row_bytes;
-        auto* row_output = values_out + block_bytes * blocks_copied;
-        for (int64_t row = 0; row < ell_block_size; ++row) {
-          const auto* row_start = block_row_start + row * src_row_element_bytes;
-          // We copy entire block rows
+      const auto* const src_block_row_start = input + src_block_row_idx * src_block_row_bytes;
+      int64_t src_row_bytes_offset = 0;
+      auto* row_output = values_out + blocks_copied * block_bytes;
+      for (int64_t row = 0; row < ell_block_size; ++row) {
+        for (auto src_block_col_idx : e.second) {
+          const auto* const block_col_start = src_block_row_start +
+                                              src_block_col_idx * ell_block_row_bytes;
+
+          const auto* row_start = src_row_bytes_offset + block_col_start;
+
+          // We copy element row by row
           memcpy(row_output, row_start, ell_block_row_bytes);
           row_output += ell_block_row_bytes;
         }
-        *col_ind_out++ = gsl::narrow_cast<int>(src_block_col_idx);
-        ++blocks_copied;
+        src_row_bytes_offset += src_row_element_bytes;
       }
+
+      // The above loops copy all blocks of the block row
+      for (auto src_block_col_idx : e.second) {
+        *col_ind_out++ = gsl::narrow_cast<int>(src_block_col_idx);
+      }
+      blocks_copied += max_cols;
     }
   }
 
@@ -277,8 +287,10 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
 
   // Blocked ELL has partial support for Volta. For Float32/Float64 it still requires Ampere arch (8)
   // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm
-  const auto& dev_props = kernel->GetDeviceProp();
-  if (param.UseEllFormat() && CanUseBlockedEllFormat(dev_props, cuda_type, cuda_type, cuda_type)) {
+  // XXX:
+  // const auto& dev_props = kernel->GetDeviceProp();
+  // if (param.UseEllFormat() && CanUseBlockedEllFormat(dev_props, cuda_type, cuda_type, cuda_type)) {
+  if (param.UseEllFormat()) {
     // Some tunables which we may adjust for both testing and depending on the matrix size.
     // Must be power of two
     const int64_t ell_block_size = param.ell_block_size;
@@ -291,6 +303,9 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     int64_t ell_cols;
     ORT_RETURN_IF_ERROR(ConvertToBlockedEll(kernel, ell_block_size, K, N, transb, tensor.GetElementType(), element_size,
                                             tensor.DataRaw(), ell_ind_buffer, ell_values_buffer, ell_cols));
+
+    /// XXX:
+    ///  return Status::OK();
 
     CUSPARSE_RETURN_IF_ERROR(cusparseCreateBlockedEll(&sparse_desc,
                                                       num_rows,
@@ -305,12 +320,14 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     sparse_guard.reset(&sparse_desc);
     sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
     sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
-  } else if (param.UseEllFormat()) {
-    // XXX: Right now we just choose some format
-    // How do we log here?
-    sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
-    sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
-  }
+  } 
+  
+  //else if (param.UseEllFormat()) {
+  //  // XXX: Right now we just choose some format
+  //  // How do we log here?
+  //  sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
+  //  sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
+  //}
 
   if (param.UseCsrFormat() || param.UseCooFormat()) {
     cusparseDnMatDescr_t dense_desc;
@@ -389,6 +406,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
                                                            CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
                                                            work_buffer.get()));
 
+    CUDA_CALL(cudaDeviceSynchronize());
     // XXX: Print all the buffers
     const auto& bufs = sp_info->prepack_buffers_;
     ORT_UNUSED_PARAMETER(bufs);
@@ -529,6 +547,7 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
                                         spmm_algo,
                                         work_buffer.get()));
 
+  CUDA_CALL(cudaDeviceSynchronize());
   // Debug dump
   DUMP_DISP(t_disp, left->GetElementType(), float, double, MLFloat16, BFloat16);
   DUMP_INVOKE(t_disp, DumpArray, std::cout, "cusparseSpMM output", Y->DataRaw(), Y->Shape().Size(), helper.K());
