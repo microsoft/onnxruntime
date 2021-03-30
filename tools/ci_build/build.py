@@ -911,8 +911,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
                                                        "Platform", "Emscripten.cmake")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file,
-            "-Donnxruntime_ENABLE_NSYNC=OFF"
+            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file
         ]
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
