@@ -90,7 +90,8 @@ inline void TestShapeInference(const std::string& op_type,
   ONNX_NAMESPACE::checker::check_model(model);
 
   auto inferredGraph = model.graph();
-  auto inferred_output = inferredGraph.value_info(inputs.size());
+  int index = static_cast<int>(inputs.size());  // index for value_info of output
+  auto inferred_output = inferredGraph.value_info(index);
 
   auto elem_type = output.mutable_type()->mutable_tensor_type()->elem_type();
   auto inferred_elem_type = inferred_output.mutable_type()->mutable_tensor_type()->elem_type();
