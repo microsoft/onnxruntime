@@ -305,7 +305,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   const auto data_type = data_input->GetElementType();
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
-  status = dispatcher.InvokeRet<Status, CopyScatterDataDispatchTarget>(
+  status = dispatcher.template InvokeRet<Status, CopyScatterDataDispatchTarget>(
       data_input, indices_data, updates_input, axis, data_output);
 
   return status;
