@@ -83,7 +83,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
          arena_cfg ? arena_cfg->initial_chunk_size_bytes : -1,
          arena_cfg ? arena_cfg->max_dead_bytes_per_chunk : -1,
          arena_cfg ? arena_cfg->initial_regrowth_chunk_size_bytes_after_shrink : -1,
-         arena_cfg ? arena_cfg->shrink_on_every_run : true});
+         arena_cfg ? arena_cfg->shrink_on_every_run : false});
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
