@@ -75,38 +75,33 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info(shapes_arg)
 
     result = {}
-    try:
 
-        if fp16:
-            out = get_output([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg])
-        else:
-            out = get_output([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg])
+    if fp16:
+        out = get_output([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg])
+    else:
+        out = get_output([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg])
 
-        tmp = out.split("\n")
-        target_list = []
-        for t in tmp:
-            if 'mean:' in t:
-                target_list.append(t)
+    tmp = out.split("\n")
+    target_list = []
+    for t in tmp:
+        if 'mean:' in t:
+            target_list.append(t)
 
-            if 'percentile:' in t:
-                target_list.append(t)
+        if 'percentile:' in t:
+            target_list.append(t)
 
-        target = target_list[2]
-        start = target.find('mean:') + 6
-        end = target.find('ms')
-        result["average_latency_ms"] = target[start:end]
+    target = target_list[2]
+    start = target.find('mean:') + 6
+    end = target.find('ms')
+    result["average_latency_ms"] = target[start:end]
 
-        target = target_list[3]
-        start = target.find('percentile:') + 12
-        end = target.find('ms')
-        result["latency_90_percentile"] = target[start:end]
+    target = target_list[3]
+    start = target.find('percentile:') + 12
+    end = target.find('ms')
+    result["latency_90_percentile"] = target[start:end]
 
-        logger.info(result)
-        return result
-
-    except Exception as e:
-        logger.info("trtexec fails...")
-        return None
+    logger.info(result)
+    return result
 
 def get_trtexec_path(): 
     trtexec_options = get_output(["find", "/", "-name", "trtexec"])
@@ -1027,16 +1022,21 @@ def run_onnxruntime(args, models):
                 # get standalone TensorRT perf
                 if trt in ep and args.trtexec:
                     
-                    if args.track_memory: 
-                        
-                        p = start_memory_tracking()            
-                        result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                        mem_usage = end_memory_tracking(p, True)
-                        if result and mem_usage: 
-                            result["memory"] = mem_usage
-                        ep = standalone_trt_fp16 if fp16 else standalone_trt
-                    else: 
-                        result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                    try: 
+                        if args.track_memory: 
+                                ep = standalone_trt_fp16 if fp16 else standalone_trt
+                                p = start_memory_tracking()            
+                                result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                                mem_usage = end_memory_tracking(p, True)
+                                if result and mem_usage: 
+                                    result["memory"] = mem_usage
+
+                        else: 
+                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                    except Exception as e: 
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        continue
 
                 else: 
                     result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
@@ -1224,11 +1224,12 @@ def build_status(status_dict, results, is_fail):
                     status = 'Fail'
                     add_status_dict(status_dict, model_name, ep, status)
         else: 
-            for result in results: 
-                model_name = result['model_name']
-                ep = result['device']
-                status = 'Pass'
-                add_status_dict(status_dict, model_name, ep, status)
+            for model, value in results.items():
+                for ep, ep_info in value.items(): 
+                    model_name = model
+                    ep = ep
+                    status = 'Pass'
+                    add_status_dict(status_dict, model_name, ep, status)
 
         return status_dict
 
@@ -1262,6 +1263,7 @@ def output_status(results, csv_filename):
         trt_fp16_status = ""
         standalone_fp16_status = ""
         
+
         for model_name, ep_dict in results.items():
             for ep, status in ep_dict.items():
                 if ep == cpu: 
