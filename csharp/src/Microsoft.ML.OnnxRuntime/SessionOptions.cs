@@ -96,7 +96,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// A helper method to construct a SessionOptions object for TensorRT execution.
         /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="deviceId"></param>
+        /// <param name="trt_options">Provider Options for TensorRT EP.</param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         /// 
         public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trt_options)
