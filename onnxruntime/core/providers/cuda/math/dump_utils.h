@@ -41,8 +41,6 @@ struct DumpArray {
 
     os << "Dump array: " << name << std::endl;
 
-    if (col_width == -1) col_width = len;
-
     for (size_t i = 0; i < len;) {
       for (size_t w = 0; w < col_width && i < len; ++w, ++i) {
         DumpType<T>::dump(os, src[i]);
