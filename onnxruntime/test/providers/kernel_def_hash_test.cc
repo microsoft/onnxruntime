@@ -37,11 +37,18 @@
  * seeing a message from one of these tests about updating the expected data.
  * Please do that if appropriate.
  *
+ * The expected value files are in this directory:
+ *     onnxruntime/test/testdata/kernel_def_hashes
+ * The data is specified in JSON as a sorted array of key-value arrays.
+ * Example data can be written to stdout with this test:
+ *     KernelDefHashTest.DISABLED_PrintCpuKernelDefHashes
+ * Use the option --gtest_also_run_disabled_tests to enable it.
+ * Be careful about updating the expected values - as mentioned before, the
+ * values should be stable. Typically, we should only add new entries.
+ *
  * In the unlikely event that we need to make a change to the kernel def
  * hashing that breaks backward compatibility, the expected values may need to
  * be updated.
- * The expected value files are in this directory:
- *     onnxruntime/test/testdata/kernel_def_hashes
  */
 
 #include <algorithm>
@@ -74,6 +81,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+// if set to 1, treat skipping of the kernel def hash tests as a test failure
 static constexpr const char* kRunKernelDefHashTestOrFailEnvVar =
     "ORT_TEST_RUN_KERNEL_DEF_HASH_TEST_OR_FAIL";
 
