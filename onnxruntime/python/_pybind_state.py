@@ -15,7 +15,6 @@ def ExtendDllPath():
     for p in os.environ['PATH'].split(';'):
         if os.path.isdir(p):
             os.add_dll_directory(p)
-            print (f'add dll path: {p}')
 
 if platform.system() == "Windows":
     from . import version_info
@@ -47,15 +46,12 @@ if platform.system() == "Windows":
             raise ImportError(f"cupti library path does not exist: {cupti_bin_dir}.")
         elif not os.path.isfile(os.path.join(cupti_bin_dir, "cupti.lib")):
             raise ImportError(f"cupti.lib is missing in: {cupti_bin_dir}.")
-        else:
-            print ("Found cupti:", cupti_bin_dir)
 
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
             # specified explicitly using the new API introduced in Python 3.8.
             os.add_dll_directory(cuda_bin_dir)
             os.add_dll_directory(cupti_bin_dir)
-            print ("cupti dir added")
         else:
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
