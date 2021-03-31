@@ -476,7 +476,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
 
   out_sparse_desc = sparse_desc;
   sparse_guard.release();
-  out_buffers = std::move(sparse_buffers);
+  out_buffers.swap(sparse_buffers);
 
   is_packed = true;
   return Status::OK();
