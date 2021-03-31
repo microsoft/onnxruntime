@@ -11,6 +11,7 @@ ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
                         1,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
+                            .OutputMemoryType<OrtMemTypeCPUInput>(1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         ConcatTraining);
 
@@ -72,7 +73,9 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
                                  p.output_num_elements));
 
   Tensor* output_1_tensor = ctx->Output(1, {input_count});
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_1_tensor->template MutableData<int64_t>(), concat_sizes_gpu.GpuPtr(), input_count * sizeof(int64_t), cudaMemcpyDeviceToDevice, Stream()));
+  if (output_1_tensor) { // optional output 1
+    std::copy(concat_sizes.begin(), concat_sizes.end(), output_1_tensor->template MutableData<int64_t>());
+  }
 
   return Status::OK();
 }

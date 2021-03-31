@@ -39,15 +39,14 @@ Status ConcatTraining::Compute(OpKernelContext* ctx) const {
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  // Create output tensor for 'per_input_length'
-  std::vector<int64_t> per_input_length(input_count);
-  for (int i = 0; i < input_count; ++i) {
-    per_input_length[i] = input_tensors[i]->Shape()[p.axis];
-  }
+  // Create optional output tensor for 'per_input_length'
   Tensor* output_1_tensor = ctx->Output(1, {input_count});
-  int64_t* output_1_tensor_data = output_1_tensor->template MutableData<int64_t>();
-  std::copy(per_input_length.begin(), per_input_length.end(), output_1_tensor_data);
-
+  if (output_1_tensor) {
+    int64_t* per_input_length = output_1_tensor->template MutableData<int64_t>();
+    for (int i = 0; i < input_count; ++i) {
+      per_input_length[i] = input_tensors[i]->Shape()[p.axis];
+    }
+  }
   // Compute values to be placed in the output tensor
   return ComputeImpl(p);
 }
