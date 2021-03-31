@@ -147,8 +147,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         workspace,
         workspaceSize,
-        Stream(),
-        ctx->GetNodeName()
+        Stream()
       )
     );
     cudaFree(workspace);
