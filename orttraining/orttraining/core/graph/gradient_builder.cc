@@ -1502,5 +1502,39 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
   };
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
+  std::vector<NodeDef> result = {};
+  std::vector<Dimension> orig_shape,repeats_shape;
+
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")})); // M,N,K
+    
+  result.push_back(NodeDef("Concat", {I(1), IA("orig_shape")}, {IA("concated_dims")},
+                            {MakeAttribute("axis", int64_t(1))})); // [[a,b,c],[M,N,K]]
+  result.push_back(NodeDef("Transpose", {IA("concated_dims")}, {IA("concated_dims_T")})); // [[a,M], [b,N], [c,K]]
+  
+  std::vector<int64_t> const_shape_minusone{-1};
+  NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape"));
+
+  result.push_back(NodeDef("Reshape", {IA("concated_dims_T"),
+                            const_shape_minusone_node.output_args[0]},//const_shape_minusone_node.output_args[0]},//IA("tot_dims"), //
+                            {IA("concated_dims_flatten")})); // flatten [a,M,b,N,c,K]
+
+  result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")})); 
+
+  NodeDef start_node = ConstantScalarNode(int64_t{0}, {1}, Name("start_int64"));
+  NodeDef delta_node = ConstantScalarNode(int64_t{2}, {1}, Name("delta_int64"));
+  
+  result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")})); // get num dimensions of the flattened grad op = 6
+  result.push_back(start_node);
+  result.push_back(delta_node);
+
+  result.push_back(NodeDef("Range", {start_node.output_args[0],IA("limit"), 
+                            delta_node.output_args[0]},{IA("range_even_indices")}));
+  result.push_back(NodeDef("ReduceSum", {IA("reshape_tile_grad_op"), IA("range_even_indices")}, {GI(0)})); //, {MakeAttribute("keep_dims", bool(1))}
+  
+  return result;
+}
+
+
 }  // namespace training
 }  // namespace onnxruntime
