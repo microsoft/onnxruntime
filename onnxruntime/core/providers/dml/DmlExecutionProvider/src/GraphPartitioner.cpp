@@ -477,9 +477,9 @@ namespace Dml
                         std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
                         if (requiredCpuInputsConstant &&
                             TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes) &&
+                            !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
                             TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes) &&
+                            !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
                             (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                         {
                             *isDmlGraphNode = true;
