@@ -1137,13 +1137,11 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
       if (!enqueue_fn(lc, dispatch_worker_fn)) {
         SetKids(lc);
       }
-      bits[lc] = 1;
-    } 
+    }
     if (rc < d_o_p) {
-      if (!enqueue_fn(rc, dispatch_worker_fn)) {
+      if (!enqueue_fn(lc, dispatch_worker_fn)) {
         SetKids(rc);
       }
-      bits[rc] = 1;
     }
     fn(1 + ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
     ps.tasks_finished.fetch_add(1, std::memory_order_relaxed);
