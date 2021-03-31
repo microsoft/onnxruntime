@@ -709,25 +709,10 @@ static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const 
 #endif
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                       const ProviderOptionsVector& provider_options, const std::string dll_path) {
+                       const ProviderOptionsVector& provider_options) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
-  if (!dll_path.empty()) {
-    void* handle;
-    auto error = Env::Default().LoadDynamicLibrary(dll_path, &handle);
-    if (!error.IsOK()) {
-      throw std::runtime_error(error.ErrorMessage());
-    }
-
-    Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
-
-    Provider* provider = PGetProvider();
-    int device_id = 0;
-    std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(device_id);
-    sess->RegisterExecutionProvider(std::move(ep_factory->CreateProvider()));
-  }
-
+  
   auto& additional_provider_list = GetRegisteredProviders();
   for (auto& provider : additional_provider_list) {
     std::cout << "Register dynamic providers" << std::endl;
@@ -1745,13 +1730,29 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return sess;
       }))
+      .def("load_execution_provider", 
+          [](PyInferenceSession* sess,
+              const std::string& ep_shared_lib_path,
+              const ProviderOptions& provider_options = {}) {
+              void* handle;
+              auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, &handle);
+              if (!error.IsOK()) {
+                throw std::runtime_error(error.ErrorMessage());
+              }
+
+              Provider* (*PGetProvider)();
+              Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+
+              Provider* provider = PGetProvider();
+              std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
+              sess->GetSessionHandle()->RegisterExecutionProvider(std::move(ep_factory->CreateProvider()));
+          })
       .def(
           "initialize_session",
           [](PyInferenceSession* sess,
              const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {},
-             const std::string dll_path= "") {
-            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options, dll_path);
+             const ProviderOptionsVector& provider_options = {}) {
+            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
