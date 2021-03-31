@@ -166,7 +166,10 @@
         "^test_softmax_*", // Does not support opset-13 yet
         "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_neg"
+        "^test_neg",
+        "^test_loop.*",
+        "test_if.*",
+        "test_sequence.*"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
