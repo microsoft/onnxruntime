@@ -21,7 +21,7 @@
 auto constexpr algoCombinations = 6000;
 auto constexpr algoIds = 40;
 auto constexpr printAlgos = 1;
-auto constexpr kernelRepeats = 10;
+auto constexpr kernelRepeats = 1000;
 auto constexpr threadsPerBlock = 1024;
 typedef struct
 {
@@ -454,116 +454,6 @@ inline cublasStatus_t cublasLtGemmHelperI(cublasLtHandle_t handle,
     cublasLtMatmulAlgo_t algo;
     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
     cuBlasLtAlgoFill(algo, 20, 0, 0, 1);
-    // if (name == "MatMul_103") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 1);
-    // } else if (name == "MatMul_117") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
-    // } else if (name == "MatMul_127") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
-    // } else if (name == "MatMul_197") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_211") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 4, 1, 1);
-    // } else if (name == "MatMul_221") { // problem
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo);
-    // } else if (name == "MatMul_291") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_305") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
-    // } else if (name == "MatMul_315") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 8, 1, 1);
-    // } else if (name == "MatMul_385") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 6, 1, 1);
-    // } else if (name == "MatMul_399") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 0);
-    // } else if (name == "MatMul_409") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
-    // } else if (name == "MatMul_479") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 0);
-    // } else if (name == "MatMul_493") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 0);
-    // } else if (name == "MatMul_503") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 1);
-    // } else if (name == "MatMul_573") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 20, 2, 1, 1);
-    // } else if (name == "MatMul_587") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 3, 1, 1);
-    // } else if (name == "MatMul_597") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
-    // } else if (name == "MatMul_667") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_681") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
-    // } else if (name == "MatMul_691") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
-    // } else if (name == "MatMul_761") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_775") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 1);
-    // } else if (name == "MatMul_785") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 1);
-    // } else if (name == "MatMul_855") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_869") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 20, 2, 1, 1);
-    // } else if (name == "MatMul_879") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
-    // } else if (name == "MatMul_949") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_963") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 4, 1, 1);
-    // } else if (name == "MatMul_973") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 20, 8, 1, 1);
-    // } else if (name == "MatMul_1043") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
-    // } else if (name == "MatMul_1057") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
-    // } else if (name == "MatMul_1067") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
-    // } else if (name == "MatMul_1137") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 0);
-    // } else if (name == "MatMul_1151") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
-    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
-    // } else if (name == "MatMul_1161") {
-    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    //     cuBlasLtAlgoFill(algo, 18, 8, 1, 1);
-    // }
-
 
     cublasStatus_t oneRunStatus = cublasLtMatmul(handle,
                                                  operationDesc,
@@ -603,7 +493,7 @@ inline cublasStatus_t cublasLtGemmHelper(cublasLtHandle_t handle,
                                          void *workspace,
                                          size_t workspaceSize,
                                          cudaStream_t stream) {
-    const bool search_mode = false;
+    const bool search_mode = true;
     if (search_mode) {
         return cublasLtGemmHelperS(handle,
                                   transa,
@@ -1054,6 +944,116 @@ cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int 
 cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy);
 #endif
 
+
+// if (name == "MatMul_103") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 1);
+    // } else if (name == "MatMul_117") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
+    // } else if (name == "MatMul_127") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
+    // } else if (name == "MatMul_197") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_211") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 4, 1, 1);
+    // } else if (name == "MatMul_221") { // problem
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo);
+    // } else if (name == "MatMul_291") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_305") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
+    // } else if (name == "MatMul_315") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 8, 1, 1);
+    // } else if (name == "MatMul_385") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 6, 1, 1);
+    // } else if (name == "MatMul_399") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 0);
+    // } else if (name == "MatMul_409") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
+    // } else if (name == "MatMul_479") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 0);
+    // } else if (name == "MatMul_493") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 0);
+    // } else if (name == "MatMul_503") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 1);
+    // } else if (name == "MatMul_573") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 20, 2, 1, 1);
+    // } else if (name == "MatMul_587") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 3, 1, 1);
+    // } else if (name == "MatMul_597") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
+    // } else if (name == "MatMul_667") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_681") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
+    // } else if (name == "MatMul_691") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
+    // } else if (name == "MatMul_761") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_775") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 1);
+    // } else if (name == "MatMul_785") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 1);
+    // } else if (name == "MatMul_855") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_869") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 20, 2, 1, 1);
+    // } else if (name == "MatMul_879") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
+    // } else if (name == "MatMul_949") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_963") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 4, 1, 1);
+    // } else if (name == "MatMul_973") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 20, 8, 1, 1);
+    // } else if (name == "MatMul_1043") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 3, 1, 0);
+    // } else if (name == "MatMul_1057") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 2, 1, 0);
+    // } else if (name == "MatMul_1067") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 12, 1, 0);
+    // } else if (name == "MatMul_1137") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 13, 0, 0, 0);
+    // } else if (name == "MatMul_1151") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 1, &algo);
+    //     cuBlasLtAlgoFill(algo, 16, 0, 0, 1);
+    // } else if (name == "MatMul_1161") {
+    //     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
+    //     cuBlasLtAlgoFill(algo, 18, 8, 1, 1);
+    // }
 
 
 
