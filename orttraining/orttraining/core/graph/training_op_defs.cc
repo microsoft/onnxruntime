@@ -1597,19 +1597,8 @@ Example 4:
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             /* Option 1: 
-              dX = dY * 0.5f * [ erf(sqrt(1/2)*X) + 1.0 + alpha*X*exp(-0.5f * X * X)]
+              dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
             which expands to the following ONNX graph:
-              HalfdY = Mul (dY, C_Half)
-              ErfArg = Mul(C_SqrtHalf, X)
-              ErfTerm = Erf(ErfArg)
-              PartialSum = Sum (ErfTerm, C_One)
-              AlphaX = Mul(C_alpha, X)
-              MinusHalfX = Mul(C_MinusHalf, X)
-              ExpArg = Mul(MinusHalfX, X)
-              ExpTerm = Exp(ExpArg)
-              Term3 = Mul(AlphaX, ExpTerm)
-              FullSum = Sum(PartialSum, Term3)
-              dX = Mul (HalfdY, FullSum)
             */
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
@@ -1619,40 +1608,21 @@ Example 4:
             std::vector<FunctionBodyHelper::NodeDef> body{
                 ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
                 ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
-                ONNX_NAMESPACE::Const("C_SqrtHalf", sqrt(0.5f), elem_type),
+                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
                 ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
-                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
-                {{"HalfdY"}, "Mul", {"dY", "C_Half"}},
-                {{"ErfArg"}, "Mul", {"C_SqrtHalf", "X"}},
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),              
+                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
                 {{"ErfTerm"}, "Erf", {"ErfArg"}},
-                {{"PartialSum"}, "Sum", {"ErfTerm", "C_One"}},
-                {{"AlphaX"}, "Mul", {"C_alpha", "X"}},
+                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
+                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
+                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
                 {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
                 {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
                 {{"ExpTerm"}, "Exp", {"ExpArg"}},
                 {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
-                {{"FullSum"}, "Sum", {"PartialSum", "Term3"}},
-                {{"dX"}, "Mul", {"HalfdY", "FullSum"}}};
+                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
+                {{"dX"}, "Mul", {"dY", "FullSum"}}};
             return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body);
-
-            // Option 2: An approximation using Tanh.
-            // GeluGrad: (dY, X) => dX
-            // Xsquare = Mul(X, X)
-            // Xcube = Mul(Xsquare, X)
-            // GammaXcube = Mul(gamma, Xcube)
-            // Sum1 = Add(X, GammaXcube)
-            // AlphaSum1 = Mul(alpha, Sum1)
-            // Tanh1 = Tanh(AlphaSum1)
-            // TanhSqr = Mul(Tanh1, Tanh1)
-            // SechSqr = Sub(One, TanhSqr)
-            // T7 = Mul(beta, Xcube)
-            // T6 = Mul(alpha, X)
-            // T5 = Add(T6, T7)
-            // T4 = Mul(SechSqr, T5)
-            // T3 = Add(Tanh1, T4)
-            // T2 = Add(T3, 1f)
-            // T1 = Mul(0.5f, T2)
-            // dX = Mul (dY, T1)
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
