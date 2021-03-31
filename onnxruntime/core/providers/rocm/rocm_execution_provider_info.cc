@@ -13,8 +13,8 @@ constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "hip_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
-constexpr const char* krocmExternalAlloc = "rocm_external_alloc";
-constexpr const char* krocmExternalFree = "rocm_external_free";
+constexpr const char* krocmExternalAlloc = "gpu_external_alloc";
+constexpr const char* krocmExternalFree = "gpu_external_free";
 }  // namespace provider_option_names
 }  // namespace rocm
 

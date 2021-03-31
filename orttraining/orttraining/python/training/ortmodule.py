@@ -357,12 +357,8 @@ class ORTModule(torch.nn.Module):
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
             if self._use_external_cuda_allocator:
-                if self.is_rocm_pytorch:
-                    provider_options = [{"device_id": str(self._device.index), "rocm_external_alloc": str(
-                        self._torch_alloc), "rocm_external_free": str(self._torch_free)}, {}]
-                else:
-                    provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
-                        self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+                provider_options = [{"device_id": str(self._device.index), "gpu_external_alloc": str(
+                    self._torch_alloc), "gpu_external_free": str(self._torch_free)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':

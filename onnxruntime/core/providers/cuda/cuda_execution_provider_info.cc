@@ -16,8 +16,8 @@ constexpr const char* kMemLimit = "cuda_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
-constexpr const char* kcudaExternalAlloc = "cuda_external_alloc";
-constexpr const char* kcudaExternalFree = "cuda_external_free";
+constexpr const char* kcudaExternalAlloc = "gpu_external_alloc";
+constexpr const char* kcudaExternalFree = "gpu_external_free";
 }  // namespace provider_option_names
 }  // namespace cuda
 
