@@ -11,6 +11,12 @@ import sys
 
 from . import _ld_preload  # noqa: F401
 
+def ExtendDllPath():
+    for p in os.environ['PATH'].split(';'):
+        if os.path.isdir(p):
+            os.add_dll_directory(p)
+            print (f'add dll path: {p}')
+
 if platform.system() == "Windows":
     from . import version_info
 
@@ -61,4 +67,5 @@ if platform.system() == "Windows":
             raise ImportError(
                 "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
 
+ExtendDllPath()        
 from .onnxruntime_pybind11_state import *  # noqa
