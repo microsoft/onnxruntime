@@ -3847,5 +3847,26 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, PropagateCastOp) {
+  const std::vector<PathString> model_uris = {
+      MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx",
+      MODEL_FOLDER "propagate_cast/propagate_cast_float.onnx"
+  };
+  int i=0;
+  for (const auto& model_uri : model_uris) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        onnxruntime::make_unique<PropagateCastOps>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    Model::Save(*p_model, "propagated_casts_" + to_string(i++) + ".onnx");
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
