@@ -175,15 +175,22 @@ If the *device_type* runtime config option is not explicitly specified, CPU will
 
 3. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 --network host -f <Dockerfile> .
+      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 -f <Dockerfile> .
      ```
-4. Run hddldaemon on the host in a separate terminal session using the following command: 
+4. Run hddldaemon on the host in a separate terminal session using the following steps: 
+    - Initialize the OpenVINO environment.
+      ```
+        source <openvino_install_directory>/bin/setupvars.sh
+      ```
+    - Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field “bypass_device_number” to 8.
+    - Restart the hddl daemon for the changes to take effect.
      ```
       $HDDL_INSTALL_DIR/bin/hddldaemon
      ```
+    - Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
 5. Run the docker image by mounting the device drivers
     ```
-    docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
 
     ```
 
@@ -193,12 +200,12 @@ If the *device_type* runtime config option is not explicitly specified, CPU will
 
      for HETERO:
      ```
-      docker build --rm -t onnxruntime-HETERO --build-arg DEVICE=HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... --network host -f <Dockerfile> .
+      docker build --rm -t onnxruntime-HETERO --build-arg DEVICE=HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
      ```
 
      for MULTI:
      ```
-      docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... --network host -f <Dockerfile> .
+      docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
      ```
 
 2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI Device build type.
