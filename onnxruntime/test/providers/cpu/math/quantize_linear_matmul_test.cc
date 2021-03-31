@@ -261,6 +261,7 @@ struct PrePackTestOp {
   }
 };
 
+#ifndef ENABLE_TRAINING
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
@@ -284,6 +285,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   test_non_empty.AddOutput<uint8_t>("T3", {2, 3}, {168, 115, 255, 1, 66, 151});
   test_non_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

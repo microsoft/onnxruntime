@@ -174,6 +174,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
+#ifndef ENABLE_TRAINING
 class PrePackingTestOpKernel : public OpKernel {
  public:
   PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
@@ -394,6 +395,7 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{false, true},
                                          PrepackingTestParam{true, false},
                                          PrepackingTestParam{true, true}));
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
