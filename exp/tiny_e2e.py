@@ -8,6 +8,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
  
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
+import copy
 
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
@@ -15,16 +16,11 @@ def _ortvalue_from_dlpack(dlpack_tensor):
 class MyReLU(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
-        print('MyReLU forward.')
-        # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-        print("Current process id is ", os.getpid())
         ctx.save_for_backward(input)
         return input.clamp(min=0)
  
     @staticmethod
     def backward(ctx, grad_output):
-        print('MyReLU backward.')
-        print(ctx.saved_tensors)
         input, = ctx.saved_tensors
         grad_input = grad_output.clone()
         grad_input[input < 0] = 0
@@ -47,20 +43,6 @@ class MyModule(torch.nn.Module):
         h = self.linear_b(h)
         return h
  
-# Define input.
-x = torch.tensor([[0.3971, 0.7544],
-                  [0.5695, 0.4388]], requires_grad=True)
-x.requires_grad = True
-model = MyModule()
-torch.onnx.export(model, (x,), 'model.onnx', operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH, custom_opsets={"prim":1})
-onnx_model = onnx.load('model.onnx')
-print(onnx_model)
-print('-------------------------------------------')
-print('-------------------------------------------')
-print('Use ORTModule')
-model = ORTModule(model)
-
-
 class CustomFnWrapperModule(torch.nn.Module):
     def __init__(self):
         super(CustomFnWrapperModule, self).__init__()
@@ -74,27 +56,23 @@ class CustomFnWrapperModule(torch.nn.Module):
             # what if custom function modify x, and in ORT is using an unexpected value at the same time.
             self.x_t.requires_grad = True
             with torch.enable_grad():
-                # self.x_t = torch.tensor([1.0, 2.0, 3.0, -4.0])
-                # self.x_t.requires_grad = True
-                print("Current process id is ", os.getpid())
-                self.y = MyReLU.apply(self.x_t) #(self.x_t)
+                print("==== Entering CustomFnWrapperModule.compute , process id {} ====".format(os.getpid()))
+                self.y = MyReLU.apply(self.x_t)
                 print(self.y)
-                print("====================", self.y.grad_fn)
-                (ret) = self.y
-                print("device: ", ret.device)
-                v = ret.data_ptr()
-                print("v : ", v)
-                forward_outputs = [ret] #[ret.contiguous()]
-                [print("CustomFnWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+                print("===== CustomFnWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.y, self.y.device, self.y.grad_fn))
+                forward_outputs = [self.y] #[ret.contiguous()]
+                [print("===== CustomFnWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+
                 # need hold the forward outputs before PythonOp Compute completed.
                 self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                [print("CustomFnWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
+                [print("===== CustomFnWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
 
-                ctx_ptr = int(id(ret.grad_fn))
+                ctx_ptr = int(id(self.y.grad_fn))
                 # ctx_ptr = int(id(ret))
                 #print(self.y.grad_fn.saved_tensors)
                 return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
                 print(return_vals)
+                print("==== Exiting CustomFnWrapperModule.compute , process id {} ====".format(os.getpid()))
                 return tuple(return_vals)
         except Exception as e:
             print(e)
@@ -106,8 +84,7 @@ class CustomFnWrapperModule(torch.nn.Module):
     def backward_compute(self, ctx, x):
         print(ctx, ctx.saved_tensors)
         self.x_t = from_dlpack(x)
-        # this should be False
-        #self.x_t.requires_grad = False
+        self.x_t.requires_grad = False
         
         ret = MyReLU.backward(ctx, self.x_t)
         forward_outputs = [ret] #[ret.contiguous()]
@@ -120,24 +97,74 @@ class CustomFnWrapperModule(torch.nn.Module):
         print(return_vals)
         return tuple(return_vals)
 
-# def forward_wrapper(x):
-#     x_t = from_dlpack(x)
-#     x_t.requires_grad = True
-#     ret = MyReLU.apply(x_t)
-#     ctx_ptr = int(id(ret.grad_fn))
-#     packed_val = _ortvalue_from_dlpack(torch.utils.dlpack.to_dlpack(ret))
-#     return_vals = [ctx_ptr, int(packed_val.ortvalue_ptr())]
-#     print(return_vals)
-
-#     return tuple(return_vals)
 
 ort.register_custom_torch_function_forward("MyReLU", CustomFnWrapperModule)
 ort.register_custom_torch_function_backward("MyReLU", CustomFnWrapperModule)
  
-y = model(x)
+# Define input.
+x = torch.tensor([[0.3971, 0.7544],
+                  [0.5695, 0.4388]], requires_grad=True)
 
-y.sum().backward()
- 
-print('x:\n', x)
-print('x.grad:\n', x.grad)
-print('y:\n', y)
+model = MyModule()
+torch.onnx.export(model, (x,), 'model.onnx', operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH, custom_opsets={"prim":1})
+onnx_model = onnx.load('model.onnx')
+print(onnx_model)
+print('-------------------------------------------')
+
+def run_with_pytorch_on_cpu(model):
+    print('Use PyTorch for CPU run....')
+    y = model(x)
+    y.sum().backward()
+    print('x:\n', x)
+    print('x.grad:\n', x.grad)
+    print('y:\n', y)
+    return x, x.grad, y
+
+def run_with_ort_on_cpu(model):
+    print('Use ORTModule for CPU run....')
+    model = ORTModule(copy.deepcopy(model))
+    y = model(x)
+    y.sum().backward()
+    print('x:\n', x)
+    print('x.grad:\n', x.grad)
+    print('y:\n', y)
+    return x, x.grad, y
+
+
+def run_with_pytorch_on_gpu(model):
+    print('Use PyTorch for CUDA run....')
+    device = torch.device('cuda:0')
+    model.to(device)
+    model = ORTModule(copy.deepcopy(model))
+    y = model(x.to(device))
+    y.sum().backward()
+    print('x:\n', x)
+    print('x.grad:\n', x.grad)
+    print('y:\n', y)
+    torch.cuda.synchronize()
+    return x, x.grad, y
+
+def run_with_ort_on_gpu(model):
+    print('Use ORTModule for CUDA run....')
+    device = torch.device('cuda:0')
+    model.to(device)
+    model = ORTModule(copy.deepcopy(model))
+    y = model(x.to(device))
+    y.sum().backward()
+    print('x:\n', x)
+    print('x.grad:\n', x.grad)
+    print('y:\n', y)
+    torch.cuda.synchronize()
+    return x, x.grad, y
+
+_, x_grad1, y1 = run_with_pytorch_on_cpu(model)
+_, x_grad2, y2 = run_with_ort_on_cpu(model)
+cpu_x_grad_equal = torch.all(torch.eq(x_grad1, x_grad2))
+cpu_y_equal = torch.all(torch.eq(y1, y2))
+
+_, x_grad1, y1 = run_with_pytorch_on_gpu(model)
+_, x_grad2, y2 = run_with_ort_on_gpu(model)
+gpu_x_grad_equal = torch.all(torch.eq(x_grad1, x_grad2))
+gpu_y_equal = torch.all(torch.eq(y1, y2))
+
+print("cpu_x_grad_equal: {}, cpu_y_equal: {}, gpu_x_grad_equal: {}, gpu_y_equal: {}".format(bool(cpu_x_grad_equal), bool(cpu_y_equal), bool(gpu_x_grad_equal), bool(gpu_y_equal)))

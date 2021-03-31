@@ -112,7 +112,7 @@ data = [torch.tensor([[0.3971, 0.7544],
                     [0.4695, 0.3388]], requires_grad=False),]
 
 def run(rank, size):
-    device = torch.device('cuda:' + str(rank + 1))
+    device = torch.device('cuda:' + str(rank))
     # Define input.
     
     # Fake data partition.
@@ -152,7 +152,7 @@ def run(rank, size):
 
 def init_process(rank, size, fn, backend='gloo'):
     """ Initialize the distributed environment. """
-    torch.cuda.set_device(rank + 1)
+    torch.cuda.set_device(rank)
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '29500'
     dist.init_process_group(backend='nccl', init_method='tcp://' + os.environ['MASTER_ADDR'] + ':23456',
