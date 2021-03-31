@@ -198,12 +198,12 @@ static bool PropagateBackwards(Graph& graph, Node* node, std::deque<onnxruntime:
   return modified;
 }
 
+// Fuse all nodes, replace with a single node.
+// Assumptions:
+// 1. all nodes are Cast ops and are of the same Cast type
+// 2. all the nodes have the same input
 static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes)
 {
-  // Fuse all nodes, replace with a single node.
-  // Assumptions:
-  // 1. all nodes are Cast ops and are of the same Cast type
-  // 2. all the nodes have the same input
   std::vector<NodeArg*> outputs;
   for (Node* node : nodes) {
     std::vector<NodeArg*> node_outputs = node->MutableOutputDefs();
@@ -217,9 +217,9 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes)
                        outputs,
                        &node->GetAttributes(),
                        node->Domain());
-  for (Node* node : nodes) {
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());    
+  for (Node* n : nodes) {
+    graph_utils::RemoveNodeOutputEdges(graph, *n);
+    graph.RemoveNode(n->Index());    
   }
 }
 // Traverse the graph recursively searching/collecting sibling Cast op nodes to fuse and call FuseNodes.
@@ -259,25 +259,24 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   (void) graph_level;
   (void) logger;
-  
+  modified = false;
   // Propagate FP32 Casts forward
   for (const NodeArg* input: graph.GetInputs()) {
     for (Node* node : graph.GetMutableConsumerNodes(input->Name())) {
-      local_modified |= PropagateForwards(graph, node, removed_nodes);
+      modified |= PropagateForwards(graph, node, removed_nodes);
     }
   }
 
   // Propagate FP16 Casts backward
   for (const NodeArg* output: graph.GetOutputs()) {
     Node* node = graph.GetMutableProducerNode(output->Name());
-    local_modified |= PropagateBackwards(graph, node, removed_nodes);
+    modified |= PropagateBackwards(graph, node, removed_nodes);
   }
 
   // Fuse subgraphs, sibling Cast nodes with same input
   for (auto& node: graph.Nodes()) {
-    local_modified |= FuseSubgraphs(graph, &node);
+    modified |= FuseSubgraphs(graph, &node);
   }
-  modified |= local_modified;
 
   for (onnxruntime::NodeIndex removed_node : removed_nodes) {
     graph.RemoveNode(removed_node);
