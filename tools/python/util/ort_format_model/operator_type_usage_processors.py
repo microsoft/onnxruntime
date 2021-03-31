@@ -397,8 +397,8 @@ def _create_operator_type_usage_processors():
     add(Output0TypedRegistrationProcessor('ai.onnx', 'DynamicQuantizeLinear'))
 
     # make sure all the dequantize types are enabled. we use int32_t for parts of GEMM and Conv so just
-    # enabling int8 and uint8 is not enough. 
-	# TODO: Only apply required types to the global type list and ignore if it's model based per-op type reduction
+    # enabling int8 and uint8 is not enough.
+    # TODO: Only apply required types to the global type list and ignore if it's model based per-op type reduction
     add(DefaultTypeUsageProcessor('ai.onnx', 'DequantizeLinear', inputs=[0],
                                   required_input_types={0: {'int8_t', 'uint8_t', 'int32_t'}}))
 
