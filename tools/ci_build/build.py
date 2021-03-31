@@ -280,8 +280,12 @@ def parse_arguments():
         choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
         help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
-    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument(
+        "--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
+        help="Path to the Android SDK")
+    parser.add_argument(
+        "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
+        help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
     parser.add_argument("--android_run_emulator", action="store_true",
@@ -797,8 +801,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
 
     if args.android:
+        if not args.android_ndk_path:
+            raise BuildError("android_ndk_path required to build for Android")
+        if not args.android_sdk_path:
+            raise BuildError("android_sdk_path required to build for Android")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
+                args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
