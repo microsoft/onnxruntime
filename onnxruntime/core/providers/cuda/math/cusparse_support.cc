@@ -327,7 +327,6 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     N = 1;
   }
 
-  std::vector<IAllocatorUniquePtr<uint8_t>> sparse_buffers;
   cusparseSpMatDescr_t sparse_desc = nullptr;
   std::unique_ptr<cusparseSpMatDescr_t, decltype(guards::close_sparse_fn)> sparse_guard(nullptr, guards::close_sparse_fn);
 
@@ -358,6 +357,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     ORT_RETURN_IF_ERROR(ConvertToBlockedEll(kernel, ell_block_size, K, N, transb, tensor.GetElementType(), element_size,
                                             tensor.DataRaw(), ell_ind_buffer, ell_values_buffer, ell_cols));
 
+    out_buffers.reserve(2);
     /// XXX:
     // return Status::OK();
 
@@ -372,8 +372,8 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
                                                       cuda_type));
 
     sparse_guard.reset(&sparse_desc);
-    sparse_buffers.push_back(std::move(ell_ind_buffer));
-    sparse_buffers.push_back(std::move(ell_values_buffer));
+    out_buffers.push_back(std::move(ell_ind_buffer));
+    out_buffers.push_back(std::move(ell_values_buffer));
   } else if (prepack_param.UseEllFormat()) {
     // XXX: Right now we just choose some format
     // How do we log here?
@@ -435,23 +435,24 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     CUSPARSE_RETURN_IF_ERROR(cusparseSpMatGetSize(sparse_desc, &rows_tmp, &cols_tmp,
                                                   &nnz));
 
+    out_buffers.reserve(3);
     if (final_param.UseCsrFormat()) {
       auto csr_cols = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto csr_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
       CUSPARSE_RETURN_IF_ERROR(cusparseCsrSetPointers(sparse_desc, csr_offsets.get(), csr_cols.get(),
                                                       csr_values.get()));
-      sparse_buffers.push_back(std::move(csr_values));
-      sparse_buffers.push_back(std::move(csr_offsets));
-      sparse_buffers.push_back(std::move(csr_cols));
+      out_buffers.push_back(std::move(csr_values));
+      out_buffers.push_back(std::move(csr_offsets));
+      out_buffers.push_back(std::move(csr_cols));
     } else {
       auto coo_row_ind = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto coo_col_ind = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto coo_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
       CUSPARSE_RETURN_IF_ERROR(cusparseCooSetPointers(sparse_desc, coo_row_ind.get(),
                                                       coo_col_ind.get(), coo_values.get()));
-      sparse_buffers.push_back(std::move(coo_row_ind));
-      sparse_buffers.push_back(std::move(coo_col_ind));
-      sparse_buffers.push_back(std::move(coo_values));
+      out_buffers.push_back(std::move(coo_row_ind));
+      out_buffers.push_back(std::move(coo_col_ind));
+      out_buffers.push_back(std::move(coo_values));
     }
 
     CUSPARSE_RETURN_IF_ERROR(cusparseDenseToSparse_convert(handle, dense_desc, sparse_desc,
@@ -460,7 +461,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
 
     CUDA_CALL(cudaDeviceSynchronize());
     // XXX: Print all the buffers
-    const auto& bufs = sparse_buffers;
+    const auto& bufs = out_buffers;
     ORT_UNUSED_PARAMETER(bufs);
     DUMP_DISP(t_disp, expected_kernel_type, float, double, MLFloat16, BFloat16);
     if (prepack_param.UseCsrFormat()) {
@@ -476,7 +477,6 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
 
   out_sparse_desc = sparse_desc;
   sparse_guard.release();
-  out_buffers.swap(sparse_buffers);
 
   is_packed = true;
   return Status::OK();
