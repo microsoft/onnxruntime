@@ -24,7 +24,9 @@
   "editor.wrappingIndent": "none",
   "files.exclude": {
     "common/lib/**/*.js.map": true,
-    "common/lib/**/*.js": true
+    "common/lib/**/*.js": true,
+    "nodejs/lib/**/*.js.map": true,
+    "nodejs/lib/**/*.js": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
