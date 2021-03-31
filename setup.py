@@ -37,6 +37,7 @@ for arg in sys.argv[1:]:
 
         break
 
+cuda_version = None
 # The following arguments are mutually exclusive
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
@@ -44,6 +45,11 @@ if '--use_tensorrt' in sys.argv:
 elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     sys.argv.remove('--use_cuda')
+    if '--cuda_version' in sys.argv:
+        cuda_version_index = sys.argv.index('--cuda_version')
+        cuda_version = sys.argv[cuda_version_index + 1]
+        sys.argv.remove('--cuda_version')
+        sys.argv.remove(cuda_version)
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
     sys.argv.remove('--use_openvino')
@@ -234,12 +240,28 @@ packages = [
 
 requirements_file = "requirements.txt"
 
+local_version = None
 if '--enable_training' in sys.argv:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
     requirements_file = "requirements-training.txt"
+    # with training, we want to follow this naming convention:
+    # stable:
+    # onnxruntime-1.8.0+cu111_training-cp36-cp36m-linux_x86_64.whl
+    # nightly:
+    # onnxruntime-1.8.0.dev20210218+cu111_training-cp36-cp36m-linux_x86_64.whl
+    # this is needed by the immediate torch ort package.
+    # we further suggest the same naming convention for all onnxruntime packages, for example:
+    # stable:
+    # onnxruntime-1.8.0+nuphar-cp36-cp36m-linux_x86_64.whl
+    # nightly:
+    # onnxruntime-1.8.0.dev20210218+nuphar-cp36-cp36m-linux_x86_64.whl
+    package_name = 'onnxruntime'
+    if cuda_version:
+        local_version = '+cu' + cuda_version + '_training'
+
 
 package_data = {}
 data_files = []
@@ -304,6 +326,9 @@ if nightly_build:
       build_suffix = build_suffix.replace('.','')
 
     version_number = version_number + ".dev" + build_suffix
+
+if local_version:
+    version_number = version_number + local_version
 
 if wheel_name_suffix:
     package_name = "{}_{}".format(package_name, wheel_name_suffix)
