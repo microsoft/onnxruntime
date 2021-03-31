@@ -72,9 +72,10 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));
 
-  Tensor* output_1_tensor = ctx->Output(1, {input_count});
-  if (output_1_tensor) { // optional output 1
-    std::copy(concat_sizes.begin(), concat_sizes.end(), output_1_tensor->template MutableData<int64_t>());
+  // Create optional output tensor for 'per_input_length'
+  Tensor* per_input_length_tensor = ctx->Output(1, {input_count});
+  if (per_input_length_tensor) {
+    std::copy(concat_sizes.begin(), concat_sizes.end(), per_input_length_tensor->template MutableData<int64_t>());
   }
 
   return Status::OK();
