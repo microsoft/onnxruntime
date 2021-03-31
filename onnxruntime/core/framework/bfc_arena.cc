@@ -20,9 +20,9 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink),
-      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
+      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
+      intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink),
       shrink_on_every_run_(shrink_on_every_run) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
@@ -454,7 +454,7 @@ Status BFCArena::Shrink() {
       stats_.num_deallocs += 1;
       stats_.total_allocated_bytes -= shrink_size;
 
-      LOGS_DEFAULT(WARNING) << device_allocator_->Info().name << " BFC Arena shrunk by "
+      LOGS_DEFAULT(VERBOSE) << device_allocator_->Info().name << " BFC Arena shrunk by "
                             << shrink_size << " bytes. "
                             << " The total allocated bytes is now " << stats_.total_allocated_bytes;
 
@@ -476,7 +476,7 @@ Status BFCArena::Shrink() {
   }
 
   // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
-  // In case the extend strategy is kSameAsrequested, the arena growth is exactly the size of the memory request itself
+  // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
   curr_region_allocation_bytes_ = intial_regrowth_chunk_size_bytes_after_shrink_;
 
   return Status::OK();
