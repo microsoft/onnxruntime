@@ -1869,7 +1869,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-                    int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes, bool shrink_on_every_run, _Outptr_ OrtArenaCfg** out) {
+                    int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes, int shrink_on_every_run, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
   *out = new OrtArenaCfg();
   (*out)->max_mem = max_mem;
@@ -1877,7 +1877,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_ size_t max_mem, int arena_ex
   (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
   (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
   (*out)->initial_regrowth_chunk_size_bytes_after_shrink = initial_regrowth_chunk_size_bytes;
-  (*out)->shrink_on_every_run = shrink_on_every_run;
+  (*out)->shrink_on_every_run = (shrink_on_every_run != 0);
   return nullptr;
   API_IMPL_END
 }

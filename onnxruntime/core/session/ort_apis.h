@@ -264,5 +264,5 @@ ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(CreateArenaCfgV2, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-                    int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink, bool shrink_on_every_run, _Outptr_ OrtArenaCfg** out);
+                    int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink, int shrink_on_every_run, _Outptr_ OrtArenaCfg** out);
 }  // namespace OrtApis

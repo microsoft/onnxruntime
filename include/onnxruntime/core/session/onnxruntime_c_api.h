@@ -273,7 +273,7 @@ typedef struct OrtCUDAProviderOptions {
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
-  OrtArenaCfg* arena_cfg = nullptr;
+  OrtArenaCfg* arena_cfg;
 } OrtCUDAProviderOptions;
 
 /// <summary>
@@ -1284,13 +1284,13 @@ struct OrtApi {
   * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
   * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
   * \param initial_regrowth_chunk_size_bytes_after_shrink - use -1 to allow ORT to choose the default
-  * \param shrink_on_every_run - a flag indicating if ORT is to de-allocate unused allocations after every Run() 
+  * \param shrink_on_every_run - a flag (1/0) indicating if ORT is to de-allocate unused allocations after every Run() 
   * \param out - a pointer to an OrtArenaCfg instance
   * \return a nullptr in case of success or a pointer to an OrtStatus instance in case of failure
   * See docs/C_API.md for details on what the following parameters mean and how to choose these values
   */
   ORT_API2_STATUS(CreateArenaCfgV2, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-                  int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink, bool shrink_on_every_run, _Outptr_ OrtArenaCfg** out);
+                  int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink, int shrink_on_every_run, _Outptr_ OrtArenaCfg** out);
 };
 
 /*
