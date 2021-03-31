@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 /**
 @Class NotWhereFusion
 
-Transform that fuses two Not -> Where nodes to a single Where node
+Rewrite rule that fuses two Not -> Where nodes to a single Where node
 with the where inputs 1 and 2 flipped.
 Condition ->  Not -> Where ->
               value0-|  |
@@ -19,13 +19,18 @@ Condition -> Where ->
       value1-|  |
       value0----|
 */
-class NotWhereFusion : public GraphTransformer {
+class NotWhereFusion : public RewriteRule {
  public:
-  NotWhereFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("NotWhereFusion", compatible_execution_providers) {
+  NotWhereFusion() noexcept : RewriteRule("NotWhereFusion") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Where"};
   }
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+ private:
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

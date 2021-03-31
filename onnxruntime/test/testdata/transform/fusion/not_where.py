@@ -20,8 +20,12 @@ kwargs['opset_imports'] = opsets
 def GenerateModel(model_name):
     nodes = [  # subgraph
         # float
-        helper.make_node("Not", ["X"], ["not_X"], "not_1"),
-        helper.make_node("Where", ["not_X", "v0", "v1"], ["Y"], "where_1")
+        helper.make_node("Not", ["X"], ["not_X_1"], "not_1"),
+        helper.make_node("Where", ["not_X_1", "v0", "v1"], ["Y1"], "where_1"),
+        helper.make_node("Not", ["not_X_1"], ["x"], "not_2"),
+        helper.make_node("Where", ["x", "v0", "v1"], ["Y2"], "where_2"),
+        helper.make_node("Not", ["X"], ["not_X_2"], "not_3"),
+        helper.make_node("Where", ["not_X_2", "v0", "v1"], ["Y3"], "where_3"),
     ]
 
     inputs = [  # inputs
@@ -38,7 +42,10 @@ def GenerateModel(model_name):
         "NotWhere",  #name
         inputs,
         [  # outputs
-            helper.make_tensor_value_info('Y', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info('not_X_2', TensorProto.BOOL, ['M', 'K']),
+            helper.make_tensor_value_info('Y1', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info('Y2', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info('Y3', TensorProto.FLOAT, ['M', 'K']),
         ],
         initializers)
 

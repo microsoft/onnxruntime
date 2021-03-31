@@ -696,10 +696,15 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   target.MutableInputArgsCount()[target_input_idx] = 1;
 }
 
-void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
-  // move the outputs from second_node to first_node
-  RemoveNodeOutputEdges(graph, first_node);
-  MoveAllNodeOutputs(graph, second_node, first_node);
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, bool move_outputs) {
+  if (move_outputs) {
+    // move the outputs from second_node to first_node
+    RemoveNodeOutputEdges(graph, first_node);
+    MoveAllNodeOutputs(graph, second_node, first_node);
+  } else {
+    // move the inputs from second_node to first_node
+    MoveAllNodeInputEdges(graph, second_node, first_node);
+  }
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());

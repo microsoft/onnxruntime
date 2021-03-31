@@ -555,16 +555,18 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Not"] == 1);
-  ASSERT_TRUE(op_to_count["Where"] == 1);
+  ASSERT_TRUE(op_to_count["Not"] == 3);
+  ASSERT_TRUE(op_to_count["Where"] == 3);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<NotWhereFusion>(), TransformerLevel::Level1);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NotWhereFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Where"] == 1);
-  ASSERT_TRUE(op_to_count["Not"] == 0);
+  ASSERT_TRUE(op_to_count["Where"] == 3);
+  ASSERT_TRUE(op_to_count["Not"] == 2); // can't remove Not if it is graph output/ has more than one consumer
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
