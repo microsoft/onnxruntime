@@ -151,37 +151,6 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
 
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMAllocator>(device_id, CUDA);
-      },
-      info_.device_id,
-      true,
-      {info_.hip_mem_limit,
-       static_cast<int>(info_.arena_extend_strategy),
-       -1, -1});
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
-      },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
-  InsertAllocator(CreateAllocator(pinned_memory_info));
-
-  // TODO: this is actually used for the hip kernels which explicitly ask for inputs from CPU.
-  // This will be refactored/removed when allocator and execution provider are decoupled.
-  AllocatorCreationInfo cpu_memory_info(
-      [](int device_id) {
-        return onnxruntime::make_unique<CPUAllocator>(
-            OrtMemoryInfo("HIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                          OrtMemTypeCPUInput));
-      },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
