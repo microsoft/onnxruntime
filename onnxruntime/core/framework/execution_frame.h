@@ -58,7 +58,8 @@ class IExecutionFrame {
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
+  Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape, 
+      OrtValue*& p_ort_value, const Node& node, size_t nnz = 0);
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrival is sucessful, this function returns true and false otherwise.
