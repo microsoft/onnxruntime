@@ -14,8 +14,8 @@ namespace onnxruntime {
 
 class Reshape final : public OpKernel {
  public:
-  explicit Reshape(const OpKernelInfo& info) : OpKernel(info) {
-    allow_zero_ = info.GetAttrOrDefault<int64_t>("allowzero", 0) == 1;
+  explicit Reshape(const OpKernelInfo& info) : OpKernel(info),
+                                               allow_zero_(info.GetAttrOrDefault<int64_t>("allowzero", 0) == 1) {
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -40,7 +40,7 @@ class Reshape final : public OpKernel {
   }
 
  private:
-  bool allow_zero_;
+  const bool allow_zero_;
 };
 
 class Reshape_1 final : public OpKernel {
