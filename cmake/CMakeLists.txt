@@ -895,6 +895,7 @@ if (onnxruntime_USE_ARMNN)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  add_definitions(-DUSE_DNNL=1)
   include(dnnl)
 endif()
 
