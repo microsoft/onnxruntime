@@ -14,6 +14,58 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+struct IsNotZero {
+  bool operator()(T v) const noexcept {
+    return v != static_cast<T>(0);
+  }
+};
+
+static const MLFloat16 zero_ml16(0.f);
+
+template <>
+struct IsNotZero<MLFloat16> {
+  bool operator()(MLFloat16 v) const noexcept {
+    return zero_ml16.val != v.val;
+  }
+};
+
+static const BFloat16 zero_b16(0.f);
+
+template <>
+struct IsNotZero<BFloat16> {
+  bool operator()(BFloat16 v) const noexcept {
+    return zero_b16.val != v.val;
+  }
+};
+
+/// <summary>
+/// Finds the first non-zero entry and computes its col index.
+/// Advances restart past the found entry. restart is nullptr if
+/// reached the end of the block row.
+/// </summary>
+/// <typeparam name="T"></typeparam>
+template <typename T>
+struct FindNotZero {
+  // returns nullptr if not found
+  void operator()(int64_t N, int64_t ell_block_size,
+                  const uint8_t* block_row_begin,
+                  const uint8_t*& restart, const uint8_t* block_row_end,
+                  int64_t& block_col) const {
+    const T* block_row_begin_T = reinterpret_cast<const T*>(block_row_begin);
+    const T* start = reinterpret_cast<const T*>(restart);
+    const T* block_row_end_T = reinterpret_cast<const T*>(block_row_end);
+    assert(start <= block_row_end_T);
+    auto hit = std::find_if(start, block_row_end_T, IsNotZero<T>());
+    if (hit != block_row_end_T) {
+      block_col = ((hit - block_row_begin_T) % N) / ell_block_size;
+      restart = reinterpret_cast<const uint8_t*>(hit + 1);
+    } else {
+      restart = nullptr;
+    }
+  }
+};
+
 namespace cusparse_helper {
 namespace guards {
 auto close_dense_fn = [](cusparseDnMatDescr_t* desc) { cusparseDestroyDnMat(*desc); };
@@ -23,6 +75,13 @@ auto destroy_cusparse_fn = [](cusparseHandle_t* desc) { cusparseDestroy(*desc); 
 
 /// <summary>
 /// Scans the matrix and converts it into Blocked Ell format.
+/// The function scans the matrix and detects non-zero blocks.
+/// It builds an index. Because, the intention is to use this sparse matrix
+/// as the second argument to MatMul but the API needs it as the first argument,
+/// we flip the meaning of the transpose flag so we can use it as the first argument.
+/// We also specify the layout as Column Major even though the actual layout is Row Major.
+/// When copying the blocks we copy all of the non zero values from the original matrix first row(column)
+/// for all non-zero blocks. Then the second row(column) and so on.
 /// </summary>
 /// <param name="ell_block_size">Chosen block sizes</param>
 /// <param name="K">rows in the matrix to be sparsified</param>
@@ -128,9 +187,6 @@ Status ConvertToBlockedEll(const CudaKernel* kernel,
   int64_t blocks_copied = 0;
   for (const auto& e : rows_to_cols) {
     ORT_ENFORCE(e.second.size() == max_cols, "Failed to check for equal columns");
-    // Copy the block, we do the opposite of the transpose flag
-    // as we intend to swap the args.
-    // XXX: This currently copies block bytes together. Transposed.
     if (!transpose) {
       const auto src_block_col_idx = e.first;
       const auto* const block_col_start = input + src_block_col_idx * ell_block_row_bytes;
@@ -240,20 +296,17 @@ bool CanUseBlockedEllFormat(const cudaDeviceProp& dev_props, cudaDataType a_b_ty
 
 Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& prepack_param,
                bool transb, int32_t expected_kernel_type, cudaDataType cuda_type,
-               std::unique_ptr<SparseInfo>& sparse_info, bool& is_packed) {
+               OpKernel::PrepackParam& final_param,
+               std::vector<IAllocatorUniquePtr<uint8_t>>& out_buffers,
+               cusparseSpMatDescr_t& out_sparse_desc, bool& is_packed) {
   is_packed = false;
   if (tensor.GetElementType() != expected_kernel_type) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, prepack_param.name + " : wrong data type for the constant initializer");
   }
 
-  // We do not want to use per-thread handles but persists between the runs.
-  cusparseHandle_t handle;
-  CUSPARSE_RETURN_IF_ERROR(cusparseCreate(&handle));
-  std::unique_ptr<cusparseHandle_t, decltype(guards::destroy_cusparse_fn)> handle_guard(&handle, guards::destroy_cusparse_fn);
-
-  // XXX: Currently support only 2-D Matrices for experimental purposes
-  const auto& right_shape = tensor.Shape();
+  cusparseHandle_t handle = kernel->CusparseHandle();
   const auto element_size = tensor.DataType()->Size();
+  const auto& right_shape = tensor.Shape();
   const auto right_num_dims = right_shape.NumDimensions();
   if (right_num_dims > 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2");
@@ -274,13 +327,11 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     N = 1;
   }
 
-  cusparseSpMatDescr_t sparse_desc;
+  std::vector<IAllocatorUniquePtr<uint8_t>> sparse_buffers;
+  cusparseSpMatDescr_t sparse_desc = nullptr;
   std::unique_ptr<cusparseSpMatDescr_t, decltype(guards::close_sparse_fn)> sparse_guard(nullptr, guards::close_sparse_fn);
 
-  auto sp_info = onnxruntime::make_unique<SparseInfo>(prepack_param, right_shape);
-  const OpKernel::PrepackParam& param = sp_info->param_;
-  sp_info->K_ = K;
-  sp_info->N_ = N;
+  final_param = prepack_param;
 
   // Feed column order and swap dims
   const int64_t num_rows = transb ? K : N;
@@ -290,14 +341,15 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
   // Blocked ELL has partial support for Volta. For Float32/Float64 it still requires Ampere arch (8)
   // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-generic-function-spmm
   // XXX:
-  // const auto& dev_props = kernel->GetDeviceProp();
-  // if (param.UseEllFormat() && CanUseBlockedEllFormat(dev_props, cuda_type, cuda_type, cuda_type)) {
-  if (param.UseEllFormat()) {
+  const auto& dev_props = kernel->GetDeviceProp();
+  if (final_param.UseEllFormat() && CanUseBlockedEllFormat(dev_props, cuda_type, cuda_type, cuda_type)) {
+  // if (prepack_param.UseEllFormat()) {
     // Some tunables which we may adjust for both testing and depending on the matrix size.
     // Must be power of two
-    const int64_t ell_block_size = param.ell_block_size;
+    const int64_t ell_block_size = prepack_param.ell_block_size;
     if ((K % ell_block_size) != 0 || (N % ell_block_size) != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, final_param.name + " : Matrix dims: ", K, " ", N,
+       " must divide evenly by a chosen Ell Block size: ", ell_block_size);
     }
 
     IAllocatorUniquePtr<uint8_t> ell_ind_buffer;
@@ -320,18 +372,16 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
                                                       cuda_type));
 
     sparse_guard.reset(&sparse_desc);
-    sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
-    sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
+    sparse_buffers.push_back(std::move(ell_ind_buffer));
+    sparse_buffers.push_back(std::move(ell_values_buffer));
+  } else if (prepack_param.UseEllFormat()) {
+    // XXX: Right now we just choose some format
+    // How do we log here?
+    final_param.sparse_flags = prepack_param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
+    final_param.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
   }
 
-  //else if (param.UseEllFormat()) {
-  //  // XXX: Right now we just choose some format
-  //  // How do we log here?
-  //  sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
-  //  sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
-  //}
-
-  if (param.UseCsrFormat() || param.UseCooFormat()) {
+  if (final_param.UseCsrFormat() || final_param.UseCooFormat()) {
     cusparseDnMatDescr_t dense_desc;
     CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
                                                  num_rows,  // Number of rows in B(T)
@@ -345,7 +395,7 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
 
     onnxruntime::IAllocatorUniquePtr<uint8_t> csr_offsets;
-    if (param.UseCsrFormat()) {
+    if (final_param.UseCsrFormat()) {
       csr_offsets = kernel->GetPersistentBuffer<uint8_t>((num_rows + 1) * sizeof(int));
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateCsr(&sparse_desc,
                                                  num_rows,
@@ -385,23 +435,23 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     CUSPARSE_RETURN_IF_ERROR(cusparseSpMatGetSize(sparse_desc, &rows_tmp, &cols_tmp,
                                                   &nnz));
 
-    if (param.UseCsrFormat()) {
+    if (final_param.UseCsrFormat()) {
       auto csr_cols = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto csr_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
       CUSPARSE_RETURN_IF_ERROR(cusparseCsrSetPointers(sparse_desc, csr_offsets.get(), csr_cols.get(),
                                                       csr_values.get()));
-      sp_info->prepack_buffers_.push_back(std::move(csr_values));
-      sp_info->prepack_buffers_.push_back(std::move(csr_offsets));
-      sp_info->prepack_buffers_.push_back(std::move(csr_cols));
+      sparse_buffers.push_back(std::move(csr_values));
+      sparse_buffers.push_back(std::move(csr_offsets));
+      sparse_buffers.push_back(std::move(csr_cols));
     } else {
       auto coo_row_ind = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto coo_col_ind = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
       auto coo_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
       CUSPARSE_RETURN_IF_ERROR(cusparseCooSetPointers(sparse_desc, coo_row_ind.get(),
                                                       coo_col_ind.get(), coo_values.get()));
-      sp_info->prepack_buffers_.push_back(std::move(coo_row_ind));
-      sp_info->prepack_buffers_.push_back(std::move(coo_col_ind));
-      sp_info->prepack_buffers_.push_back(std::move(coo_values));
+      sparse_buffers.push_back(std::move(coo_row_ind));
+      sparse_buffers.push_back(std::move(coo_col_ind));
+      sparse_buffers.push_back(std::move(coo_values));
     }
 
     CUSPARSE_RETURN_IF_ERROR(cusparseDenseToSparse_convert(handle, dense_desc, sparse_desc,
@@ -410,10 +460,10 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
 
     CUDA_CALL(cudaDeviceSynchronize());
     // XXX: Print all the buffers
-    const auto& bufs = sp_info->prepack_buffers_;
+    const auto& bufs = sparse_buffers;
     ORT_UNUSED_PARAMETER(bufs);
     DUMP_DISP(t_disp, expected_kernel_type, float, double, MLFloat16, BFloat16);
-    if (param.UseCsrFormat()) {
+    if (prepack_param.UseCsrFormat()) {
       DUMP_ARRAY(int, std::cout, "csr_offsets", bufs[0].get(), num_rows + 1, 10);
       DUMP_ARRAY(int, std::cout, "csr_cols", bufs[1].get(), nnz, 10);
       DUMP_INVOKE(t_disp, DumpArray, std::cout, "csr_values", bufs[2].get(), nnz, 10);
@@ -424,16 +474,16 @@ Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::P
     }
   }
 
-  sp_info->sparse_desc_ = onnxruntime::make_optional<cusparseSpMatDescr_t>(sparse_desc);
+  out_sparse_desc = sparse_desc;
   sparse_guard.release();
-  sparse_info = std::move(sp_info);
+  out_buffers = std::move(sparse_buffers);
 
   is_packed = true;
   return Status::OK();
 }
 
-Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo& sparse_info,
-               float alpha, bool transa, bool transb, cudaDataType cuda_type) {
+Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const OpKernel::PrepackParam& param, const TensorShape& right_shape,
+               cusparseSpMatDescr_t right_sparse_desc, float alpha, bool transa, bool transb, cudaDataType cuda_type) {
   const Tensor* left = ctx->Input<Tensor>(0);
   const auto& left_shape = left->Shape();
   const auto left_num_dims = left_shape.NumDimensions();
@@ -441,7 +491,6 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2");
   }
 
-  const auto& right_shape = sparse_info.shape_;
   if (right_shape.NumDimensions() == 1) {
     transb = false;
   }
@@ -452,9 +501,6 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
   const auto M = helper.M();
   const auto N = helper.N();
   const auto K = helper.K();
-
-  ORT_RETURN_IF_NOT(K == sparse_info.K_, "K does not match sparse weight computed K");
-  ORT_RETURN_IF_NOT(N == sparse_info.N_, "N does not match sparse weight computed N");
 
   const auto& output_shape = helper.OutputShape();
   // Make sure we still request output allocation if the len is zero
@@ -508,13 +554,13 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
   // because of the argument swapping we say ColMajor.
   // CUSPARSE_SPMM_CSR_ALG3 also does not support float16/bfloat16 data types
   cusparseSpMMAlg_t spmm_algo = CUSPARSE_SPMM_ALG_DEFAULT;
-  if (sparse_info.param_.UseCsrFormat()) {
+  if (param.UseCsrFormat()) {
     if (op_B == CUSPARSE_OPERATION_TRANSPOSE) {
       spmm_algo = CUSPARSE_SPMM_CSR_ALG2;
     } else if (cuda_type != CUDA_C_16F && cuda_type != CUDA_C_16BF) {
       spmm_algo = CUSPARSE_SPMM_CSR_ALG3;
     }
-  } else if (sparse_info.param_.UseCooFormat()) {
+  } else if (param.UseCooFormat()) {
     spmm_algo = CUSPARSE_SPMM_COO_ALG3;
   }
 
@@ -524,7 +570,7 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
                                                    op_B,
                                                    op_A,
                                                    &alpha,
-                                                   *sparse_info.sparse_desc_,
+                                                   right_sparse_desc,
                                                    dense_desc_A,
                                                    &beta,
                                                    output_desc_C,
@@ -541,7 +587,7 @@ Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo&
                                         op_B,
                                         op_A,
                                         &alpha,
-                                        *sparse_info.sparse_desc_,
+                                        right_sparse_desc,
                                         dense_desc_A,
                                         &beta,
                                         output_desc_C,

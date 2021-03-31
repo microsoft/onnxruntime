@@ -46,11 +46,11 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-    struct PrepackParam {
+  struct PrepackParam {
     int input_idx = 0;           // Input index
     int sparse_flags = 0;   // Sparse initializer annotations
     int64_t ell_block_size = 8; // ell block size when BlockedEll format is used
-    const std::string name;
+    std::string name;
     bool Is2x4Format() const noexcept {
       return (sparse_flags & static_cast<int>(OrtSparseFlags::FORMAT_2x4)) != 0;
     }

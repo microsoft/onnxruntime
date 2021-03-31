@@ -344,8 +344,14 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
     }
 #endif
     if (param.UseCsrFormat() || param.UseCooFormat() || param.UseEllFormat()) {
-      return cusparse_helper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
-                                     sparse_info_, is_packed);
+      cusparseSpMatDescr_t sparse_desc;
+      auto sparse_info = onnxruntime::make_unique<cusparse_helper::SparseInfo>(tensor.Shape());
+      ORT_RETURN_IF_ERROR(cusparse_helper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
+                                                   sparse_info->param_, sparse_info_->prepack_buffers_, sparse_desc, is_packed));
+      if (is_packed) {
+        sparse_info->sparse_desc_ = onnxruntime::make_optional<cusparseSpMatDescr_t>(sparse_desc);
+        sparse_info_ = std::move(sparse_info);
+      }
     }
   }
   return Status::OK();
@@ -372,8 +378,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (sparse_info_->param_.UseCooFormat() ||
         sparse_info_->param_.UseCsrFormat() ||
         sparse_info_->param_.UseEllFormat()) {
-      auto status = cusparse_helper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
-      return status;
+      return cusparse_helper::Compute(this, ctx, sparse_info_->param_, sparse_info_->shape_, *sparse_info_->sparse_desc_,
+        alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + " : Unsupported sparse format specified");
   }
