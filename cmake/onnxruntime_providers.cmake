@@ -354,7 +354,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
-if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO)
+if (True)
   file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"

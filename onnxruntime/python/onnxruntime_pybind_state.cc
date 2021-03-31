@@ -39,6 +39,8 @@
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
 
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -194,6 +196,18 @@ std::string nuphar_settings;
 const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
+
+struct Provider {
+  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
+
+  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
+  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
+
+  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+  virtual void Shutdown() = 0;
+};
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
@@ -1791,6 +1805,23 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return sess;
       }))
+      .def("load_execution_provider", 
+          [](PyInferenceSession* sess,
+              const std::string& ep_shared_lib_path,
+              const ProviderOptions& provider_options = {}) {
+              void* handle;
+              auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, &handle);
+              if (!error.IsOK()) {
+                throw std::runtime_error(error.ErrorMessage());
+              }
+
+              Provider* (*PGetProvider)();
+              Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+
+              Provider* provider = PGetProvider();
+              std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
+              sess->GetSessionHandle()->RegisterExecutionProvider(std::move(ep_factory->CreateProvider()));
+          })
       .def(
           "initialize_session",
           [](PyInferenceSession* sess,
@@ -1962,6 +1993,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   addGlobalMethods(m, env);
   addObjectMethods(m, env);
+
+  Ort::SessionOptions tmp_options;
+  OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0);
 
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
