@@ -13,8 +13,8 @@ constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "hip_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
-constexpr const char* krocmExternalAlloc = "gpu_external_alloc";
-constexpr const char* krocmExternalFree = "gpu_external_free";
+constexpr const char* kgpuExternalAlloc = "gpu_external_alloc";
+constexpr const char* kgpuExternalFree = "gpu_external_free";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -33,7 +33,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
-              rocm::provider_option_names::krocmExternalAlloc,
+              rocm::provider_option_names::kgpuExternalAlloc,
               [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
@@ -41,7 +41,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddValueParser(
-              rocm::provider_option_names::krocmExternalFree,
+              rocm::provider_option_names::kgpuExternalFree,
               [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
@@ -64,8 +64,8 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
   const ProviderOptions options{
       {rocm::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.hip_mem_limit)},
-      {rocm::provider_option_names::krocmExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
-      {rocm::provider_option_names::krocmExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {rocm::provider_option_names::kgpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {rocm::provider_option_names::kgpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {rocm::provider_option_names::kConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},

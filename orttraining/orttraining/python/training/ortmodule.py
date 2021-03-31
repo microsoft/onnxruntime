@@ -315,8 +315,8 @@ class ORTModule(torch.nn.Module):
         self.is_rocm_pytorch = (True if (
             (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        self._use_external_cuda_allocator = True
-        if self._use_external_cuda_allocator:
+        self._use_external_gpu_allocator = True
+        if self._use_external_gpu_allocator:
             # CPP extension to get torch GPU allocator's alloc and free function addresses
             self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
@@ -356,7 +356,7 @@ class ORTModule(torch.nn.Module):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
-            if self._use_external_cuda_allocator:
+            if self._use_external_gpu_allocator:
                 provider_options = [{"device_id": str(self._device.index), "gpu_external_alloc": str(
                     self._torch_alloc), "gpu_external_free": str(self._torch_free)}, {}]
             else:
