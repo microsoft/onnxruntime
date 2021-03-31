@@ -21,6 +21,44 @@
 
 using namespace onnxruntime::common;
 
+namespace {
+    // This function does not access any of the class-level members, that's why
+    // keeping it in a empty namespace, so that it can't be called outside this cpp file.
+    
+    void VerifyOutputSizes(const int output_index, const onnxruntime::Node& node,
+                                            const onnxruntime::TensorShape* output_shape) {
+      onnxruntime::ProtoHelperNodeContext protoContext(node);
+      onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
+
+      const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
+
+      if (outputproto == nullptr) {
+        return;
+      }
+
+      if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
+        ORT_ENFORCE(output_shape->NumDimensions() == 0,
+                    "Output Shape should should be empty because OutputProto for index: ", output_index, " is not kTensorType");
+        return;
+      }
+      const auto& tensortype = outputproto->tensor_type();
+      if (tensortype.has_shape()) {
+        const auto& shape = tensortype.shape();
+        ORT_ENFORCE(shape.dim_size() == output_shape->NumDimensions(),
+                    "Number of dimension of output shape didn't match with model's expected number of dimension of output shape");
+        for (uint32_t output_dim = 0; output_dim < output_shape->NumDimensions(); ++output_dim) {
+          if (shape.dim(output_dim).has_dim_value()) {
+            int64_t expected_size = shape.dim(output_dim).dim_value();
+            int64_t actual_size = (*output_shape)[output_dim];
+            ORT_ENFORCE(expected_size == actual_size,
+                        "Actual dimension(", actual_size, ") didn't match with expected dimension (", expected_size,
+                        ") for outputProtoIndex: ", output_index);
+          }
+        }
+      }
+    }
+}
+
 namespace onnxruntime {
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
@@ -138,10 +176,10 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value,
-                                                     size_t nnz) {
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index, const TensorShape* shape, OrtValue*& p_ort_value,
+                                                     const Node& node, size_t nnz) {
   auto status = Status::OK();
-  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
 
   // return nullptr if it is optional
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
@@ -158,6 +196,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
+      VerifyOutputSizes(output_index, node, shape);
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);
     }
   }
