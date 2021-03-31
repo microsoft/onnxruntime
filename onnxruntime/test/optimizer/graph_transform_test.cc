@@ -534,16 +534,18 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 3);
-  ASSERT_TRUE(op_to_count["Mul"] == 3);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 5);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<DivMulFusion>(), TransformerLevel::Level1);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<DivMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-  Model::Save(*model, "div_mul_fused.onnx");
+
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 3);
-  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)

@@ -31,6 +31,12 @@ def GenerateModel(model_name):
         helper.make_node("Div", ["int64_1", "cast_2"], ["div_3"], "div_3"),
         helper.make_node("Mul", ["D", "div_3"], ["mul_3"], "mul_3"),
         helper.make_node("Identity", ["mul_3"], ["Y"], "output"),
+        # div has >1 consumers
+        helper.make_node("Div", ["float_1", "A"], ["div_4"], "div_4"),
+        helper.make_node("Mul", ["div_4", "B"], ["mul_4"], "mul_4"),
+        # div is graph output
+        helper.make_node("Div", ["float_1", "div_4"], ["div_5"], "div_5"),
+        helper.make_node("Mul", ["div_5", "B"], ["mul_5"], "mul_5"),
     ]
 
     inputs = [  # inputs
@@ -52,6 +58,7 @@ def GenerateModel(model_name):
         inputs,
         [  # outputs
             helper.make_tensor_value_info('Y', TensorProto.INT64, ['M', 'K']),
+            helper.make_tensor_value_info('div_5', TensorProto.FLOAT, ['M', 'K']),
         ],
         initializers)
 

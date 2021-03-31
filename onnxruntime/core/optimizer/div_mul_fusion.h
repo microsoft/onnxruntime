@@ -3,24 +3,29 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 /**
 @Class DivMulFusion
 
-Transform that fuses two Div -> Mul nodes to a single Div node
+Rewrite rule that fuses two Div -> Mul nodes to a single Div node
 when the first input to Div is 1.
 1 / x1 *  x2 -> x2 / x1
 
 */
-class DivMulFusion : public GraphTransformer {
+class DivMulFusion : public RewriteRule {
  public:
-  DivMulFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("DivMulFusion", compatible_execution_providers) {
+  DivMulFusion() noexcept : RewriteRule("DivMulFusion") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Div"};
   }
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+ private:
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime
