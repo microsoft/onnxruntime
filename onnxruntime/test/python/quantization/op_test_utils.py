@@ -20,6 +20,14 @@ class TestDataFeeds(CalibrationDataReader):
     def rewind(self):
         self.iter_next = iter(self.data_feeds)
 
+def check_op_type_order(testcase, model_path, ops):
+    model = onnx.load(Path(model_path))
+    testcase.assertEqual(len(ops), len(model.graph.node), 'op count is not same')
+    for node_idx, node in enumerate(model.graph.node):
+        testcase.assertEqual(
+            ops[node_idx],
+            node.op_type,
+            'op {} is not in order. Expected: {}, Actual: {}'.format(node_idx, ops[node_idx], node.op_type))
 
 def check_op_type_count(testcase, model_path, **kwargs):
     model = onnx.load(Path(model_path))

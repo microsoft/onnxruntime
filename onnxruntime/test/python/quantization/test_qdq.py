@@ -11,7 +11,7 @@ import onnx
 import numpy as np
 from onnx import helper, TensorProto
 from onnxruntime.quantization import quantize_static, QuantType, QuantFormat
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order
 
 class TestQDQFormat(unittest.TestCase):
     def input_feeds(self, n, name2shape):
@@ -163,8 +163,8 @@ class TestQDQFormatConvClip(TestQDQFormat):
                         reduce_range = per_channel
                         )
         data_reader.rewind()
-        qdq_nodes = {'Conv': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 2}
-        check_op_type_count(self, model_int8_qdq_path, **qdq_nodes)
+        #topo sort check
+        check_op_type_order(self, model_int8_qdq_path, ['DequantizeLinear', 'QuantizeLinear', 'DequantizeLinear', 'Conv', 'Clip'])
         check_model_correctness(self, model_fp32_path, model_int8_qdq_path, data_reader.get_next())
 
         data_reader.rewind()

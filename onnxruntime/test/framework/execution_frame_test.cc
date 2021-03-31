@@ -260,7 +260,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 }
 
 #ifdef ENABLE_TRAINING
-TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
+TEST_F(ExecutionFrameTest, BreakOpTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
@@ -314,34 +314,15 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 2.0f), &x_value);
   CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 1.0f), &t_value);
 
-  vector<OrtValue> outputs;
-  ExecutionFrame frame({x_idx}, {x_value}, {y_idx}, outputs, {}, state);
-
-  ASSERT_FALSE(frame.GetMutableNodeInputOrOutputMLValue(t_idx)->IsTensor());
-  ASSERT_STATUS_OK(frame.SetOutputMLValue(t_idx, t_value));
-  ASSERT_TRUE(frame.GetMutableNodeInputOrOutputMLValue(t_idx)->IsTensor());
-
-  OrtValue& y_value = *frame.GetMutableNodeInputOrOutputMLValue(y_idx);
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(
-      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
-
-  MemoryPatternGroup pattern;
-  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
-
-  ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
-  ASSERT_EQ(pattern.patterns.size(), 1u);
-  auto p = pattern.GetPatterns(cpu_allocator->Info());
-  ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
-
-  SessionOptions so;
-  so.session_logid = "MemPatternWithExternalOutputsTest";
-  InferenceSession session_obj{so, GetEnvironment()};
-  std::stringstream buffer;
-  model.ToProto().SerializeToOstream(&buffer);
-  ASSERT_STATUS_OK(session_obj.Load(buffer));
-  ASSERT_STATUS_OK(session_obj.Initialize());
-
   {
+    SessionOptions so;
+    so.session_logid = "BreakOpTestFail";
+    InferenceSession session_obj{so, GetEnvironment()};
+    std::stringstream buffer;
+    model.ToProto().SerializeToOstream(&buffer);
+    ASSERT_STATUS_OK(session_obj.Load(buffer));
+    ASSERT_STATUS_OK(session_obj.Initialize());
+
     // Run with original InferenceSession::Run, it should fail because regular Run call
     // will try to run the full graph and MatMul won't have its desired inputs.
     NameMLValMap feeds;
@@ -360,7 +341,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   {
     SessionOptions so2;
-    so2.session_logid = "MemPatternWithExternalOutputsTest2";
+    so2.session_logid = "BreakOpTestPass";
     so2.enable_mem_pattern = false;
     so2.enable_mem_reuse = false;
     InferenceSession session_obj2{so2, GetEnvironment()};
@@ -369,7 +350,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
     ASSERT_STATUS_OK(session_obj2.Load(buffer2));
     ASSERT_STATUS_OK(session_obj2.Initialize());
     // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(&session_obj2);
+    training::TrainingAgent training_agent(session_obj2);
     unique_ptr<IOBinding> io_binding;
     ASSERT_STATUS_OK(session_obj2.NewIOBinding(&io_binding));
     io_binding->BindInput("X", x_value);

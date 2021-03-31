@@ -244,7 +244,7 @@ static Status PadImpl(OpKernelContext* ctx,
                       const std::vector<int64_t>& slices,
                       const Mode& mode,
                       T value) {
-  if (!utils::HasType<AllEnabledPadTypes, T>()) {
+  if (!utils::HasTypeWithSameSize<AllEnabledPadTypes, T>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type not supported in this build.");
   }
 
@@ -532,7 +532,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
       break;
   }
-
   return pad_status;
 }
 };  // namespace onnxruntime

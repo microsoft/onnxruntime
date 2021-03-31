@@ -53,10 +53,6 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-  Status SetOutputMLValue(int index, const OrtValue& ort_value) {
-    return OpKernelContext::SetOutputMLValue(index, ort_value);
-  }
-
   OrtValue* OutputMLValue(int index, const TensorShape& shape) {
     return OpKernelContext::OutputMLValue(index, shape);
   }

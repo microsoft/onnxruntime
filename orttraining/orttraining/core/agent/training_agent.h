@@ -17,18 +17,18 @@ namespace training {
 class IOBinding;
 
 class TrainingAgent {
+ public:
+  explicit TrainingAgent(InferenceSession& session);
+  ~TrainingAgent();
+  // For ORTModule.forward()
+  common::Status RunForward(onnxruntime::IOBinding& io_binding, int64_t& run_id) ORT_MUST_USE_RESULT;
+  // For ORTModule.backward()
+  common::Status RunBackward(onnxruntime::IOBinding& io_binding, int64_t run_id) ORT_MUST_USE_RESULT;
+  void CancelPendingBackwardRun(int64_t run_id);
 
-  public:
-    explicit TrainingAgent(InferenceSession* session);
-    virtual ~TrainingAgent();
-    // For ORTModule.forward()
-    virtual common::Status RunForward(onnxruntime::IOBinding& io_binding, int64_t& run_id) ORT_MUST_USE_RESULT;
-    // For ORTModule.backward()
-    common::Status RunBackward(onnxruntime::IOBinding& io_binding, int64_t run_id) ORT_MUST_USE_RESULT;
-    void CancelPendingBackwardRun(int64_t run_id);
-  private:
-    // TrainingAgent runs on a InferenceSession under the hood
-    InferenceSession* inference_session_;
+ private:
+  // TrainingAgent runs on a InferenceSession under the hood
+  InferenceSession& inference_session_;
 };
 
 }  // namespace training
