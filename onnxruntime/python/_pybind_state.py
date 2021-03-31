@@ -54,6 +54,7 @@ if platform.system() == "Windows":
             # specified explicitly using the new API introduced in Python 3.8.
             os.add_dll_directory(cuda_bin_dir)
             os.add_dll_directory(cupti_bin_dir)
+            ExtendDllPath()
         else:
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
@@ -65,5 +66,4 @@ if platform.system() == "Windows":
             raise ImportError(
                 "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
 
-ExtendDllPath()
 from .onnxruntime_pybind11_state import *  # noqa
