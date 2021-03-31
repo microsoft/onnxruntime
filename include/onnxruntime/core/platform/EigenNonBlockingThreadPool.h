@@ -38,6 +38,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+#include <bitset>
 #include <iostream>
 
 // ORT thread pool overview
@@ -1091,10 +1092,27 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
-  //std::atomic<bool> distribution_down{false};
+  std::atomic<int> bits[32];
+  int d_o_p = 2;
+  for (int i = 0; i < 32; ++i) {
+    bits[i] = 0;
+  }
+
+  std::function<void(int)> SetKids = [&, this](int pa) {
+    int rc = (pa + 1) << 1;
+    if (rc < d_o_p) {
+      bits[rc] = 1;
+      SetKids(rc);
+    }
+    int lc = rc - 1;
+    if (lc < d_o_p) {
+      bits[lc] = 1;
+      SetKids(lc);
+    }
+  };
 
   using Fn = std::function<void()>;
-  std::function<bool(int, Fn&)> enqueue_fn = [&, this](int idx, Fn& w) {
+  std::function<bool(int, Fn&)> enqueue_fn = [&, this](int idx, Fn w) {
     WorkerData& td = worker_data_[idx];
     Queue& q = td.queue;
     unsigned w_idx;
@@ -1102,6 +1120,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
     if (t) {
       return false;
     } else {
+      ORT_ENFORCE(ps.tasks.size() < d_o_p);
       ps.tasks.push_back({idx, w_idx});
       td.EnsureAwake();
       return true;
@@ -1110,44 +1129,38 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
 
   std::function<void()> dispatch_worker_fn = [&, this]() {
     int& thread_idx = GetThreadIdx();
+    ORT_ENFORCE(thread_idx > -1 && thread_idx < d_o_p);
     int rc = (thread_idx + 1) << 1;
     int lc = rc - 1;
-    bool lc_distributed = false;
-    bool rc_distributed = false;
-    if (lc < num_threads_) {
-      lc_distributed = enqueue_fn(lc, dispatch_worker_fn);
-      if (lc_distributed) {
-        std::cout << "distributed to lc" << std::endl;
-      } else {
-        std::cout << "failed distribute to lc" << std::endl;
+    //std::cout << "lc:" << lc << ", rc:" << rc << std::endl;
+    if (lc < d_o_p) {
+      if (!enqueue_fn(lc, dispatch_worker_fn)) {
+        SetKids(lc);
       }
+      bits[lc] = 1;
     } 
-    if (rc < num_threads_) {
-      rc_distributed = enqueue_fn(rc, dispatch_worker_fn);
-      if (rc_distributed) {
-        std::cout << "distributed to rc" << std::endl;
-      } else {
-        std::cout << "failed distribute to rc" << std::endl;
+    if (rc < d_o_p) {
+      if (!enqueue_fn(rc, dispatch_worker_fn)) {
+        SetKids(rc);
       }
+      bits[rc] = 1;
     }
-    /*
-    if (!lc_distributed && !rc_distributed) {
-      distribution_down.store(true, std::memory_order_relaxed);
-    }*/
     fn(1 + ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
     ps.tasks_finished.fetch_add(1, std::memory_order_relaxed);
   };
 
   enqueue_fn(0, dispatch_worker_fn);
+  bits[0] = 1;
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   fn(0);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-  /*
-  while (!distribution_down.load(std::memory_order_relaxed)) {
-    onnxruntime::concurrency::SpinPause();
-  }*/
+  for (int ii = 1; ii < d_o_p; ++ii) {
+    while (bits[ii] == 0) {
+      onnxruntime::concurrency::SpinPause(); 
+    }
+  }
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
