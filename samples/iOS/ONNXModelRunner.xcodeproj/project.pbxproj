@@ -7,41 +7,43 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2261BC8A26045FB9000EA142 /* libonnxruntime.1.7.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 2261BC8926045FB9000EA142 /* libonnxruntime.1.7.0.dylib */; };
+		2261BC8B26045FB9000EA142 /* libonnxruntime.1.7.0.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2261BC8926045FB9000EA142 /* libonnxruntime.1.7.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		61202FC924F7357100DCF250 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 61202FC624F7357100DCF250 /* ViewController.m */; };
 		61202FCA24F7357100DCF250 /* OrtSession.mm in Sources */ = {isa = PBXBuildFile; fileRef = 61202FC824F7357100DCF250 /* OrtSession.mm */; };
 		614B6546250C2DFF00570B69 /* nlp.ort in Resources */ = {isa = PBXBuildFile; fileRef = 614B6545250C2DFF00570B69 /* nlp.ort */; };
 		614B6548250C2E4900570B69 /* mobilenetv2-7.ort in Resources */ = {isa = PBXBuildFile; fileRef = 614B6547250C2E4900570B69 /* mobilenetv2-7.ort */; };
 		61B7341324F9AAD8009C4F8C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B210BD962291D78D00572163 /* Main.storyboard */; };
 		61B7341424F9AAD8009C4F8C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B210BD9B2291D78F00572163 /* LaunchScreen.storyboard */; };
-		61DFBA262519190800114A5C /* libonnxruntime.1.5.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 61DFBA252519190800114A5C /* libonnxruntime.1.5.0.dylib */; };
+		61DFBA262519190800114A5C /* libonnxruntime.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 61DFBA252519190800114A5C /* libonnxruntime.dylib */; };
 		61DFBA2825191A4900114A5C /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 61DFBA2725191A4800114A5C /* README.md */; };
-		61DFBA2925191BD900114A5C /* libonnxruntime.1.5.0.dylib in Copy Files */ = {isa = PBXBuildFile; fileRef = 61DFBA252519190800114A5C /* libonnxruntime.1.5.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		B210BD922291D78D00572163 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = B210BD912291D78D00572163 /* AppDelegate.m */; };
 		B210BD9A2291D78E00572163 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B210BD992291D78E00572163 /* Assets.xcassets */; };
 		B210BDA02291D78F00572163 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = B210BD9F2291D78F00572163 /* main.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		614954D424F784EA00605437 /* Copy Files */ = {
+		2261BC8826045FAA000EA142 /* Embed Libraries */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 12;
+			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				61DFBA2925191BD900114A5C /* libonnxruntime.1.5.0.dylib in Copy Files */,
+				2261BC8B26045FB9000EA142 /* libonnxruntime.1.7.0.dylib in Embed Libraries */,
 			);
-			name = "Copy Files";
+			name = "Embed Libraries";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		2261BC8926045FB9000EA142 /* libonnxruntime.1.7.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libonnxruntime.1.7.0.dylib; path = Frameworks/libonnxruntime.1.7.0.dylib; sourceTree = "<group>"; };
 		61202FC624F7357100DCF250 /* ViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
 		61202FC724F7357100DCF250 /* OrtSession.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OrtSession.h; sourceTree = "<group>"; };
 		61202FC824F7357100DCF250 /* OrtSession.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = OrtSession.mm; sourceTree = "<group>"; };
 		614B6545250C2DFF00570B69 /* nlp.ort */ = {isa = PBXFileReference; lastKnownFileType = file; name = nlp.ort; path = Models/nlp.ort; sourceTree = "<group>"; };
 		614B6547250C2E4900570B69 /* mobilenetv2-7.ort */ = {isa = PBXFileReference; lastKnownFileType = file; name = "mobilenetv2-7.ort"; path = "Models/mobilenetv2-7.ort"; sourceTree = "<group>"; };
-		61DFBA252519190800114A5C /* libonnxruntime.1.5.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libonnxruntime.1.5.0.dylib; path = "../../build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.1.5.0.dylib"; sourceTree = "<group>"; };
+		61DFBA252519190800114A5C /* libonnxruntime.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libonnxruntime.dylib; path = Frameworks/libonnxruntime.dylib; sourceTree = "<group>"; };
 		61DFBA2725191A4800114A5C /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		B210BD8D2291D78D00572163 /* ONNXModelRunner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ONNXModelRunner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B210BD902291D78D00572163 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -59,7 +61,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				61DFBA262519190800114A5C /* libonnxruntime.1.5.0.dylib in Frameworks */,
+				2261BC8A26045FB9000EA142 /* libonnxruntime.1.7.0.dylib in Frameworks */,
+				61DFBA262519190800114A5C /* libonnxruntime.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,7 +72,8 @@
 		614954C424F76DF100605437 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				61DFBA252519190800114A5C /* libonnxruntime.1.5.0.dylib */,
+				2261BC8926045FB9000EA142 /* libonnxruntime.1.7.0.dylib */,
+				61DFBA252519190800114A5C /* libonnxruntime.dylib */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -130,7 +134,7 @@
 				B210BD892291D78D00572163 /* Sources */,
 				B210BD8A2291D78D00572163 /* Frameworks */,
 				B210BD8B2291D78D00572163 /* Resources */,
-				614954D424F784EA00605437 /* Copy Files */,
+				2261BC8826045FAA000EA142 /* Embed Libraries */,
 			);
 			buildRules = (
 			);
@@ -274,7 +278,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -327,9 +331,10 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
 				SDKROOT = iphoneos;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -341,10 +346,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 0.0.2;
-				DEVELOPMENT_TEAM = QBMN2BBW3K;
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime";
+				DEVELOPMENT_TEAM = UBF8T346G9;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime/**";
 				INFOPLIST_FILE = "$(SRCROOT)/ModelRunner/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -362,11 +367,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 0.0.2;
-				DEVELOPMENT_TEAM = QBMN2BBW3K;
+				DEVELOPMENT_TEAM = UBF8T346G9;
 				FRAMEWORK_SEARCH_PATHS = "";
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime";
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../include/onnxruntime/**";
 				INFOPLIST_FILE = "$(SRCROOT)/ModelRunner/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

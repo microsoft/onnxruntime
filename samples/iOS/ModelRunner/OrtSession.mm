@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include <core/session/onnxruntime_cxx_api.h>
+#include <core/providers/coreml/coreml_provider_factory.h>
 
 
 NS_ASSUME_NONNULL_BEGIN
@@ -19,6 +20,8 @@ static std::string run_mobilenet(Ort::Session* session) {
     static const int classes = 1000;
 
     auto& input_image_ = *(new std::array<float, 3 * width_ * height_>());
+    std::generate(input_image_.begin(), input_image_.end(), []{return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);});
+    
     auto& results_ = *(new std::array<float, classes>);
 
     std::array<int64_t, 4> input_shape_{1, 3, width_, height_};
@@ -53,18 +56,18 @@ static std::string run_mobilenet(Ort::Session* session) {
 static std::string run_nlp(Ort::Session* session) {
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
-    auto input_shape = std::vector<int64_t>({5, 6});
-    auto input = new std::array<float, 5 * 6>();
-    std::generate(input->begin(), input->end(), []{return std::rand() % 109;});
+    auto input_shape = std::vector<int64_t>({1, 256, 256, 3});
+    auto input = new std::array<float, 1 * 256 * 256 * 3>();
+    std::generate(input->begin(), input->end(),  []{return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);});
     
-    auto output_shape = std::vector<int64_t>({5, 26});
-    auto result = new std::array<float, 5 * 26>();
+    auto output_shape = std::vector<int64_t>({1, 256, 256, 1});
+    auto result = new std::array<float, 1 * 256 * 256 * 1>();
     
     auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input->data(), input->size(), input_shape.data(), input_shape.size());
     auto output_tensor = Ort::Value::CreateTensor<float>(memory_info, result->data(), result->size(), output_shape.data(), output_shape.size());
 
     const char* input_names[] = {"input_1"};
-    const char* output_names[] = {"dense_1"};
+    const char* output_names[] = {"conv2d_17"};
     
     // Start measuring time
     auto begin = std::chrono::high_resolution_clock::now();
@@ -117,8 +120,9 @@ static std::unique_ptr<Ort::Env> ort_env;
     }
     ort_env.reset();
     
-    ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default"));
-    Ort::SessionOptions so(nullptr);
+    ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_VERBOSE, "Default"));
+    Ort::SessionOptions so;
+    OrtSessionOptionsAppendExecutionProvider_CoreML(so, 0);
     const char* model_path = [modelPath UTF8String];
     _pOrtApiSession = new Ort::Session(*ort_env, model_path, so);
     return self;
