@@ -1021,8 +1021,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             catch (Exception ex)
             {
-                var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                throw new Exception(msg + "\n" + ex.StackTrace);
+                // If the exception is thrown because the opset version of the test model is
+                // not supported by ONNXRuntime yet, then ignore the and proceed.
+                // ORT allows commits from ONNX master and in such cases we do come across new opsets which are
+                // not supported in ORT yet. In order to force these tests to run set env var ALLOW_RELEASED_ONNX_OPSET_ONLY=0
+                if (!ex.Message.Contains("ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions"))
+                {
+                    var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
             }
         }
 
