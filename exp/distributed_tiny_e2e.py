@@ -22,6 +22,7 @@ class MyReLU(torch.autograd.Function):
         print('MyReLU forward.')
         # what if custom function modify x, and in ORT is using an unexpected value at the same time.
         print("Current process id is ", os.getpid())
+        print("Current world rank / world size: {} / {}".format(dist.get_rank(), dist.get_world_size()))
         ctx.save_for_backward(input)
         return input.clamp(min=0)
  

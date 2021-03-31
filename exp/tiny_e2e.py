@@ -135,7 +135,6 @@ def run_with_pytorch_on_gpu(model):
     print('Use PyTorch for CUDA run....')
     device = torch.device('cuda:0')
     model.to(device)
-    model = ORTModule(copy.deepcopy(model))
     y = model(x.to(device))
     y.sum().backward()
     print('x:\n', x)
