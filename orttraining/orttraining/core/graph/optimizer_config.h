@@ -71,7 +71,6 @@ struct OptimizerGraphConfig {
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
   AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
   bool enable_grad_norm_clip{true};
-  bool propagate_cast_ops{false};
 
   NameMLValMap shared_optimizer_states{};  // initial states for shared params, eg. 'Step' for lamb
 

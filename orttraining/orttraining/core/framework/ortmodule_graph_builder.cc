@@ -5,7 +5,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
-#include "orttraining/core/session/training_session.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
 namespace onnxruntime {
@@ -59,6 +58,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph.SetInputs(input_args);
+  graph_transformer_config_ = config.graph_transformer_config;
   return Status::OK();
 }
 
@@ -145,7 +145,6 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
   Graph& gradient_graph = gradient_model_->MainGraph();
   ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
 
-  const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
@@ -155,7 +154,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, graph_transformer_config_, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       graph_transformation_mgr.Register(std::move(entry), level);
     }
