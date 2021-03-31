@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 import torch
 import time
 from torchvision import datasets, transforms

@@ -34,6 +34,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
     //If the tensor is using memory outside of the scope, do not store it
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kPreExisting) continue;
     if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kAllocateOutput) continue;
+    if (execution_plan->allocation_plan[mem_info.reused_buffer].alloc_kind == AllocKind::kAllocatedExternally) continue;
     mem_info.inplace_reuse = (execution_plan->allocation_plan[value_idx].inplace_reuse != -1 && execution_plan->allocation_plan[value_idx].inplace_reuse != value_idx);
     mem_info.alloc_kind = execution_plan->allocation_plan[value_idx].alloc_kind;
     mem_info.location = execution_plan->allocation_plan[value_idx].location;

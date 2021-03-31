@@ -41,6 +41,11 @@ set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
 set(GRADLE_ARGS clean jar)
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # For Android build, we may run gradle multiple times in same build,
+  # sometimes gradle JVM will run out of memory if we keep the daemon running
+  # it is better to not keep a daemon running
+  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
 if(onnxruntime_USE_CUDA)
   set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
@@ -188,6 +193,11 @@ endif()
 set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # For Android build, we may run gradle multiple times in same build,
+  # sometimes gradle JVM will run out of memory if we keep the daemon running
+  # it is better to not keep a daemon running
+  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
 if(onnxruntime_USE_CUDA)
   set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
