@@ -224,11 +224,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
                            11, 10, 12, 11,
                            21, 20, 22, 21});
 
-  #if defined(OPENVINO_CONFIG_MYRIAD)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-  #else
-    test.Run();
-  #endif    
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
