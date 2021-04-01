@@ -97,17 +97,17 @@ module.exports = {
     'use-isnan': 'error'
   },
   overrides: [{
-    files: ['nodejs/**/*.ts'],
+    files: ['node/**/*.ts'],
     env: { 'es6': true, 'node': true }
   }, {
-    files: ['nodejs/lib/**/*.ts'],
+    files: ['node/lib/**/*.ts'],
     rules: {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
       'jsdoc/newline-after-description': 'error',
     }
   }, {
-    files: ['nodejs/script/**/*.ts', 'nodejs/test/**/*.ts'], rules: {
+    files: ['node/script/**/*.ts', 'node/test/**/*.ts'], rules: {
       '@typescript-eslint/camelcase': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
