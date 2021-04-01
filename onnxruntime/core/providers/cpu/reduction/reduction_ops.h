@@ -140,6 +140,20 @@ class ReduceAggregator {
   static inline bool two_loops() { return false; }
 
   // Fast reduction
+  /*
+  This only improves reduce function when reduced axes are contiguous:
+  if len(shape) == 4, any single axis is ok, axes=(0, 1) or (1, 2) or (2, 3) is ok,
+  axes=(0, 2) is not covered by this change, former implementation prevails.
+  In that case, the shape can be compressed into three cases: 
+  (K = axis not reduced, R = reduced axis):
+
+  *  KR - reduction on the last dimensions
+  *  RK - reduction on the first dimensions
+  *  KRK - reduction on the middle dimensions.
+   
+  For these three configuration, the reduction can be optimized
+  with vectors operations.
+  */
   static inline bool fast_reduce() { return false; }
   static void FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
     ORT_ENFORCE(false, "must be overloaded.");
