@@ -318,7 +318,7 @@ export class Tensor implements Tensor {
         // numeric tensor
         const typedArrayConstructor = NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.get(arg0);
         if (typedArrayConstructor === undefined) {
-          throw new TypeError(`Unknown tensor type: ${arg0}.`);
+          throw new TypeError(`Unsupported tensor type: ${arg0}.`);
         }
         if (Array.isArray(arg1)) {
           // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces

@@ -389,7 +389,9 @@ export class InferenceSession implements InferenceSession {
       } else if (typeof arg1 !== 'undefined') {
         throw new TypeError('\'options\' must be an object.');
       }
-    } else if (arg0 instanceof ArrayBuffer || arg0 instanceof SharedArrayBuffer) {
+    } else if (
+        arg0 instanceof ArrayBuffer ||
+        (typeof SharedArrayBuffer !== 'undefined' && arg0 instanceof SharedArrayBuffer)) {
       buffer = arg0;
       byteOffset = 0;
       byteLength = arg0.byteLength;
