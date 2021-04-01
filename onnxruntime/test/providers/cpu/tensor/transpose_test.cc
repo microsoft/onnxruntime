@@ -138,11 +138,7 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
-#else
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
-#endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -347,7 +343,7 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -405,7 +401,7 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
