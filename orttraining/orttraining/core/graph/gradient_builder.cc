@@ -1507,22 +1507,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape,repeats_shape;
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")})); // M,N,K
-    
-  result.push_back(NodeDef("Concat", {I(1), IA("orig_shape")}, {IA("concated_dims")},
-                            {MakeAttribute("axis", int64_t(1))})); // [[a,b,c],[M,N,K]]
-  result.push_back(NodeDef("Transpose", {IA("concated_dims")}, {IA("concated_dims_T")})); // [[a,M], [b,N], [c,K]]
+  
+  std::vector<int64_t> axes_values = {1};
+  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));
+  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));
+  result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")},
+                           {MakeAttribute("axis", int64_t(1))}));  // [[a,M], [b,N], [c,K]]
   
   std::vector<int64_t> const_shape_minusone{-1};
-  NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape"));
-
+  NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape_minusone"));
+  result.push_back(const_shape_minusone_node);
   result.push_back(NodeDef("Reshape", {IA("concated_dims_T"),
-                            const_shape_minusone_node.output_args[0]},//const_shape_minusone_node.output_args[0]},//IA("tot_dims"), //
+                            const_shape_minusone_node.output_args[0]},
                             {IA("concated_dims_flatten")})); // flatten [a,M,b,N,c,K]
 
   result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")})); 
 
-  NodeDef start_node = ConstantScalarNode(int64_t{0}, {1}, Name("start_int64"));
-  NodeDef delta_node = ConstantScalarNode(int64_t{2}, {1}, Name("delta_int64"));
+  NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
+  NodeDef delta_node = ConstantScalarNode(int64_t{2}, {}, Name("delta_int64"));
   
   result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")})); // get num dimensions of the flattened grad op = 6
   result.push_back(start_node);
@@ -1530,7 +1532,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
 
   result.push_back(NodeDef("Range", {start_node.output_args[0],IA("limit"), 
                             delta_node.output_args[0]},{IA("range_even_indices")}));
-  result.push_back(NodeDef("ReduceSum", {IA("reshape_tile_grad_op"), IA("range_even_indices")}, {GI(0)})); //, {MakeAttribute("keep_dims", bool(1))}
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+  result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                {IA("reshape_tile_grad_op"), IA("range_even_indices")},
+                {GI(0)},
+                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
   
   return result;
 }
