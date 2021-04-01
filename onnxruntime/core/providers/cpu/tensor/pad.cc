@@ -53,6 +53,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
@@ -517,15 +520,21 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     slices_to_use = &slices_;
   }
 
+  Status pad_status{};
   switch (element_size) {
     case sizeof(uint32_t):
-      return PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
+      pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
+      break;
     case sizeof(uint64_t):
-      return PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
+      pad_status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
+      break;
     case sizeof(uint8_t):
-      return PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
+      pad_status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
+      break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
+      pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
+      break;
   }
+  return pad_status;
 }
 };  // namespace onnxruntime

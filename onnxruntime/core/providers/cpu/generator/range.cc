@@ -15,8 +15,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     float, double, int16_t, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Range, Input, 0,
-    int64_t);
-}
+    int32_t, int64_t);
+}  // namespace op_kernel_type_control
 
 using RangeDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Range, Input, 0);
