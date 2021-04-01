@@ -52,7 +52,7 @@ if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
 elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
-    cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version')
+    cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
 elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
@@ -244,19 +244,14 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
-    # onnxruntime-1.8.0+cu111_training-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime_training-1.7.0+cu11.1-cp36-cp36m-linux_x86_64.whl
     # nightly:
-    # onnxruntime-1.8.0.dev20210218+cu111_training-cp36-cp36m-linux_x86_64.whl
-    # this is needed by the immediate torch ort package.
-    # we further suggest the same naming convention for all onnxruntime packages, for example:
-    # stable:
-    # onnxruntime-1.8.0+nuphar-cp36-cp36m-linux_x86_64.whl
-    # nightly:
-    # onnxruntime-1.8.0.dev20210218+nuphar-cp36-cp36m-linux_x86_64.whl
-    package_name = 'onnxruntime'
+    # onnxruntime_training-1.7.0.dev20210401+cu11.1-cp36-cp36m-linux_x86_64.whl
+    # this is needed by pytorch/ort so that the user is able to
+    # install an onnxruntime training package with matching torch cuda version.
+    package_name = 'onnxruntime-training'
     if cuda_version:
-        local_version = '+cu' + cuda_version + '_training'
-
+        local_version = '+cu' + cuda_version
 
 package_data = {}
 data_files = []
@@ -342,6 +337,7 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
+print("version_number: ", version_number)
 # Setup
 setup(
     name=package_name,
