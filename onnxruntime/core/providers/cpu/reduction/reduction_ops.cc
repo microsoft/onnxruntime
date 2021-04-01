@@ -456,37 +456,37 @@ void DropDimensions(const std::vector<int64_t>& input_shape, const std::vector<i
   }
 }
 
-FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input,
+FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shape,
                                           const std::vector<int64_t>& reduced_axes,
                                           std::vector<int64_t>& fast_shape,
-                                          std::vector<int64_t>& fast_full_shape,
+                                          std::vector<int64_t>& fast_output_shape,
                                           bool keep_dims) {
-  if (input.empty()) {
-    fast_shape = input;
-    fast_full_shape = input;
+  if (input_shape.empty()) {
+    fast_shape = input_shape;
+    fast_output_shape = input_shape;
     return FastReduceKind::NONE;
   }
-  fast_full_shape.clear();
-  fast_full_shape.reserve(input.size());
+  fast_output_shape.clear();
+  fast_output_shape.reserve(input_shape.size());
   std::set<int64_t> axes(reduced_axes.begin(), reduced_axes.end());
-  std::vector<bool> reduce(input.size());
-  for (int64_t i = 0; i < (int64_t)input.size(); ++i) {
+  std::vector<bool> reduce(input_shape.size());
+  for (int64_t i = 0; i < (int64_t)input_shape.size(); ++i) {
     reduce[i] = axes.find(i) != axes.end();
     if (reduce[i]) {
       if (keep_dims)
-        fast_full_shape.push_back(1);
+        fast_output_shape.push_back(1);
     } else {
-      fast_full_shape.push_back(input[i]);
+      fast_output_shape.push_back(input_shape[i]);
     }
   }
   fast_shape.clear();
-  fast_shape.reserve(input.size());
-  fast_shape.push_back(input[0]);
-  for (size_t i = 1; i < input.size(); ++i) {
+  fast_shape.reserve(input_shape.size());
+  fast_shape.push_back(input_shape[0]);
+  for (size_t i = 1; i < input_shape.size(); ++i) {
     if (reduce[i] == reduce[i - 1]) {
-      fast_shape[fast_shape.size() - 1] *= input[i];
+      fast_shape[fast_shape.size() - 1] *= input_shape[i];
     } else {
-      fast_shape.push_back(input[i]);
+      fast_shape.push_back(input_shape[i]);
     }
   }
   if (fast_shape.size() == 1) {
@@ -552,6 +552,12 @@ void CommonReduce(OpKernelContext* ctx,
         AGG::FastReduceKRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
         return;
       }
+      case FastReduceKind::R:
+      case FastReduceKind::K:
+      case FastReduceKind::NONE:
+      default:
+        // Former implementation prevails in this case.
+        break;
     }
   }
 

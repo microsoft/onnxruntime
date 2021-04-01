@@ -24,10 +24,10 @@ typedef enum _FastReduceKind {
   KRK = 5    // kept dim, reduced dim, kept dim
 } FastReduceKind;
 
-FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input,
+FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shape,
                                           const std::vector<int64_t>& reduced_axes,
                                           std::vector<int64_t>& fast_shape,
-                                          std::vector<int64_t>& fast_full_shape,
+                                          std::vector<int64_t>& fast_output_shape,
                                           bool keep_dims);
 
 class ResultsNoTransposePrepareForReduce {
@@ -174,22 +174,25 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
   inline TVAL aggall(const T* from_data) {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).sum();
   }
+
   // Fast reduction
   static inline bool fast_reduce() { return true; }
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool*) {
     ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
     math::RowwiseSum<T, CPUMathUtil>((int)fast_shape[0], (int)fast_shape[1], input.Data<T>(), output.MutableData<T>(), nullptr);
   }
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
-    // This allocation can be saved by implementing an addition.
+    // TODO: This allocation can be saved by implementing a parallelized addition.
     std::vector<T> one(fast_shape[0], 1);
     math::MatMul<T>(1, N, fast_shape[0], one.data(), data, out, tp);
   }
@@ -197,12 +200,14 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
     int64_t N = fast_shape[2];
     const T* data = input.Data<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
     T* out = output.MutableData<T>();
-    // This allocation can be saved by implementing an addition.
+    // TODO: parallelization happens within the loop (MatMul) but should be placed in the first loop
+    // if fast_shape[0] > number of cores).
     std::vector<T> one(fast_shape[1], 1);
     for (int64_t d = 0; d < fast_shape[0]; ++d) {
       math::MatMul<T>(1, N, fast_shape[1], one.data(), data + stridei * d, out + strideo * d, tp);
@@ -228,6 +233,46 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).mean();
   }
   inline T get_value() { return this->accumulator_ / static_cast<T>(this->N_); }
+
+  // Fast reduction
+  static inline bool fast_reduce() { return true; }
+
+  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool* tp) {
+    ReduceAggregatorSum<T, TVAL>::FastReduceKR(input, fast_shape, output, tp);
+    T* out = output.MutableData<T>();
+    T* end = out + fast_shape[0];
+    for (; out != end; ++out) {
+      *out /= (T)fast_shape[1];
+    }
+  }
+
+  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool* tp) {
+    ReduceAggregatorSum<T, TVAL>::FastReduceRK(input, fast_shape, output, tp);
+    T* out = output.MutableData<T>();
+    T* end = out + fast_shape[1];
+    for (; out != end; ++out) {
+      *out /= (T)fast_shape[0];
+    }
+  }
+
+  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                            Tensor& output, concurrency::ThreadPool* tp) {
+    ReduceAggregatorSum<T, TVAL>::FastReduceKRK(input, fast_shape, output, tp);
+    int64_t strideo = fast_shape[2];
+    T* out = output.MutableData<T>();
+    T* begin;
+    T* end;
+    T div = (T)fast_shape[1];
+    for (int64_t d = 0; d < fast_shape[0]; ++d) {
+      begin = out + strideo * d;
+      end = begin + strideo;
+      for (; begin != end; ++begin) {
+        *begin /= div;
+      }
+    }
+  }
 };
 
 template <typename T, typename TVAL = T>
