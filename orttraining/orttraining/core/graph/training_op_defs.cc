@@ -1596,7 +1596,7 @@ Example 4:
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            /* Option 1: 
+            /* Default GeluGrad computation: 
               dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
             which expands to the following ONNX graph:
             */
@@ -1622,7 +1622,12 @@ Example 4:
                 {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
                 {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
                 {{"dX"}, "Mul", {"dY", "FullSum"}}};
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body);
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
