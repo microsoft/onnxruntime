@@ -1515,8 +1515,7 @@ def build_python_wheel(
         elif use_cuda:
             args.append('--use_cuda')
             if cuda_version:
-                args.append('--cuda_version')
-                args.append(cuda_version)
+                args.append('--cuda_version={}'.format(cuda_version))
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:

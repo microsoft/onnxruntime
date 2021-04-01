@@ -19,58 +19,54 @@ featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
-# Any combination of the following arguments can be applied
-if '--use_featurizers' in sys.argv:
-    featurizers_build = True
-    sys.argv.remove('--use_featurizers')
+def parse_arg_remove_boolean(argv, arg_name):
+    arg_value = False
+    if arg_name in sys.argv:
+        arg_value = True
+        argv.remove(arg_name)
 
-if '--nightly_build' in sys.argv:
+    return arg_value
+
+def parse_arg_remove_string(argv, arg_name_equal):
+    arg_value = None
+    for arg in sys.argv[1:]:
+        if arg.startswith(arg_name_equal):
+            arg_value = arg[len(arg_name_equal):]
+            sys.argv.remove(arg)
+            break
+
+    return arg_value
+
+# Any combination of the following arguments can be applied
+featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
+
+if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
     nightly_build = True
-    sys.argv.remove('--nightly_build')
 
-for arg in sys.argv[1:]:
-    if arg.startswith("--wheel_name_suffix="):
-        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
-
-        sys.argv.remove(arg)
-
-        break
+wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
 # The following arguments are mutually exclusive
-if '--use_tensorrt' in sys.argv:
+if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-    sys.argv.remove('--use_tensorrt')
-elif '--use_cuda' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
-    sys.argv.remove('--use_cuda')
-    if '--cuda_version' in sys.argv:
-        cuda_version_index = sys.argv.index('--cuda_version')
-        cuda_version = sys.argv[cuda_version_index + 1]
-        sys.argv.remove('--cuda_version')
-        sys.argv.remove(cuda_version)
-elif '--use_openvino' in sys.argv:
+    cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version')
+elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
-    sys.argv.remove('--use_openvino')
-elif '--use_dnnl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
-    sys.argv.remove('--use_dnnl')
-elif '--use_nuphar' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-    sys.argv.remove('--use_nuphar')
-elif '--use_vitisai' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
-    sys.argv.remove('--use_vitisai')
-elif '--use_acl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
     package_name = 'onnxruntime-acl'
-    sys.argv.remove('--use_acl')
-elif '--use_armnn' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
-    sys.argv.remove('--use_armnn')
-elif '--use_dml' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_dml'):
     package_name = 'onnxruntime-dml'
-    sys.argv.remove('--use_dml')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -241,11 +237,10 @@ packages = [
 requirements_file = "requirements.txt"
 
 local_version = None
-if '--enable_training' in sys.argv:
+if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
-    sys.argv.remove('--enable_training')
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
