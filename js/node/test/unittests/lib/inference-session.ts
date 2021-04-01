@@ -3,10 +3,10 @@
 
 import assert from 'assert';
 import * as fs from 'fs';
+import {InferenceSession} from 'onnxruntime-common';
 import * as path from 'path';
 
 import {Tensor, TypedTensor} from '../../../lib';
-import {InferenceSession} from '../../../lib/inference-session';
 import {assertTensorEqual} from '../../test-utils';
 
 const SQUEEZENET_INPUT0_DATA = require(path.join(__dirname, '../../testdata/squeezenet.input0.json'));

@@ -115,6 +115,8 @@ module.exports = {
       '@typescript-eslint/no-var-requires': 'off',
       'camelcase': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
+      'import/no-unassigned-import': 'off',
+      'import/no-internal-modules': 'off',
     }
   }],
   extends: [

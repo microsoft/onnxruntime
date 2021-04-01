@@ -4,8 +4,8 @@
     "moduleResolution": "node",
     "declaration": true,
     "esModuleInterop": true,
-    "target": "es2017",
-    "lib": ["es2017", "ESNext.BigInt"],
+    "target": "ES2015",
+    "lib": ["ES2017", "ESNext.BigInt"],
     "sourceMap": true,
     "noUnusedLocals": true,
     "noImplicitAny": true,
@@ -20,7 +20,5 @@
     "downlevelIteration": true,
     "incremental": true
   },
-  "exclude": [
-    "node_modules/"
-  ]
+  "exclude": ["node_modules/"]
 }

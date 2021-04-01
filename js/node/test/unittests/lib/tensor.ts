@@ -4,7 +4,7 @@
 import * as assert from 'assert';
 
 // tensor with type information
-import {Tensor} from '../../../lib/tensor';
+import {Tensor} from 'onnxruntime-common';
 import {createTestData, NUMERIC_TYPE_MAP} from '../../test-utils';
 
 // tensor with no type information, used for testing type check

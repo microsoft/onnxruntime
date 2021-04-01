@@ -5,10 +5,10 @@ import assert from 'assert';
 import * as fs from 'fs-extra';
 import {jsonc} from 'jsonc';
 import * as onnx_proto from 'onnx-proto';
+import {Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
 import {binding} from '../lib/binding';
-import {Tensor} from '../lib/tensor';
 
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
@@ -20,7 +20,7 @@ export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT
 export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
 
 export const BACKEND_TEST_SERIES_FILTERS: {[name: string]: string[]} =
-  jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
+    jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
 
 
 export const NUMERIC_TYPE_MAP = new Map<Tensor.Type, new (len: number) => Tensor.DataType>([
@@ -105,7 +105,7 @@ export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expe
     case 'float32':
     case 'float64':
       assertFloatEqual(
-        actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array);
+          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array);
       break;
 
     case 'uint8':
@@ -127,7 +127,7 @@ export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expe
 }
 
 export function assertFloatEqual(
-  actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): void {
+    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): void {
   const THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
   const THRESHOLD_RELATIVE_ERROR = 1.000001;
 
@@ -242,7 +242,7 @@ export function loadTensorFromFile(pbFile: string): Tensor {
         throw new Error(`not supported tensor type: ${tensorProto.dataType}`);
     }
     const transferredTypedArrayRawDataView =
-      new Uint8Array(transferredTypedArray.buffer, transferredTypedArray.byteOffset, tensorProto.rawData.byteLength);
+        new Uint8Array(transferredTypedArray.buffer, transferredTypedArray.byteOffset, tensorProto.rawData.byteLength);
     transferredTypedArrayRawDataView.set(tensorProto.rawData);
 
     return new Tensor(type, transferredTypedArray, dims);

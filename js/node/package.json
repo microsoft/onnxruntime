@@ -29,6 +29,7 @@
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
     "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo",
     "install": "prebuild-install -r napi || (tsc && node ./script/build)",
+    "prepare": "tsc",
     "test": "mocha ./test/test-main",
     "prepack": "node ./script/pack-prebuild"
   },
