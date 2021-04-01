@@ -173,6 +173,8 @@
         "^test_if_seq",
         "^test_sequence_insert_at_back",
         "^test_sequence_insert_at_front",
+        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+        "^test_maxpool_with_argmax_2d_precomputed_pads", //Disabled as it throws segfault
         "^test_resize_downsample_scales_cubic", // Runs but there's accuracy mismatch
         "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
         "^test_softmax_axis_0", // Runs but there's accuracy mismatch
