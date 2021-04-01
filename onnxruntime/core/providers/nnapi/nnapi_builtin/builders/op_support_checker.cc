@@ -85,7 +85,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
   virtual bool HasSupportedInputsImpl(const Node& node) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 13; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 14; }
 
  private:
   bool HasSupportedOpSet(const Node& node) const;
@@ -393,11 +393,20 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
+  NodeAttrHelper helper(node);
+  bool allow_zero = helper.Get("allowzero ", 0) == 1;
   for (uint32_t i = 0; i < size; i++) {
     // NNAPI reshape does not support 0 as dimension
-    if (raw_shape[i] == 0 && i < input_shape.size() && input_shape[i] == 0) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
-      return false;
+    if (raw_shape[i] == 0) {
+      if (i < input_shape.size() && input_shape[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
+        return false;
+      }
+
+      if (allow_zero) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension when allowzero is enabled";
+        return false;
+      }
     }
   }
 
@@ -689,10 +698,16 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
+  bool is_qlinear_conv = (op_type == "QLinearConv");
+
+  // We don't support nhwc com.microsoft.QLinearConv for now
+  if (is_qlinear_conv && node.Domain() == kMSDomain) {
+    LOGS_DEFAULT(VERBOSE) << "com.microsoft.QLinearConv is not supported";
+    return false;
+  }
+
   const auto input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-
-  bool is_qlinear_conv = (op_type == "QLinearConv");
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
   const auto weight_name = input_defs[w_idx]->Name();
