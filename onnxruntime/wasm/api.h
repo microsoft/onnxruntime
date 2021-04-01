@@ -15,10 +15,10 @@
 namespace Ort {
 struct Session;
 }
-typedef Ort::Session* ort_session_handle_t;
+using ort_session_handle_t = Ort::Session*;
 
 struct OrtValue;
-typedef OrtValue* ort_tensor_handle_t;
+using ort_tensor_handle_t = OrtValue*;
 
 extern "C" {
 
