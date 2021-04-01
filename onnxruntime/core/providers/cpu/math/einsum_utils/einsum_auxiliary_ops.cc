@@ -297,7 +297,6 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Einsum op: Transpose failed: ", status.ErrorMessage());
   }
-
   return output;
 }
 
