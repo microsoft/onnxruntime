@@ -794,6 +794,232 @@ TEST(ReductionOpTest, ReduceMax0DTensor) {
 }
 #endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
 
+TEST(ReductionOpTest, EigenMax) {
+  std::vector<float> mat{1, 2, 3, 4};
+
+  auto res1 = ConstEigenMatrixMap<float>(mat.data(), 2, 2).rowwise().maxCoeff();
+  std::vector<float> expected{3, 4};
+  std::vector<float> out1(res1.begin(), res1.end());
+  ASSERT_EQ(out1, expected);
+
+  auto res2 = ConstEigenMatrixMap<float>(mat.data(), 2, 2).colwise().maxCoeff();
+  expected = std::vector<float>{2, 4};
+  std::vector<float> out2(res2.begin(), res2.end());
+  ASSERT_EQ(out2, expected);
+
+  mat = std::vector<float>{1, 2, 3, 4, 5, 6};
+
+  auto res3 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).rowwise().maxCoeff();
+  expected = std::vector<float>{5, 6};
+  std::vector<float> out3(res3.begin(), res3.end());
+  ASSERT_EQ(out3, expected);
+
+  auto res4 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).colwise().maxCoeff();
+  expected = std::vector<float>{2, 4, 6};
+  std::vector<float> out4(res4.begin(), res4.end());
+  ASSERT_EQ(out4, expected);
+
+  auto res5 = ConstEigenMatrixMap<float>(mat.data(), 3, 2).rowwise().maxCoeff();
+  expected = std::vector<float>{4, 5, 6};
+  std::vector<float> out5(res5.begin(), res5.end());
+  ASSERT_EQ(out5, expected);
+
+  auto res6 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).colwise().maxCoeff();
+  expected = std::vector<float>{2, 4, 6};
+  std::vector<float> out6(res6.begin(), res6.end());
+  ASSERT_EQ(out6, expected);
+}
+
+TEST(ReductionOpTest, EigenSum) {
+  std::vector<float> mat{1, 10, 100, 1000};
+
+  auto res1 = ConstEigenMatrixMap<float>(mat.data(), 2, 2).rowwise().sum();
+  std::vector<float> expected{101, 1010};
+  std::vector<float> out1(res1.begin(), res1.end());
+  ASSERT_EQ(out1, expected);
+
+  auto res2 = ConstEigenMatrixMap<float>(mat.data(), 2, 2).colwise().sum();
+  expected = std::vector<float>{11, 1100};
+  std::vector<float> out2(res2.begin(), res2.end());
+  ASSERT_EQ(out2, expected);
+
+  mat = std::vector<float>{1, 10, 100, 1000, 10000, 100000};
+
+  auto res3 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).rowwise().sum();
+  expected = std::vector<float>{10101, 101010};
+  std::vector<float> out3(res3.begin(), res3.end());
+  ASSERT_EQ(out3, expected);
+
+  auto res4 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).colwise().sum();
+  expected = std::vector<float>{11, 1100, 110000};
+  std::vector<float> out4(res4.begin(), res4.end());
+  ASSERT_EQ(out4, expected);
+
+  auto res5 = ConstEigenMatrixMap<float>(mat.data(), 3, 2).rowwise().sum();
+  expected = std::vector<float>{1001, 10010, 100100};
+  std::vector<float> out5(res5.begin(), res5.end());
+  ASSERT_EQ(out5, expected);
+
+  auto res6 = ConstEigenMatrixMap<float>(mat.data(), 2, 3).colwise().sum();
+  expected = std::vector<float>{11, 1100, 110000};
+  std::vector<float> out6(res6.begin(), res6.end());
+  ASSERT_EQ(out6, expected);
+}
+
+TEST(ReductionOpTest, ReduceMax_KR) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3}, {4.f, 8.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_KR_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1}, {4.f, 8.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RK) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {9.f, 10.f, 11.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RK_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 4}, {9.f, 10.f, 11.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_KRK) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 2}, {3.f, 4.f, 7.f, 8.f, 11.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_KRK_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1, 2}, {3.f, 4.f, 7.f, 8.f, 11.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKRK) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {19.f, 20.f, 23.f, 24.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKRK_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1, 2}, {19.f, 20.f, 23.f, 24.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1200,6 +1426,7 @@ TEST(ReductionOpTest, ReduceMean_RKRK_keepdims) {
   test.AddOutput<float>("reduced", {1, 2, 1, 2}, {10.f, 11.f, 14.f, 15.f});
   test.Run();
 }
+
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
   OpTester test("ReduceMin");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1379,6 +1606,160 @@ TEST(ReductionOpTest, ReduceMin0DTensor) {
   test.Run();
 }
 #endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
+TEST(ReductionOpTest, ReduceMin_KR) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3}, {1.f, 5.f, 9.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_KR_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1}, {1.f, 5.f, 9.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RK) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {1.f, 2.f, 3.f, 4.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RK_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 4}, {1.f, 2.f, 3.f, 4.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_KRK) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 2}, {1.f, 2.f, 5.f, 6.f, 9.f, 10.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_KRK_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1, 2}, {1.f, 2.f, 5.f, 6.f, 9.f, 10.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKRK) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 5.f, 6.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKRK_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1, 2}, {1.f, 2.f, 5.f, 6.f});
+  test.Run();
+}
 
 TEST(ReductionOpTest, ReduceSum) {
   OpTester test("ReduceSum");
@@ -2994,6 +3375,22 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
       fast_shape, fast_output_shape, false);
   expected_fast_shape = std::vector<int64_t>{90, 11};
   expected_fast_output_shape = std::vector<int64_t>{9, 10};
+  ASSERT_EQ(fast_kind, FastReduceKind::KR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+
+  // KR - keep_dims=1
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{10, 11}, std::vector<int64_t>{-1},
+      fast_shape, fast_output_shape, true);
+  expected_fast_shape = std::vector<int64_t>{10, 11};
+  expected_fast_output_shape = std::vector<int64_t>{10, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);

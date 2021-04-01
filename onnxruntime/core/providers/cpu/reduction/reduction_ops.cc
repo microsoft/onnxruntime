@@ -468,7 +468,10 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
   }
   fast_output_shape.clear();
   fast_output_shape.reserve(input_shape.size());
-  std::set<int64_t> axes(reduced_axes.begin(), reduced_axes.end());
+  std::set<int64_t> axes;
+  for (auto it = reduced_axes.begin(); it != reduced_axes.end(); ++it) {
+    axes.insert(*it >= 0 ? *it : input_shape.size() + *it);
+  }
   std::vector<bool> reduce(input_shape.size());
   for (int64_t i = 0; i < (int64_t)input_shape.size(); ++i) {
     reduce[i] = axes.find(i) != axes.end();

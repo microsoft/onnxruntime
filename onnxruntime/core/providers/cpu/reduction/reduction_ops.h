@@ -182,6 +182,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
                            Tensor& output, concurrency::ThreadPool*) {
     ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
     ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
+    // TODO: use MLAS or BLAS
     math::RowwiseSum<T, CPUMathUtil>((int)fast_shape[0], (int)fast_shape[1], input.Data<T>(), output.MutableData<T>(), nullptr);
   }
 
@@ -240,6 +241,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceKR(input, fast_shape, output, tp);
+    // TODO: use MLAS or BLAS
     T* out = output.MutableData<T>();
     T* end = out + fast_shape[0];
     for (; out != end; ++out) {
@@ -250,6 +252,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceRK(input, fast_shape, output, tp);
+    // TODO: use MLAS or BLAS
     T* out = output.MutableData<T>();
     T* end = out + fast_shape[1];
     for (; out != end; ++out) {
@@ -260,6 +263,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceKRK(input, fast_shape, output, tp);
+    // TODO: use MLAS or BLAS
     int64_t strideo = fast_shape[2];
     T* out = output.MutableData<T>();
     T* begin;
@@ -283,6 +287,37 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).maxCoeff();
   }
   inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
+
+  // Fast reduction
+  static inline bool fast_reduce() { return true; }
+
+  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[0]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).colwise().maxCoeff();
+  }
+
+  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().maxCoeff();
+  }
+
+  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                            Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
+    const T* data = input.Data<T>();
+    T* out = output.MutableData<T>();
+    int64_t stridei = fast_shape[1] * fast_shape[2];
+    int64_t strideo = fast_shape[2];
+    // TODO: use parallelization
+    for (int64_t dim = 0; dim < fast_shape[0]; ++dim, out += strideo, data += stridei) {
+      EigenVectorMap<T>(out, strideo) = ConstEigenMatrixMap<T>(data, fast_shape[2], fast_shape[1]).rowwise().maxCoeff();
+    }
+  }
 };
 
 template <typename T, typename TVAL = int64_t>
@@ -382,6 +417,37 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).minCoeff();
   }
   inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
+
+  // Fast reduction
+  static inline bool fast_reduce() { return true; }
+
+  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[0]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).colwise().minCoeff();
+  }
+
+  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().minCoeff();
+  }
+
+  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                            Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
+    const T* data = input.Data<T>();
+    T* out = output.MutableData<T>();
+    int64_t stridei = fast_shape[1] * fast_shape[2];
+    int64_t strideo = fast_shape[2];
+    // TODO: use parallelization
+    for (int64_t dim = 0; dim < fast_shape[0]; ++dim, out += strideo, data += stridei) {
+      EigenVectorMap<T>(out, strideo) = ConstEigenMatrixMap<T>(data, fast_shape[2], fast_shape[1]).rowwise().minCoeff();
+    }
+  }
 };
 
 template <typename T, typename TVAL = T>
