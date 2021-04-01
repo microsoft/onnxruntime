@@ -123,7 +123,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   //std::cout << "----------------------Node Name: " << ctx->GetNodeName() << "----------------------" << std::endl;
 
-  if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2) {
+  if (left_X->Shape().NumDimensions() == 4 && right_X->Shape().NumDimensions() == 2) {
     void* workspace;
     size_t workspaceSize = 4194304;
     cudaMalloc(&workspace, workspaceSize);

@@ -21,7 +21,7 @@
 auto constexpr algoCombinations = 6000;
 auto constexpr algoIds = 40;
 auto constexpr printAlgos = 1;
-auto constexpr kernelRepeats = 1000;
+auto constexpr kernelRepeats = 10;
 auto constexpr threadsPerBlock = 1024;
 typedef struct
 {
@@ -453,7 +453,7 @@ inline cublasStatus_t cublasLtGemmHelperI(cublasLtHandle_t handle,
 
     cublasLtMatmulAlgo_t algo;
     cublasLtMatmulAlgoInit(handle, CUBLAS_COMPUTE_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, 0, &algo);
-    cuBlasLtAlgoFill(algo, 20, 0, 0, 1);
+    cuBlasLtAlgoFill(algo, 20, 5, 1, 0);
 
     cublasStatus_t oneRunStatus = cublasLtMatmul(handle,
                                                  operationDesc,
@@ -493,7 +493,7 @@ inline cublasStatus_t cublasLtGemmHelper(cublasLtHandle_t handle,
                                          void *workspace,
                                          size_t workspaceSize,
                                          cudaStream_t stream) {
-    const bool search_mode = true;
+    const bool search_mode = false;
     if (search_mode) {
         return cublasLtGemmHelperS(handle,
                                   transa,
@@ -545,15 +545,26 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
   ORT_UNUSED_PARAMETER(prop);
 #endif
 
-  return cublasSgemm(handle,
-                     transa,
-                     transb,
-                     m, n, k,
-                     alpha,
-                     A, lda,
-                     B, ldb,
-                     beta,
-                     C, ldc);
+  //return cublasSgemm(handle,
+  //                   transa,
+  //                   transb,
+  //                   m, n, k,
+  //                   alpha,
+  //                   A, lda,
+  //                   B, ldb,
+  //                   beta,
+  //                   C, ldc);
+  return cublasGemmEx(handle,
+                      transa,
+                      transb,
+                      m, n, k,
+                      alpha,
+                      A, CUDA_R_32F, lda,
+                      B, CUDA_R_32F, ldb,
+                      beta,
+                      C, CUDA_R_32F, ldc,
+                      CUDA_R_32F,
+                      CUBLAS_GEMM_ALGO1_TENSOR_OP);
 }
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        cublasOperation_t transa,
@@ -804,16 +815,29 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   ORT_UNUSED_PARAMETER(prop);
 #endif
 
-  return cublasSgemmStridedBatched(handle,
+ // return cublasSgemmStridedBatched(handle,
+ //                                  transa,
+ //                                  transb,
+ //                                  m, n, k,
+ //                                  alpha,
+ //                                  A, lda, strideA,
+ //                                  B, ldb, strideB,
+ //                                  beta,
+ //                                  C, ldc, strideC,
+ //                                  batch_count);
+
+  return cublasGemmStridedBatchedEx(handle,
                                    transa,
                                    transb,
                                    m, n, k,
                                    alpha,
-                                   A, lda, strideA,
-                                   B, ldb, strideB,
+                                   A, CUDA_R_32F, lda, strideA,
+                                   B, CUDA_R_32F, ldb, strideB,
                                    beta,
-                                   C, ldc, strideC,
-                                   batch_count);
+                                   C, CUDA_R_32F, ldc, strideC,
+                                   batch_count,
+                                   CUDA_R_32F,
+                                   CUBLAS_GEMM_ALGO0_TENSOR_OP);
 }
 
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
