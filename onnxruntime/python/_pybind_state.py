@@ -15,6 +15,7 @@ from . import _ld_preload  # noqa: F401
 def ExtendDllPath():
     for p in os.environ['PATH'].split(';'):
         if os.path.isdir(p):
+            print (p)
             os.add_dll_directory(p)
 
 
