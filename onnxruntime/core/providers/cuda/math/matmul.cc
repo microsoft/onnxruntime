@@ -347,7 +347,7 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
       cusparseSpMatDescr_t sparse_desc;
       auto sparse_info = onnxruntime::make_unique<cusparse_helper::SparseInfo>(tensor.Shape());
       ORT_RETURN_IF_ERROR(cusparse_helper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
-                                                   sparse_info->param_, sparse_info_->prepack_buffers_, sparse_desc, is_packed));
+                                                   sparse_info->param_, sparse_info->prepack_buffers_, sparse_desc, is_packed));
       if (is_packed) {
         sparse_info->sparse_desc_ = onnxruntime::make_optional<cusparseSpMatDescr_t>(sparse_desc);
         sparse_info_ = std::move(sparse_info);
