@@ -790,6 +790,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_identity_sequence", "data type not supported"}
             };
 
             // The following models fails on nocontribops win CI
