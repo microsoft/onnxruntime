@@ -98,7 +98,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="trt_options">Provider Options for TensorRT EP.</param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
-        /// 
         public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trt_options)
         {
             CheckTensorrtExecutionProviderDLLs();
@@ -654,7 +653,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Provider options for TensorRT.
         /// </summary>
-        /// 
         //  Example for setting:
         //    SessionOptions.OrtTensorRTProviderOptions trt_options;
         //    trt_options.device_id = 0;
@@ -664,15 +662,16 @@ namespace Microsoft.ML.OnnxRuntime
         //    trt_options.trt_int8_enable = 1;
         //    trt_options.trt_int8_calibration_table_name = "C:\calibration.flatbuffers";
         //    trt_options.trt_int8_use_native_calibration_table = 0;
+
         public struct OrtTensorRTProviderOptions
         {
-            public int device_id;                                  // cuda device id. Default is 0.
-            public int has_trt_options;                            // override environment variables with following TensorRT settings at runtime. Default 0 = false, nonzero = true.
-            public UIntPtr trt_max_workspace_size;                 // maximum workspace size for TensorRT. ORT C++ DLL has this field to be the type of size_t, hence using UIntPtr for conversion.
-            public int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true.
-            public int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true.
-            public String trt_int8_calibration_table_name;         // TensorRT INT8 calibration table name.
-            public int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+            public int device_id;                                  //!< cuda device id. Default is 0. </typeparam>
+            public int has_trt_options;                            //!< override environment variables with following TensorRT settings at runtime. Default 0 = false, nonzero = true.
+            public UIntPtr trt_max_workspace_size;                 //!< maximum workspace size for TensorRT. ORT C++ DLL has this field to be the type of size_t, hence using UIntPtr for conversion.
+            public int trt_fp16_enable;                            //!< enable TensorRT FP16 precision. Default 0 = false, nonzero = true.
+            public int trt_int8_enable;                            //!< enable TensorRT INT8 precision. Default 0 = false, nonzero = true.
+            public String trt_int8_calibration_table_name;         //!< TensorRT INT8 calibration table name.
+            public int trt_int8_use_native_calibration_table;      //!< use native TensorRT generated calibration table. Default 0 = false, nonzero = true
         }
 
         #endregion
