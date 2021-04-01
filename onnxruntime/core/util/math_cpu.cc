@@ -859,6 +859,9 @@ DEFINE_BROADCAST_BINARY_FUNCTION(Div, /)
     EigenVectorMap<T>(y, N) = ConstEigenMatrixMap<T>(x, D, N).colwise().sum();    \
   }
 SPECIALIZED_ROWWISESUM(float)
+SPECIALIZED_ROWWISESUM(int32_t)
+SPECIALIZED_ROWWISESUM(int64_t)
+SPECIALIZED_ROWWISESUM(double)
 #undef SPECIALIZED_ROWWISESUM
 
 #define SPECIALIZED_SUM(T)                                                                             \

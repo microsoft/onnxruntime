@@ -717,7 +717,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 #endif
 }
 
@@ -738,7 +738,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 #endif
 }
 
@@ -759,7 +759,7 @@ TEST(ReductionOpTest, ReduceMax_int8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 #endif
 }
 
@@ -780,7 +780,7 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 #endif
 }
 
@@ -1580,6 +1580,279 @@ TEST(ReductionOpTest, ReduceSum_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_KR) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3}, {10.0f, 26.0f, 42.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KR_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1}, {10.0f, 26.0f, 42.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KR2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3}, {10.0f, 26.0f, 42.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KR2_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1, 1}, {10.0f, 26.0f, 42.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RK) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {15.f, 18.f, 21.f, 24.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RK_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 4}, {15.f, 18.f, 21.f, 24.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RK2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {36.f, 42.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RK2_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 1, 2}, {36.f, 42.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KRK) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 2}, {4.f, 6.f, 12.f, 14.f, 20.f, 22.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KRK_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {3, 1, 2}, {4.f, 6.f, 12.f, 14.f, 20.f, 22.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KRK2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {3, 2}, {16.f, 20.f, 48.f, 52.f, 80.f, 84.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KRK2_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {3, 1, 1, 2}, {16.f, 20.f, 48.f, 52.f, 80.f, 84.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKRK) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {60.f, 66.f, 84.f, 90.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKRK_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1, 2}, {60.f, 66.f, 84.f, 90.f});
+  test.Run();
+}
 TEST(ReductionOpTest, ReduceSum_int32_axes_input) {
   OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)1);
