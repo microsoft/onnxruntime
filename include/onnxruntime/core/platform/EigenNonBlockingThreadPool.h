@@ -790,7 +790,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     if (fn) fn();
   }
 
-// The thread pool maintains a set of hints for which threads will be good to distribute
+/*
+  // The thread pool maintains a set of hints for which threads will be good to distribute
 // work to.  A thread is considered "good" if it is actively spinning, meaning both that
 // it is not busy with existing work, and that it should respond quickly to the addition
 // of new work.
@@ -849,7 +850,7 @@ void GetGoodWorkerHints(unsigned n, std::vector<unsigned>& good_hints, std::vect
     // work items.
     u64->compare_exchange_strong(saw, want);
   }
-}
+}*/
 
 //......................................................................
 //
@@ -987,7 +988,7 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    //GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
     profiler_.LogStart();
 
     // Create the additional tasks, and push them to workers.
@@ -1079,7 +1080,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
 
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::ptrdiff_t block_size) override {
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
@@ -1109,10 +1110,13 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
     } 
   };
 
+  //n = 1 + num_threads_;
   Task call_worker_fn = [&]() {
-    unsigned my_idx = ++ps.worker_idx;
-    fn(my_idx);
-    ps.tasks_finished++;
+    unsigned fn_idx = n;
+    while ((fn_idx = ps.worker_idx.fetch_add(1, std::memory_order_relaxed)) < n) {
+      fn(fn_idx);
+    }
+    ps.tasks_finished.fetch_add(1, std::memory_order_relaxed);
   };
 
   bool dist_done = false;
@@ -1127,7 +1131,12 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
-  fn(0);
+  // fn(0);
+  unsigned my_idx = n;
+  while ((my_idx = ps.worker_idx.fetch_add(1, std::memory_order_relaxed)) < n) {
+    fn(my_idx);
+  }
+
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
   if (dist_start) {
     while (!dist_done) {
@@ -1363,7 +1372,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->thread_id = thread_id;
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
-    SetGoodWorkerHint(thread_id, true /* Is good */);
+    //SetGoodWorkerHint(thread_id, true /* Is good */);
 
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
@@ -1380,12 +1389,12 @@ int CurrentThreadId() const EIGEN_FINAL {
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
 
-          SetGoodWorkerHint(thread_id, true);
+          //SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
-          SetGoodWorkerHint(thread_id, false);
+          //SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
@@ -1468,6 +1477,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   // - round 1 : we steal work from any thread, including those which claim
   //   to be spinning.  In these cases, even though the victim thread is
   //   looking for work itself, it may have been pre-empted.
+
 
   Task Steal(bool check_all) {
     PerThread* pt = GetPerThread();

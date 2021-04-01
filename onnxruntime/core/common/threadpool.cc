@@ -400,6 +400,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
 
+  /*
   LoopCounter lc(total, d_of_p, block_size);
   std::function<void(unsigned)> run_work = [&](unsigned idx) {
     unsigned my_home_shard = lc.GetHomeShard(idx);
@@ -409,6 +410,13 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
       fn(static_cast<std::ptrdiff_t>(my_iter_start),
          static_cast<std::ptrdiff_t>(my_iter_end));
     }
+  };*/
+
+  auto per_thread_tasks = total / num_work_items + ((total % num_work_items) ? 1 : 0);
+  std::function<void(unsigned)> run_work = [&](unsigned idx) {
+    auto from = per_thread_tasks * idx;
+    auto to = std::min(total, from + per_thread_tasks);
+    fn(from, to);
   };
 
   // Run the work in the thread pool (and in the current thread).  Synchronization with helping
