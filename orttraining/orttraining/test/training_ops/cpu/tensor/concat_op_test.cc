@@ -67,5 +67,22 @@ TEST(ConcatTrainingOpTest, Concat3D_same_len) {
   test.Run();
 }
 
+TEST(ConcatTrainingOpTest, Concat2D_optional_output1) {
+  OpTester test("ConcatTraining", 1, kMSDomain);
+  test.AddAttribute("axis", int64_t{1});
+
+  std::vector<int64_t> dims{4, 1};
+  test.AddInput<float>("input1", dims, {11.0f, 21.0f, 31.0f, 41.0f});
+  test.AddInput<float>("input2", {4, 2}, {12.0f, 13.0f, 22.0f, 23.0f, 32.0f, 33.0f, 42.0f, 43.0f});
+  test.AddInput<float>("input3", dims, {14.0f, 24.0f, 34.0f, 44.0f});
+  test.AddOutput<float>("concat_result", {4, 4},
+                        {11.0f, 12.0f, 13.0f, 14.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f,
+                         31.0f, 32.0f, 33.0f, 34.0f,
+                         41.0f, 42.0f, 43.0f, 44.0f});
+  test.AddMissingOptionalOutput<int64_t>();
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
