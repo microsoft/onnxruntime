@@ -20,6 +20,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
+      allocation_region_counter_(0),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
       intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink),
@@ -177,7 +178,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
                      << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+  region_manager_.AddAllocationRegion(mem_addr, bytes, allocation_region_counter_++);
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -237,6 +238,8 @@ void* BFCArena::Reserve(size_t size) {
     return nullptr;
 
   std::lock_guard<OrtMutex> lock(lock_);
+  LOGS_DEFAULT(WARNING) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
+
   void* ptr = device_allocator_->Alloc(size);
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
@@ -285,7 +288,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   }
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
-                     << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
+                     << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
 
   // Try to extend
   auto status = Extend(rounded_bytes);
@@ -429,8 +432,12 @@ Status BFCArena::Shrink() {
   region_ptrs.reserve(num_regions);
   region_sizes.reserve(num_regions);
   for (const auto& region : region_manager_.regions()) {
-    region_ptrs.push_back(region.ptr());
-    region_sizes.push_back(region.memory_size());
+    // Even if any byte is left unused in the first allocation region, we do not want to consider it for de-allocation
+    // TODO: Reason comment
+    if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested || region.id() != 0) {
+      region_ptrs.push_back(region.ptr());
+      region_sizes.push_back(region.memory_size());
+    }
   }
 
   int64_t i = 0;

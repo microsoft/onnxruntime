@@ -36,6 +36,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   Init(p_type, shape, p_data, allocator);
 }
 
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> allocator,
+               ptrdiff_t offset)
+    : alloc_info_(allocator->Info()) {
+  ORT_ENFORCE(p_type != nullptr);
+  Init(p_type, shape, p_data, allocator, offset);
+}
+
 size_t Tensor::SizeInBytes() const {
   size_t ret;
   if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &ret)) {

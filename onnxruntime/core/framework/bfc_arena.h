@@ -212,11 +212,12 @@ class BFCArena : public IArenaAllocator {
   // This class is thread-compatible.
   class AllocationRegion {
    public:
-    AllocationRegion(void* ptr, size_t memory_size)
+    AllocationRegion(void* ptr, size_t memory_size, int64_t id)
         : ptr_(ptr),
           memory_size_(memory_size),
           end_ptr_(
-              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)) {
+              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)),
+          id_(id) {
       ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
@@ -240,6 +241,7 @@ class BFCArena : public IArenaAllocator {
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
     size_t memory_size() const { return memory_size_; }
+    int64_t id() const { return id_; }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -266,6 +268,9 @@ class BFCArena : public IArenaAllocator {
     void* ptr_ = nullptr;
     size_t memory_size_ = 0;
     void* end_ptr_ = nullptr;
+    // A unique identifier for this allocation region
+    // (May be used by the client to track which allocation region was allocated first, second, and so on)
+    int64_t id_ = -1;
 
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
@@ -285,11 +290,11 @@ class BFCArena : public IArenaAllocator {
     RegionManager() = default;
     ~RegionManager() = default;
 
-    void AddAllocationRegion(void* ptr, size_t memory_size) {
+    void AddAllocationRegion(void* ptr, size_t memory_size, int64_t id) {
       // Insert sorted by end_ptr
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
-      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+      regions_.insert(entry, AllocationRegion(ptr, memory_size, id));
     }
 
     Status RemoveAllocationRegion(void* ptr) {
@@ -468,6 +473,9 @@ class BFCArena : public IArenaAllocator {
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
   int64_t next_allocation_id_;
+
+  // Counter tracking total number of allocation regions
+  int64_t allocation_region_counter_;
 
   AllocatorStats stats_;
 
