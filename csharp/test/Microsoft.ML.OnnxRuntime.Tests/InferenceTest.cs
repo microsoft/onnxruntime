@@ -2774,7 +2774,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-#region IDisposable Support
+        #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2807,6 +2807,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-#endregion
+        #endregion
     }
 }
