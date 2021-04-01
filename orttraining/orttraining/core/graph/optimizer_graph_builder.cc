@@ -359,7 +359,7 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
   grad_norm_finite_argdef =
       ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
 
-  graph_defs.AddNodeDefs({NodeDef{OpDef{"IsAllFinite", kOnnxDomain, 1},
+  graph_defs.AddNodeDefs({NodeDef{OpDef{"IsAllFinite", kMSDomain, 1},
                                   grad_norm_argdefs,
                                   {grad_norm_finite_argdef},
                                   NodeAttributes(),

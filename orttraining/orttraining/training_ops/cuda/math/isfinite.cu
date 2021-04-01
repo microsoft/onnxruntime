@@ -22,14 +22,14 @@ void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t count
 }
 
 #define SPECIALIZE_ISFINITE_IMPL(T) \
-template void IsFinite(cudaStream_t stream, const T* input, bool* output, size_t count);
+  template void IsFinite(cudaStream_t stream, const T* input, bool* output, size_t count);
 
 SPECIALIZE_ISFINITE_IMPL(half)
 SPECIALIZE_ISFINITE_IMPL(float)
 SPECIALIZE_ISFINITE_IMPL(double)
 
 template <typename TSrc>
-__global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
+__global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only) {
   const int block_idx = blockIdx.x;
   const int tensor_idx = chunks.block_index_to_tensor_group_index[block_idx];
   const int tensor_size = chunks.tensor_sizes[tensor_idx];
@@ -44,7 +44,7 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
   bool result = true;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    result &= _IsFiniteScalar(chunk_ptr[i]);
+    result &= _IsFiniteScalar(chunk_ptr[i], isinf_only, isnan_only);
   }
 
   if (!result) {
@@ -53,14 +53,14 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
 }
 
 template <typename T>
-void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output) {
+void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only) {
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
-  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0, stream>>>(chunks, output);
+  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0, stream>>>(chunks, output, isinf_only, isnan_only);
 }
 
 #define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
-  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output);
+  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only);
 
 INSTANTIATE_ISALLFINITE_FUNCTOR(half)
 INSTANTIATE_ISALLFINITE_FUNCTOR(float)

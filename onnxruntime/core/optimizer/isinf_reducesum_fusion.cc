@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
+
+#include "onnx/defs/attr_proto_util.h"
+
+#include "core/optimizer/initializer.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include <deque>
@@ -91,7 +94,8 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     Node& greater_node = *graph.GetNode(greater_node_itr->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {1, 7, 9, 13}) || greater_node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {1, 7, 9, 13}) || 
+        greater_node.GetOutputEdgesCount() > 1) {
       continue;
     }
     nodes_to_remove.push_back(greater_node);
@@ -100,8 +104,11 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                            "IsAllFinite",
                                            "fused " + isinf_node.Name(),
                                            input_defs,
-                                           {});
+                                           {},
+                                           {},
+                                           kMSDomain);
     isallfinite_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("is_all_finite"), nullptr));
+    isallfinite_node.AddAttribute("isinf_only", static_cast<int64_t>(1));
 
     Node& not_node = graph.AddNode(graph.GenerateNodeName("Not"),
                                    "Not",

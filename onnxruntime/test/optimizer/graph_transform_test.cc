@@ -3835,7 +3835,7 @@ TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   EXPECT_EQ(op_to_count["IsInf"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 0);
-  EXPECT_EQ(op_to_count["IsAllFinite"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
   EXPECT_EQ(op_to_count["Not"], 1);
 
 }
