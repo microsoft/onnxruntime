@@ -584,7 +584,7 @@ TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
 
 template <typename T>
 static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t sorted = 1) {
-  std::vector<T> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<T> input_vals = {1, 2, 3, 4, 5, 6, 7, 8};
   std::vector<int64_t> input_dimensions = {2, 2, 2};
   std::vector<T> expected_vals = {1, 2, 5, 6};
   std::vector<int64_t> expected_indices = {0, 0, 0, 0};
@@ -598,6 +598,10 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest<float>(11, 0);  //unsorted
   top_1_explicit_axis_MultiD_input_smallest<double>(11);
   top_1_explicit_axis_MultiD_input_smallest<double>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int32_t>(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11);
+  top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  //unsorted
 }
 
 // test path where SelectTopK is used (select using std::nth_element)

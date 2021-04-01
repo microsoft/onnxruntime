@@ -804,9 +804,13 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {
     OrtPybindThrowIfError(sess->FilterEnabledOptimizers(disabled_optimizer_names));
   }
+#else
+  ORT_UNUSED_PARAMETER(disabled_optimizer_names);
+#endif
 
   OrtPybindThrowIfError(sess->Initialize());
 }
