@@ -93,12 +93,12 @@ struct Clip::ComputeImpl {
     const T* max_data = nullptr;
     // 1-2 Input on CPU
     if (min) {
-      ORT_ENFORCE(min->Shape().Size() == 1, "min should be a scalar.");
+      ORT_ENFORCE(min->Shape().IsScalar() == 1, "min should be a scalar.");
       min_data = min->template Data<T>();
     }
 
     if (max) {
-      ORT_ENFORCE(max->Shape().Size() == 1, "max should be a scalar.");
+      ORT_ENFORCE(max->Shape().IsScalar() == 1, "max should be a scalar.");
       max_data = max->template Data<T>();
     }
 

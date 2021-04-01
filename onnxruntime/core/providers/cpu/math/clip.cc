@@ -89,11 +89,11 @@ struct Clip::ComputeImpl {
     auto min_val = std::numeric_limits<T>::lowest();
     auto max_val = std::numeric_limits<T>::max();
     if (min) {
-      ORT_ENFORCE(min->Shape().Size() == 1, "min should be a scalar.");
+      ORT_ENFORCE(min->Shape().IsScalar() == 1, "min should be a scalar.");
       min_val = *(min->template Data<T>());
     }
     if (max) {
-      ORT_ENFORCE(max->Shape().Size() == 1, "max should be a scalar.");
+      ORT_ENFORCE(max->Shape().IsScalar() == 1, "max should be a scalar.");
       max_val = *(max->template Data<T>());
     }
 
