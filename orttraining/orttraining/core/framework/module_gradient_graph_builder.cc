@@ -94,7 +94,14 @@ std::string ModuleGradientGraphBuilder::GetGradientModel() const {
   if (!gradient_model_->ToProto().SerializeToString(&model_str)) {
     ORT_THROW("Fail to serialize gradient model to string.");
   }
+  return model_str;
+}
 
+std::string ModuleGradientGraphBuilder::GetInferenceOptimizedModel() const {
+  std::string model_str;
+  if (!inference_optimized_model_->ToProto().SerializeToString(&model_str)) {
+    ORT_THROW("Fail to serialize inference optimized model to string.");
+  }
   return model_str;
 }
 
@@ -158,6 +165,9 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
     ORT_RETURN_IF_ERROR(
         graph_transformation_mgr.ApplyTransformers(gradient_graph, static_cast<TransformerLevel>(i), *logger_));
   }
+
+  // Save a copy of inference optimized model
+  ORT_RETURN_IF_ERROR(Model::Load(gradient_model_->ToProto(), inference_optimized_model_, nullptr, *logger_));
 
   // Build gradient graph.
   GradientGraphConfiguration gradient_graph_config{};
