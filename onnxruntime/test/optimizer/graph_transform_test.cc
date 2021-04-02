@@ -3848,11 +3848,14 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
 }
 
 TEST_F(GraphTransformationTests, PropagateCastOp) {
+  // Any change in the order of the test models will effect the assertions.
+  // The expected casts also need to be changed
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx",
       MODEL_FOLDER "propagate_cast/propagate_cast_float_0.onnx",
       MODEL_FOLDER "propagate_cast/propagate_cast_float_1.onnx"
   };
+  const std::vector<int> expected_casts = {2, 0, 1};
   int i=0;
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
@@ -3863,9 +3866,10 @@ TEST_F(GraphTransformationTests, PropagateCastOp) {
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
         onnxruntime::make_unique<PropagateCastOps>(), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    Model::Save(*p_model, "propagated_casts_" + to_string(i++) + ".onnx");
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Cast"] == expected_casts[i]);
+    ++i;
   }
 }
 
