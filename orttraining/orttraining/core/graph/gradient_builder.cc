@@ -814,7 +814,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
                   {GO(0)},
                   {GI(0)},
                   {MakeAttribute("axes", axes_values)}));
-    } 
+    }
   } else if(numInputs == 2){ //optional input 'axes' is provided
     result.push_back(
         NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
@@ -1138,7 +1138,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
         grad = IA("Unqueezed_Grad");
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
 
-      } 
+      }
     } else if (numInputs == 2) {  //optional input 'axes' is available as input I(1)
       grad = IA("Unqueezed_Grad");
       result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), I(1)}, {grad}));
@@ -1273,7 +1273,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef x_shape = IA("Shape_" + X.name);
     return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
-  
+
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
         NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
@@ -1500,6 +1500,92 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
       NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
       NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
   };
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
+  const auto num_src_node_inputs = GetSrcNodeInputSize();
+  if (num_src_node_inputs == 1) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
+    }
+
+    return std::vector<NodeDef>{};
+  }
+
+  std::vector<NodeDef> result;
+  std::vector<Dimension> y_shape;
+  const ArgDef y = O(0);
+  bool get_y_shape_ok = GetShape(y, y_shape).IsOK();
+
+  int stop_here = 0;
+  while (stop_here < num_src_node_inputs) {
+    if (IsGradientRequiredForSrcNodeInput(stop_here)) {
+      break;
+    }
+    stop_here++;
+  }
+
+  for (int i = num_src_node_inputs - 1; i >= stop_here; i--) {
+    const ArgDef x = I(i);
+    const ArgDef cmp_i_def = IA("Cmp_" + std::to_string(i));
+    result.push_back(NodeDef("Equal", {x, y}, {cmp_i_def}));
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      const ArgDef mask_cast_i_def = IA("Mask_Cast_" + std::to_string(i));
+      const ArgDef pre_reduce_grad_i_def = IA("PreReduceGrad_" + std::to_string(i), OType(0));
+      if (i == num_src_node_inputs - 1) {
+        result.push_back(NodeDef("Cast",
+                                 {cmp_i_def},
+                                 {mask_cast_i_def},
+                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
+      } else if (i == 0) {
+        result.push_back(NodeDef("Cast",
+                                 {IA("Mask_0")},
+                                 {mask_cast_i_def},
+                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
+      } else {
+        const ArgDef cur_mask_i_def = IA("Cur_Mask_" + std::to_string(i));
+        result.push_back(NodeDef("And",
+                                 {cmp_i_def, IA("Mask_" + std::to_string(i))},
+                                 {cur_mask_i_def}));
+        result.push_back(NodeDef("Cast",
+                                 {cur_mask_i_def},
+                                 {mask_cast_i_def},
+                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
+      }
+      result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
+
+      std::vector<Dimension> x_shape;
+      if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
+        std::vector<int64_t> x_axes;
+        ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
+        if (x_axes.size() > 0) {
+          HandleBroadcasting(pre_reduce_grad_i_def, x, GI(i), x_axes, result);
+        } else {
+          result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
+        }
+      } else {
+        ArgDef x_axes_def = IA("ReduceAxes_" + x.name);
+        ArgDef x_shape_def = IA("Shape_" + x.name);
+        ArgDef y_shape_def = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape_def, y_shape_def, &x_axes_def, nullptr, result);
+        HandleBroadcastingDynamic(pre_reduce_grad_i_def, x, x_shape_def, GI(i), x_axes_def, result);
+      }
+    }
+    if (i) {
+      const ArgDef next_mask_i_def = IA("Mask_" + std::to_string(i - 1));
+      if (i == num_src_node_inputs - 1) {
+        result.push_back(NodeDef("Not", {cmp_i_def}, {next_mask_i_def}));
+      } else {
+        const ArgDef not_equal_i_def = IA("Not_Equal_" + std::to_string(i));
+        result.push_back(NodeDef("Not", {cmp_i_def}, {not_equal_i_def}));
+        result.push_back(NodeDef("And",
+                                 {not_equal_i_def, IA("Mask_" + std::to_string(i))},
+                                 {next_mask_i_def}));
+      }
+    }
+  }
+
+  return result;
 }
 
 }  // namespace training

@@ -2423,6 +2423,86 @@ TEST(GradientCheckerTest, ClipGrad) {
   }
 }
 
+TEST(GradientCheckerTest, MinGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Min", kOnnxDomain, 11};
+
+  {
+    TensorInfo x_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 3, 4}, true);
+    TensorInfo x2_info({2, 3, 4}, true);
+    TensorInfo x3_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 2}, true);
+    TensorInfo x2_info({2, 2}, true);
+    TensorInfo y_info({2, 2}, true);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {1, 1, 4, 4}};
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 3, 4}, true);
+    TensorInfo x2_info({3, 4}, true);
+    TensorInfo x3_info({4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, MaxGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Max", kOnnxDomain, 11};
+
+  {
+    TensorInfo x_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 3, 4}, true);
+    TensorInfo x2_info({2, 3, 4}, true);
+    TensorInfo x3_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 2}, true);
+    TensorInfo x2_info({2, 2}, true);
+    TensorInfo y_info({2, 2}, true);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {1, 1, 4, 4}};
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x1_info({2, 3, 4}, true);
+    TensorInfo x2_info({3, 4}, true);
+    TensorInfo x3_info({4}, true);
+    TensorInfo y_info({2, 3, 4}, true);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
