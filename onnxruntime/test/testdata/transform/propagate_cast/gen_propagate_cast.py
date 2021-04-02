@@ -96,5 +96,81 @@ def gen_propagate_cast_float(model_path):
 
     save(model_path, nodes, inputs, outputs, [])
 
+def gen_propagate_cast_float_0(model_path):
+    nodes = [
+        helper.make_node(
+            "Cast",
+            ["input_0"],
+            ["cast_input_0"],
+            "Cast_0",
+            to = TensorProto.FLOAT),
+        helper.make_node(
+            "Cast",
+            ["input_1"],
+            ["cast_input_1"],
+            "Cast_1",
+            to = TensorProto.FLOAT),
+        helper.make_node(
+            "MatMul",
+            ["cast_input_0", "cast_input_1"],
+            ["product"],
+            "MatMul_0"),
+        helper.make_node(
+            "Cast",
+            ["product"],
+            ["output"],
+            "Cast_2",
+            to = TensorProto.FLOAT16),
+     ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT16, ['M', 'K']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT16, ['K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output", TensorProto.FLOAT16, ['M', 'N'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, [])
+
+def gen_propagate_cast_float_1(model_path):
+    nodes = [
+        helper.make_node(
+            "Cast",
+            ["input_0"],
+            ["cast_input_0"],
+            "Cast_0",
+            to = TensorProto.FLOAT),
+        helper.make_node(
+            "Cast",
+            ["input_1"],
+            ["cast_input_1"],
+            "Cast_1",
+            to = TensorProto.FLOAT),
+        helper.make_node(
+            "MatMul",
+            ["cast_input_0", "cast_input_1"],
+            ["output"],
+            "MatMul_0"),
+     ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT16, ['M', 'K']),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT16, ['K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output", TensorProto.FLOAT, ['M', 'N'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, [])
 gen_propagate_cast_float16("propagate_cast_float16.onnx")
-gen_propagate_cast_float("propagate_cast_float.onnx")
+gen_propagate_cast_float_0("propagate_cast_float_0.onnx")
+gen_propagate_cast_float_1("propagate_cast_float_1.onnx")
