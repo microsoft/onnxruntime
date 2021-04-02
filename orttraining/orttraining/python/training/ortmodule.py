@@ -506,6 +506,8 @@ class ORTModule(torch.nn.Module):
         return onnx.load_model_from_string(f.getvalue())
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Override original method to delegate execution to the base module"""
+
         # Override the state_dict() method so that the state dict key names
         # do not contain the _flattened_output_module._base_module prefix
         return self._flattened_output_module._base_module.state_dict(
@@ -513,6 +515,8 @@ class ORTModule(torch.nn.Module):
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
                         strict: bool = True):
+        """Override original method to delegate execution to the base module"""
+
         # Override the load_state_dict() method so that the loaded state dict
         # key names does not need to contain the _flattened_output_module._base_module prefix
         return self._flattened_output_module._base_module.load_state_dict(
