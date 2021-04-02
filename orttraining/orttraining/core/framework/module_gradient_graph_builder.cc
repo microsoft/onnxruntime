@@ -168,13 +168,6 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
-  const std::unordered_set<std::string>& backward_inputs_from_forward = grad_graph_builder.GetBackwardInputsFromForwardNames();
-  for (const auto& input : backward_inputs_from_forward) {
-    if (x_node_arg_names.find(input) == x_node_arg_names.end()) {
-      training_graph_info_.forward_intermediate_tensor_names.emplace_back(input);
-    }
-  }
-
   const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
   for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
@@ -183,6 +176,12 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+  /*const std::unordered_set<std::string>& backward_inputs_from_forward = grad_graph_builder.GetBackwardInputsFromForwardNames();
+  for (const auto& input : backward_inputs_from_forward) {
+    if (x_node_arg_names.find(input) == x_node_arg_names.end()) {
+      training_graph_info_.forward_intermediate_tensor_names.emplace_back(input);
+    }
+  }*/
   return Status::OK();
 }
 
@@ -307,6 +306,26 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
   }
 
   gradient_graph.SetOutputs(new_output_args);
+  gradient_graph.Resolve();
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  std::unordered_set<std::string> backward_inputs_from_forward_names;
+  for (auto node_index : gradient_node_topology_list) {
+    auto& node = *gradient_graph.GetNode(node_index);
+    if (node.Name().find("_Grad") == std::string::npos)
+      continue;
+    for (const auto& node_arg : node.InputDefs()) {
+      // Aggregate all backward graph inputs that are coming from forward graph.
+      // Note: This will contain initializers, stashed tensors as well as anything else.
+
+      if ((node_arg->Name().find("_grad") == std::string::npos) &&
+          (node_arg->Name().find("_external") == std::string::npos) &&
+          (backward_inputs_from_forward_names.find(node_arg->Name()) == backward_inputs_from_forward_names.end())) {
+        backward_inputs_from_forward_names.insert(node_arg->Name());
+        training_graph_info_.forward_intermediate_tensor_names.emplace_back(node_arg->Name());
+      }
+    }
+  }
 }
 
 }  // namespace training

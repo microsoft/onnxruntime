@@ -47,6 +47,18 @@ void IOBinding::ClearInputs() {
   feeds_.clear();
 }
 
+void IOBinding::ClearInputReferences() {
+  for (size_t index = 0; index < feeds_.size(); index += 1) {
+    feeds_[index] = OrtValue();
+  }
+}
+
+void IOBinding::ClearOutputReferences() {
+  for (size_t index = 0; index < outputs_.size(); index += 1) {
+    outputs_[index] = OrtValue();
+  }
+}
+
 static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& node_info_map,
                                     const SessionState& session_state) {
   std::set<std::string> providers;

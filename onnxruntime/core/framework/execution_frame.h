@@ -16,6 +16,7 @@
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph_viewer.h"
+#include "core/session/IOBinding.h"
 
 namespace onnxruntime {
 
@@ -36,6 +37,10 @@ class IExecutionFrame {
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
             const std::vector<OrtValue>& fetches);
+
+  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+            const std::unordered_map<int, OrtValue>& initializers,
+            const std::vector<OrtValue>& fetches, IOBinding* io_binding, bool clear_io_binding);
 
  public:
   virtual ~IExecutionFrame();
@@ -123,6 +128,12 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
+
+  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+                 // optional custom allocators. key is index in fetches
+                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                 const SessionState& session_state, IOBinding* io_binding, bool clear_io_binding);
 
   ~ExecutionFrame() override;
 

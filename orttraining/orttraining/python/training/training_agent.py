@@ -69,3 +69,6 @@ class TrainingAgent(object):
          :param backward_output_grads: Output gradients for backward.
         """
         self._training_agent.run_backward(run_options, iobinding._iobinding)
+
+    def get_intermediate_tensors(self):
+        return self._training_agent.get_intermediate_tensors()

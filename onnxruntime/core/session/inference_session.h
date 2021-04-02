@@ -301,6 +301,12 @@ class InferenceSession {
 
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+ std::vector<std::string> GetIntermediateTensors();
+ std::pair<size_t, size_t> GetBreakpointAndEndPoint();
+  common::Status Run(const RunOptions& run_options,
+                     const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                     const std::vector<OrtDevice>* p_fetches_device_info, IOBinding* io_binding);
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -526,7 +532,7 @@ class InferenceSession {
                                  const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
-
+ 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 

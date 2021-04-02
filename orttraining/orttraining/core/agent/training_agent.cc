@@ -9,15 +9,24 @@ namespace training {
 
 TrainingAgent::TrainingAgent(InferenceSession& session) : inference_session_(session) {}
 
-TrainingAgent::~TrainingAgent() {
-};
+TrainingAgent::~TrainingAgent(){};
 
-common::Status TrainingAgent::RunForward(const onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) {
-  return inference_session_.Run(run_options, io_binding);
+common::Status TrainingAgent::RunForward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) {
+  run_options.program_counter_start = 0;
+  run_options.program_counter_end = inference_session_.GetBreakpointAndEndPoint().first - 1;
+  return inference_session_.Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                                &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), &io_binding);
 }
 
-common::Status TrainingAgent::RunBackward(const onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) {
-  return inference_session_.Run(run_options, io_binding);
+common::Status TrainingAgent::RunBackward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) {
+  run_options.program_counter_start = inference_session_.GetBreakpointAndEndPoint().first;
+  run_options.program_counter_end = inference_session_.GetBreakpointAndEndPoint().second;
+  return inference_session_.Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                                &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), &io_binding);
+}
+
+std::vector<std::string> TrainingAgent::GetIntermediateTensors() {
+  return inference_session_.GetIntermediateTensors();
 }
 
 }  // namespace training

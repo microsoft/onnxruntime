@@ -10,6 +10,7 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
+#include "core/session/IOBinding.h"
 
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
@@ -71,6 +72,14 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                             bool only_execute_path_to_fetches = false);
+
+common::Status ExecuteGraph(const SessionState& session_state,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const bool& terminate_flag,
+                            const logging::Logger& logger, bool only_execute_path_to_fetches,
+                            size_t program_counter_start, size_t program_counter_end,
+                            IOBinding* io_binding);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.

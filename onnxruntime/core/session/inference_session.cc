@@ -1503,6 +1503,48 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
+std::vector<std::string> InferenceSession::GetIntermediateTensors() {
+  const GraphViewer& gradient_graph_viewer = session_state_->GetGraphViewer();
+  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  std::unordered_set<std::string> backward_inputs_from_forward_names;
+  std::vector<std::string> forward_intermediate_tensor_names;
+  for (auto node_index : gradient_node_topology_list) {
+    const auto& node = gradient_graph_viewer.GetGraph().GetNode(node_index);
+    if (node->Name().find("_Grad") == std::string::npos)
+      continue;
+    for (const auto& node_arg : node->InputDefs()) {
+      // Aggregate all backward graph inputs that are coming from forward graph.
+      // Note: This will contain initializers, stashed tensors as well as anything else.
+
+      if ((node_arg->Name().find("_grad") == std::string::npos) &&
+          (node_arg->Name().find("_external") == std::string::npos) &&
+          (backward_inputs_from_forward_names.find(node_arg->Name()) == backward_inputs_from_forward_names.end())) {
+        backward_inputs_from_forward_names.insert(node_arg->Name());
+        forward_intermediate_tensor_names.emplace_back(node_arg->Name());
+      }
+    }
+  }
+
+  return forward_intermediate_tensor_names;
+}
+
+std::pair<size_t, size_t> InferenceSession::GetBreakpointAndEndPoint() {
+  size_t end_point;
+  size_t break_point = 0;
+  const SequentialExecutionPlan& seq_exec_plan = *(session_state_->GetExecutionPlan());
+  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+  end_point = exec_plan_vec.size() - 1;
+  for (size_t program_counter = 0; program_counter < exec_plan_vec.size(); program_counter += 1) {
+    const auto& node_exec_plan = exec_plan_vec[program_counter];
+    auto node_index = node_exec_plan.node_index;
+    if (session_state_->GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
+      break;
+    }
+    break_point += 1;
+  }
+  return std::make_pair(break_point, end_point);
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
@@ -1584,6 +1626,131 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+  }
+
+  // info all execution providers InferenceSession:Run ended
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  --current_num_runs_;
+
+  // keep track of telemetry
+  ++telemetry_.total_runs_since_last_;
+  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+
+  // time to send telemetry?
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
+    // send the telemetry
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                              telemetry_.total_run_duration_since_last_);
+    // reset counters
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
+  }
+
+  // log evaluation stop to trace logging provider
+  env.GetTelemetryProvider().LogEvaluationStop();
+
+  // send out profiling events (optional)
+  if (session_profiler_.IsEnabled()) {
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+  }
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+#endif
+  return retval;
+}
+
+Status InferenceSession::Run(const RunOptions& run_options,
+                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                             const std::vector<OrtDevice>* p_fetches_device_info, IOBinding* io_binding) {
+  TimePoint tp;
+  if (session_profiler_.IsEnabled()) {
+    tp = session_profiler_.StartTime();
+  }
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
+  ortrun_activity.SetRelatedActivity(session_activity);
+  TraceLoggingWriteStart(ortrun_activity, "OrtRun");
+#endif
+  Status retval = Status::OK();
+  const Env& env = Env::Default();
+
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart();
+
+    FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
+    FeedsFetchesManager feeds_fetches_manager{std::move(info)};
+
+    if (p_fetches_device_info) {
+      // populate the target device info. ignored if pre-allocated fetches are provided
+      const auto& fetch_device_info = *p_fetches_device_info;
+      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+
+      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+        fetch_info[i].target_device = fetch_device_info[i];
+      }
+    }
+
+    if (!run_options.run_tag.empty()) {
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+    }
+
+    ++current_num_runs_;
+
+    // scope of owned_run_logger is just the call to Execute.
+    // If Execute ever becomes async we need a different approach
+    std::unique_ptr<logging::Logger> owned_run_logger;
+    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call OnRunStart for all providers in-use
+    for (auto& xp : execution_providers_) {
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
+    }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    if (run_options.only_execute_path_to_fetches) {
+      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+    }
+#endif
+
+    // execute the graph
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                                                 session_options_.execution_mode, run_options.terminate, run_logger,
+                                                 run_options.only_execute_path_to_fetches, run_options.program_counter_start,
+                                                 run_options.program_counter_end, io_binding));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

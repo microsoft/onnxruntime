@@ -262,9 +262,9 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     // Note: This will contain initializers, stashed tensors as well as anything else.
     for (auto& node_def : node_defs) {
       for (auto& arg : node_def.input_args) {
-        if ((arg.name.find("_grad") == std::string::npos) && 
+        if ((arg.name.find("_grad") == std::string::npos) &&
             (arg.name.find("_external") == std::string::npos) && 
-            (backward_inputs_from_forward_names_.find(arg.name) != backward_inputs_from_forward_names_.end())) {
+            (backward_inputs_from_forward_names_.find(arg.name) == backward_inputs_from_forward_names_.end())) {
           backward_inputs_from_forward_names_.insert(arg.name);
         }
       }

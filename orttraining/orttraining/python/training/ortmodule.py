@@ -199,16 +199,16 @@ class ORTModule(torch.nn.Module):
                     training_forward_io_binding = self._training_session.io_binding()
                     training_backward_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
-                    
+                    self._intermediate_tensors = self._training_session.get_intermediate_tensors()
                     # Use IO binding
                     _create_forward_iobinding(training_forward_io_binding, inputs, self._onnx_training, self._device,
-                        self.forward_intermediate_tensor_names + self._onnx_graphs_info.user_output_names)
+                        self._intermediate_tensors + self._onnx_graphs_info.user_output_names)
 
                     # Run and return module outputs.
-                    run_options.only_execute_path_to_fetches = True
+                    run_options.only_execute_path_to_fetches = False
                     self._training_session.run_forward(run_options, training_forward_io_binding)
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
-                        forward_output) for forward_output in training_forward_io_binding.get_outputs()[len(self.forward_intermediate_tensor_names):])
+                        forward_output) for forward_output in training_forward_io_binding.get_outputs()[len(self._intermediate_tensors):])
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
@@ -349,6 +349,7 @@ class ORTModule(torch.nn.Module):
         # Training model
         self._onnx_training = None
         self._training_session = None
+        self._intermediate_tensors = None
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
