@@ -82,7 +82,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
            {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
   OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
