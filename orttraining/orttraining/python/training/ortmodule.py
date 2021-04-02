@@ -62,18 +62,15 @@ def _create_backward_iobinding(io_binding, forward_io_binding, loss_gradients, l
     '''Creates IO binding for a `model` inputs and output'''
     # Feed in graph inputs - initializers, learning rate, etc.
     for idx, name in enumerate(forward_io_binding.get_input_names()):
-        io_binding.bind_ortvalue_input(
-            name, _ortvalue_from_torch_tensor(forward_io_binding.get_inputs()[idx]))
+        io_binding.bind_ortvalue_input(name, forward_io_binding.get_inputs()[idx])
 
     # Feed in intermediate tensors from the forward run.
     for idx, name in enumerate(forward_io_binding.get_output_names()):
-        io_binding.bind_ortvalue_input(
-            name, forward_io_binding.get_outputs()[idx])
+        io_binding.bind_ortvalue_input(name, forward_io_binding.get_outputs()[idx])
 
     # Feed in loss function's gradient tensors (from PyTorch)
     for idx, name in enumerate(loss_gradients_names):
-        io_binding.bind_ortvalue_input(
-            name, _ortvalue_from_torch_tensor(loss_gradients[idx]))
+        io_binding.bind_ortvalue_input(name, _ortvalue_from_torch_tensor(loss_gradients[idx]))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
@@ -259,7 +256,7 @@ class ORTModule(torch.nn.Module):
                     _create_backward_iobinding(ctx.run_info.backward_io_binding, ctx.run_info.forward_io_binding, contiguous_grad_outputs,
                         self._onnx_graphs_info.loss_gradient_names, self._onnx_training, self._device)
 
-                    self._training_session.run_backward(ctx.run_options, ctx.run_info.backward_io_binding)
+                    self._training_session.run_backward(ctx.run_info.run_options, ctx.run_info.backward_io_binding)
                     backward_outputs = ctx.run_info.backward_io_binding.get_outputs()
 
                     # Return input and initializer gradients

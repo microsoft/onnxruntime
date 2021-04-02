@@ -151,7 +151,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  OrtValue& target_mlvalue,
                                  std::vector<IDataTransfer::SrcDstPair>* copy_pairs = nullptr) {
   // same device so direct copy
-  if (copy_info.source_device == copy_info.target_device) {
+  if (copy_info.source_device == copy_info.source_device) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -533,16 +533,16 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-  const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+  //const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
   // see if we can skip copies due to the types of execution providers available
-  if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
+  //if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                         logger));
-  } else {
+  /*} else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
@@ -581,7 +581,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
     }
-  }
+  }*/
 
   return Status::OK();
 }
