@@ -38,7 +38,8 @@ static const std::vector<std::string>& ArgNamesForConv(size_t rank) {
   return rank_to_args_name[rank];
 }
 
-void SCONV_NCHW(benchmark::State& state) {
+// dummy for some strange build error when using Bench capture
+void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
   const int64_t rank = state.range(0);                       // Rank
   const int64_t batch_size = state.range(1);                 // N
   const int64_t groups = state.range(2);                     // G
@@ -196,7 +197,7 @@ static void ResNet50(benchmark::internal::Benchmark* b) {
 //b->Args({2, 1, 1,  512,2048,  7,  7, 1,1, 0,0,0,0, 1,1, 1,1});
 }
 
-BENCHMARK_CAPTURE(SCONV_NCHW, ResNet50)->Apply(ResNet50)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, ResNet50, "")->Apply(ResNet50)->UseRealTime();
 
 static void TeamsModel(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
@@ -218,7 +219,7 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
   b->Args({2, 1, 1,  12,  72, 48, 80, 1,1, 0,0,0,0, 1,1, 1,1}); // Conv_59 => 24x40
 }
 
-BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel)->Apply(TeamsModel)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
@@ -243,4 +244,4 @@ static void General_Conv2d(benchmark::internal::Benchmark* b) {
        {1}});
 }
 
-BENCHMARK_CAPTURE(SCONV_NCHW, 2d)->Apply(General_Conv2d)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, 2d, "")->Apply(General_Conv2d)->UseRealTime();
