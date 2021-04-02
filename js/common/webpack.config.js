@@ -37,5 +37,6 @@ function buildConfig({
 module.exports = (env, argv) => {
   return [
     buildConfig({ format: 'umd', suffix: '.min', target: 'es5' }),
+    buildConfig({ format: 'commonjs', suffix: '.node', target: 'es5' }),
   ];
 };
