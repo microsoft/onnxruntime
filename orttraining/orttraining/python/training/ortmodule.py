@@ -366,6 +366,8 @@ class ORTModule(torch.nn.Module):
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
+        if self._save_onnx:
+            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
         self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
@@ -412,8 +414,6 @@ class ORTModule(torch.nn.Module):
         if self._save_onnx:
             inference_optimized_model = onnx.load_model_from_string(
                 self._module_gradient_graph_builder.get_inference_optimized_model())
-
-            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
             onnx.save(inference_optimized_model, self._save_onnx_prefix + '_inference_optimized.onnx')
             onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
 
