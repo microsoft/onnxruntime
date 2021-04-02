@@ -359,7 +359,7 @@ namespace Dml
         }
     }
 
-    uint32_t MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
+    std::optional<uint32_t> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
     {
         for (auto& nameAndIndex : nameAndIndexList)
         {
@@ -369,7 +369,7 @@ namespace Dml
             }
         }
 
-        ML_INVALID_ARGUMENT("Unknown mode value.");
+        return {};
     }
 
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
@@ -387,7 +387,11 @@ namespace Dml
             {"BILINEAR", DML_INTERPOLATION_MODE_LINEAR},
             {"bilinear", DML_INTERPOLATION_MODE_LINEAR},
         };
-        return MapStringToIndex<DML_INTERPOLATION_MODE>(mode, mapping);
+        if (auto index = TryMapStringToIndex<DML_INTERPOLATION_MODE>(mode, mapping))
+        {
+            return *index;
+        }
+        ML_INVALID_ARGUMENT("Unknown interpolation mode");
     }
 
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
@@ -397,7 +401,11 @@ namespace Dml
             {"DCR", DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW},
             {"CRD", DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH},
         };
-        return MapStringToIndex<DML_DEPTH_SPACE_ORDER>(mode, mapping);
+        if (auto index = TryMapStringToIndex<DML_DEPTH_SPACE_ORDER>(mode, mapping))
+        {
+            return *index;
+        }
+        ML_INVALID_ARGUMENT("Unknown depth/space order");
     }
 
 } // namespace Dml
