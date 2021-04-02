@@ -4,10 +4,6 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
-#ifdef USE_TENSORRT
-#include <cuda_runtime.h>
-#endif
-
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
