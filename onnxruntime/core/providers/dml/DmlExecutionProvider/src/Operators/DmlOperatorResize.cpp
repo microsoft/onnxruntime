@@ -6,6 +6,24 @@
 namespace Dml
 {
 
+constexpr NameAndIndex coordinateTransformationModes[] =
+{
+    {"half_pixel", 0},
+    {"pytorch_half_pixel", 1},
+    {"align_corners", 2},
+    {"asymmetric", 3},
+    {"tf_half_pixel_for_nn", 4},
+    {"tf_crop_and_resize", 5},
+};
+
+constexpr NameAndIndex nearestNeighborRoundingModes[] =
+{
+    {"", 0},
+    {"round_prefer_floor", 0},
+    {"round_prefer_ceil", 1},
+    {"floor", 2},
+};
+
 void ComputePixelOffsetsAndScales(
     const MLOperatorKernelCreationContext& kernelCreationContext,
     gsl::span<const float> regionOfInterest, // May be empty depending on mode.
@@ -23,17 +41,12 @@ void ComputePixelOffsetsAndScales(
     assert(regionOfInterest.empty() || regionOfInterest.size() == inputDimensions.size() * 2);
 
     std::string coordinateTransformationMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::CoordinateTransformationMode, "half_pixel");
-    uint32_t coordinateTransformationModeValue = UINT32_MAX;
-
-    const char* modes[] = { "half_pixel", "pytorch_half_pixel", "align_corners", "asymmetric", "tf_half_pixel_for_nn", "tf_crop_and_resize" };
-    for (uint32_t i = 0; i < std::size(modes); ++i)
+    auto optionalCoordinateTransformationModeValue = TryMapStringToIndex(coordinateTransformationMode, coordinateTransformationModes);
+    if (!optionalCoordinateTransformationModeValue)
     {
-        if (strcmp(modes[i], coordinateTransformationMode.c_str()) == 0)
-        {
-            coordinateTransformationModeValue = i;
-            break;
-        }
+        ML_INVALID_ARGUMENT("Unsupported 'coordinate_transformation_mode'");
     }
+    uint32_t coordinateTransformationModeValue = *optionalCoordinateTransformationModeValue;
 
     ML_CHECK_VALID_ARGUMENT(
         !regionOfInterest.empty() || coordinateTransformationModeValue != 5 /*tf_crop_and_resize*/,
@@ -150,7 +163,7 @@ void ComputePixelOffsetsAndScales(
             break;
 
         default:
-            ML_INVALID_ARGUMENT("Unknown 'coordinate_transformation_mode'");
+            assert(false); // TryMapStringToIndex would have already bailed above.
         }
 
         inputPixelOffsets[i] = inputPixelOffset;
@@ -233,6 +246,34 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
+        // DML's nearest neighbor mode uses round-halves-up (or round_prefer_ceil) via floor(input.x + 0.5).
+        // So to support floor, adjust the input by half a pixel.
+        // round_prefer_floor is not supported without an API extension,
+        // but existing code already default to treating it as round_prefer_ceil.
+        // So continue that.
+        if (interpolationMode == DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR)
+        {
+            std::string nearestMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+            auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
+            if (optionalNearestModeValue)
+            {
+                switch (*optionalNearestModeValue)
+                {
+                case 0: // round_prefer_floor
+                case 1: // round_prefer_ceil
+                    break;
+                case 2: // floor
+                    for (auto& offset : inputPixelOffsets)
+                    {
+                        offset += 0.5;
+                    }
+                    break;
+                default:
+                    assert(false);
+                }
+            }
+        }
+
         // Create the operator description.
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -282,7 +323,8 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 
     // DML's nearest neighbor mode uses half pixels rounded down.
     std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
-    if (nearestMode != "round_prefer_floor")
+    auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
+    if (!optionalNearestModeValue)
     {
         return;
     }
