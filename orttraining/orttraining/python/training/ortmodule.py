@@ -366,11 +366,6 @@ class ORTModule(torch.nn.Module):
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
-
-        if self._save_onnx:
-            onnx.save(self._onnx_inference,
-                      self._save_onnx_prefix + '_inference.onnx')
-
         self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
@@ -397,6 +392,9 @@ class ORTModule(torch.nn.Module):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._verbosity)
+        # enable dumping optimized training graph
+        if self._save_onnx:
+            session_options.optimized_model_filepath = self._save_onnx_prefix + '_training_optimized.onnx'
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
@@ -412,8 +410,12 @@ class ORTModule(torch.nn.Module):
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
         if self._save_onnx:
-            onnx.save(self._onnx_training,
-                      self._save_onnx_prefix + '_training.onnx')
+            inference_optimized_model = onnx.load_model_from_string(
+                self._module_gradient_graph_builder.get_inference_optimized_model())
+
+            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
+            onnx.save(inference_optimized_model, self._save_onnx_prefix + '_inference_optimized.onnx')
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
         self._flattened_output_module.eval()
