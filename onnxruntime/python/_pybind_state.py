@@ -50,12 +50,17 @@ if platform.system() == "Windows":
         elif not os.path.isfile(os.path.join(cupti_bin_dir, "cupti.lib")):
             raise ImportError(f"cupti.lib is missing in: {cupti_bin_dir}.")
 
+        win_perf_kit = "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\"
+        if not os.path.isdir(win_perf_kit):
+            raise ImportError(f"windows performance toolkit is missing")
+
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
             # specified explicitly using the new API introduced in Python 3.8.
             os.add_dll_directory(cuda_bin_dir)
             os.add_dll_directory(cupti_bin_dir)
-            ExtendDllPath()
+            os.add_dll_directory(win_perf_kit)
+            #ExtendDllPath()
         else:
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
