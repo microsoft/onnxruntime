@@ -67,7 +67,11 @@
         "^test_simple_rnn_batchwise_cpu",
         "^test_simple_rnn_defaults_cpu",
         "^test_simple_rnn_with_initial_bias_cpu",
-        "^test_tril_*"
+        "^test_sub_*",
+        "^test_mul_*",
+        "^test_add_*",
+        "^test_div_*",
+        "^test_batchnorm_*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
