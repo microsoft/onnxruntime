@@ -5,7 +5,7 @@ function buildConfig({
   suffix = '',
   format = 'umd',
   target = 'ES2017',
-  mode = 'prod'
+  devtool = 'source-map'
 }) {
   return {
     entry: path.resolve(__dirname, 'lib/index.ts'),
@@ -29,8 +29,8 @@ function buildConfig({
         ]
       }]
     },
-    mode: mode === 'prod' ? 'production' : 'development',
-    devtool: mode === 'prod' ? 'source-map' : 'eval-source-map',
+    mode: 'production',
+    devtool: devtool,
   };
 }
 
