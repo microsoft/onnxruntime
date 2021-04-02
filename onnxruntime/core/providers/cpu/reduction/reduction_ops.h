@@ -224,6 +224,37 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, this->N_).squaredNorm();
   }
   inline void update(const T& v) { this->accumulator_ += v * v; }
+
+  // Fast reduction
+  static inline bool fast_reduce() { return true; }
+
+  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[0]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).unaryExpr([](T x) { return x * x; }).colwise().sum();
+  }
+
+  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                           Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
+    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).unaryExpr([](T x) { return x * x; }).rowwise().sum();
+  }
+
+  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+                            Tensor& output, concurrency::ThreadPool*) {
+    ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
+    ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
+    const T* data = input.Data<T>();
+    T* out = output.MutableData<T>();
+    int64_t stridei = fast_shape[1] * fast_shape[2];
+    int64_t strideo = fast_shape[2];
+    // TODO: use parallelization
+    for (int64_t dim = 0; dim < fast_shape[0]; ++dim, out += strideo, data += stridei) {
+      EigenVectorMap<T>(out, strideo) = ConstEigenMatrixMap<T>(data, fast_shape[2], fast_shape[1]).unaryExpr([](T x) { return x * x; }).rowwise().sum();
+    }
+  }
 };
 
 template <typename T, typename TVAL = T>
