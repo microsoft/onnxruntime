@@ -77,6 +77,39 @@ static Status RemoveCastNode(Graph& graph, Node* cast, std::deque<onnxruntime::N
   return Status::OK();
 }
 
+static bool RemoveBackToBackCasts(Graph& graph, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+{
+  bool modified = false;
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast") {
+      const NodeAttributes& attributes = node.GetAttributes();
+      ORT_ENFORCE(attributes.find("to") != attributes.end());
+      bool is_fp = attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT);
+      bool is_fp16 = attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16);
+      for (NodeArg* cast_output : node.MutableOutputDefs()) {
+        for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
+          if (child->OpType() == "Cast") {
+            const NodeAttributes& child_attributes = child->GetAttributes();
+            ORT_ENFORCE(child_attributes.find("to") != child_attributes.end());
+            bool is_child_fp = child_attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT);
+            bool is_child_fp16 = child_attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16);
+            if ((is_fp && is_child_fp16) || (is_fp16 && is_child_fp)) {
+              // The parent and child cancell out
+              RemoveCastNode(graph, &node, removed_nodes);
+              RemoveCastNode(graph, child, removed_nodes);
+              modified = true;
+            } else if ((is_fp16 && is_child_fp16) || (is_fp && is_child_fp)) {
+              // Child is a duplicate of parent
+              RemoveCastNode(graph, child, removed_nodes);
+              modified = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return modified;
+}
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
@@ -266,6 +299,8 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       modified |= PropagateForwards(graph, node, removed_nodes);
     }
   }
+
+  RemoveBackToBackCasts(graph, removed_nodes);
 
   // Propagate FP16 Casts backward
   for (const NodeArg* output: graph.GetOutputs()) {
