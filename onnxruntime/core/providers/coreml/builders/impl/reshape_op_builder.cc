@@ -79,9 +79,9 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
   }
 
-  const auto& shape_tensor = *initializers.at(perm_name);
-  const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
-  const auto perm_dims = shape_tensor.dims();
+  const auto& perm_tensor = *initializers.at(perm_name);
+  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  const auto& perm_dims = perm_tensor.dims();
   if (perm_dims.empty() || perm_dims[0] == 0) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
@@ -98,11 +98,11 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
 
   // CoreML reshape does not support 0 as dimension
   NodeAttrHelper helper(node);
-  bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
   if (allow_zero) {
     for (int64_t i = 0; i < perm_dims[0]; i++) {
-      if (raw_shape[i] == 0) {
-        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension when allowzero is enabled";
+      if (raw_perm[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
         return false;
       }
     }

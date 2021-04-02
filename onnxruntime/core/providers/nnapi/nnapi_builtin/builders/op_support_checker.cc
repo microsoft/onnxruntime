@@ -389,22 +389,22 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
     return false;
   }
 
-  const auto& shape_tensor = *initializers.at(perm_name);
-  const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
-  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
+  const auto& perm_tensor = *initializers.at(perm_name);
+  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node);
-  bool allow_zero = helper.Get("allowzero ", 0) == 1;
-  for (uint32_t i = 0; i < size; i++) {
+  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
-    if (raw_shape[i] == 0) {
+    if (raw_perm[i] == 0) {
       if (i < input_shape.size() && input_shape[i] == 0) {
-        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension on a dynamic dimension";
         return false;
       }
 
       if (allow_zero) {
-        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension when allowzero is enabled";
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
         return false;
       }
     }
@@ -698,7 +698,7 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
+  const bool is_qlinear_conv = (op_type == "QLinearConv");
 
   // We don't support nhwc com.microsoft.QLinearConv for now
   if (is_qlinear_conv && node.Domain() == kMSDomain) {
