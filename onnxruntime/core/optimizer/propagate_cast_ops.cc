@@ -15,10 +15,8 @@ std::vector<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "Tanh", 
                                        "Sub", "Mul", "Div", "Neg", "Gemm", "FusedMatMul", "FusedGemm"};
 
 // Insert a Cast node after each NodeArg
-static Status InsertCastNodes(Graph& graph, const std::set<NodeArg*>& require_cast, bool is_fp16, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+static Status InsertCastNodes(Graph& graph, const std::set<NodeArg*>& require_cast, bool is_fp16)
 {
-  (void) removed_nodes;
-
   //Create requirred new Cast nodes.
   for (NodeArg* node_arg : require_cast) {
     if (!node_arg->Exists()) {
@@ -80,9 +78,8 @@ static Status InsertCastNodes(Graph& graph, const std::set<NodeArg*>& require_ca
   return Status::OK();
 }
 
-static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts)
 {
-  (void) removed_nodes;
   ORT_ENFORCE(casts.size()>0);
   Node* lead_cast = casts.front();
   Node* trail_cast = casts.back();
@@ -120,7 +117,7 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque
   return Status::OK();
 }
 
-static bool RemoveBackToBackCasts(Graph& graph, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+static bool RemoveBackToBackCasts(Graph& graph)
 {
   bool modified = false;
   for (Node& node : graph.Nodes()) {
@@ -138,11 +135,11 @@ static bool RemoveBackToBackCasts(Graph& graph, std::deque<onnxruntime::NodeInde
             bool is_child_fp16 = child_attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16);
             if ((is_fp && is_child_fp16) || (is_fp16 && is_child_fp)) {
               // The parent and child cancell out
-              RemoveCastNodes(graph, {&node, child}, removed_nodes);
+              RemoveCastNodes(graph, {&node, child});
               modified = true;
             } else if ((is_fp16 && is_child_fp16) || (is_fp && is_child_fp)) {
               // Child is a duplicate of parent
-              RemoveCastNodes(graph, {child}, removed_nodes);
+              RemoveCastNodes(graph, {child});
               modified = true;
             }
           }
@@ -193,7 +190,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::set<NodeArg*>
   }
 }
 
-static bool PropagateForwards(Graph& graph, Node* node, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+static bool PropagateForwards(Graph& graph, Node* node)
 {
   bool modified = false;
   if (node == nullptr) {
@@ -208,8 +205,8 @@ static bool PropagateForwards(Graph& graph, Node* node, std::deque<onnxruntime::
       SearchDownstream(graph, cast_output, require_cast);
       if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
         // Remove Cast operation
-        RemoveCastNodes(graph,{node}, removed_nodes);
-        InsertCastNodes(graph, require_cast, false, removed_nodes);
+        RemoveCastNodes(graph,{node});
+        InsertCastNodes(graph, require_cast, false);
         modified = true;
       }
     }
@@ -230,23 +227,23 @@ static bool PropagateForwards(Graph& graph, Node* node, std::deque<onnxruntime::
     if (all_inputs_have_casts) {
       for (NodeArg* input : node->MutableInputDefs()) {
         Node* producer = graph.GetMutableProducerNode(input->Name());
-        RemoveCastNodes(graph, {producer}, removed_nodes);
+        RemoveCastNodes(graph, {producer});
       }
       NodeArg* node_arg = node->MutableOutputDefs()[0];
-      InsertCastNodes(graph, {node_arg}, false, removed_nodes);
+      InsertCastNodes(graph, {node_arg}, false);
       modified = true;
     }
   } else {
     for (NodeArg* output: node->MutableOutputDefs()) {
       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
-        modified |= PropagateForwards(graph, consumer, removed_nodes);
+        modified |= PropagateForwards(graph, consumer);
       }
     }
   }
   return modified;
 }
 
-static bool PropagateBackwards(Graph& graph, Node* node, std::deque<onnxruntime::NodeIndex>& removed_nodes)
+static bool PropagateBackwards(Graph& graph, Node* node)
 {
   bool modified = false;
   if (node == nullptr) {
@@ -261,15 +258,15 @@ static bool PropagateBackwards(Graph& graph, Node* node, std::deque<onnxruntime:
       SearchUpstream(graph, cast_input, require_cast);
       if (require_cast.find(cast_input) == require_cast.end()) {
         // Remove Cast operation
-        RemoveCastNodes(graph, {node}, removed_nodes);
-        InsertCastNodes(graph, require_cast, true, removed_nodes);
+        RemoveCastNodes(graph, {node});
+        InsertCastNodes(graph, require_cast, true);
         modified = true;
       }
     }
   } else {
     for (NodeArg* input: node->MutableInputDefs()) {
       Node* producer = graph.GetMutableProducerNode(input->Name());
-      modified |= PropagateBackwards(graph, producer, removed_nodes);
+      modified |= PropagateBackwards(graph, producer);
     }
   }
   return modified;
@@ -333,30 +330,25 @@ static bool FuseSubgraphs(Graph& graph, Node* parent)
 }
 
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
   (void) graph_level;
   (void) logger;
   modified = false;
   // Propagate FP32 Casts forward
   for (Node& node : graph.Nodes()) {
-      modified |= PropagateForwards(graph, &node, removed_nodes);
+      modified |= PropagateForwards(graph, &node);
   }
 
-  modified |= RemoveBackToBackCasts(graph, removed_nodes);
+  modified |= RemoveBackToBackCasts(graph);
 
   // Propagate FP16 Casts backward
   if (!modified) for (const NodeArg* output: graph.GetOutputs()) {
     Node* node = graph.GetMutableProducerNode(output->Name());
-    modified |= PropagateBackwards(graph, node, removed_nodes);
+    modified |= PropagateBackwards(graph, node);
   }
 
   // Fuse subgraphs, sibling Cast nodes with same input
   for (auto& node: graph.Nodes()) {
     modified |= FuseSubgraphs(graph, &node);
-  }
-
-  for (onnxruntime::NodeIndex removed_node : removed_nodes) {
-    graph.RemoveNode(removed_node);
   }
 
   return Status::OK();
