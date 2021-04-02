@@ -464,7 +464,7 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
   if (input_shape.empty()) {
     fast_shape = input_shape;
     fast_output_shape = input_shape;
-    return FastReduceKind::NONE;
+    return FastReduceKindValues::NONE;
   }
   fast_output_shape.clear();
   fast_output_shape.reserve(input_shape.size());
@@ -493,15 +493,15 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
     }
   }
   if (fast_shape.size() == 1) {
-    return reduce[0] ? FastReduceKind::R : FastReduceKind::K;
+    return reduce[0] ? FastReduceKindValues::R : FastReduceKindValues::K;
   }
   if (fast_shape.size() == 2) {
-    return reduce[0] ? FastReduceKind::RK : FastReduceKind::KR;
+    return reduce[0] ? FastReduceKindValues::RK : FastReduceKindValues::KR;
   }
   if (fast_shape.size() == 3 && !reduce[0]) {
-    return FastReduceKind::KRK;
+    return FastReduceKindValues::KRK;
   }
-  return FastReduceKind::NONE;
+  return FastReduceKindValues::NONE;
 }
 
 template <typename T, typename AGG>
@@ -538,29 +538,30 @@ void CommonReduce(OpKernelContext* ctx,
     FastReduceKind fast_kind = OptimizeShapeForFastReduce(reduced_dims,
                                                           input_axes.empty() ? axes_ : input_axes,
                                                           fast_shape, fast_full_shape, keepdims_);
-
-    switch (fast_kind) {
-      case FastReduceKind::KR: {
-        Tensor* output = ctx->Output(0, fast_full_shape);
-        AGG::FastReduceKR(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-        return;
+    if ((fast_kind & AGG::fast_reduce()) > 0) {
+      switch (fast_kind) {
+        case FastReduceKindValues::KR: {
+          Tensor* output = ctx->Output(0, fast_full_shape);
+          AGG::FastReduceKR(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+          return;
+        }
+        case FastReduceKindValues::RK: {
+          Tensor* output = ctx->Output(0, fast_full_shape);
+          AGG::FastReduceRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+          return;
+        }
+        case FastReduceKindValues::KRK: {
+          Tensor* output = ctx->Output(0, fast_full_shape);
+          AGG::FastReduceKRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+          return;
+        }
+        case FastReduceKindValues::R:
+        case FastReduceKindValues::K:
+        case FastReduceKindValues::NONE:
+        default:
+          // Former implementation prevails in this case.
+          break;
       }
-      case FastReduceKind::RK: {
-        Tensor* output = ctx->Output(0, fast_full_shape);
-        AGG::FastReduceRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-        return;
-      }
-      case FastReduceKind::KRK: {
-        Tensor* output = ctx->Output(0, fast_full_shape);
-        AGG::FastReduceKRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-        return;
-      }
-      case FastReduceKind::R:
-      case FastReduceKind::K:
-      case FastReduceKind::NONE:
-      default:
-        // Former implementation prevails in this case.
-        break;
     }
   }
 
