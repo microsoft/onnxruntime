@@ -154,8 +154,9 @@ class ReduceAggregator {
   *  RK - reduction on the first dimensions
   *  KRK - reduction on the middle dimensions.
    
-  For these three configuration, the reduction can be optimized
-  with vectors operations.
+  For these three configuration, the reduction may be optimized
+  with vectors operations. Method fast_reduce() returns which case
+  case be optimized for which aggregator.
   */
   static inline FastReduceKind fast_reduce() { return FastReduceKindValues::NONE; }
   static void FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
@@ -454,17 +455,24 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
   }
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
-                            Tensor& output, concurrency::ThreadPool*) {
+                            Tensor& output, concurrency::ThreadPool* tp) {
     ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
     ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
-    // TODO: use parallelization
-    for (int64_t dim = 0; dim < fast_shape[0]; ++dim, out += strideo, data += stridei) {
-      EigenVectorMap<T>(out, strideo) = ConstEigenMatrixMap<T>(data, fast_shape[2], fast_shape[1]).rowwise().minCoeff();
-    }
+    concurrency::ThreadPool::TryBatchParallelFor(
+        tp,
+        SafeInt<int32_t>(fast_shape[0]),
+        [data, fast_shape, stridei, strideo, out](ptrdiff_t j) {
+          EigenVectorMap<T>(out + j * strideo, strideo) =
+              ConstEigenMatrixMap<T>(
+                  data + j * stridei, fast_shape[2], fast_shape[1])
+                  .rowwise()
+                  .minCoeff();
+        },
+        0);
   }
 };
 
