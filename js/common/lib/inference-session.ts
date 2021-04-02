@@ -256,7 +256,7 @@ export interface InferenceSessionFactory {
 // export const InferenceSession: InferenceSessionFactory = impl;
 export class InferenceSession implements InferenceSession {
   private constructor(handler: SessionHandler) {
-    this.#handler = handler;
+    this.handler = handler;
   }
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
@@ -349,7 +349,7 @@ export class InferenceSession implements InferenceSession {
     // promise start here
     //
     //
-    const results = await this.#handler.run(feeds, fetches, options);
+    const results = await this.handler.run(feeds, fetches, options);
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
@@ -443,5 +443,5 @@ export class InferenceSession implements InferenceSession {
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
 
-  #handler: SessionHandler;
+  private handler: SessionHandler;
 }

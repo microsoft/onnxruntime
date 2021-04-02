@@ -4,7 +4,7 @@
     "moduleResolution": "node",
     "declaration": true,
     "esModuleInterop": true,
-    "target": "ES2015",
+    "target": "ES2017",
     "lib": ["ES2017", "ESNext.BigInt"],
     "sourceMap": true,
     "noUnusedLocals": true,
