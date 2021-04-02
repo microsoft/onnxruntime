@@ -15,7 +15,7 @@ std::vector<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "Tanh", 
                                        "Sub", "Mul", "Div", "Neg", "Gemm", "FusedMatMul", "FusedGemm"};
 
 // Insert a Cast node after each NodeArg
-static Status InsertCastNodes(Graph& graph, const std::set<NodeArg*>& require_cast, bool is_fp16)
+static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& require_cast, bool is_fp16)
 {
   //Create requirred new Cast nodes.
   for (NodeArg* node_arg : require_cast) {
@@ -152,7 +152,7 @@ static bool RemoveBackToBackCasts(Graph& graph)
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
-static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::set<NodeArg*>& require_cast)
+static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
 {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
@@ -174,7 +174,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::set<NodeArg*>& 
 // SearchDownstream:
 // Recursively traverse the graph downstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP32 Cast operation up the graph.
-static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::set<NodeArg*>& require_cast)
+static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
 {
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
@@ -200,7 +200,7 @@ static bool PropagateForwards(Graph& graph, Node* node)
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT)) {
-      std::set<NodeArg*> require_cast;
+      std::unordered_set<NodeArg*> require_cast;
       NodeArg* cast_output = node->MutableOutputDefs()[0];
       SearchDownstream(graph, cast_output, require_cast);
       if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
@@ -253,7 +253,7 @@ static bool PropagateBackwards(Graph& graph, Node* node)
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16)) {
-      std::set<NodeArg*> require_cast;
+      std::unordered_set<NodeArg*> require_cast;
       NodeArg* cast_input = node->MutableInputDefs()[0];
       SearchUpstream(graph, cast_input, require_cast);
       if (require_cast.find(cast_input) == require_cast.end()) {
@@ -341,7 +341,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   modified |= RemoveBackToBackCasts(graph);
 
   // Propagate FP16 Casts backward
-  if (!modified) for (const NodeArg* output: graph.GetOutputs()) {
+  for (const NodeArg* output: graph.GetOutputs()) {
     Node* node = graph.GetMutableProducerNode(output->Name());
     modified |= PropagateBackwards(graph, node);
   }
