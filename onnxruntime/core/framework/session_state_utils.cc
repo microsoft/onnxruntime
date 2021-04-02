@@ -89,7 +89,31 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
 
     // deserialize to CPU first for non-CPU allocator, then copy
-    std::unique_ptr<Tensor> p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+
+    std::unique_ptr<Tensor> p_deserialize_tensor;
+
+    // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+    // (may expand it if there isn't a chunk that can be allotted to the memory request).
+    // If the provided allocator is non-arena based, the Alloc() call will be used to allocate the necessary memory.
+    if (use_arena_for_memory_allocation || default_cpu_alloc->Info().alloc_type != OrtArenaAllocator) {
+      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+    } else {
+      int64_t shape_size = tensor_shape.Size();
+      if (shape_size < 0)
+        ORT_THROW("shape.Size() must >=0");
+
+      void* p_data = nullptr;
+      if (shape_size > 0) {
+        SafeInt<size_t> mem_size = 0;
+        if (!default_cpu_alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
+          ORT_THROW("tensor failed memory size calculation");
+
+        p_data = static_cast<IArenaAllocator*>(default_cpu_alloc.get())->Reserve(mem_size);
+      }
+
+      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, p_data, default_cpu_alloc);
+    }
+
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 

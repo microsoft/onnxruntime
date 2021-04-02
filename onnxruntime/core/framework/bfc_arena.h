@@ -253,6 +253,7 @@ class BFCArena : public IArenaAllocator {
       std::swap(ptr_, other.ptr_);
       std::swap(memory_size_, other.memory_size_);
       std::swap(end_ptr_, other.end_ptr_);
+      std::swap(id_, other.id_);
       std::swap(handles_, other.handles_);
     }
 
