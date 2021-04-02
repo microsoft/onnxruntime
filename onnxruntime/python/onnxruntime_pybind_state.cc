@@ -1492,6 +1492,15 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<OrtValue>& {
         return io_binding->Get()->GetOutputs();
       })
+      .def("get_output_names", [](SessionIOBinding* io_binding) -> const std::vector<std::string>& {
+        return io_binding->Get()->GetOutputNames();
+      })
+      .def("get_inputs", [](SessionIOBinding* io_binding) -> const std::vector<OrtValue>& {
+        return io_binding->Get()->GetInputs();
+      })
+      .def("get_input_names", [](SessionIOBinding* io_binding) -> const std::vector<std::string>& {
+        return io_binding->Get()->GetInputNames();
+      })
       .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;

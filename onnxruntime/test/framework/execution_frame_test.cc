@@ -359,23 +359,35 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   {
     // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(session_obj);
+    SessionOptions so2;
+    so2.session_logid = "BreakOpTestPass";
+    so2.enable_mem_pattern = false;
+    InferenceSession session_obj2{so2, GetEnvironment()};
+    std::stringstream buffer2;
+    model.ToProto().SerializeToOstream(&buffer2);
+    ASSERT_STATUS_OK(session_obj2.Load(buffer2));
+    ASSERT_STATUS_OK(session_obj2.Initialize());
+    // Run with new RunForward/RunBackward.
+    training::TrainingAgent training_agent(session_obj2);
     unique_ptr<IOBinding> io_binding;
-    ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
+    ASSERT_STATUS_OK(session_obj2.NewIOBinding(&io_binding));
     io_binding->BindInput("X", x_value);
     OrtValue output;
-    io_binding->BindOutput("Y", output);
+    io_binding->BindOutput("X", output);
     RunOptions run_options;
-    std::vector<OrtValue> user_outputs;
-    int64_t run_id;
-    ASSERT_STATUS_OK(training_agent.RunForward(run_options, *io_binding, user_outputs, run_id));
-    const std::vector<float> yield_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
-    EXPECT_THAT(user_outputs[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(yield_input_expected)));
-    ASSERT_STATUS_OK(training_agent.RunBackward(run_id, {t_value}));
+    ASSERT_STATUS_OK(training_agent.RunForward(run_options, *io_binding));
+    const std::vector<float> break_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
+    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
+                ::testing::ContainerEq(gsl::make_span(break_input_expected)));
+
+    unique_ptr<IOBinding> backward_io_binding;
+    ASSERT_STATUS_OK(session_obj2.NewIOBinding(&backward_io_binding));
+    backward_io_binding->BindInput("T", t_value);
+    backward_io_binding->BindOutput("Y", output);
+    ASSERT_STATUS_OK(training_agent.RunBackward(run_options, *backward_io_binding));
     // The output is MatMul(x_value, t_value);
     const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
-    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
+    EXPECT_THAT(backward_io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
                 ::testing::ContainerEq(gsl::make_span(output_expected)));
   }
 }

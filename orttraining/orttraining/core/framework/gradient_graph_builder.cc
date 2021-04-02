@@ -257,6 +257,19 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
 
     GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
+    
+    // Aggregate all backward graph inputs that are coming from forward graph.
+    // Note: This will contain initializers, stashed tensors as well as anything else.
+    for (auto& node_def : node_defs) {
+      for (auto& arg : node_def.input_args) {
+        if ((arg.name.find("_grad") == std::string::npos) && 
+            (arg.name.find("_external") == std::string::npos) && 
+            (backward_inputs_from_forward_names_.find(arg.name) != backward_inputs_from_forward_names_.end())) {
+          backward_inputs_from_forward_names_.insert(arg.name);
+        }
+      }
+    }
+
     if (node_defs.empty()) {
       LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
                              << node->Name() << " of type " << node->OpType() << ".";

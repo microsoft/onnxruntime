@@ -168,6 +168,13 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
+  const std::unordered_set<std::string>& backward_inputs_from_forward = grad_graph_builder.GetBackwardInputsFromForwardNames();
+  for (const auto& input : backward_inputs_from_forward) {
+    if (x_node_arg_names.find(input) == x_node_arg_names.end()) {
+      training_graph_info_.forward_intermediate_tensor_names.emplace_back(input);
+    }
+  }
+
   const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
   for (size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(training_graph_info_.user_output_names[i]) > 0) {
@@ -252,10 +259,9 @@ void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
-      ;
-    } else {
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      training_graph_info_.loss_gradient_names.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});

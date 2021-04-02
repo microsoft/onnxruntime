@@ -481,17 +481,14 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def(py::init([](PyInferenceSession * session) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
       }))
-      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
-        std::vector<OrtValue> module_outputs;
-        int64_t run_id;
-        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id);
+      .def("run_forward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> void {
+        Status status = agent->RunForward(run_options, *io_binding.Get());
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
-        return py::make_tuple(module_outputs, run_id);
       })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
-        Status status = agent->RunBackward(run_id, backward_output_grads);
+      .def("run_backward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> void {
+        Status status = agent->RunBackward(run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
@@ -517,7 +514,9 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &TrainingGraphInfo::output_grad_indices_non_differentiable)
-      .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape);
+      .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape)
+      .def_readwrite("forward_intermediate_tensor_names", &TrainingGraphInfo::forward_intermediate_tensor_names)
+      .def_readwrite("loss_gradient_names", &TrainingGraphInfo::loss_gradient_names);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
   module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
