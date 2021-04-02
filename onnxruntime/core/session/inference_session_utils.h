@@ -18,7 +18,7 @@
 #pragma warning(push)
 #pragma warning(disable : 28020)
 #endif
-#include "single_include/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
