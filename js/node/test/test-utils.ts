@@ -13,7 +13,7 @@ import {binding} from '../lib/binding';
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
 
-export const ORT_ROOT = path.join(__dirname, '../..');
+export const ORT_ROOT = path.join(__dirname, '../../..');
 export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'cmake/external/onnx/onnx/backend/test/data/node');
 
 export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));

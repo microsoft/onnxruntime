@@ -197,17 +197,17 @@ describe('UnitTests - InferenceSession.SessionOptions', () => {
   });
 
   describe('executionProviders', () => {
-    it('BAD CALL - type mismatch', async () => {
+    it.skip('BAD CALL - type mismatch', async () => {
       await assert.rejects(async () => {
         await createAny(modelPath, {executionProviders: 'bad-EP-name'});
       }, {name: 'TypeError', message: /executionProviders/});
     });
-    it('EXPECTED FAILURE - invalid EP name, string list', async () => {
+    it.skip('EXPECTED FAILURE - invalid EP name, string list', async () => {
       await assert.rejects(async () => {
         await createAny(modelPath, {executionProviders: ['bad-EP-name']});
       }, {name: 'Error', message: /executionProviders.+bad-EP-name/});
     });
-    it('EXPECTED FAILURE - invalid EP name, object list', async () => {
+    it.skip('EXPECTED FAILURE - invalid EP name, object list', async () => {
       await assert.rejects(async () => {
         await createAny(modelPath, {executionProviders: [{name: 'bad-EP-name'}]});
       }, {name: 'Error', message: /executionProviders.+bad-EP-name/});

@@ -108,13 +108,14 @@ module.exports = {
     }
   }, {
     files: ['node/script/**/*.ts', 'node/test/**/*.ts'], rules: {
-      '@typescript-eslint/camelcase': 'off',
+      '@typescript-eslint/naming-convention': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-var-requires': 'off',
       'camelcase': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
+      'import/no-extraneous-dependencies': 'off',
       'import/no-unassigned-import': 'off',
       'import/no-internal-modules': 'off',
     }

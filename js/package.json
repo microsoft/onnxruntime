@@ -11,6 +11,6 @@
   },
   "scripts": {
     "lint": "eslint . --ext .ts",
-    "format": "clang-format --glob=\"**/lib/**/*.ts\" --style=file -i"
+    "format": "clang-format --glob=\"{common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h}}\" --style=file -i"
   }
 }
