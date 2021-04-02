@@ -59,8 +59,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
   Tensor* running_mean = p_op_kernel_context->Output(1, channel_shape);
   Tensor* running_var = p_op_kernel_context->Output(2, channel_shape);
-  Tensor* saved_mean = p_op_kernel_context->Output(3, channel_shape);
-  Tensor* saved_var = p_op_kernel_context->Output(4, channel_shape);
+  //Tensor* saved_mean = p_op_kernel_context->Output(3, channel_shape);
+  //Tensor* saved_var = p_op_kernel_context->Output(4, channel_shape);
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
@@ -121,10 +121,13 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   // in BatchNorm Forward Training mode if all 5 outputs present
   if (is_training_mode_) {
     auto running_mean_data = reinterpret_cast<CudaT*>(running_mean->template MutableData<T>());
-    auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
+    cudaMemcpy(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice);
 
-    auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());
-    auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->template MutableData<T>());
+    auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
+    cudaMemcpy(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice);
+
+    //auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());
+    // auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->template MutableData<T>());
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
@@ -138,12 +141,12 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         bn_tensor_desc,
         scale_data,
         b_data,
-        momentum_,
+        1 - momentum_,
         running_mean_data,
         running_var_data,
         epsilon_,
-        saved_mean_data,
-        saved_inv_var_data));
+        nullptr,
+        nullptr));
     // in BatchNorm Forward Inference mode if only Y output present
   } else {
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
