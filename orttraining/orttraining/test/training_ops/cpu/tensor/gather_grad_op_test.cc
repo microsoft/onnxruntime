@@ -170,7 +170,7 @@ TEST(GatherGradOpTest, GatherFewDistinctIndices) {
   RunGatherGradTestWithRandomData<float>(0, {2, 32}, {6, 128}, absolute_error);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 void RunGatherGradConsistentOutputTest(
     int64_t axis,
