@@ -64,12 +64,14 @@ namespace Dml
     };
 
     template<typename T>
-    T MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
+    std::optional<T> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
     {
-        return static_cast<T>(MapStringToIndex(mode, nameAndIndexList));
+        static_assert(sizeof(T) == sizeof(uint32_t));
+        auto result = TryMapStringToIndex(mode, nameAndIndexList);
+        return *reinterpret_cast<std::optional<T>*>(std::addressof(result));
     }
 
-    uint32_t MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList);
+    std::optional<uint32_t> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList);
 
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode);
 
