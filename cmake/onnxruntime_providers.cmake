@@ -139,10 +139,20 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
   file(GLOB_RECURSE onnxruntime_cpu_full_training_only_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})

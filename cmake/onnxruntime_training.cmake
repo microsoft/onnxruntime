@@ -59,7 +59,8 @@ add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES
 
 onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 
-target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/external/json PUBLIC ${onnxruntime_graph_header})
+target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+target_link_libraries(onnxruntime_training_runner PRIVATE nlohmann_json::nlohmann_json)
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
