@@ -5,6 +5,7 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -54,28 +55,68 @@ Status BatchNormalizationGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(input_tensor.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(scale_bias_tensor.Set(input_tensor, cudnn_batch_norm_mode_));
 
-  // note this is only valid for cudnnBatchNormalizationForwardTraining, not ForwardInference
-  CUDNN_RETURN_IF_ERROR(
-      cudnnBatchNormalizationBackward(
-          CudnnHandle(),
-          cudnn_batch_norm_mode_,
-          &alpha,
-          &beta,
-          &alpha,
-          &beta,
-          input_tensor,
-          X_data,
-          input_tensor,
-          dY_data,
-          input_tensor,
-          dX_data,
-          scale_bias_tensor,
-          Scale_data,
-          dScale_data,
-          dBias_data,
-          epsilon_,
-          saved_mean_data,
-          saved_variance_data));
+  if (X->IsDataType<MLFloat16>()) {
+    const int C = input_shape.GetDims()[1];
+    auto f_scale = GetScratchBuffer<float>(C);
+    auto f_dScale = GetScratchBuffer<float>(C);
+    auto f_dBias = GetScratchBuffer<float>(C);
+    auto f_saved_mean = GetScratchBuffer<float>(C);
+    auto f_saved_var = GetScratchBuffer<float>(C);
+
+    Impl_Cast<CudaT, float>(Stream(), Scale_data, f_scale.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), saved_mean_data, f_saved_mean.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), saved_variance_data, f_saved_var.get(), C);
+
+    // note this is only valid for cudnnBatchNormalizationForwardTraining, not ForwardInference
+    CUDNN_RETURN_IF_ERROR(
+        cudnnBatchNormalizationBackward(
+            CudnnHandle(),
+            cudnn_batch_norm_mode_,
+            &alpha,
+            &beta,
+            &alpha,
+            &beta,
+            input_tensor,
+            X_data,
+            input_tensor,
+            dY_data,
+            input_tensor,
+            dX_data,
+            scale_bias_tensor,
+            f_scale.get(),
+            f_dScale.get(),
+            f_dBias.get(),
+            epsilon_,
+            f_saved_mean.get(),
+            f_saved_var.get()));
+
+    Impl_Cast<float, CudaT>(Stream(), f_dScale.get(), dScale_data, C);
+    Impl_Cast<float, CudaT>(Stream(), f_dBias.get(), dBias_data, C);
+  } else {
+    // note this is only valid for cudnnBatchNormalizationForwardTraining, not ForwardInference
+    CUDNN_RETURN_IF_ERROR(
+        cudnnBatchNormalizationBackward(
+            CudnnHandle(),
+            cudnn_batch_norm_mode_,
+            &alpha,
+            &beta,
+            &alpha,
+            &beta,
+            input_tensor,
+            X_data,
+            input_tensor,
+            dY_data,
+            input_tensor,
+            dX_data,
+            scale_bias_tensor,
+            Scale_data,
+            dScale_data,
+            dBias_data,
+            epsilon_,
+            saved_mean_data,
+            saved_variance_data));
+  }
+
   return Status::OK();
 }
 
@@ -85,6 +126,7 @@ Status BatchNormalizationGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
 SPECIALIZED_GRADIENT(float)
 SPECIALIZED_GRADIENT(double)
+SPECIALIZED_GRADIENT(MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
