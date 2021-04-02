@@ -50,7 +50,7 @@ if platform.system() == "Windows":
         elif not os.path.isfile(os.path.join(cupti_bin_dir, "cupti.lib")):
             raise ImportError(f"cupti.lib is missing in: {cupti_bin_dir}.")
 
-        win_perf_kit = "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\"
+        win_perf_kit = "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit"
         if not os.path.isdir(win_perf_kit):
             raise ImportError(f"windows performance toolkit is missing")
 
