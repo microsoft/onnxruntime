@@ -64,9 +64,9 @@ class MlasNchwcPool2DTest : public MlasPool2DTest<PoolingKind, Threaded> {
     for (unsigned ih = 0; ih < _countof(is); ih++) {
       for (unsigned iw = 0; iw < _countof(is); iw++) {
         fprintf(stderr, "Handling %ux%u\n", is[ih], is[iw]);
-        Test(1, 12, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
-        Test(1, 32, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
-        Test(1, 68, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
+        MlasPool2DTest<PoolingKind, Threaded>::Test(1, 12, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
+        MlasPool2DTest<PoolingKind, Threaded>::Test(1, 32, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
+        MlasPool2DTest<PoolingKind, Threaded>::Test(1, 68, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
         for (unsigned kh = 1; kh <= 5; kh++) {
           if (kh > is[ih]) break;
           for (unsigned kw = 1; kw <= 5; kw++) {
@@ -77,7 +77,7 @@ class MlasNchwcPool2DTest : public MlasPool2DTest<PoolingKind, Threaded> {
                   for (unsigned p1 = 0; p1 < kw; p1++) {
                     for (unsigned p2 = 0; p2 < kh; p2++) {
                       for (unsigned p3 = 0; p3 < kw; p3++) {
-                        Test(1, 32, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
+                        MlasPool2DTest<PoolingKind, Threaded>::Test(1, 32, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
                       }
                     }
                   }

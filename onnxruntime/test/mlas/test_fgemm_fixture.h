@@ -19,7 +19,8 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
   }
 
   void TestBody() override {
-    mlas_tester->Test(trans_a_, trans_b_, M_, N_, K_, alpha_, beta_);
+    MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>>::mlas_tester->Test(
+        trans_a_, trans_b_, M_, N_, K_, alpha_, beta_);
   }
 
   static size_t RegisterSingleTest(bool trans_a, bool trans_b, size_t M, size_t N, size_t K, float alpha, float beta) {
@@ -32,14 +33,14 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        MlasFgemmTest<T, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
+        [=]() -> MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>>* {
           return new FgemmShortExecuteTest<T, Packed, Threaded>(
               trans_a, trans_b, M, N, K, alpha, beta);
         });

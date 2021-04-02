@@ -131,7 +131,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   NchwcOutput,
                   &Activation,
                   true,
-                  threadpool_);
+                  MlasConv2DTest<Threaded>::threadpool_);
 
     //
     // Reorder the output buffer.
@@ -164,30 +164,30 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
 
     // Depthwise convolutions.
     for (unsigned i = 16; i < 256; i <<= 1) {
-      Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
-      Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
-      Test(1, i, 1, 28, 28, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
-      Test(1, i, 1, 28, 28, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(1, i, 1, 28, 28, 1, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(12, i, 1, 11, 11, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, i, 1, 28, 28, 1, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(12, i, 1, 11, 11, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 
     // Test varying FilterCounts.
     for (unsigned i = 1; i < 128; i++) {
-      Test(1, 1, 3, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(1, 1, 16, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(1, 1, 16, 34, 34, i, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, 1, 3, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, 1, 16, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(1, 1, 16, 34, 34, i, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 
     for (unsigned i = 1; i <= 32; i++) {
-      Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
-      Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
-      Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 
     for (unsigned b = 1; b < 64; b++) {
-      Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+      MlasConv2DTest<Threaded>::Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 
     for (unsigned ic = 0; ic < _countof(cis); ic++) {
@@ -207,7 +207,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                           for (unsigned dw = 1; dw <= 2; dw++) {
                             for (unsigned sh = 1; sh <= 2; sh++) {
                               for (unsigned sw = 1; sw <= 2; sw++) {
-                                Test(1, 1, cis[ic], is[ih], is[iw], cos[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
+                                MlasConv2DTest<Threaded>::Test(1, 1, cis[ic], is[ih], is[iw], cos[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
                               }
                             }
                           }

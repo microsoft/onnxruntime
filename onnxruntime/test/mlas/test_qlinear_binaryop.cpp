@@ -163,8 +163,8 @@ class MlasQLinearMulTest : public MlasQLinearBinaryOpTest {
   }
 };
 
-MlasQLinearAddTest* MlasTestFixture<MlasQLinearAddTest>::mlas_tester(nullptr);
-MlasQLinearMulTest* MlasTestFixture<MlasQLinearMulTest>::mlas_tester(nullptr);
+template <> MlasQLinearAddTest* MlasTestFixture<MlasQLinearAddTest>::mlas_tester(nullptr);
+template <> MlasQLinearMulTest* MlasTestFixture<MlasQLinearMulTest>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   size_t count = 0;

@@ -49,23 +49,24 @@ class Pooling3dShortExecuteTest : public MlasTestFixture<MlasPool3DTest<PoolingK
   }
 
   void TestBody() override {
-    mlas_tester->Test(BatchCount_,
-                      InputChannels_,
-                      InputDepth_,
-                      InputHeight_,
-                      InputWidth_,
-                      KernelDepth_,
-                      KernelHeight_,
-                      KernelWidth_,
-                      PaddingLeftDepth_,
-                      PaddingLeftHeight_,
-                      PaddingLeftWidth_,
-                      PaddingRightDepth_,
-                      PaddingRightHeight_,
-                      PaddingRightWidth_,
-                      StrideDepth_,
-                      StrideHeight_,
-                      StrideWidth_);
+    MlasTestFixture<MlasPool3DTest<PoolingKind, Threaded>>::mlas_tester->Test(
+        BatchCount_,
+        InputChannels_,
+        InputDepth_,
+        InputHeight_,
+        InputWidth_,
+        KernelDepth_,
+        KernelHeight_,
+        KernelWidth_,
+        PaddingLeftDepth_,
+        PaddingLeftHeight_,
+        PaddingLeftWidth_,
+        PaddingRightDepth_,
+        PaddingRightHeight_,
+        PaddingRightWidth_,
+        StrideDepth_,
+        StrideHeight_,
+        StrideWidth_);
   }
 
   static size_t RegisterSingleTest(size_t BatchCount,
@@ -96,14 +97,14 @@ class Pooling3dShortExecuteTest : public MlasTestFixture<MlasPool3DTest<PoolingK
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        MlasPool3DTest<PoolingKind, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
+        [=]() -> MlasTestFixture<MlasPool3DTest<PoolingKind, Threaded>>* {
           return new Pooling3dShortExecuteTest<PoolingKind, Threaded>(BatchCount,
                                                                       InputChannels,
                                                                       InputDepth,

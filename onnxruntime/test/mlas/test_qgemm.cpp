@@ -1,25 +1,25 @@
 #include "test_qgemm.h"
 #include "test_qgemm_fixture.h"
 
-MlasQgemmU8X8Test<int8_t, int32_t, false, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, false, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, int32_t, false, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, false, true>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, int32_t, true, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, true, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, int32_t, true, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, true, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, int32_t, false, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, false, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, int32_t, false, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, false, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, int32_t, true, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, true, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, int32_t, true, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, int32_t, true, true>>::mlas_tester(nullptr);
 
-MlasQgemmU8X8Test<uint8_t, int32_t, false, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, false, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, int32_t, false, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, false, true>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, int32_t, true, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, true, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, int32_t, true, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, true, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, int32_t, false, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, false, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, int32_t, false, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, false, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, int32_t, true, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, true, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, int32_t, true, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, int32_t, true, true>>::mlas_tester(nullptr);
 
-MlasQgemmU8X8Test<int8_t, float, false, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, false, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, float, false, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, false, true>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, float, true, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, true, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<int8_t, float, true, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, true, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, float, false, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, false, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, float, false, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, false, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, float, true, false>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, true, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<int8_t, float, true, true>* MlasTestFixture<MlasQgemmU8X8Test<int8_t, float, true, true>>::mlas_tester(nullptr);
 
-MlasQgemmU8X8Test<uint8_t, float, false, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, false, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, float, false, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, false, true>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, float, true, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, true, false>>::mlas_tester(nullptr);
-MlasQgemmU8X8Test<uint8_t, float, true, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, true, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, float, false, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, false, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, float, false, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, false, true>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, float, true, false>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, true, false>>::mlas_tester(nullptr);
+template <> MlasQgemmU8X8Test<uint8_t, float, true, true>* MlasTestFixture<MlasQgemmU8X8Test<uint8_t, float, true, true>>::mlas_tester(nullptr);
 
 static size_t QGemmRegistLongExecute() {
   size_t count = 0;

@@ -46,7 +46,7 @@ class MlasFindMinMaxElementsTest : public MlasTestBase {
   }
 };
 
-MlasFindMinMaxElementsTest* MlasTestFixture<MlasFindMinMaxElementsTest>::mlas_tester(nullptr);
+template <> MlasFindMinMaxElementsTest* MlasTestFixture<MlasFindMinMaxElementsTest>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasFindMinMaxElementsTest>::RegisterShortExecute() : 0;

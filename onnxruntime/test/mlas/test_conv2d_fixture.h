@@ -46,22 +46,23 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
   }
 
   void TestBody() override {
-    mlas_tester->Test(BatchCount_,
-                      GroupCount_,
-                      InputChannels_,
-                      InputHeight_,
-                      InputWidth_,
-                      FilterCount_,
-                      KernelHeight_,
-                      KernelWidth_,
-                      PaddingLeftHeight_,
-                      PaddingLeftWidth_,
-                      PaddingRightHeight_,
-                      PaddingRightWidth_,
-                      DilationHeight_,
-                      DilationWidth_,
-                      StrideHeight_,
-                      StrideWidth_);
+    MlasTestFixture<Conv2dTester>::mlas_tester->Test(
+        BatchCount_,
+        GroupCount_,
+        InputChannels_,
+        InputHeight_,
+        InputWidth_,
+        FilterCount_,
+        KernelHeight_,
+        KernelWidth_,
+        PaddingLeftHeight_,
+        PaddingLeftWidth_,
+        PaddingRightHeight_,
+        PaddingRightWidth_,
+        DilationHeight_,
+        DilationWidth_,
+        StrideHeight_,
+        StrideWidth_);
   }
 
   static size_t RegisterSingleTest(
@@ -96,15 +97,15 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        Conv2dTester::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
-          return new Conv2dShortExecuteTest<MlasTesterType>(BatchCount,
+        [=]() -> MlasTestFixture<Conv2dTester>* {
+          return new Conv2dShortExecuteTest<Conv2dTester>(BatchCount,
                                                           GroupCount,
                                                           InputChannels,
                                                           InputHeight,

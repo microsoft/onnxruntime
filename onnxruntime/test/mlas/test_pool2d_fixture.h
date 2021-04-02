@@ -39,18 +39,19 @@ class Pooling2dShortExecuteTest : public MlasTestFixture<Pool2DTester> {
   }
 
   void TestBody() override {
-    mlas_tester->Test(BatchCount_,
-                      InputChannels_,
-                      InputHeight_,
-                      InputWidth_,
-                      KernelHeight_,
-                      KernelWidth_,
-                      PaddingLeftHeight_,
-                      PaddingLeftWidth_,
-                      PaddingRightHeight_,
-                      PaddingRightWidth_,
-                      StrideHeight_,
-                      StrideWidth_);
+    MlasTestFixture<Pool2DTester>::mlas_tester->Test(
+        BatchCount_,
+        InputChannels_,
+        InputHeight_,
+        InputWidth_,
+        KernelHeight_,
+        KernelWidth_,
+        PaddingLeftHeight_,
+        PaddingLeftWidth_,
+        PaddingRightHeight_,
+        PaddingRightWidth_,
+        StrideHeight_,
+        StrideWidth_);
   }
 
   static size_t RegisterSingleTest(size_t BatchCount,
@@ -77,15 +78,15 @@ class Pooling2dShortExecuteTest : public MlasTestFixture<Pool2DTester> {
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        Pool2DTester::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
-          return new Pooling2dShortExecuteTest<MlasTesterType>(
+        [=]() -> MlasTestFixture<Pool2DTester>* {
+          return new Pooling2dShortExecuteTest<Pool2DTester>(
               BatchCount,
               InputChannels,
               InputHeight,

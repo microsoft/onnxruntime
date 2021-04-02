@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "test_util.h"
 
 template <bool Threaded>
@@ -99,8 +97,8 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 };
 
-MlasSoftmaxTest<false>* MlasTestFixture<MlasSoftmaxTest<false>>::mlas_tester(nullptr);
-MlasSoftmaxTest<true>* MlasTestFixture<MlasSoftmaxTest<true>>::mlas_tester(nullptr);
+template <> MlasSoftmaxTest<false>* MlasTestFixture<MlasSoftmaxTest<false>>::mlas_tester(nullptr);
+template <> MlasSoftmaxTest<true>* MlasTestFixture<MlasSoftmaxTest<true>>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   size_t count = 0;

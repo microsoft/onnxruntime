@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "test_util.h"
 
 template <typename ElementType>
@@ -47,8 +45,8 @@ class MlasTransposeTest : public MlasTestBase {
   }
 };
 
-MlasTransposeTest<uint32_t>* MlasTestFixture<MlasTransposeTest<uint32_t>>::mlas_tester(nullptr);
-MlasTransposeTest<uint8_t>* MlasTestFixture<MlasTransposeTest<uint8_t>>::mlas_tester(nullptr);
+template <> MlasTransposeTest<uint32_t>* MlasTestFixture<MlasTransposeTest<uint32_t>>::mlas_tester(nullptr);
+template <> MlasTransposeTest<uint8_t>* MlasTestFixture<MlasTransposeTest<uint8_t>>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   size_t count = 0;

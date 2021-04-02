@@ -391,7 +391,8 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
             size_t ldc,
             float CScale,
             const float* Bias) {
-    MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, AFloat, lda, BFloat, ldb, 0.0f, CReference, ldc, threadpool_);
+    MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, AFloat, lda, BFloat, ldb, 0.0f,
+             CReference, ldc, MlasQgemmU8X8U8X8TestBase<Packed, Threaded>::threadpool_);
 
     if (Bias != nullptr) {
       for (size_t m = 0; m < M; m++) {

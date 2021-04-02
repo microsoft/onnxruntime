@@ -50,7 +50,7 @@ class MlasComputeExpTest : public MlasTestBase {
   }
 };
 
-MlasComputeExpTest* MlasTestFixture<MlasComputeExpTest>::mlas_tester(nullptr);
+template <> MlasComputeExpTest* MlasTestFixture<MlasComputeExpTest>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   // no long execute needed

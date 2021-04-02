@@ -88,7 +88,7 @@ class MlasReorderOutputTest : public MlasTestBase {
   }
 };
 
-MlasReorderOutputTest* MlasTestFixture<MlasReorderOutputTest>::mlas_tester(nullptr);
+template <> MlasReorderOutputTest* MlasTestFixture<MlasReorderOutputTest>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   return (MlasNchwcGetBlockSize() > 1 && is_short_execute)

@@ -158,7 +158,7 @@ class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
   }
 };
 
-MlasQLinearGlobalAveragePoolU8Test* MlasTestFixture<MlasQLinearGlobalAveragePoolU8Test>::mlas_tester(nullptr);
+template <> MlasQLinearGlobalAveragePoolU8Test* MlasTestFixture<MlasQLinearGlobalAveragePoolU8Test>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasQLinearGlobalAveragePoolU8Test>::RegisterShortExecute() : 0;

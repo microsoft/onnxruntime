@@ -8,15 +8,15 @@
 #include <sstream>
 
 
-MlasFgemmTest<float, false, false>* MlasTestFixture<MlasFgemmTest<float, false, false>>::mlas_tester(nullptr);
-MlasFgemmTest<float, false, true>* MlasTestFixture<MlasFgemmTest<float, false, true>>::mlas_tester(nullptr);
-MlasFgemmTest<float, true, false>* MlasTestFixture<MlasFgemmTest<float, true, false>>::mlas_tester(nullptr);
-MlasFgemmTest<float, true, true>* MlasTestFixture<MlasFgemmTest<float, true, true>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<float, false, false>* MlasTestFixture<MlasFgemmTest<float, false, false>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<float, false, true>* MlasTestFixture<MlasFgemmTest<float, false, true>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<float, true, false>* MlasTestFixture<MlasFgemmTest<float, true, false>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<float, true, true>* MlasTestFixture<MlasFgemmTest<float, true, true>>::mlas_tester(nullptr);
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 
-MlasFgemmTest<double, false, false>* MlasTestFixture<MlasFgemmTest<double, false, false>>::mlas_tester(nullptr);
-MlasFgemmTest<double, false, true>* MlasTestFixture<MlasFgemmTest<double, false, true>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<double, false, false>* MlasTestFixture<MlasFgemmTest<double, false, false>>::mlas_tester(nullptr);
+template <> MlasFgemmTest<double, false, true>* MlasTestFixture<MlasFgemmTest<double, false, true>>::mlas_tester(nullptr);
 
 #endif
 

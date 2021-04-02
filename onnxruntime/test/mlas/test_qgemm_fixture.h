@@ -21,9 +21,9 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
 
   void TestBody() override {
     if (use_offb_) {
-      mlas_tester->Test(M_, N_, K_, offa_, offb_);
+      MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, offa_, offb_);
     } else {
-      mlas_tester->Test(M_, N_, K_, offa_);
+      MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, offa_);
     }
   }
 
@@ -40,14 +40,14 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
+        [=]() -> MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>* {
           return new QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded>(
               use_offb, M, N, K, offa, offb);
         });
@@ -107,7 +107,7 @@ class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestF
   }
 
   void TestBody() override {
-    mlas_tester->Test(M_, N_, K_, offa_, offb_);
+    MlasTestFixture<MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, offa_, offb_);
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K, uint8_t offa, uint8_t offb) {
@@ -118,14 +118,14 @@ class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestF
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
+        [=]() -> MlasTestFixture<MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>>* {
           return new QgemmShortExecuteTest<xint8_t, float, Packed, Threaded>(M, N, K, offa, offb);
         });
     return 1;

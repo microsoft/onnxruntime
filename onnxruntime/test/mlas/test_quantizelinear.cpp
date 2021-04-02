@@ -63,8 +63,8 @@ class MlasQuantizeLinearTest : public MlasTestBase {
   }
 };
 
-MlasQuantizeLinearTest<int8_t>* MlasTestFixture<MlasQuantizeLinearTest<int8_t>>::mlas_tester(nullptr);
-MlasQuantizeLinearTest<uint8_t>* MlasTestFixture<MlasQuantizeLinearTest<uint8_t>>::mlas_tester(nullptr);
+template <> MlasQuantizeLinearTest<int8_t>* MlasTestFixture<MlasQuantizeLinearTest<int8_t>>::mlas_tester(nullptr);
+template <> MlasQuantizeLinearTest<uint8_t>* MlasTestFixture<MlasQuantizeLinearTest<uint8_t>>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   size_t count = 0;

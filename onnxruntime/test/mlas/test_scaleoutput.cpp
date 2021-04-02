@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "test_util.h"
 
 class MlasScaleOutputTest : public MlasTestBase {
@@ -79,7 +77,7 @@ class MlasScaleOutputTest : public MlasTestBase {
   }
 };
 
-MlasScaleOutputTest* MlasTestFixture<MlasScaleOutputTest>::mlas_tester(nullptr);
+template <> MlasScaleOutputTest* MlasTestFixture<MlasScaleOutputTest>::mlas_tester(nullptr);
 
 static bool added_to_main = AddTestRegistor([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasScaleOutputTest>::RegisterShortExecute() : 0;

@@ -163,10 +163,8 @@ bool AddTestRegistor(TestRegistor test_registor);
 template <typename TMlasTester>
 class MlasTestFixture : public testing::Test {
  public:
-  typedef TMlasTester MlasTesterType;
-
   static void SetUpTestSuite() {
-    mlas_tester = new MlasTesterType();
+    mlas_tester = new TMlasTester();
   };
 
   static void TearDownTestSuite() {
@@ -177,7 +175,7 @@ class MlasTestFixture : public testing::Test {
   };
 
   // Do not forgot to define this static member element when upon usage.
-  static MlasTesterType* mlas_tester;
+  static TMlasTester* mlas_tester;
 };
 
 // Long Execute test. It is too heavy register each single test, treat long execute big groups.
@@ -185,7 +183,7 @@ template <typename TMlasTester>
 class MlasLongExecuteTests : public MlasTestFixture<TMlasTester> {
  public:
   void TestBody() override {
-    mlas_tester->ExecuteLong();
+    MlasTestFixture<TMlasTester>::mlas_tester->ExecuteLong();
   }
 
   static size_t RegisterLongExecute() {
@@ -211,7 +209,7 @@ template <typename TMlasTester>
 class MlasDirectShortExecuteTests : public MlasTestFixture<TMlasTester> {
  public:
   void TestBody() override {
-    mlas_tester->ExecuteShort();
+    MlasTestFixture<TMlasTester>::mlas_tester->ExecuteShort();
   }
 
   static size_t RegisterShortExecute() {
@@ -224,8 +222,9 @@ class MlasDirectShortExecuteTests : public MlasTestFixture<TMlasTester> {
         __LINE__,
         // Important to use the fixture type as the return type here.
         [=]() -> MlasTestFixture<TMlasTester>* {
-          return new MlasDirectShortExecuteTests<MlasTesterType>();
+          return new MlasDirectShortExecuteTests<TMlasTester>();
         });
     return 1;
   }
 };
+
