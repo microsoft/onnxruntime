@@ -519,25 +519,33 @@ class ORTModule(torch.nn.Module):
             state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        """Override original method to delegate execution to the base module"""
         self._flattened_output_module._base_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+        """Override original method to delegate execution to the base module"""
         self._flattened_output_module._base_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
+        """Override original method to delegate execution to the base module"""
         return self._flattened_output_module._base_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
+        """Override original method to delegate execution to the base module"""
         return self._flattened_output_module._base_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+        """Override original method to delegate execution to the base module"""
         yield from self._flattened_output_module._base_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+        """Override original method to delegate execution to the base module"""
         yield from self._flattened_output_module._base_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+        """Override original method to delegate execution to the base module"""
         yield from self._flattened_output_module._base_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+        """Override original method to delegate execution to the base module"""
         yield from self._flattened_output_module._base_module.named_buffers(prefix=prefix, recurse=recurse)
