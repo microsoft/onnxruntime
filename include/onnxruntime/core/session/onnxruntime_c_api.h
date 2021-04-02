@@ -268,7 +268,7 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t cuda_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
   int has_user_compute_stream;
@@ -281,7 +281,7 @@ typedef struct OrtCUDAProviderOptions {
 typedef struct OrtROCMProviderOptions {
   int device_id;                                    // hip device with id=0 as default device.
   int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
-  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
 } OrtROCMProviderOptions;
 

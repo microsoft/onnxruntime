@@ -153,7 +153,7 @@ onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
-size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -458,7 +458,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, cuda_mem_limit, arena_extend_strategy, external_allocator_info)});
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
   return id_to_allocator_map[id];
@@ -564,7 +564,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   CUDAExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
@@ -588,7 +588,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   ROCMExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.hip_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   return info;
                 }();
@@ -884,7 +884,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                 [&]() {
                   CUDAExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
@@ -897,7 +897,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                 [&]() {
                   ROCMExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.hip_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   return info;
                 }()),
@@ -989,8 +989,8 @@ void addGlobalMethods(py::module& m, Environment& env) {
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     LogDeprecationWarning(
         "set_cuda_mem_limit",
-        "CUDA execution provider option \"cuda_mem_limit\", ROCM execution provider option \"hip_mem_limit\"");
-    cuda_mem_limit = gsl::narrow<size_t>(limit);
+        "CUDA execution provider option \"gpu_mem_limit\", ROCM execution provider option \"gpu_mem_limit\"");
+    gpu_mem_limit = gsl::narrow<size_t>(limit);
   });
   // TODO remove deprecated global config
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
