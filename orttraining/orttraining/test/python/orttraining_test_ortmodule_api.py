@@ -1566,3 +1566,65 @@ def test_model_with_constant_and_registered_parameters():
     # Make sure model runs without any exception
     output = ort_model(x)
     assert output is not None
+
+def test_state_dict():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    state_dict_ort = ort_model.state_dict()
+    state_dict_pt = pt_model.state_dict()
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+    # Call forward once
+    ort_model(x)
+    pt_model(x)
+
+    state_dict_ort = ort_model.state_dict()
+    state_dict_pt = pt_model.state_dict()
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+def test_load_state_dict():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    state_dict_pt = pt_model.state_dict()
+    list(next(iter(state_dict_pt.items())))[1] += 10
+    ort_model.load_state_dict(state_dict_pt)
+    state_dict_ort = ort_model.state_dict()
+
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+    # Call forward once
+    ort_model(x)
+    pt_model(x)
+
+    state_dict_pt = pt_model.state_dict()
+    ort_model.load_state_dict(state_dict_pt)
+    state_dict_ort = ort_model.state_dict()
+
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+

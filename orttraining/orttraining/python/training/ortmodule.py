@@ -503,3 +503,17 @@ class ORTModule(torch.nn.Module):
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        # Override the state_dict() method so that the state dict key names
+        # do not contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+                        strict: bool = True):
+        # Override the load_state_dict() method so that the loaded state dict
+        # key names does not need to contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.load_state_dict(
+            state_dict, strict=strict)
+
