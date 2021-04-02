@@ -11,13 +11,6 @@ import sys
 
 from . import _ld_preload  # noqa: F401
 
-
-def ExtendDllPath():
-    for p in os.environ['PATH'].split(';'):
-        if os.path.isdir(p):
-            os.add_dll_directory(p)
-
-
 if platform.system() == "Windows":
     from . import version_info
 
@@ -43,18 +36,15 @@ if platform.system() == "Windows":
         if not os.path.isfile(os.path.join(cuda_bin_dir, f"cudnn64_{version_info.cudnn_version}.dll")):
             raise ImportError(f"cuDNN {version_info.cudnn_version} not installed in {cuda_bin_dir}.")
 
-        cupti_bin_dir = os.path.join(os.environ[cuda_env_variable], "extras", "CUPTI", "lib64")
-        if not os.path.isdir(cupti_bin_dir):
-            raise ImportError(f"cupti library path does not exist: {cupti_bin_dir}.")
-        elif not os.path.isfile(os.path.join(cupti_bin_dir, "cupti.lib")):
-            raise ImportError(f"cupti.lib is missing in: {cupti_bin_dir}.")
-
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
             # specified explicitly using the new API introduced in Python 3.8.
             os.add_dll_directory(cuda_bin_dir)
-            os.add_dll_directory(cupti_bin_dir)
-            ExtendDllPath()
+            cuda_root = os.path.join(cuda_bin_dir, "..", "..")
+            for root, _, files in os.walk(cuda_root):
+                for f in files:
+                    if f == "cupti.lib":
+                        os.add_dll_directory(root)
         else:
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
