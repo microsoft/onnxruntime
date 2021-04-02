@@ -121,10 +121,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   // in BatchNorm Forward Training mode if all 5 outputs present
   if (is_training_mode_) {
     auto running_mean_data = reinterpret_cast<CudaT*>(running_mean->template MutableData<T>());
-    cudaMemcpy(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice);
 
     auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
-    cudaMemcpy(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(running_var_data, var_data, var->SizeInBytes(), cudaMemcpyDeviceToDevice);
 
     //auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());
     // auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->template MutableData<T>());
