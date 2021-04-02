@@ -23,16 +23,6 @@ variables:
   PackageName: 'Microsoft.ML.OnnxRuntime'
 
 jobs:
-- template: ../templates/c-api-cpu.yml
-  parameters:
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-    AdditionalBuildFlags: ''
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
-    BuildVariant: 'default'
 
 - job: Linux_C_API_Packaging_GPU_TensorRT_x64
   workspace:
