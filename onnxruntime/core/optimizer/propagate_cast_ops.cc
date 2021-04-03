@@ -383,28 +383,28 @@ static bool RemoveUnnecessaryCasts(Graph& graph, const logging::Logger& logger)
 
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(graph_level);
-  ORT_UNUSED_PARAMETER(logger);
+  bool local_modified = false;
+  do {
+    local_modified = RemoveUnnecessaryCasts(graph, logger);
 
-  modified = RemoveUnnecessaryCasts(graph);
+    // Propagate FP32 Casts forward
+    for (Node& node : graph.Nodes()) {
+        local_modified |= PropagateForwards(graph, &node, logger);
+    }
 
-  // Propagate FP32 Casts forward
-  for (Node& node : graph.Nodes()) {
-      modified |= PropagateForwards(graph, &node);
-  }
+    local_modified |= RemoveBackToBackCasts(graph, logger);
 
-  modified |= RemoveBackToBackCasts(graph);
+    // Propagate FP16 Casts backward
+    for (Node& node : graph.Nodes()) {
+      local_modified |= PropagateBackwards(graph, &node, logger);
+    }
 
-  // Propagate FP16 Casts backward
-  for (const NodeArg* output: graph.GetOutputs()) {
-    Node* node = graph.GetMutableProducerNode(output->Name());
-    modified |= PropagateBackwards(graph, node);
-  }
-
-  // Fuse subgraphs, sibling Cast nodes with same input
-  for (auto& node: graph.Nodes()) {
-    modified |= FuseSubgraphs(graph, &node);
-  }
-
+    // Fuse subgraphs, sibling Cast nodes with same input
+    for (auto& node: graph.Nodes()) {
+      local_modified |= FuseSubgraphs(graph, &node, logger);
+    }
+    modified |= local_modified;
+  } while (local_modified);
   return Status::OK();
 }
 
