@@ -16,7 +16,7 @@ Install the latest dev version:
 npm install onnxruntime@dev
 ```
 
-Refer to [Node.js samples](../samples/nodejs/README.md) for samples and tutorials.
+Refer to [Node.js samples](../../samples/nodejs/README.md) for samples and tutorials.
 
 ## Requirements
 

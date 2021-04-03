@@ -11,22 +11,22 @@ execute_process(COMMAND node -e "console.log(process.arch)"
                 OUTPUT_VARIABLE node_arch OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
-file(READ ${CMAKE_SOURCE_DIR}/../VERSION_NUMBER ort_version)
+file(READ ${CMAKE_SOURCE_DIR}/../../VERSION_NUMBER ort_version)
 string(STRIP "${ort_version}" ort_version)
 set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${node_arch}/")
 
 # onnxruntime.dll dir
 if(NOT ONNXRUNTIME_BUILD_DIR)
   if (WIN32)
-    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE})
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE})
   else()
-    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../build/Linux)
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/Linux)
   endif()
 endif()
 
 # include dirs
 include_directories(${CMAKE_JS_INC})
-include_directories(${CMAKE_SOURCE_DIR}/../include/onnxruntime/core/session)
+include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 # source files

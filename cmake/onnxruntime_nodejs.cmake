@@ -1,7 +1,7 @@
 # Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the MIT License.
 
-set(NODEJS_BINDING_ROOT ${REPO_ROOT}/nodejs)
+set(NODEJS_BINDING_ROOT ${REPO_ROOT}/js/node)
 if (WIN32)
     set(NPM_CLI cmd /c npm)
 else()
