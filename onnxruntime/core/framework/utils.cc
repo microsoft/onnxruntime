@@ -151,7 +151,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  OrtValue& target_mlvalue,
                                  std::vector<IDataTransfer::SrcDstPair>* copy_pairs = nullptr) {
   // same device so direct copy
-  if (copy_info.source_device == copy_info.source_device) {
+  if (copy_info.source_device == copy_info.target_device) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }

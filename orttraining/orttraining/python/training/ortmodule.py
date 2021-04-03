@@ -61,12 +61,14 @@ def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
 def _create_backward_iobinding(io_binding, forward_io_binding, loss_gradients, loss_gradients_names, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     # Feed in graph inputs - initializers, learning rate, etc.
+    inputs = forward_io_binding.get_inputs()
     for idx, name in enumerate(forward_io_binding.get_input_names()):
-        io_binding.bind_ortvalue_input(name, forward_io_binding.get_inputs()[idx])
+        io_binding.bind_ortvalue_input(name, inputs[idx])
 
     # Feed in intermediate tensors from the forward run.
+    intermediates = forward_io_binding.get_outputs()
     for idx, name in enumerate(forward_io_binding.get_output_names()):
-        io_binding.bind_ortvalue_input(name, forward_io_binding.get_outputs()[idx])
+        io_binding.bind_ortvalue_input(name, intermediates[idx])
 
     # Feed in loss function's gradient tensors (from PyTorch)
     for idx, name in enumerate(loss_gradients_names):
@@ -196,16 +198,21 @@ class ORTModule(torch.nn.Module):
                     training_forward_io_binding = self._training_session.io_binding()
                     training_backward_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
-                    self._intermediate_tensors = self._training_session.get_intermediate_tensors()
+                    if self._intermediate_tensors is None:
+                        self._intermediate_tensors = self._training_session.get_intermediate_tensors()
+
+                    if self._forward_outputs_ is None:
+                        self._forward_outputs_ = self._intermediate_tensors + self._onnx_graphs_info.user_output_names
                     # Use IO binding
                     _create_forward_iobinding(training_forward_io_binding, inputs, self._onnx_training, self._device,
-                        self._intermediate_tensors + self._onnx_graphs_info.user_output_names)
+                        self._forward_outputs_)
 
                     # Run and return module outputs.
                     run_options.only_execute_path_to_fetches = False
                     self._training_session.run_forward(run_options, training_forward_io_binding)
+
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
-                        forward_output) for forward_output in training_forward_io_binding.get_outputs()[len(self._intermediate_tensors):])
+                        forward_output) for forward_output in training_forward_io_binding.get_outputs_from(len(self._intermediate_tensors)))
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
@@ -347,6 +354,7 @@ class ORTModule(torch.nn.Module):
         self._onnx_training = None
         self._training_session = None
         self._intermediate_tensors = None
+        self._forward_outputs_ = None
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')

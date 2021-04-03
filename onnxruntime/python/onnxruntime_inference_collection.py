@@ -437,6 +437,18 @@ class IOBinding:
 
         return returned_ortvalues
 
+    def get_outputs_from(self, index):
+        '''
+        Returns the output OrtValues from the Run() that preceded the call.
+        The data buffer of the obtained OrtValues may not reside on CPU memory
+        '''
+        returned_ortvalues = []
+        outputs = self._iobinding.get_outputs()
+        for i in range(index, len(outputs)):
+            returned_ortvalues.append(OrtValue(outputs[i]))
+
+        return returned_ortvalues
+
     def get_output_names(self):
         '''
         Returns the output OrtValues names from the Run() that preceded the call.
