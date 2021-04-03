@@ -162,12 +162,16 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
     // The graph inputs don't have the producer nodes
-    require_cast.insert(node_arg);
+    if (node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+      require_cast.insert(node_arg);
+    }
   } else {
     std::string op_type = node->OpType();
     if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
         std::find(fp16_safe.begin(), fp16_safe.end(), op_type) == fp16_safe.end()) {
-      require_cast.insert(node_arg);
+      if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+        require_cast.insert(node_arg);
+      }
     } else {
       for (NodeArg* node_input : node->MutableInputDefs()) {
         SearchUpstream(graph, node_input, require_cast);
@@ -185,7 +189,9 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set
     if (node) {
       std::string op_type = node->OpType();
       if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end()) {
-        require_cast.insert(node_arg);
+        if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+          require_cast.insert(node_arg);
+        }
       } else {
         for (NodeArg* node_output : node->MutableOutputDefs()) {
           SearchDownstream(graph, node_output, require_cast);
