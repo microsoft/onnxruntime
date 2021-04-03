@@ -653,7 +653,6 @@ TEST(GradientCheckerTest, ReluGradDnnl) {
 }
 #endif  // USE_DNNL
 
-#ifndef USE_CUDA
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
   // TODO: add more test here
@@ -1201,7 +1200,6 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
     EXPECT_IS_TINY(max_error);
   }
 }
-#endif
 
 TEST(GradientCheckerTest, TransposeGrad) {
   float max_error;
@@ -2069,7 +2067,7 @@ TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-#endif
+#endif //USE_CUDA
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
@@ -2133,7 +2131,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.Run();
 }
-#endif
+#endif // USE_CUDA
 
 TEST(GradientCheckerTest, WhereGrad) {
   float max_error;
