@@ -244,14 +244,15 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
-    # onnxruntime_training-1.7.0+cu11.1-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime-1.7.0+cu111_training-cp36-cp36m-linux_x86_64.whl
     # nightly:
-    # onnxruntime_training-1.7.0.dev20210401+cu11.1-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime-1.8.0.dev20210401+cu111_training-cp36-cp36m-linux_x86_64.whl
     # this is needed by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
-    package_name = 'onnxruntime-training'
+    # NOTE: nightly build version needs to be greater than stable build by updating /VERSION_NUMBER after each release
+    package_name = 'onnxruntime'
     if cuda_version:
-        local_version = '+cu' + cuda_version
+        local_version = '+cu' + cuda_version + '_training'
 
 package_data = {}
 data_files = []
