@@ -10,8 +10,8 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-std::vector<std::string> fp16_allow = {"Transpose", "Reshape", "Gather", "Split", "Relu", "Where", "Dropout"};
-std::vector<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "Tanh", "MatMul", "MatAdd", "Add",
+std::unordered_set<std::string> fp16_allow = {"Transpose", "Reshape", "Gather", "Split", "Relu", "Where", "Dropout"};
+std::unordered_set<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "Tanh", "MatMul", "MatAdd", "Add",
                                        "Sub", "Mul", "Div", "Neg", "Gemm", "FusedMatMul", "FusedGemm"};
 
 // Insert a Cast node after each NodeArg
@@ -59,7 +59,7 @@ static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& 
       if (consumer != nullptr) {
         auto& consumer_inputs = consumer->MutableInputDefs();
         int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
-        if (producer) {
+        if (producer != nullptr) {
           graph.RemoveEdge(producer->Index(), consumer->Index(), output_index, input_index);
         }
         std::replace(consumer_inputs.begin(), consumer_inputs.end(), &cast_input, &cast_output);
@@ -68,7 +68,7 @@ static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& 
     }
     if (producer != nullptr) {
       auto& producer_outputs = producer->MutableOutputDefs();
-      std::replace(producer_outputs.begin(), producer_outputs.end(), node_arg, &cast_input);
+      std::replace(producer_outputs.begin(), producer_outputs.end(), &cast_output, &cast_input);
       graph.UpdateProducerNode(cast_input.Name(), producer->Index());
       int input_index = optimizer_utils::IndexOfNodeInput(cast, cast_input);
       graph.AddEdge(producer->Index(), cast.Index(), output_index, input_index);
@@ -90,11 +90,13 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts)
   auto consumers = graph.GetMutableConsumerNodes(cast_output->Name());
   int output_index = (producer != nullptr) ? optimizer_utils::IndexOfNodeOutput(*producer, *cast_input) : -1;
   if (producer) {
-    auto& outputs = producer->MutableOutputDefs();
     int input_index = optimizer_utils::IndexOfNodeInput(*lead_cast, *cast_input);
     graph.RemoveEdge(producer->Index(), lead_cast->Index(), output_index, input_index);
-    std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
-    graph.UpdateProducerNode(cast_output->Name(), producer->Index());
+    if (consumers.empty()) {
+      auto& outputs = producer->MutableOutputDefs();
+      std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
+      graph.UpdateProducerNode(cast_output->Name(), producer->Index());
+    }
   }
   // Update consumer nodes
   if (consumers.size()>0) {
@@ -329,10 +331,30 @@ static bool FuseSubgraphs(Graph& graph, Node* parent)
   return modified;
 }
 
+static bool RemoveUnnecessaryCasts(Graph& graph)
+{
+  bool modified = false;
+  for (auto& node: graph.Nodes()) {
+    if (node.OpType() == "Cast") {
+      const NodeAttributes& attributes = node.GetAttributes();
+      ORT_ENFORCE(attributes.find("to") != attributes.end());
+      TensorProto_DataType data_type = static_cast<TensorProto_DataType> (attributes.at("to").i());
+      NodeArg* cast_input = node.MutableInputDefs()[0];
+      if (cast_input->TypeAsProto()->tensor_type().elem_type() == data_type) {
+        RemoveCastNodes(graph, {&node});
+        modified = true;
+      }
+    }
+  }
+  return modified;
+}
+
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  (void) graph_level;
-  (void) logger;
-  modified = false;
+  ORT_UNUSED_PARAMETER(graph_level);
+  ORT_UNUSED_PARAMETER(logger);
+
+  modified = RemoveUnnecessaryCasts(graph);
+
   // Propagate FP32 Casts forward
   for (Node& node : graph.Nodes()) {
       modified |= PropagateForwards(graph, &node);
