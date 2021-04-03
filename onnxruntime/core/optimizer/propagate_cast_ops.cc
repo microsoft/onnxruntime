@@ -15,7 +15,7 @@ std::unordered_set<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "
                                        "Sub", "Mul", "Div", "Neg", "Gemm", "FusedMatMul", "FusedGemm"};
 
 // Insert a Cast node after each NodeArg
-static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& require_cast, bool is_fp16)
+static Status InsertCastNodes(Graph& graph, const std::vector<NodeArg*>& require_cast, bool is_fp16)
 {
   //Create requirred new Cast nodes.
   for (NodeArg* node_arg : require_cast) {
@@ -154,17 +154,17 @@ static bool RemoveBackToBackCasts(Graph& graph)
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
-static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
+static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::vector<NodeArg*>& require_cast)
 {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
     // The graph inputs don't have the producer nodes
-    require_cast.insert(node_arg);
+    require_cast.push_back(node_arg);
   } else {
     std::string op_type = node->OpType();
     if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
         std::find(fp16_safe.begin(), fp16_safe.end(), op_type) == fp16_safe.end()) {
-      require_cast.insert(node_arg);
+      require_cast.push_back(node_arg);
     } else {
       for (NodeArg* node_input : node->MutableInputDefs()) {
         SearchUpstream(graph, node_input, require_cast);
@@ -176,13 +176,16 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
 // SearchDownstream:
 // Recursively traverse the graph downstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP32 Cast operation up the graph.
-static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
+static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::vector<NodeArg*>& require_cast)
 {
+  if (!node_arg->Exists()) {
+    return;
+  }
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
       std::string op_type = node->OpType();
       if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end()) {
-        require_cast.insert(node_arg);
+        require_cast.push_back(node_arg);
       } else {
         for (NodeArg* node_output : node->MutableOutputDefs()) {
           SearchDownstream(graph, node_output, require_cast);
@@ -202,10 +205,10 @@ static bool PropagateForwards(Graph& graph, Node* node)
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT)) {
-      std::unordered_set<NodeArg*> require_cast;
+      std::vector<NodeArg*> require_cast;
       NodeArg* cast_output = node->MutableOutputDefs()[0];
       SearchDownstream(graph, cast_output, require_cast);
-      if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
+      if (require_cast.size() > 0 && std::find(require_cast.begin(), require_cast.end(), cast_output) == require_cast.end()) {
         // Remove Cast operation
         RemoveCastNodes(graph,{node});
         InsertCastNodes(graph, require_cast, false);
@@ -255,10 +258,10 @@ static bool PropagateBackwards(Graph& graph, Node* node)
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16)) {
-      std::unordered_set<NodeArg*> require_cast;
+      std::vector<NodeArg*> require_cast;
       NodeArg* cast_input = node->MutableInputDefs()[0];
       SearchUpstream(graph, cast_input, require_cast);
-      if (require_cast.find(cast_input) == require_cast.end()) {
+      if (require_cast.size() > 0 && std::find(require_cast.begin(), require_cast.end(), cast_input) == require_cast.end()) {
         // Remove Cast operation
         RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, true);
