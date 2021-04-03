@@ -3094,8 +3094,44 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
   test.Run();
 }
 
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>(),
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = std::vector<int64_t>{};
+  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_output_shape = std::vector<int64_t>{1, 0, 1};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::EMPTY);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>{1},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = std::vector<int64_t>{};
+  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_output_shape = std::vector<int64_t>{3, 0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::EMPTY);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
-TEST(ReductionOpTest, ReduceDimWithZero) {
+TEST(ReductionOpTest, ReduceDimWithZero1) {
   auto run = [](OpTester& tester, const std::string& error_msg = "") {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
@@ -3111,6 +3147,34 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   test.AddInput<float>("data", {3, 0, 2}, {});
   test.AddOutput<float>("reduced", {1, 0, 1}, {});
   run(test);
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>(),
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = std::vector<int64_t>{};
+  expected_fast_axes = std::vector<int64_t>{};
+  expected_fast_output_shape = std::vector<int64_t>{};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::EMPTY);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
+TEST(ReductionOpTest, ReduceDimWithZero2) {
+  auto run = [](OpTester& tester, const std::string& error_msg = "") {
+    auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
+                                    : OpTester::ExpectResult::kExpectFailure;
+
+    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+  };
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
   OpTester test2("ReduceSum", 10);
@@ -3121,6 +3185,34 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   run(test2,
       "Can't reduce on dim with value of 0 if 'keepdims' is false. "
       "Invalid output shape would be produced. input_shape:{3,0,2}");
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{3, 0, 2}, std::vector<int64_t>{2},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = std::vector<int64_t>{0, 2};
+  expected_fast_axes = std::vector<int64_t>{1};
+  expected_fast_output_shape = std::vector<int64_t>{3, 0};
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+  ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
+}
+
+TEST(ReductionOpTest, ReduceDimWithZero3) {
+  auto run = [](OpTester& tester, const std::string& error_msg = "") {
+    auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
+                                    : OpTester::ExpectResult::kExpectFailure;
+
+    // exclude OpenVINO and TensorRT as this isn't handled by those EPs
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
+  };
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims
   OpTester test3("ReduceSum", 10);
@@ -3260,208 +3352,296 @@ TEST(ReductionOpTest, ReduceInfLogSumExp_double) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_K) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // R - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{10};
   expected_fast_output_shape = std::vector<int64_t>{1};
+  expected_fast_axes = std::vector<int64_t>{0};
   ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0, 1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{110};
   expected_fast_output_shape = std::vector<int64_t>{1, 1};
+  expected_fast_axes = std::vector<int64_t>{0};
   ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   // R - keep_dims=0
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{10};
   expected_fast_output_shape = std::vector<int64_t>();
+  expected_fast_axes = std::vector<int64_t>{0};
   ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0, 1},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{110};
   expected_fast_output_shape = std::vector<int64_t>();
+  expected_fast_axes = std::vector<int64_t>{0};
   ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
 
-  // K - keep_dims=1
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_R_empty) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>(),
-      fast_shape, fast_output_shape, true);
-  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_axes = std::vector<int64_t>{0};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, std::vector<int64_t>{10});
-  ASSERT_EQ(fast_output_shape, std::vector<int64_t>{10});
+  ASSERT_EQ(fast_output_shape, std::vector<int64_t>{1});
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>(),
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11};
-  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+  expected_fast_output_shape = std::vector<int64_t>{1, 1};
+  expected_fast_axes = std::vector<int64_t>{0};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
-  // K - keep_dims=0
+  // R - keep_dims=0 - noop=false
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10}, std::vector<int64_t>{},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{10};
-  expected_fast_output_shape = std::vector<int64_t>{10};
-  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+  expected_fast_output_shape = std::vector<int64_t>{};
+  expected_fast_axes = std::vector<int64_t>{0};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::R);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{110};
-  expected_fast_output_shape = std::vector<int64_t>{10, 11};
+  expected_fast_output_shape = std::vector<int64_t>{};
+  expected_fast_axes = std::vector<int64_t>{0};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::R);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_K_empty) {
+  FastReduceKind fast_kind;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // R - keep_dims=1 - noop=true
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{10}, std::vector<int64_t>(),
+      fast_shape, fast_output_shape, fast_axes, true, true);
+  expected_fast_shape = std::vector<int64_t>{10};
+  expected_fast_output_shape = std::vector<int64_t>{10};
+  expected_fast_axes = std::vector<int64_t>{};
   ASSERT_EQ(fast_kind, FastReduceKindValues::K);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{10, 11}, std::vector<int64_t>(),
+      fast_shape, fast_output_shape, fast_axes, true, true);
+  expected_fast_shape = std::vector<int64_t>{110};
+  expected_fast_output_shape = std::vector<int64_t>{10, 11};
+  expected_fast_axes = std::vector<int64_t>{};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  // R - keep_dims=0 - noop=true
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{10}, std::vector<int64_t>{},
+      fast_shape, fast_output_shape, fast_axes, false, true);
+  expected_fast_shape = std::vector<int64_t>{10};
+  expected_fast_output_shape = std::vector<int64_t>{10};
+  expected_fast_axes = std::vector<int64_t>{};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{10, 11}, std::vector<int64_t>{},
+      fast_shape, fast_output_shape, fast_axes, false, true);
+  expected_fast_shape = std::vector<int64_t>{110};
+  expected_fast_output_shape = std::vector<int64_t>{10, 11};
+  expected_fast_axes = std::vector<int64_t>{};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::K);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{10, 11};
   expected_fast_output_shape = std::vector<int64_t>{10, 1};
+  expected_fast_axes = std::vector<int64_t>{1};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1, 2},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{9, 110};
   expected_fast_output_shape = std::vector<int64_t>{9, 1, 1};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{2},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{90, 11};
   expected_fast_output_shape = std::vector<int64_t>{9, 10, 1};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   // KR - keep_dims=0
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{10, 11};
   expected_fast_output_shape = std::vector<int64_t>{10};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1, 2},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{9, 110};
   expected_fast_output_shape = std::vector<int64_t>{9};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{2},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{90, 11};
   expected_fast_output_shape = std::vector<int64_t>{9, 10};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{-1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{10, 11};
   expected_fast_output_shape = std::vector<int64_t>{10, 1};
+  expected_fast_axes = std::vector<int64_t>{1};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // RK - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{10, 11};
   expected_fast_output_shape = std::vector<int64_t>{1, 11};
+  expected_fast_axes = std::vector<int64_t>{0};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{90, 11};
   expected_fast_output_shape = std::vector<int64_t>{1, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{9, 110};
   expected_fast_output_shape = std::vector<int64_t>{1, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   // RK - keep_dims=0
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{10, 11}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{10, 11};
   expected_fast_output_shape = std::vector<int64_t>{11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 1},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{90, 11};
   expected_fast_output_shape = std::vector<int64_t>{11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
@@ -3470,109 +3650,154 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RK) {
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{9, 110};
   expected_fast_output_shape = std::vector<int64_t>{10, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::RK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KRK - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{9, 10, 11};
   expected_fast_output_shape = std::vector<int64_t>{9, 1, 11};
+  expected_fast_axes = std::vector<int64_t>{1};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 2},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{7, 90, 11};
   expected_fast_output_shape = std::vector<int64_t>{7, 1, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{7, 9, 110};
   expected_fast_output_shape = std::vector<int64_t>{7, 1, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{2},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
   expected_fast_shape = std::vector<int64_t>{63, 10, 11};
   expected_fast_output_shape = std::vector<int64_t>{7, 9, 1, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   // KRK - keep_dims=0
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{9, 10, 11};
   expected_fast_output_shape = std::vector<int64_t>{9, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 2},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{7, 90, 11};
   expected_fast_output_shape = std::vector<int64_t>{7, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{7, 9, 110};
   expected_fast_output_shape = std::vector<int64_t>{7, 10, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{2},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
   expected_fast_shape = std::vector<int64_t>{63, 10, 11};
   expected_fast_output_shape = std::vector<int64_t>{7, 9, 11};
   ASSERT_EQ(fast_kind, FastReduceKindValues::KRK);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape;
+  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
+  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
-  // NONE
+  // RKRK
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2},
-      fast_shape, fast_output_shape, false);
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = std::vector<int64_t>{7, 9, 10, 11};
+  expected_fast_output_shape = std::vector<int64_t>{9, 11};
+  expected_fast_axes = std::vector<int64_t>{0, 2};
   ASSERT_EQ(fast_kind, FastReduceKindValues::NONE);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{1, 3},
-      fast_shape, fast_output_shape, true);
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = std::vector<int64_t>{7, 9, 10, 11};
+  expected_fast_output_shape = std::vector<int64_t>{7, 1, 10, 1};
+  expected_fast_axes = std::vector<int64_t>{1, 3};
   ASSERT_EQ(fast_kind, FastReduceKindValues::NONE);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  // RRKKRRKK
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11, 2, 3, 4, 6}, std::vector<int64_t>{0, 1, 4, 5},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = std::vector<int64_t>{63, 110, 6, 24};
+  expected_fast_output_shape = std::vector<int64_t>{10, 11, 4, 6};
+  expected_fast_axes = std::vector<int64_t>{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::NONE);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11, 2, 3, 4, 6}, std::vector<int64_t>{0, 1, 4, 5},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = std::vector<int64_t>{63, 110, 6, 24};
+  expected_fast_output_shape = std::vector<int64_t>{1, 1, 10, 11, 1, 1, 4, 6};
+  expected_fast_axes = std::vector<int64_t>{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKindValues::NONE);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
 }  // namespace test

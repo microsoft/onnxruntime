@@ -17,12 +17,13 @@
 namespace onnxruntime {
 
 typedef enum _FastReduceKindValues : uint8_t {
-  NONE = 0,  // no fast implementation
-  K = 1,     // kept dim = no reduce
-  R = 2,     // reduced dim = all reduced
-  KR = 4,    // kept dim, reduced dim
-  RK = 8,    // reduced dim, kept dim
-  KRK = 16   // kept dim, reduced dim, kept dim
+  NONE = 0,   // no fast implementation
+  K = 1,      // kept dim = no reduce
+  R = 2,      // reduced dim = all reduced
+  KR = 4,     // kept dim, reduced dim
+  RK = 8,     // reduced dim, kept dim
+  KRK = 16,   // kept dim, reduced dim, kept dim
+  EMPTY = 32  // empty reduce
 } FastReduceKindValues;
 
 typedef uint8_t FastReduceKind;
@@ -31,7 +32,8 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
                                           const std::vector<int64_t>& reduced_axes,
                                           std::vector<int64_t>& fast_shape,
                                           std::vector<int64_t>& fast_output_shape,
-                                          bool keep_dims);
+                                          std::vector<int64_t>& fast_axes,
+                                          bool keep_dims, bool noop_with_empty_axes = false);
 
 class ResultsNoTransposePrepareForReduce {
  public:
@@ -541,14 +543,6 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
   inline TVAL get_value() { return reduce_log<T>(this->accumulator_) + max_; }
   static inline bool two_loops() { return true; }
 };
-
-bool SetupForReduce(const Tensor* input_tensor_ptr,
-                    const std::vector<int64_t>& axes_,
-                    std::vector<int64_t>& axes,
-                    TensorShape& new_input_shape,
-                    std::vector<int64_t>& output_shape,
-                    bool& empty_reduce,
-                    const TensorShape* input_shape_override);
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                  const std::vector<int64_t>& reduced_axes,

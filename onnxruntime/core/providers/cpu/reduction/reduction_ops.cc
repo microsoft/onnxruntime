@@ -207,58 +207,6 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ArgMin, 11, 12)
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ArgMin, 13);
 
-bool SetupForReduce(const Tensor* input_tensor_ptr,
-                    const std::vector<int64_t>& axes_,
-                    std::vector<int64_t>& axes,
-                    TensorShape& new_input_shape,
-                    std::vector<int64_t>& output_shape,
-                    bool& empty_reduce,
-                    const TensorShape* input_shape_override) {
-  ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
-
-  if (input_shape_override) {
-    ORT_ENFORCE(input_tensor_ptr->Shape().Size() == input_shape_override->Size(),
-                "The input shape override's size does not match the input tensor's shape size");
-  }
-
-  new_input_shape = input_shape_override ? *input_shape_override : input_tensor_ptr->Shape();
-  size_t ndim = new_input_shape.NumDimensions();
-  if (ndim == 0) {
-    empty_reduce = true;
-    return false;
-  }
-
-  axes.reserve(axes_.size());
-  for (int64_t axis : axes_) {
-    axes.push_back(HandleNegativeAxis(axis, static_cast<int64_t>(ndim)));
-  }
-
-  if (axes.empty()) {
-    // This is the default case for non-arg kind reductions. Reduce on all dimensions.
-    for (size_t i = 0; i < ndim; i++) {
-      axes.push_back(i);
-    }
-  }
-
-  std::sort(axes.begin(), axes.end());
-
-  // If all reduced axes are located at the tail of the input shape, then copy could be skipped is required
-  bool need_copy = true;
-  if (axes.size() <= ndim && ndim > 0 &&
-      axes.front() == static_cast<int64_t>(ndim - axes.size()) &&
-      axes.back() == static_cast<int64_t>(ndim) - 1) {
-    need_copy = false;
-  }
-
-  empty_reduce = false;
-  output_shape = new_input_shape.GetDims();
-  for (auto a : axes) {
-    output_shape[a] = new_input_shape[a] > 0 ? 1 : 0;
-    empty_reduce |= output_shape[a] == 0;
-  }
-  return need_copy;
-}
-
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                  const std::vector<int64_t>& reduced_axes,
                                  ResultsNoTransposePrepareForReduce& results) {
@@ -460,35 +408,82 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
                                           const std::vector<int64_t>& reduced_axes,
                                           std::vector<int64_t>& fast_shape,
                                           std::vector<int64_t>& fast_output_shape,
-                                          bool keep_dims) {
+                                          std::vector<int64_t>& fast_axes,
+                                          bool keep_dims, bool noop_with_empty_axes) {
   if (input_shape.empty()) {
     fast_shape = input_shape;
     fast_output_shape = input_shape;
+    fast_axes = reduced_axes;
     return FastReduceKindValues::NONE;
   }
+
+  std::set<int64_t> axes;
+  if (reduced_axes.size() == 0 && !noop_with_empty_axes) {
+    for (int64_t i = 0; i < (int64_t)input_shape.size(); ++i) {
+      axes.insert(i);
+    }
+  } else {
+    for (auto it = reduced_axes.begin(); it != reduced_axes.end(); ++it) {
+      axes.insert(HandleNegativeAxis(*it, static_cast<int64_t>(input_shape.size())));
+    }
+  }
+
   fast_output_shape.clear();
   fast_output_shape.reserve(input_shape.size());
-  std::set<int64_t> axes;
-  for (auto it = reduced_axes.begin(); it != reduced_axes.end(); ++it) {
-    axes.insert(*it >= 0 ? *it : input_shape.size() + *it);
-  }
+  bool empty_reduce = false;
   std::vector<bool> reduce(input_shape.size());
   for (int64_t i = 0; i < (int64_t)input_shape.size(); ++i) {
     reduce[i] = axes.find(i) != axes.end();
     if (reduce[i]) {
+      empty_reduce |= input_shape[i] == 0;
       if (keep_dims)
-        fast_output_shape.push_back(1);
+        fast_output_shape.push_back(input_shape[i] > 0 ? 1 : 0);
     } else {
       fast_output_shape.push_back(input_shape[i]);
     }
   }
+
+  if (empty_reduce) {
+    return FastReduceKindValues::EMPTY;
+  }
+
+  if (reduced_axes.empty()) {
+    fast_shape.resize(1);
+    fast_shape[0] = 1;
+    for (auto a : input_shape) {
+      fast_shape[0] *= a;
+    }
+    if (noop_with_empty_axes) {
+      fast_axes.clear();
+      fast_output_shape = input_shape;
+      return FastReduceKindValues::K;
+    } else {
+      if (keep_dims) {
+        fast_output_shape.resize(input_shape.size(), 1);
+      } else {
+        fast_output_shape.clear();
+      }
+      fast_axes.resize(1);
+      fast_axes[0] = 0;
+      return FastReduceKindValues::R;
+    }
+  }
+
   fast_shape.clear();
+  fast_axes.clear();
   fast_shape.reserve(input_shape.size());
+  fast_axes.reserve(reduced_axes.size());
+
   fast_shape.push_back(input_shape[0]);
+  if (reduce[0])
+    fast_axes.push_back(0);
   for (size_t i = 1; i < input_shape.size(); ++i) {
     if (reduce[i] == reduce[i - 1]) {
       fast_shape[fast_shape.size() - 1] *= input_shape[i];
     } else {
+      if (reduce[i]) {
+        fast_axes.push_back(fast_shape.size());
+      }
       fast_shape.push_back(input_shape[i]);
     }
   }
@@ -512,10 +507,10 @@ void CommonReduce(OpKernelContext* ctx,
   std::vector<int64_t> axes;
   const Tensor* input = ctx->Input<Tensor>(0);
   auto reduced_dims = input->Shape().GetDims();
-  std::vector<int64_t> output_shape;
-  bool empty_reduce;
-  TensorShape new_input_shape;
+  std::vector<int64_t> fast_shape, output_shape, fast_axes;
+  TensorShape new_input_shape = input->Shape();
   std::vector<int64_t> input_axes;
+  FastReduceKind fast_kind;
 
   if (ctx->InputCount() == 2) {
     // second input holds the axes.
@@ -534,24 +529,23 @@ void CommonReduce(OpKernelContext* ctx,
   }
 
   if (AGG::fast_reduce()) {
-    std::vector<int64_t> fast_shape, fast_full_shape;
-    FastReduceKind fast_kind = OptimizeShapeForFastReduce(reduced_dims,
-                                                          input_axes.empty() ? axes_ : input_axes,
-                                                          fast_shape, fast_full_shape, keepdims_);
+    fast_kind = OptimizeShapeForFastReduce(
+        reduced_dims, input_axes.empty() ? axes_ : input_axes,
+        fast_shape, output_shape, fast_axes, keepdims_, noop_with_empty_axes);
     if ((fast_kind & AGG::fast_reduce()) > 0) {
       switch (fast_kind) {
         case FastReduceKindValues::KR: {
-          Tensor* output = ctx->Output(0, fast_full_shape);
+          Tensor* output = ctx->Output(0, output_shape);
           AGG::FastReduceKR(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return;
         }
         case FastReduceKindValues::RK: {
-          Tensor* output = ctx->Output(0, fast_full_shape);
+          Tensor* output = ctx->Output(0, output_shape);
           AGG::FastReduceRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return;
         }
         case FastReduceKindValues::KRK: {
-          Tensor* output = ctx->Output(0, fast_full_shape);
+          Tensor* output = ctx->Output(0, output_shape);
           AGG::FastReduceKRK(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return;
         }
@@ -563,12 +557,15 @@ void CommonReduce(OpKernelContext* ctx,
           break;
       }
     }
+  } else {
+    fast_kind = OptimizeShapeForFastReduce(reduced_dims,
+                                           input_axes.empty() ? axes_ : input_axes,
+                                           fast_shape, output_shape, fast_axes, keepdims_,
+                                           noop_with_empty_axes);
   }
 
-  SetupForReduce(input, input_axes.empty() ? axes_ : input_axes, axes, new_input_shape, output_shape, empty_reduce, nullptr);
-
-  if (empty_reduce) {
-    Tensor* output = ctx->Output(0, keepdims_ ? output_shape : std::vector<int64_t>());
+  if (fast_kind == FastReduceKindValues::EMPTY) {
+    Tensor* output = ctx->Output(0, output_shape);
     if (new_input_shape.Size() == 1) {
       const T* from_data = input->template Data<T>();
       typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
@@ -589,15 +586,8 @@ void CommonReduce(OpKernelContext* ctx,
     return;
   }
 
-  Tensor* output;
-  if (keepdims_) {
-    output = ctx->Output(0, output_shape);
-  } else {
-    std::vector<int64_t> dropped_axes;
-    DropDimensions(output_shape, axes, dropped_axes);
-    output = ctx->Output(0, dropped_axes);
-  }
-  NoTransposeReduce<T, AGG>(output, new_input_shape, *input, axes, ctx->GetOperatorThreadPool(), last_results);
+  Tensor* output = ctx->Output(0, output_shape);
+  NoTransposeReduce<T, AGG>(output, fast_shape, *input, fast_axes, ctx->GetOperatorThreadPool(), last_results);
 }
 
 template <typename T>
@@ -671,13 +661,13 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
                           const TensorShape* input_shape_override) {
   std::vector<int64_t> axes;
-  auto reduced_dims = input.Shape().GetDims();
-  std::vector<int64_t> output_shape;
-  TensorShape new_input_shape;
-  bool empty_reduce;
-  SetupForReduce(&input, reduce_axes, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
+  std::vector<int64_t> output_shape, fast_shape, fast_axes;
+  TensorShape new_input_shape = input_shape_override == nullptr ? input.Shape() : *input_shape_override;
+  auto reduced_dims = new_input_shape.GetDims();
 
-  if (empty_reduce) {
+  FastReduceKind fast_kind = OptimizeShapeForFastReduce(reduced_dims, reduce_axes, fast_shape, output_shape, fast_axes, keep_dims, false);
+
+  if (fast_kind == FastReduceKindValues::EMPTY) {
     Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
     if (new_input_shape.Size() == 1) {
       const T* from_data = input.template Data<T>();
@@ -692,19 +682,10 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
     return output;
   }
 
-  if (keep_dims) {
-    ResultsNoTransposePrepareForReduce last_results;
-    Tensor output(input.DataType(), output_shape, allocator);
-    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
-    return output;
-  } else {
-    ResultsNoTransposePrepareForReduce last_results;
-    std::vector<int64_t> dropped_axes;
-    DropDimensions(output_shape, axes, dropped_axes);
-    Tensor output(input.DataType(), dropped_axes, allocator);
-    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
-    return output;
-  }
+  ResultsNoTransposePrepareForReduce last_results;
+  Tensor output(input.DataType(), output_shape, allocator);
+  NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, fast_shape, input, fast_axes, tp, last_results);
+  return output;
 }
 
 template <typename T>
