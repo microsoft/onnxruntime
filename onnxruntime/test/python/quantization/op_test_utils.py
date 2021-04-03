@@ -1,6 +1,7 @@
 
 import onnx
 import numpy as np
+from six import string_types
 import onnxruntime
 from pathlib import Path
 from onnxruntime.quantization import CalibrationDataReader
@@ -20,8 +21,12 @@ class TestDataFeeds(CalibrationDataReader):
     def rewind(self):
         self.iter_next = iter(self.data_feeds)
 
-def check_op_type_order(testcase, model_path, ops):
-    model = onnx.load(Path(model_path))
+def check_op_type_order(testcase, model_to_check, ops):
+    if isinstance(model_to_check, string_types):
+        model = onnx.load(model_to_check)
+    elif isinstance(model_to_check, onnx.ModelProto):
+        model = model_to_check
+
     testcase.assertEqual(len(ops), len(model.graph.node), 'op count is not same')
     for node_idx, node in enumerate(model.graph.node):
         testcase.assertEqual(
