@@ -119,7 +119,7 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts)
   return Status::OK();
 }
 
-static bool RemoveBackToBackCasts(Graph& graph)
+static bool RemoveBackToBackCasts(Graph& graph, const logging::Logger& logger)
 {
   bool modified = false;
   for (Node& node : graph.Nodes()) {
@@ -137,10 +137,12 @@ static bool RemoveBackToBackCasts(Graph& graph)
             bool is_child_fp16 = child_attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16);
             if ((is_fp && is_child_fp16) || (is_fp16 && is_child_fp)) {
               // The parent and child cancell out
+              VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast nodes  " << node.Name() << " and " << child->Name() << std::endl;
               RemoveCastNodes(graph, {&node, child});
               modified = true;
             } else if ((is_fp16 && is_child_fp16) || (is_fp && is_child_fp)) {
               // Child is a duplicate of parent
+              VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name() << std::endl;
               RemoveCastNodes(graph, {child});
               modified = true;
             }
@@ -151,6 +153,7 @@ static bool RemoveBackToBackCasts(Graph& graph)
   }
   return modified;
 }
+
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
@@ -192,8 +195,19 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set
   }
 }
 
-static bool PropagateForwards(Graph& graph, Node* node)
+// GatherNames collects all the names from the pointers of the objects stores in the container class C
+// the class should have a member functions returning a string (or a ref).
+template<typename C, typename T = typename C::value_type>
+static std::string GatherNames(C const& items)
 {
+  std::vector<std::string> names;
+  std::transform(items.begin(), items.end(), back_inserter(names), [](T n) { return n->Name(); });
+  return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b;});
+}
+
+static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& logger)
+{
+
   bool modified = false;
   if (node == nullptr) {
     return false;
@@ -207,14 +221,17 @@ static bool PropagateForwards(Graph& graph, Node* node)
       SearchDownstream(graph, cast_output, require_cast);
       if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
         // Remove Cast operation
-        RemoveCastNodes(graph,{node});
+        VLOGS(logger, 1) << "PropagateForwards: Removed Cast node  " << node->Name() << std::endl;
+        RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, false);
+        VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast) << std::endl;
         modified = true;
       }
     }
   } else if (std::find(fp16_safe.begin(), fp16_safe.end(), node->OpType()) != fp16_safe.end()) {
     bool all_inputs_have_casts = true;
-    for (NodeArg* input : node->MutableInputDefs()) {
+    std::vector<NodeArg*>& inputs = node->MutableInputDefs();
+    for (NodeArg* input : inputs) {
       Node* producer = graph.GetMutableProducerNode(input->Name());
       if (producer && producer->OpType() == "Cast") {
         const NodeAttributes& attributes = producer->GetAttributes();
@@ -227,25 +244,29 @@ static bool PropagateForwards(Graph& graph, Node* node)
       break;
     }
     if (all_inputs_have_casts) {
-      for (NodeArg* input : node->MutableInputDefs()) {
+      VLOGS(logger, 1) << "PropagateForwards: Removed Cast nodes producing"
+                       << GatherNames<std::vector<NodeArg*>>(inputs)
+                       << " feeding the same compute node " << node->Name() << std::endl;
+      for (NodeArg* input : inputs) {
         Node* producer = graph.GetMutableProducerNode(input->Name());
         RemoveCastNodes(graph, {producer});
       }
       NodeArg* node_arg = node->MutableOutputDefs()[0];
       InsertCastNodes(graph, {node_arg}, false);
+      VLOGS(logger, 1) << "PropagateForwards: Inserted Cast node to " << node_arg->Name() << std::endl;
       modified = true;
     }
   } else {
     for (NodeArg* output: node->MutableOutputDefs()) {
       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
-        modified |= PropagateForwards(graph, consumer);
+        modified |= PropagateForwards(graph, consumer, logger);
       }
     }
   }
   return modified;
 }
 
-static bool PropagateBackwards(Graph& graph, Node* node)
+static bool PropagateBackwards(Graph& graph, Node* node, const logging::Logger& logger)
 {
   bool modified = false;
   if (node == nullptr) {
@@ -260,15 +281,17 @@ static bool PropagateBackwards(Graph& graph, Node* node)
       SearchUpstream(graph, cast_input, require_cast);
       if (require_cast.find(cast_input) == require_cast.end()) {
         // Remove Cast operation
+        VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name() << std::endl;
         RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, true);
+        VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast) << std::endl;
         modified = true;
       }
     }
   } else {
     for (NodeArg* input: node->MutableInputDefs()) {
       Node* producer = graph.GetMutableProducerNode(input->Name());
-      modified |= PropagateBackwards(graph, producer);
+      modified |= PropagateBackwards(graph, producer, logger);
     }
   }
   return modified;
@@ -299,7 +322,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes)
   }
 }
 // Traverse the graph recursively searching/collecting sibling Cast op nodes to fuse and call FuseNodes.
-static bool FuseSubgraphs(Graph& graph, Node* parent)
+static bool FuseSubgraphs(Graph& graph, Node* parent, const logging::Logger& logger)
 {
   bool modified = false;
   for (NodeArg* output : parent->MutableOutputDefs()) {
@@ -322,16 +345,18 @@ static bool FuseSubgraphs(Graph& graph, Node* parent)
     if (cast_fp16_siblings.size() > 1) {
       modified = true;
       FuseNodes(graph, output, cast_fp16_siblings);
+      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << GatherNames<std::vector<Node*>>(cast_fp16_siblings) << std::endl;
     }
     if (cast_fp_siblings.size() > 1) {
       modified = true;
       FuseNodes(graph, output, cast_fp_siblings);
+      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << GatherNames<std::vector<Node*>>(cast_fp_siblings) << std::endl;
     }
   }
   return modified;
 }
 
-static bool RemoveUnnecessaryCasts(Graph& graph)
+static bool RemoveUnnecessaryCasts(Graph& graph, const logging::Logger& logger)
 {
   bool modified = false;
   for (auto& node: graph.Nodes()) {
@@ -341,6 +366,7 @@ static bool RemoveUnnecessaryCasts(Graph& graph)
       TensorProto_DataType data_type = static_cast<TensorProto_DataType> (attributes.at("to").i());
       NodeArg* cast_input = node.MutableInputDefs()[0];
       if (cast_input->TypeAsProto()->tensor_type().elem_type() == data_type) {
+        VLOGS(logger, 1) << "Removed unnecessary cast " << node.Name() << std::endl;
         RemoveCastNodes(graph, {&node});
         modified = true;
       }
