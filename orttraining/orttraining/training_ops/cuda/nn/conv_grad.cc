@@ -122,6 +122,9 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {M});
 
+  // ORT_UNUSED_PARAMETER(dX);
+  // ORT_UNUSED_PARAMETER(dB);
+
   ORT_RETURN_IF_ERROR(ComputeWeightGradient(dW, dY, X));
   ORT_RETURN_IF_ERROR(ComputeInputGradient(dX, dY, W));
   ORT_RETURN_IF_ERROR(ComputeBiasGradient(dB, dY));
@@ -139,7 +142,7 @@ Status ConvGrad<T>::ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Te
   cudnnConvolutionBwdFilterAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdFilterAlgo;
   CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args, perf.algo, &perf.memory));
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args.c_desc, perf.mathType));
+  // CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args.c_desc, perf.mathType));
 
   void* dw_data = dW->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
@@ -170,7 +173,7 @@ Status ConvGrad<T>::ComputeInputGradient(Tensor* dX, const Tensor* dY, const Ten
   cudnnConvolutionBwdDataAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdDataAlgo;
   CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args, perf.algo, &perf.memory));
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args.c_desc, perf.mathType));
+  // CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args.c_desc, perf.mathType));
 
   void* dx_data = dX->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
@@ -202,9 +205,9 @@ Status ConvGrad<T>::ComputeBiasGradient(Tensor* dB, const Tensor* dY) const {
   std::vector<int64_t> dy_dims = dy_shape.GetDims();
   // TODO: check if this padding is needed
   // cudnn only takes 4D or 5D input, so pad dimensions if needed
-  if (dy_dims.size() < 4) {
-    dy_dims.push_back(1);
-  }
+  // if (dy_dims.size() < 4) {
+  //   dy_dims.push_back(1);
+  // }
 
   CudnnTensor dy_desc, db_desc;
   ORT_RETURN_IF_ERROR(dy_desc.Set(dy_dims, CudnnTensor::GetDataType<CudaT>()));
