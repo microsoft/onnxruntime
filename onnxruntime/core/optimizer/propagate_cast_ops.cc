@@ -403,6 +403,10 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   ORT_UNUSED_PARAMETER(graph_level);
   bool local_modified = false;
   do {
+    if (local_modified) {
+      graph.Resolve();
+    }
+
     local_modified = RemoveUnnecessaryCasts(graph, logger);
 
     // Fuse subgraphs, sibling Cast nodes with same input
