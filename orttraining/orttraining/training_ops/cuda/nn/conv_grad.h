@@ -15,14 +15,11 @@ namespace cuda {
 
 struct ConvolutionArgs {
   cudnnHandle_t handle;
-  CudnnTensor i_desc, o_desc;
+  CudnnTensor i_desc, o_desc, b_desc;
   CudnnFilterDescriptor w_desc;
   CudnnConvolutionDescriptor c_desc;
-  // const Tensor &input, &output, &weight;
 
   ConvolutionArgs() {}
-  // ConvolutionArgs(const Tensor& input, const Tensor& output, const Tensor& weight)
-  //     : input(input), output(output), weight(weight) {}
 };
 
 template <typename T>
@@ -38,8 +35,8 @@ class ConvGrad final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status PrepareArgs(const Tensor& input, const Tensor& output, const Tensor& weight,
-                     ConvolutionArgs& args) const;
+  mutable ConvolutionArgs args_;
+  Status PrepareArgs(const Tensor& input, const Tensor& output, const Tensor& weight, const Tensor* bias) const;
 
   ConvAttributes conv_attrs_;
 
