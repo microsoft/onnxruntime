@@ -511,10 +511,12 @@ def test_gradient_correctness_conv1d():
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super(NeuralNetConv1D, self).__init__()
-            self.conv = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
+            self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
+            self.conv2 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
 
         def forward(self, input):
-            out = self.conv(input.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
+            out = self.conv1(input.permute(0, 2, 1).contiguous())
+            out = self.conv2(out).permute(0, 2, 1).contiguous()
             return out
 
     device = 'cuda'
@@ -529,12 +531,12 @@ def test_gradient_correctness_conv1d():
         return prediction
 
     for step in range(10):
-        x = torch.randn(N, seq_len, C_in, device=device)
+        x = torch.randn(N, seq_len, C_in, device=device, requires_grad=True)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
         
         assert torch.allclose(ort_prediction, pt_prediction, atol=1e-5)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-4)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-4, atol=5e-4)
 
 def test_module_with_non_differential_output():
     device = 'cuda'

@@ -13,7 +13,7 @@ namespace cuda {
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      ConvGrad,                                                                     \
+      ConvGrad,                                                                 \
       kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
@@ -198,19 +198,18 @@ template <typename T>
 Status ConvGrad<T>::ComputeBiasGradient(Tensor* dB, const Tensor* dY) const {
   if (dB == nullptr) return Status::OK();
 
-  const TensorShape& db_shape = dB->Shape();
-  std::vector<int64_t> db_dims = db_shape.GetDims();
-
+  CudnnTensor dy_desc, db_desc;
   const TensorShape& dy_shape = dY->Shape();
   std::vector<int64_t> dy_dims = dy_shape.GetDims();
-  // TODO: check if this padding is needed
   // cudnn only takes 4D or 5D input, so pad dimensions if needed
-  // if (dy_dims.size() < 4) {
-  //   dy_dims.push_back(1);
-  // }
-
-  CudnnTensor dy_desc, db_desc;
+  if (dy_dims.size() < 4) {
+    dy_dims.push_back(1);
+  }
   ORT_RETURN_IF_ERROR(dy_desc.Set(dy_dims, CudnnTensor::GetDataType<CudaT>()));
+
+  const TensorShape& db_shape = dB->Shape();
+  std::vector<int64_t> db_dims(dy_dims.size(), 1);
+  db_dims[1] = db_shape[0];
   ORT_RETURN_IF_ERROR(db_desc.Set(db_dims, CudnnTensor::GetDataType<CudaT>()));
 
   const auto one = Consts<CudaT>::One;
