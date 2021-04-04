@@ -157,7 +157,7 @@ static bool RemoveBackToBackCasts(Graph& graph, const logging::Logger& logger)
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
-static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
+static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast, std::unordered_set<NodeArg*>& require_type_change)
 {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
@@ -173,8 +173,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
         require_cast.insert(node_arg);
       }
     } else {
+      require_type_change.insert(node_arg);
       for (NodeArg* node_input : node->MutableInputDefs()) {
-        SearchUpstream(graph, node_input, require_cast);
+        SearchUpstream(graph, node_input, require_cast, require_type_change);
       }
     }
   }
@@ -284,13 +285,24 @@ static bool PropagateBackwards(Graph& graph, Node* node, const logging::Logger& 
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16)) {
       std::unordered_set<NodeArg*> require_cast;
       NodeArg* cast_input = node->MutableInputDefs()[0];
-      SearchUpstream(graph, cast_input, require_cast);
-      if (require_cast.find(cast_input) == require_cast.end()) {
+      std::unordered_set<NodeArg*> require_type_change;
+      SearchUpstream(graph, cast_input, require_cast, require_type_change);
+      if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
         // Remove Cast operation
-        VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name() << std::endl;
+        std::cout << "PropagateBackwards: Removed Cast node  " << node->Name() << std::endl;
         RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, true);
-        VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast) << std::endl;
+        std::cout << "PropagateBackwards: Inserted Cast nodes "
+                  << GatherNames<std::unordered_set<NodeArg*>>(require_cast) << std::endl;
+        ONNX_NAMESPACE::TypeProto type_proto;
+        type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
+        for (NodeArg* input : require_type_change) {
+          if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+            input->UpdateTypeAndShape(type_proto, true, true, logger);
+          }
+        }
+        std::cout << "PropagateBackwards: Changed the type from float to float16 : "
+                  << GatherNames<std::unordered_set<NodeArg*>>(require_type_change) << std::endl;
         modified = true;
       }
     }
