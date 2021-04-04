@@ -166,6 +166,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
       require_cast.insert(node_arg);
     }
   } else {
+    if (node->OutputDefs().size() > 1) {
+      return;
+    }
     std::string op_type = node->OpType();
     if (op_type == "Cast" && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
       // This Cast node and the Cast node that will be created later will cancel out
