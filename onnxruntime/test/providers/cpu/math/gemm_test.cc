@@ -43,13 +43,15 @@ TEST(GemmOpTest, GemmNoTransBIsInitializer) {
 }
 
 // Only CUDA kernel has float 16 support
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
+#ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
     return;
   }
+#endif
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
