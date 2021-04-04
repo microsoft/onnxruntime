@@ -405,6 +405,11 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   do {
     local_modified = RemoveUnnecessaryCasts(graph, logger);
 
+    // Fuse subgraphs, sibling Cast nodes with same input
+    for (auto& node: graph.Nodes()) {
+      local_modified |= FuseSubgraphs(graph, &node, logger);
+    }
+
     // Propagate FP32 Casts forward
     for (Node& node : graph.Nodes()) {
         local_modified |= PropagateForwards(graph, &node, logger);
@@ -417,10 +422,6 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       local_modified |= PropagateBackwards(graph, &node, logger);
     }
 
-    // Fuse subgraphs, sibling Cast nodes with same input
-    for (auto& node: graph.Nodes()) {
-      local_modified |= FuseSubgraphs(graph, &node, logger);
-    }
     modified |= local_modified;
   } while (local_modified);
   return Status::OK();
