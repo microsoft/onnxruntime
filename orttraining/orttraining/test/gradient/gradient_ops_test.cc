@@ -477,8 +477,19 @@ TEST(GradientCheckerTest, FlattenGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Flatten", kOnnxDomain, 11};
 
-  for (int axis = -3; axis < 3; ++axis) {
-    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(axis))});
+  const std::vector<std::pair<int, TensorShape>> axis_to_shape = {
+      {-3, {1, 24}},
+      {-2, {2, 12}},
+      {-1, {6, 4}},
+      {0, {1, 24}},
+      {1, {2, 12}},
+      {2, {6, 4}},
+      {3, {24, 1}}};
+
+  for (auto& pair : axis_to_shape) {
+    int axis = pair.first;
+    const TensorShape& output_shape = pair.second;
+    gradient_checker.ComputeGradientError(op_def, {shape}, {output_shape}, &max_error, {MakeAttribute("axis", int64_t(axis))});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -765,7 +776,6 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-
 
 TEST(GradientCheckerTest, MaxPoolGrad) {
   MaxpoolGradientCheckerTest(nullptr);
@@ -1567,7 +1577,7 @@ void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::stri
   GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
 
   gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
-                                        {{1}, {input_shape, false}}, &max_error, x_datas,
+                                        {{}, {input_shape, false}}, &max_error, x_datas,
                                         {MakeAttribute("reduction", reduction)});
   EXPECT_IS_TINY(max_error);
 }
@@ -1596,7 +1606,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
-                                          {{1}, {logit_shape, false}}, &max_error,
+                                          {{}, {logit_shape, false}}, &max_error,
                                           {MakeAttribute("reduction", reduction)});
     EXPECT_IS_TINY(max_error);
   }
@@ -1611,7 +1621,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
     TensorInfo weight_info(index_shape, false, &transformer_weight);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
-                                          {{1}, {logit_shape, false}}, &max_error,
+                                          {{}, {logit_shape, false}}, &max_error,
                                           {MakeAttribute("reduction", reduction)});
     EXPECT_IS_TINY(max_error);
   }
@@ -2067,7 +2077,7 @@ TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-#endif //USE_CUDA
+#endif  //USE_CUDA
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
@@ -2098,7 +2108,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif
+#endif //defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
@@ -2131,7 +2141,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.Run();
 }
-#endif // USE_CUDA
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(GradientCheckerTest, WhereGrad) {
   float max_error;
