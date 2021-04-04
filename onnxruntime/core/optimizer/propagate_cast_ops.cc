@@ -167,7 +167,10 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
     }
   } else {
     std::string op_type = node->OpType();
-    if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
+    if (op_type == "Cast" && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+      // This Cast node and the Cast node that will be created later will cancel out
+      require_cast.insert(node_arg);
+    } else if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
         std::find(fp16_safe.begin(), fp16_safe.end(), op_type) == fp16_safe.end()) {
       if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
         require_cast.insert(node_arg);
