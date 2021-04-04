@@ -2108,7 +2108,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif //defined(USE_CUDA) || defined(USE_ROCM)
+#endif  //defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
