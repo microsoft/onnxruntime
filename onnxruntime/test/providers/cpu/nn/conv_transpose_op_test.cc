@@ -28,7 +28,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                          const std::string& err_str = "",
                          const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
-  OpTester test("ConvTranspose");
+  OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
 
