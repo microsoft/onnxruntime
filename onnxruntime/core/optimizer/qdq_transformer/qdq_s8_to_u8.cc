@@ -77,7 +77,6 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     zp_tensor_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     zp_tensor_proto_u8.set_name(graph.GenerateNodeArgName("qdq_s8_to_u8_zp_conversion"));
     zp_tensor_proto_u8.set_raw_data(&q_zp_value, sizeof(uint8_t));
-    zp_tensor_proto_u8.add_dims(1);
     NodeArg* zp_u8_arg = &graph_utils::AddInitializer(graph, zp_tensor_proto_u8);
 
     auto q_output_node_arg_name = graph.GenerateNodeArgName("qdq_s8_to_u8_quant");

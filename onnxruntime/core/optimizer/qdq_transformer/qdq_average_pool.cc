@@ -8,30 +8,28 @@
 #include "core/optimizer/qdq_transformer/registry.h"
 
 namespace onnxruntime {
-class QDQMatMulTransformer : public QDQOperatorTransformer {
+class QDQAveragePoolTransformer : public QDQOperatorTransformer {
  public:
-  QDQMatMulTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
+  QDQAveragePoolTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool TransformImpl(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
-    std::vector<NodeArg*> input_defs(graph_.GetNode(parents[0]->Index())->MutableInputDefs());
-    Node* b = graph_.GetNode(parents[1]->Index());
-    input_defs.insert(input_defs.end(), b->MutableInputDefs().begin(), b->MutableInputDefs().end());
+  bool TransformImpl(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) override {
+    std::vector<NodeArg*> input_defs(graph_.GetNode(dq_nodes[0]->Index())->MutableInputDefs());
 
-    Node* q = graph_.GetNode(children[0]->Index());
+    Node* q = graph_.GetNode(q_nodes[0]->Index());
     input_defs.push_back(q->MutableInputDefs()[1]);
     input_defs.push_back(q->MutableInputDefs()[2]);
 
     graph_.AddNode(node_.Name(),
-                   "QLinearMatMul",
+                   "QLinearAveragePool",
                    node_.Description(),
                    input_defs,
                    q->MutableOutputDefs(),
                    &node_.GetAttributes(),
-                   kOnnxDomain)
+                   kMSDomain)
         .SetExecutionProviderType(kCpuExecutionProvider);
     return true;
   }
 };
 
-DEFINE_QDQ_CREATOR(MatMul, QDQMatMulTransformer)
+DEFINE_QDQ_CREATOR(AveragePool, QDQAveragePoolTransformer)
 }  // namespace onnxruntime
