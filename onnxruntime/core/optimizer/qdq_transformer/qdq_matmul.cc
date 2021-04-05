@@ -12,14 +12,7 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
  public:
   QDQMatMulTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
-    if (parents.size() != 2 || children.size() != 1) {
-      return false;
-    }
-
-    FillQDQOptionalZeroPoint(parents);
-    FillQDQOptionalZeroPoint(children);
-
+  bool TransformImpl(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
     std::vector<NodeArg*> input_defs(graph_.GetNode(parents[0]->Index())->MutableInputDefs());
     Node* b = graph_.GetNode(parents[1]->Index());
     input_defs.insert(input_defs.end(), b->MutableInputDefs().begin(), b->MutableInputDefs().end());

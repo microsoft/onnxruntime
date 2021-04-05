@@ -37,7 +37,9 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/qdq_transformer.h"
+#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -138,6 +140,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
 
+      if (enable_quant_qdq)
+        transformers.emplace_back(onnxruntime::make_unique<ReluQuantTransformer>());
+
       rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
 
@@ -160,6 +165,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                            onnxruntime::kArmNNExecutionProvider};
 
       if (enable_quant_qdq) {
+        transformers.emplace_back(onnxruntime::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
       }
 

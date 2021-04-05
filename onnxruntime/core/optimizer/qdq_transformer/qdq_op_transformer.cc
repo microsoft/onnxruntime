@@ -8,8 +8,30 @@
 
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
+
+bool QDQOperatorTransformer::Transform(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) {
+  if (!Check(dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  FillQDQOptionalZeroPoint(dq_nodes);
+  FillQDQOptionalZeroPoint(q_nodes);
+
+  return TransformImpl(dq_nodes, q_nodes);
+}
+
+bool QDQOperatorTransformer::Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const {
+  if (node_.MutableInputDefs().size() != dq_nodes.size() ||
+      node_.MutableOutputDefs().size() != q_nodes.size() ||
+      graph_.GetNodeOutputsInGraphOutputs(node_).size() > 0) {
+    return false;
+  }
+
+  return true;
+}
 
 void QDQOperatorTransformer::FillQDQOptionalZeroPoint(const std::vector<const Node*>& qdq_nodes) {
   for (const Node* p_node_const : qdq_nodes) {
