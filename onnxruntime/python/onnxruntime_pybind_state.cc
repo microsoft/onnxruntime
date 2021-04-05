@@ -605,6 +605,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_OPENVINO
       OrtOpenVINOProviderOptions params;
       params.device_type = openvino_device_type.c_str();
+      std::string blob_dump_path;
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -635,7 +636,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           } else if (option.first == "num_of_threads") {
             params.num_of_threads = std::stoi(option.second);
           } else if (option.first == "blob_dump_path") {
-            params.blob_dump_path = option.second.c_str();
+            blob_dump_path = option.second;
+            params.blob_dump_path = blob_dump_path.c_str();
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }

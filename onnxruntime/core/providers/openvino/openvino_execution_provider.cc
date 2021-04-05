@@ -59,12 +59,12 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
-  #ifdef _WIN32
-	  std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
-	  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = std::string(onnx_path.begin(), onnx_path.end());
-  #else
-    openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
-  #endif
+#ifdef _WIN32
+  std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = std::string(onnx_path.begin(), onnx_path.end());
+#else
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
+#endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
 #if defined OPENVINO_2020_3

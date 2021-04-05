@@ -23,15 +23,11 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-#ifdef _WIN32
-  size_t env_name_len = 0;
-  char* env_name = nullptr;
-  bool res = (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
-  free(env_name);
-  return res;
-#else
-  return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
-#endif
+  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
 }
 void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
