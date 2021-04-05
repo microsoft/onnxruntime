@@ -41,15 +41,11 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 #endif
 
 bool UseCompiledNetwork() {
-#ifdef _WIN32
-  size_t env_name_len = 0;
-  char* env_name = nullptr;
-  bool res = (_dupenv_s(&env_name, &env_name_len, "OV_USE_COMPILED_NETWORK") == 0 && env_name != nullptr);
-  free(env_name);
-  return res;
-#else
-  return (std::getenv("OV_USE_COMPILED_NETWORK") != nullptr);
-#endif
+  const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
 }
 
 std::string GetCurrentWorkingDir() {
