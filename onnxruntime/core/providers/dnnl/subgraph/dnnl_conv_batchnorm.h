@@ -545,9 +545,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
     } else {  // gpu_available_
-#ifdef USE_DNNL_GPU_OCL
-      filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
-#endif
+      filter_mem_gpu_->set_data_handle(filter_dst_mem->get_data_handle());
     }
 
     std::shared_ptr<dnnl::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
