@@ -3228,7 +3228,7 @@ private:
 
         for (size_t n = 0; n < N; n++) {
             if (Output[n] != OutputReference[n]) {
-                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), Output[n], OutputReference[n]);
+                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), int(Output[n]), int(OutputReference[n]));
             }
         }
     }

@@ -276,191 +276,191 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
 )
 
 set(build_output_target onnxruntime_common)
-
-add_custom_command(
-  TARGET onnxruntime_pybind11_state POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${ONNXRUNTIME_ROOT}/__init__.py
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${REPO_ROOT}/ThirdPartyNotices.txt
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${REPO_ROOT}/docs/Privacy.md
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${REPO_ROOT}/LICENSE
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_backend_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_capi_training_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      $<TARGET_FILE:onnxruntime_pybind11_state>
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_datasets_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_datasets_data}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_tools_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_tools_featurizers_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_quantization_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_quantization_operators_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_quantization_cal_table_flatbuffers_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_transformers_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_transformers_longformer_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${REPO_ROOT}/VERSION_NUMBER
-      $<TARGET_FILE_DIR:${build_output_target}>
-)
-
-if (onnxruntime_BUILD_UNIT_TESTS)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_quantization_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/quantization/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_checkpoint_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/checkpoint/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_dhp_parallel_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
-  )
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_capi_training_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_root_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_amp_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_optim_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_train_tools_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
-  )
-endif()
-
-if (onnxruntime_USE_DNNL)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
-        $<TARGET_FILE:onnxruntime_providers_shared>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
-
-if (onnxruntime_USE_TENSORRT)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_tensorrt>
-        $<TARGET_FILE:onnxruntime_providers_shared>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
-
-if (onnxruntime_USE_OPENVINO)
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
       COMMAND ${CMAKE_COMMAND} -E copy
-          $<TARGET_FILE:onnxruntime_providers_openvino>
-          $<TARGET_FILE:onnxruntime_providers_shared>
+          ${ONNXRUNTIME_ROOT}/__init__.py
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${REPO_ROOT}/ThirdPartyNotices.txt
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${REPO_ROOT}/docs/Privacy.md
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${REPO_ROOT}/LICENSE
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_backend_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_srcs}
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_capi_training_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_pybind11_state>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_datasets_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_datasets_data}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_tools_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_tools_featurizers_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_quantization_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_quantization_operators_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_quantization_cal_table_flatbuffers_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_transformers_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_transformers_longformer_src}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer/
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${REPO_ROOT}/VERSION_NUMBER
+          $<TARGET_FILE_DIR:${build_output_target}>
     )
-endif()
 
-if (onnxruntime_USE_TVM)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
+    if (onnxruntime_BUILD_UNIT_TESTS)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_test_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_quantization_test_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/quantization/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_checkpoint_test_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/checkpoint/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_dhp_parallel_test_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+      )
+    endif()
 
-if (onnxruntime_USE_NUPHAR)
-  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-  )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_nuphar_python_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
-  )
-endif()
+    if (onnxruntime_ENABLE_TRAINING)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_capi_training_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_root_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_amp_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_optim_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${onnxruntime_python_train_tools_srcs}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
+      )
+    endif()
 
-if (onnxruntime_USE_DML)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
+    if (onnxruntime_USE_DNNL)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+            $<TARGET_FILE:onnxruntime_providers_shared>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
 
-if (onnxruntime_USE_NNAPI_BUILTIN)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_nnapi>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
+    if (onnxruntime_USE_TENSORRT)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:onnxruntime_providers_tensorrt>
+            $<TARGET_FILE:onnxruntime_providers_shared>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
 
+    if (onnxruntime_USE_OPENVINO)
+        add_custom_command(
+          TARGET onnxruntime_pybind11_state POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy
+              $<TARGET_FILE:onnxruntime_providers_openvino>
+              $<TARGET_FILE:onnxruntime_providers_shared>
+              $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+        )
+    endif()
+
+    if (onnxruntime_USE_TVM)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+
+    if (onnxruntime_USE_NUPHAR)
+      file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
+      )
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
+        COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_nuphar_python_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
+      )
+    endif()
+
+    if (onnxruntime_USE_DML)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+
+    if (onnxruntime_USE_NNAPI_BUILTIN)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:onnxruntime_providers_nnapi>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()

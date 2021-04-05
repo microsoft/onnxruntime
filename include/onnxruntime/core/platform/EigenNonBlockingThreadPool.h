@@ -715,9 +715,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
-        done_(false),
-        cancelled_(false) {
-
+        done_(false) {
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -748,15 +746,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Now if all threads block without work, they will start exiting.
     // But note that threads can continue to work arbitrary long,
     // block, submit new work, unblock and otherwise live full life.
-    if (!cancelled_) {
-      WakeAllWorkersForExit();
-    } else {
-      // Since we were cancelled, there might be entries in the queues.
-      // Empty them to prevent their destructor from asserting.
-      for (size_t i = 0; i < worker_data_.size(); i++) {
-        worker_data_[i].queue.Flush();
-      }
-    }
+    WakeAllWorkersForExit();
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
@@ -1104,22 +1094,6 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-void Cancel() override {
-  cancelled_ = true;
-  // If done_ is true, which means this object is being destructing.
-  // Therefore worker_data_[i].thread could be NULL.
-  if (!done_) {
-    done_ = true;
-    // Let each thread know it's been cancelled.
-    for (size_t i = 0; i < worker_data_.size(); i++) {
-      assert(worker_data_[i].thread != nullptr);
-      worker_data_[i].thread->OnCancel();
-    }
-  }
-
-  // Wake up the threads without work to let them exit on their own.
-  WakeAllWorkersForExit();
-}
 
 int NumThreads() const EIGEN_FINAL {
   return num_threads_;
@@ -1290,7 +1264,6 @@ int CurrentThreadId() const EIGEN_FINAL {
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
-  std::atomic<bool> cancelled_;
 
   // Allow control over how many bits to use in each entry in good_worker_hints_.
   // We reduce this below the full 64-bit word size for two reasons.  First, it
@@ -1302,8 +1275,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   unsigned num_hint_words_;
   std::unique_ptr<std::atomic<uint64_t>[]> good_worker_hints_;
 
-  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For an
-  // abrupt exit, cancelled_==true and threads will exit their worker loops.  For
+  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
   // a clean exit, each thread will observe (1) done_ set, indicating that the
   // destructor has been called, (2) all threads blocked, and (3) no
   // items in the work queues.
@@ -1334,82 +1306,80 @@ int CurrentThreadId() const EIGEN_FINAL {
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
-    while (!cancelled_ && !should_exit) {
-        Task t = q.PopFront();
-        if (!t) {
-          // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
-          // spinning.  This will bias other threads toward pushing work to our queue.
-          // In addition, priodically make a best-effort attempt to steal from other
-          // threads which are not themselves spinning.
+    while (!should_exit) {
+      Task t = q.PopFront();
+      if (!t) {
+        // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
+        // spinning.  This will bias other threads toward pushing work to our queue.
+        // In addition, priodically make a best-effort attempt to steal from other
+        // threads which are not themselves spinning.
 
-          SetGoodWorkerHint(thread_id, true);
-          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
-            t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
-            onnxruntime::concurrency::SpinPause();
-          }
-          SetGoodWorkerHint(thread_id, false);
-
-          if (!t) {
-            // No work passed to us while spinning; make a further full attempt to
-            // steal work from other threads prior to blocking.
-            if (num_threads_ != 1) {
-              t = Steal(true /* true => check all queues */);
-            }
-            if (!t) {
-              td.SetBlocked(
-                  // Pre-block test
-                  [&]() -> bool {
-                    bool should_block = true;
-                    // We already did a best-effort emptiness check when stealing; now
-                    // do a full check prior to blocking.
-                    int victim = NonEmptyQueueIndex();
-                    if (victim != -1) {
-                      should_block = false;
-                      if (!cancelled_) {
-                        t = worker_data_[victim].queue.PopBack();
-                      }
-                    }
-                    // Number of blocked threads is used as termination condition.
-                    // If we are shutting down and all worker threads blocked without work,
-                    // that's we are done.
-                    if (should_block) {
-                      blocked_++;
-                      if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
-                        should_block = false;
-                        // Almost done, but need to re-check queues.
-                        // Consider that all queues are empty and all worker threads are preempted
-                        // right after incrementing blocked_ above. Now a free-standing thread
-                        // submits work and calls destructor (which sets done_). If we don't
-                        // re-check queues, we will exit leaving the work unexecuted.
-                        if (NonEmptyQueueIndex() != -1) {
-                          // Note: we must not pop from queues before we decrement blocked_,
-                          // otherwise the following scenario is possible. Consider that instead
-                          // of checking for emptiness we popped the only element from queues.
-                          // Now other worker threads can start exiting, which is bad if the
-                          // work item submits other work. So we just check emptiness here,
-                          // which ensures that all worker threads exit at the same time.
-                          blocked_--;
-                        } else {
-                          should_exit = true;
-                        }
-                      }
-                    }
-                    return should_block;
-                  },
-                  // Post-block update (executed only if we blocked)
-                  [&]() {
-                    blocked_--;
-                  });
-            }
-          }
+        SetGoodWorkerHint(thread_id, true);
+        for (int i = 0; i < spin_count && !t && !done_; i++) {
+          t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
+          onnxruntime::concurrency::SpinPause();
         }
-        if (t) {
-          td.SetActive();
-          t();
-          profiler_.LogRun(thread_id);
-          td.SetSpinning();
+        SetGoodWorkerHint(thread_id, false);
+
+        if (!t) {
+          // No work passed to us while spinning; make a further full attempt to
+          // steal work from other threads prior to blocking.
+          if (num_threads_ != 1) {
+            t = Steal(true /* true => check all queues */);
+          }
+          if (!t) {
+            td.SetBlocked(
+                // Pre-block test
+                [&]() -> bool {
+                  bool should_block = true;
+                  // We already did a best-effort emptiness check when stealing; now
+                  // do a full check prior to blocking.
+                  int victim = NonEmptyQueueIndex();
+                  if (victim != -1) {
+                    should_block = false;
+                    t = worker_data_[victim].queue.PopBack();
+                  }
+                  // Number of blocked threads is used as termination condition.
+                  // If we are shutting down and all worker threads blocked without work,
+                  // that's we are done.
+                  if (should_block) {
+                    blocked_++;
+                    if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
+                      should_block = false;
+                      // Almost done, but need to re-check queues.
+                      // Consider that all queues are empty and all worker threads are preempted
+                      // right after incrementing blocked_ above. Now a free-standing thread
+                      // submits work and calls destructor (which sets done_). If we don't
+                      // re-check queues, we will exit leaving the work unexecuted.
+                      if (NonEmptyQueueIndex() != -1) {
+                        // Note: we must not pop from queues before we decrement blocked_,
+                        // otherwise the following scenario is possible. Consider that instead
+                        // of checking for emptiness we popped the only element from queues.
+                        // Now other worker threads can start exiting, which is bad if the
+                        // work item submits other work. So we just check emptiness here,
+                        // which ensures that all worker threads exit at the same time.
+                        blocked_--;
+                      } else {
+                        should_exit = true;
+                      }
+                    }
+                  }
+                  return should_block;
+                },
+                // Post-block update (executed only if we blocked)
+                [&]() {
+                  blocked_--;
+                });
+          }
         }
       }
+      if (t) {
+        td.SetActive();
+        t();
+        profiler_.LogRun(thread_id);
+        td.SetSpinning();
+      }
+    }
 
       // Whichever thread(s) observe the termination conditions are responsible for waking
       // any other threads that have remained blocked.
