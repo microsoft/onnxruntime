@@ -82,22 +82,22 @@ class TestInferenceSession(unittest.TestCase):
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
                 self.assertIn('CUDAExecutionProvider', sess.get_providers())
 
-                # test get/set of "cuda_mem_limit" configuration.
+                # test get/set of "gpu_mem_limit" configuration.
                 options = sess.get_provider_options()
                 self.assertIn('CUDAExecutionProvider', options)
                 option = options['CUDAExecutionProvider']
-                self.assertIn('cuda_mem_limit', option)
-                ori_mem_limit = option['cuda_mem_limit']
+                self.assertIn('gpu_mem_limit', option)
+                ori_mem_limit = option['gpu_mem_limit']
                 new_mem_limit = int(ori_mem_limit) // 2
-                option['cuda_mem_limit'] = new_mem_limit
+                option['gpu_mem_limit'] = new_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_mem_limit'], str(new_mem_limit))
 
-                option['cuda_mem_limit'] = ori_mem_limit
+                option['gpu_mem_limit'] = ori_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_mem_limit'], ori_mem_limit)
 
                 def test_get_and_set_option_with_values(option_name, option_values):
                     provider_options = sess.get_provider_options()
@@ -138,15 +138,15 @@ class TestInferenceSession(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = -1024
+                option['gpu_mem_limit'] = -1024
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = 1024.1024
+                option['gpu_mem_limit'] = 1024.1024
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = 'wrong_value'
+                option['gpu_mem_limit'] = 'wrong_value'
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 

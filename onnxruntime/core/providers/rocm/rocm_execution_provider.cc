@@ -58,7 +58,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                                         ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
@@ -77,7 +77,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         },
         device_id,
         true,
-        {hip_mem_limit,
+        {gpu_mem_limit,
          static_cast<int>(arena_extend_strategy),
          -1, -1});
 
@@ -86,7 +86,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, 
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, 
                                                           ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   stream_ = stream;
@@ -102,12 +102,12 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
       },
       device_id,
       true,
-      {hip_mem_limit,
+      {gpu_mem_limit,
        static_cast<int>(arena_extend_strategy),
        -1, -1});
 
   // HIP malloc/free is expensive so always use an arena
-  allocator_ = CreateRocmAllocator(device_id, hip_mem_limit, arena_extend_strategy, external_allocator_info);
+  allocator_ = CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -150,7 +150,6 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
-
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -204,7 +203,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.hip_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();

@@ -134,7 +134,7 @@ void Check<double>(const OpTester::Data& expected_data,
   }
 
   double threshold = 0.001;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005;
 #endif
 
@@ -186,7 +186,7 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.0001f;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005f;
 #endif
 
@@ -247,7 +247,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {

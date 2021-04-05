@@ -127,7 +127,6 @@ struct Capture;
 }  // namespace logging
 struct ComputeCapability;
 struct DataTransferManager;
-struct IDataTransfer;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
 struct KernelCreateInfo;
@@ -152,6 +151,7 @@ using MLDataType = const DataTypeImpl*;
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 }  // namespace onnxruntime
 
+#include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "core/framework/op_kernel.h"

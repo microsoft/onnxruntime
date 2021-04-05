@@ -2082,7 +2082,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
@@ -2113,7 +2113,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat32) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GradientUtilsTest, ZeroGradientFloat16) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
 

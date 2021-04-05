@@ -59,10 +59,10 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
+    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
     inputs:
       script: |
-        # We will try to build minimal ORT with exceptions disabled
+        # We will try to build minimal ORT with exceptions disabled and training ops enabled
         # Only the building process is verified here, no test will be performed
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -79,7 +79,8 @@ jobs:
               --parallel \
               --skip_tests \
               --minimal_build \
-              --disable_exceptions
+              --disable_exceptions \
+              --enable_training_ops
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
