@@ -62,7 +62,7 @@ TBD
 Following files are used for code-formatting and linting features for developers:
 
 - .vscode/\*\*
-- packages.json
+- package.json
 - packages-lock.json
 - .eslintrc.js
 - .clang-format
