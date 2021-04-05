@@ -105,7 +105,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
     rocblas_handle RocblasHandle() const {

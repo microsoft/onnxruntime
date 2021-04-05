@@ -58,7 +58,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   stream_ = stream;
 
@@ -73,7 +73,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
       },
       device_id,
       true,
-      {hip_mem_limit,
+      {gpu_mem_limit,
        static_cast<int>(arena_extend_strategy),
        -1, -1});
 
@@ -128,7 +128,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       },
       info_.device_id,
       true,
-      {info_.hip_mem_limit,
+      {info_.gpu_mem_limit,
        static_cast<int>(info_.arena_extend_strategy),
        -1, -1});
 
@@ -206,7 +206,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.hip_mem_limit, info_.arena_extend_strategy);
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
