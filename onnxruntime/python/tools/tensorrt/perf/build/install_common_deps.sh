@@ -8,15 +8,12 @@ apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libcurl4-openssl-dev \
         libssl-dev \
-        python3-dev
+        python3-dev \
+	libprotobuf-dev \
+	protobuf-compiler \
+	pciutils
 
-# Dependencies: conda
-wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
-rm ~/miniconda.sh
-/opt/miniconda/bin/conda clean -ya
-
-pip install numpy
-rm -rf /opt/miniconda/pkgs
+pip install pandas coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil
 
 # Dependencies: cmake
 wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz

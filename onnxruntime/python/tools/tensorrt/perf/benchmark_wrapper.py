@@ -17,7 +17,8 @@ def get_ep_list(comparison):
     if comparison == 'acl': 
         ep_list = [cpu, acl]
     else:   
-        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16]
+        # test with cuda and trt
+        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
     return ep_list
 
 def main():
@@ -125,11 +126,10 @@ def main():
         logger.info("=======================================================")
 
         model_status = {}
-        success_path = os.path.join(path, benchmark_success_csv)
-        if os.path.exists(success_path):
-            model_success = read_success_from_file(success_path)
+        if os.path.exists(LATENCY_FILE):
+            model_latency = read_map_from_file(LATENCY_FILE)
             is_fail = False
-            model_status = build_status(model_status, model_success, is_fail)
+            model_status = build_status(model_status, model_latency, is_fail)
         if os.path.exists(FAIL_MODEL_FILE):
             model_fail = read_map_from_file(FAIL_MODEL_FILE)
             is_fail = True
