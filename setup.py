@@ -252,7 +252,7 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     # NOTE: nightly build version needs to be greater than stable build by updating /VERSION_NUMBER after each release
     package_name = 'onnxruntime'
     if cuda_version:
-        local_version = '+cu' + cuda_version + '_training'
+        local_version = '+cu' + cuda_version.replace('.', '') + '_training'
 
 package_data = {}
 data_files = []
@@ -318,9 +318,6 @@ if nightly_build:
 
     version_number = version_number + ".dev" + build_suffix
 
-if local_version:
-    version_number = version_number + local_version
-
 if wheel_name_suffix:
     package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
@@ -343,6 +340,7 @@ print("version_number: ", version_number)
 setup(
     name=package_name,
     version=version_number,
+    local_version=local_version,
     description='ONNX Runtime is a runtime accelerator for Machine Learning models',
     long_description=long_description,
     author='Microsoft Corporation',
