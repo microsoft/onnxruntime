@@ -51,6 +51,9 @@ static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quan
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable using arena for allocating initialized tensor memory. "1": disable; "0": enable. The default is "0".
+static const char* const kOrtSessionOptionsDisableArenaForInitializedTensorMemory = "optimization.disable_arena_for_initialized_tensor_memory";
+
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
 // "1": default, thread will spin a number of times before blocking

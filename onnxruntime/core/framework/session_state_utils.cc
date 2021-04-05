@@ -21,6 +21,8 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/framework/arena.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -30,13 +32,32 @@
 namespace onnxruntime {
 namespace session_state_utils {
 
+static void* ReserveUsingArenaFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type, const AllocatorPtr& arena_alloc) {
+  int64_t shape_size = tensor_shape.Size();
+  if (shape_size < 0)
+    ORT_THROW("shape.Size() must >=0");
+
+  void* p_data = nullptr;
+  if (shape_size > 0) {
+    SafeInt<size_t> mem_size = 0;
+    if (!arena_alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
+      ORT_THROW("tensor failed memory size calculation");
+
+    ORT_ENFORCE(arena_alloc->Info().alloc_type == OrtArenaAllocator, "Given allocator must be an arena based allocator");
+    p_data = static_cast<IArenaAllocator*>(arena_alloc.get())->Reserve(mem_size);
+  }
+
+  return p_data;
+}
+
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
-                                             OrtValue& ort_value, const DataTransferManager& data_transfer_mgr) {
+                                             OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
+                                             bool disable_arena_for_initialized_tensor_memory_allocation = false) {
   if (bool(alloc) == (m != nullptr)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, 
-        "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
   }
 
   // Get shape and type of the tensor, and allocate the empty tensor
@@ -50,26 +71,42 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                              p_tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    // tensor constructor should give us enough buffer size based on type and shape
-    p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, alloc);
+    if (alloc->Info().alloc_type == OrtArenaAllocator && disable_arena_for_initialized_tensor_memory_allocation) {
+      // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
+      p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, ReserveUsingArenaFromShapeAndType(tensor_shape, type, alloc), alloc);
+    } else {
+      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+      // (may expand it if there isn't a chunk that can be allotted to the memory request).
+      // If the provided allocator is non-arena based, the Alloc() call will be used to allocate the necessary memory.
+      p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, alloc);
+    }
   }
 
   if (strcmp(p_tensor->Location().name, CPU) == 0) {
     // deserialize directly to CPU tensor
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
-  } else {
-    // non-cpu tensor
+  } else {  // non-cpu tensor
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
     }
 
     // deserialize to CPU first for non-CPU allocator, then copy
-    std::unique_ptr<Tensor> p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+    std::unique_ptr<Tensor> p_deserialize_tensor;
+    if (alloc->Info().alloc_type == OrtArenaAllocator && disable_arena_for_initialized_tensor_memory_allocation) {
+      // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
+      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape,
+                                                              ReserveUsingArenaFromShapeAndType(tensor_shape, type, default_cpu_alloc), default_cpu_alloc);
+    } else {
+      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+      // (may expand it if there isn't a chunk that can be allotted to the memory request).
+      // If the provided allocator is non-arena based, the Alloc() call will be used to allocate the necessary memory.
+      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+    }
+
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
-
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {
         // The windows execution provider does not return any error message today for CopyTensor since it is
@@ -80,7 +117,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       return copy_status;
     }
   }
-
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   return common::Status::OK();
@@ -146,8 +182,7 @@ common::Status SaveInitializedTensors(
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
     // can not trace string tensor
-    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() 
-        && entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() && entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
     ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
     initialized_tensors_to_allocate.erase(entry);
   }
@@ -158,7 +193,7 @@ common::Status SaveInitializedTensors(
       continue;
     }
     if (entry.second->data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-        // do not trace string tensor
+      // do not trace string tensor
       continue;
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
@@ -198,8 +233,10 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
+      bool disable_arena_for_initialized_tensor_memory_allocation = session_options.GetConfigOrDefault(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "0") == "1";
+
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr);
+                                         data_transfer_mgr, disable_arena_for_initialized_tensor_memory_allocation);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
