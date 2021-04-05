@@ -513,7 +513,7 @@ static AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, cuda_mem_limit, arena_extend_strategy, external_allocator_info)});
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
   return id_to_allocator_map[id];
@@ -1047,9 +1047,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
   });
   // TODO remove deprecated global config
-  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+  m.def("set_gpu_mem_limit", [](const int64_t limit) {
     LogDeprecationWarning(
-        "set_cuda_mem_limit",
+        "set_gpu_mem_limit",
         "CUDA execution provider option \"gpu_mem_limit\", ROCM execution provider option \"gpu_mem_limit\"");
     gpu_mem_limit = gsl::narrow<size_t>(limit);
   });
