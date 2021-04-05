@@ -5,6 +5,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include <iostream>
 #include <vector>
 
 namespace {
@@ -96,7 +97,10 @@ int OrtRun(Ort::Session* session,
   OrtStatusPtr status = Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs);
   OrtErrorCode error_code = ORT_OK;
   if (status) {
+    std::string error_message = Ort::GetApi().GetErrorMessage(status);
     error_code = Ort::GetApi().GetErrorCode(status);
+    std::cerr << Ort::Exception(std::move(error_message), error_code).what()
+              << std::endl;
     Ort::GetApi().ReleaseStatus(status);
   }
   return error_code;
