@@ -11,7 +11,7 @@ namespace cuda {
 template <typename TSrc>
 __global__ void _IsFinite(const TSrc* input, bool* output, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = _IsFiniteScalar(input[id]);
+  output[id] = IsFiniteScalar(input[id]);
 }
 
 template <typename TSrc>
@@ -44,7 +44,7 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, b
   bool result = true;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    result &= _IsFiniteScalar(chunk_ptr[i], isinf_only, isnan_only);
+    result &= IsFiniteScalar(chunk_ptr[i], isinf_only, isnan_only);
   }
 
   if (!result) {
@@ -53,14 +53,14 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, b
 }
 
 template <typename T>
-void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only) {
+void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only) {
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
   IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0, stream>>>(chunks, output, isinf_only, isnan_only);
 }
 
 #define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
-  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only);
+  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only);
 
 INSTANTIATE_ISALLFINITE_FUNCTOR(half)
 INSTANTIATE_ISALLFINITE_FUNCTOR(float)

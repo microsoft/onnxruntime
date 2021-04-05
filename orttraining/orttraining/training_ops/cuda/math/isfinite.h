@@ -45,7 +45,7 @@ class IsAllFiniteOp final : public CudaKernel {
 
 template <typename T>
 struct IsAllFiniteFunctor {
-  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only);
+  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only);
 };
 
 }  // namespace cuda

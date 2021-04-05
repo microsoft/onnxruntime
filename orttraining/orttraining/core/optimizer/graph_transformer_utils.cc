@@ -85,8 +85,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
 
-      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
-
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
@@ -96,6 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {

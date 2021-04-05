@@ -56,7 +56,7 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   const T1 d_tmp = lambda * w + m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon);
 
   // Things are updated only if the direction is finite.
-  if (_IsFiniteScalar(d_tmp)) {
+  if (IsFiniteScalar(d_tmp)) {
     d = d_tmp;
     m1_new = m1_new_tmp;
     m2_new = m2_new_tmp;
@@ -204,7 +204,7 @@ __device__ __forceinline__ void _LambUpdateRule(
   const T2 delta = -ratio * T2(d);
   const T2 w_new_tmp = w + delta;
 
-  if (_IsFiniteScalar(w_new_tmp)) {
+  if (IsFiniteScalar(w_new_tmp)) {
     if (g_new) {
       *g_new = T3(delta);
     }

@@ -9,12 +9,12 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__device__ __forceinline__ bool _IsFiniteScalar(const T value) {
+__device__ __forceinline__ bool IsFiniteScalar(const T value) {
   return isfinite(value);
 }
 
 template <typename T>
-__device__ __forceinline__ bool _IsFiniteScalar(const T value, const bool isinf_only, const bool isnan_only) {
+__device__ __forceinline__ bool IsFiniteScalar(const T value, const bool isinf_only, const bool isnan_only) {
   if (isinf_only) {
     return !isinf(value);
   } else if (isnan_only) {
@@ -25,7 +25,7 @@ __device__ __forceinline__ bool _IsFiniteScalar(const T value, const bool isinf_
 }
 
 template <>
-__device__ __forceinline__ bool _IsFiniteScalar(const half value) {
+__device__ __forceinline__ bool IsFiniteScalar(const half value) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return !__hisinf(value) && !__hisnan(value);
 #else
@@ -34,7 +34,7 @@ __device__ __forceinline__ bool _IsFiniteScalar(const half value) {
 }
 
 template <>
-__device__ __forceinline__ bool _IsFiniteScalar(const half value, const bool isinf_only, const bool isnan_only) {
+__device__ __forceinline__ bool IsFiniteScalar(const half value, const bool isinf_only, const bool isnan_only) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   if (isinf_only) {
     return !__hisinf(value);
@@ -56,12 +56,12 @@ __device__ __forceinline__ bool _IsFiniteScalar(const half value, const bool isi
 
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 template <>
-__device__ __forceinline__ bool _IsFiniteScalar(const nv_bfloat16 value) {
+__device__ __forceinline__ bool IsFiniteScalar(const nv_bfloat16 value) {
   return isfinite(float(value));
 }
 
 template <>
-__device__ __forceinline__ bool _IsFiniteScalar(const nv_bfloat16 value, const bool isinf_only, const bool isnan_only) {
+__device__ __forceinline__ bool IsFiniteScalar(const nv_bfloat16 value, const bool isinf_only, const bool isnan_only) {
   if (isinf_only) {
     return !isinf(float(value));
   } else if (isnan_only) {

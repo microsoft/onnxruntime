@@ -47,10 +47,11 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (cast1_node_iter != isinf_node.InputNodesEnd() &&
         graph_utils::IsSupportedOptypeVersionAndDomain(*cast1_node_iter, "Cast", {9, 13}) &&
         cast1_node_iter->GetOutputEdgesCount() == 1) {
-      // check input type
+      // check input type of cast node
       Node& cast1_node = *graph.GetNode(cast1_node_iter->Index());
       auto cast1_input_defs = cast1_node.MutableInputDefs();
-      auto cast1_input_type = cast1_input_defs[0]->Type();
+      auto cast1_input_type = cast1_input_defs[0] ? cast1_input_defs[0]->Type() : nullptr;
+      // remove cast only if the input type is float16
       if (cast1_input_type != nullptr && (*cast1_input_type) == "tensor(float16)") {
         input_defs = cast1_input_defs;
         nodes_to_remove.push_back(cast1_node);
@@ -64,14 +65,12 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     Node& cast2_node = *graph.GetNode(cast2_node_itr->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13}) || cast2_node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13}) ||
+        cast2_node.GetOutputEdgesCount() != 1 ||
+        !graph.GetNodeOutputsInGraphOutputs(cast2_node).empty()) {
       continue;
     }
     nodes_to_remove.push_back(cast2_node);
-
-    if (!graph.GetNodeOutputsInGraphOutputs(cast2_node).empty()) {
-      continue;
-    }
 
     auto reduce_sum_node_itr = cast2_node.OutputNodesBegin();
     if (reduce_sum_node_itr == cast2_node.OutputNodesEnd()) {
@@ -79,14 +78,12 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     Node& reduce_sum_node = *graph.GetNode(reduce_sum_node_itr->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_sum_node, "ReduceSum", {1, 11, 13}) || reduce_sum_node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_sum_node, "ReduceSum", {1, 11, 13}) ||
+        reduce_sum_node.GetOutputEdgesCount() != 1 ||
+        !graph.GetNodeOutputsInGraphOutputs(reduce_sum_node).empty()) {
       continue;
     }
     nodes_to_remove.push_back(reduce_sum_node);
-
-    if (!graph.GetNodeOutputsInGraphOutputs(reduce_sum_node).empty()) {
-      continue;
-    }
 
     auto greater_node_itr = reduce_sum_node.OutputNodesBegin();
     if (greater_node_itr == reduce_sum_node.OutputNodesEnd()) {
@@ -94,8 +91,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     Node& greater_node = *graph.GetNode(greater_node_itr->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {1, 7, 9, 13}) || 
-        greater_node.GetOutputEdgesCount() > 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {1, 7, 9, 13})) {
       continue;
     }
     nodes_to_remove.push_back(greater_node);
@@ -115,7 +111,9 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                    "not of " + isallfinite_node.Name(),
                                    isallfinite_node.MutableOutputDefs(),
                                    {});
-
+    // Add edge between newly added nodes
+    graph.AddEdge(isallfinite_node.Index(), not_node.Index(), 0, 0);
+    
     // Assign provider to the new nodes.
     isallfinite_node.SetExecutionProviderType(reduce_sum_node.GetExecutionProviderType());
     not_node.SetExecutionProviderType(reduce_sum_node.GetExecutionProviderType());
