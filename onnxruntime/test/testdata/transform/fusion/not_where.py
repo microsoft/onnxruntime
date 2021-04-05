@@ -23,9 +23,14 @@ def GenerateModel(model_name):
         helper.make_node("Not", ["X"], ["not_X_1"], "not_1"),
         helper.make_node("Where", ["not_X_1", "v0", "v1"], ["Y1"], "where_1"),
         helper.make_node("Not", ["not_X_1"], ["x"], "not_2"),
-        helper.make_node("Where", ["x", "v0", "v1"], ["Y2"], "where_2"),
+        helper.make_node("Identity", ["v0"], ["v0_edge"], "identity_v0"),
+        helper.make_node("Identity", ["v1"], ["v1_edge"], "identity_v1"),
+        helper.make_node("Where", ["x", "v0_edge", "v1_edge"], ["Y2"], "where_2"),
         helper.make_node("Not", ["X"], ["not_X_2"], "not_3"),
         helper.make_node("Where", ["not_X_2", "v0", "v1"], ["Y3"], "where_3"),
+        helper.make_node("Not", ["X"], ["not_X_3"], "not_4"),
+        helper.make_node("Where", ["not_X_3", "v0", "v1"], ["Y4"], "where_4"),
+        helper.make_node("Where", ["not_X_3", "v0", "v1"], ["Y5"], "where_5"),
     ]
 
     inputs = [  # inputs
@@ -46,6 +51,8 @@ def GenerateModel(model_name):
             helper.make_tensor_value_info('Y1', TensorProto.FLOAT, ['M', 'K']),
             helper.make_tensor_value_info('Y2', TensorProto.FLOAT, ['M', 'K']),
             helper.make_tensor_value_info('Y3', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info('Y4', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info('Y5', TensorProto.FLOAT, ['M', 'K']),
         ],
         initializers)
 

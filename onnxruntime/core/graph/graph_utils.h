@@ -199,7 +199,7 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
     e.g. Conv + Add fusion fuses the 'Add' into the Conv.
 */
-void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, bool move_outputs = true);
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 
 /** Finalize the fusion of two or more nodes which are being replaced with a single node.
     The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
