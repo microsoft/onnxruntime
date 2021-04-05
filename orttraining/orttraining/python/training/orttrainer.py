@@ -886,7 +886,7 @@ class ORTTrainer(object):
                 test_pt_device = torch.device(target_device)
             except:
                 #in this case, input/output must on CPU
-                assert(input.device == 'cpu')
+                assert(input.device.type == 'cpu')
                 target_device = 'cpu'
             
             torch_tensor = torch.zeros(output_desc.shape, device=target_device,
