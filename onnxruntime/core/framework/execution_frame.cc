@@ -37,8 +37,6 @@ namespace {
       }
 
       if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
-        ORT_ENFORCE(output_shape->NumDimensions() == 0,
-                    "Output Shape should should be empty because OutputProto for index: ", output_index, " is not kTensorType");
         return;
       }
       const auto& tensortype = outputproto->tensor_type();
