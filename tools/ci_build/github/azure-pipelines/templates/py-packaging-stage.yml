@@ -235,6 +235,18 @@ stages:
           # Python39:
           #   PythonVersion: '3.9'
       steps:
+      - task: CmdLine@2
+        inputs:
+          script: |
+            azcopy cp https://onnxruntimepackages.blob.core.windows.net/$web/onnxruntime_nightly.html .
+        displayName: 'get onnxruntime_nightly.html'
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            azcopy cp https://onnxruntimepackages.blob.core.windows.net/$web/onnxruntime_nightly.html .
+        displayName: 'upload onnxruntime_nightly.html'
+
       - checkout: self
         clean: true
         submodules: recursive
