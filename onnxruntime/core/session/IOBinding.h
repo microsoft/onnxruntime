@@ -92,8 +92,6 @@ class IOBinding {
     */
   void ClearOutputs();
   void ClearInputs();
-  void ClearInputReferences();
-  void ClearOutputReferences();
 
       // device info for all outputs. only used by InferenceSession if the output is not pre-allocated.
       const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;

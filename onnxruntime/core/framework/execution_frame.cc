@@ -38,7 +38,7 @@ IExecutionFrame::~IExecutionFrame() = default;
 // Return nullptr if index map to an value that is an unused optional input/output
 const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
-  return ort_value_idx != NodeIndexInfo::kInvalidEntry ? &all_values_[ort_value_idx] : nullptr;
+  return ort_value_idx != NodeIndexInfo::kInvalidEntry ? &((*all_values_)[ort_value_idx]) : nullptr;
 }
 
 OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
@@ -57,7 +57,7 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
                            " as its allocation kind is not kAllocatedExternally.");
   }
 
-  all_values_[ort_value_idx] = ort_value;
+  (*all_values_)[ort_value_idx] = ort_value;
   return Status::OK();
 }
 #endif
@@ -75,7 +75,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
     p_ort_value = nullptr;
   } else {
-    p_ort_value = &all_values_[ort_value_idx];
+    p_ort_value = &((*all_values_)[ort_value_idx]);
 
     if (p_ort_value->IsAllocated()) {
       // already allocated. verify shape matches if tensor.
@@ -118,7 +118,7 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
     return Status::OK();
   }
 
-  all_values_[ort_value_idx] = OrtValue();
+  (*all_values_)[ort_value_idx] = OrtValue();
   return Status::OK();
 }
 
@@ -135,7 +135,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // 1. resize the all_value_ vector
-  all_values_.resize(all_values_size_);
+  all_values_ = new std::vector<OrtValue>();
+  all_values_->resize(all_values_size_);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -143,15 +144,15 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs_[idx];
-      all_values_[ort_value_idx] = fetches[idx];
+      (*all_values_)[ort_value_idx] = fetches[idx];
     }
   }
 
   // 3. handle the weights.
   // We do this after the fetches to handle an edge case where an initializer is an output.
   // e.g. A Constant node gets lifted to an initializer so there's no Node producing the value as an output during
-  // Graph execution (i.e. Graph execution won't write the value to all_values_).
-  // A non-empty fetches vector will overwrite the actual weight in all_values_[ort_value_idx] if we did this earlier.
+  // Graph execution (i.e. Graph execution won't write the value to (*all_values_)).
+  // A non-empty fetches vector will overwrite the actual weight in (*all_values_)[ort_value_idx] if we did this earlier.
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
   for (const auto& entry : initializers) {
@@ -169,7 +170,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
     //     (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
-      OrtValue& dest = all_values_[ort_value_index];
+      OrtValue& dest = (*all_values_)[ort_value_index];
 
       if (!dest.IsAllocated()) {
         // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
@@ -184,7 +185,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
       ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
     } else {
-      all_values_[ort_value_index] = entry.second;
+      (*all_values_)[ort_value_index] = entry.second;
     }
   }
 
@@ -192,7 +193,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underline tensor/object for MLValue
-    all_values_[ort_value_idx] = feeds[idx];
+    (*all_values_)[ort_value_idx] = feeds[idx];
   }
 }
 
@@ -219,12 +220,17 @@ Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
 
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
-                           const std::vector<OrtValue>& fetches, IOBinding* io_binding, bool clear_io_binding) {
+                           const std::vector<OrtValue>& fetches, bool take_ort_values, std::vector<OrtValue>* ort_values) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
-  // 1. resize the all_value_ vector
-  all_values_.resize(all_values_size_);
+  if (take_ort_values) {
+    all_values_ = ort_values;
+  } else {
+    all_values_ = new std::vector<OrtValue>();
+    // 1. resize the all_value_ vector
+    all_values_->resize(all_values_size_);
+  }
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -232,48 +238,50 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs_[idx];
-      all_values_[ort_value_idx] = fetches[idx];
+      (*all_values_)[ort_value_idx] = fetches[idx];
     }
   }
 
-  // 3. handle the weights.
-  // We do this after the fetches to handle an edge case where an initializer is an output.
-  // e.g. A Constant node gets lifted to an initializer so there's no Node producing the value as an output during
-  // Graph execution (i.e. Graph execution won't write the value to all_values_).
-  // A non-empty fetches vector will overwrite the actual weight in all_values_[ort_value_idx] if we did this earlier.
-  // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
-  // involves a graph with a single Constant node.
-  for (const auto& entry : initializers) {
-    int ort_value_index = entry.first;
+  if (!take_ort_values) {
+    // 3. handle the weights.
+    // We do this after the fetches to handle an edge case where an initializer is an output.
+    // e.g. A Constant node gets lifted to an initializer so there's no Node producing the value as an output during
+    // Graph execution (i.e. Graph execution won't write the value to (*all_values_)).
+    // A non-empty fetches vector will overwrite the actual weight in (*all_values_)[ort_value_idx] if we did this earlier.
+    // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
+    // involves a graph with a single Constant node.
+    for (const auto& entry : initializers) {
+      int ort_value_index = entry.first;
 
-    // if the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
-    // so it can be returned to the caller.
-    //
-    // The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
-    // There's nothing in the ONNX spec that says a graph output must come from a node output though.
-    // If we took that approach we'd need to:
-    //   - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
-    //     that produces a graph output even though it conforms to the ONNX spec
-    //   - update optimizers to not convert something to an initializer that is a graph output
-    //     (e.g. constant folding)
-    if (IsOutput(ort_value_index)) {
-      const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
-      OrtValue& dest = all_values_[ort_value_index];
+      // if the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
+      // so it can be returned to the caller.
+      //
+      // The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
+      // There's nothing in the ONNX spec that says a graph output must come from a node output though.
+      // If we took that approach we'd need to:
+      //   - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
+      //     that produces a graph output even though it conforms to the ONNX spec
+      //   - update optimizers to not convert something to an initializer that is a graph output
+      //     (e.g. constant folding)
+      if (IsOutput(ort_value_index)) {
+        const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
+        OrtValue& dest = (*all_values_)[ort_value_index];
 
-      if (!dest.IsAllocated()) {
-        // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
-        // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
-        // If the initializer is providing the output, the shape is known.
-        AllocatorPtr allocator = GetAllocator(src.Location());
+        if (!dest.IsAllocated()) {
+          // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
+          // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
+          // If the initializer is providing the output, the shape is known.
+          AllocatorPtr allocator = GetAllocator(src.Location());
 
-        auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
-        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-        dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+          auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+          dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+        }
+
+        ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+      } else {
+        (*all_values_)[ort_value_index] = entry.second;
       }
-
-      ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
-    } else {
-      all_values_[ort_value_index] = entry.second;
     }
   }
 
@@ -281,12 +289,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underline tensor/object for MLValue
-    all_values_[ort_value_idx] = feeds[idx];
-  }
-
-  if (clear_io_binding) {
-    io_binding->ClearInputReferences();
-    io_binding->ClearOutputReferences();
+    (*all_values_)[ort_value_idx] = feeds[idx];
   }
 }
 
@@ -407,12 +410,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               const SessionState& session_state, IOBinding* io_binding, bool clear_io_binding)
+                               const SessionState& session_state, bool take_ort_values, std::vector<OrtValue>* ort_values)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
-  Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches, io_binding, clear_io_binding);
+  Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches, take_ort_values, ort_values);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::IncreaseIteration();
 #endif

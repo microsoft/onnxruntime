@@ -1503,31 +1503,6 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-std::vector<std::string> InferenceSession::GetIntermediateTensors() {
-  const GraphViewer& gradient_graph_viewer = session_state_->GetGraphViewer();
-  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
-  std::unordered_set<std::string> backward_inputs_from_forward_names;
-  std::vector<std::string> forward_intermediate_tensor_names;
-  for (auto node_index : gradient_node_topology_list) {
-    const auto& node = gradient_graph_viewer.GetGraph().GetNode(node_index);
-    if (node->Name().find("_Grad") == std::string::npos)
-      continue;
-    for (const auto& node_arg : node->InputDefs()) {
-      // Aggregate all backward graph inputs that are coming from forward graph.
-      // Note: This will contain initializers, stashed tensors as well as anything else.
-
-      if ((node_arg->Name().find("_grad") == std::string::npos) &&
-          (node_arg->Name().find("_external") == std::string::npos) &&
-          (backward_inputs_from_forward_names.find(node_arg->Name()) == backward_inputs_from_forward_names.end())) {
-        backward_inputs_from_forward_names.insert(node_arg->Name());
-        forward_intermediate_tensor_names.emplace_back(node_arg->Name());
-      }
-    }
-  }
-
-  return forward_intermediate_tensor_names;
-}
-
 std::pair<size_t, size_t> InferenceSession::GetBreakpointAndEndPoint() {
   size_t end_point;
   size_t break_point = 0;
@@ -1675,7 +1650,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                             const std::vector<OrtDevice>* p_fetches_device_info, IOBinding* io_binding) {
+                             const std::vector<OrtDevice>* p_fetches_device_info, std::vector<OrtValue>* ort_values) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1750,7 +1725,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches, run_options.program_counter_start,
-                                                 run_options.program_counter_end, io_binding));
+                                                 run_options.program_counter_end, ort_values));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

@@ -21,11 +21,9 @@ class TrainingAgent {
   explicit TrainingAgent(InferenceSession& session);
   ~TrainingAgent();
   // For ORTModule.forward()
-  common::Status RunForward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status RunForward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding, std::vector<OrtValue>* ort_values) ORT_MUST_USE_RESULT;
   // For ORTModule.backward()
-  common::Status RunBackward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding) ORT_MUST_USE_RESULT;
-
-  std::vector<std::string> GetIntermediateTensors();
+  common::Status RunBackward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding, std::vector<OrtValue>* ort_values) ORT_MUST_USE_RESULT;
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

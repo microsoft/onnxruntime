@@ -58,28 +58,15 @@ def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
         io_binding.bind_output(output_name, device.type,
                                device_id=_utils.get_device_index(device))
 
-def _create_backward_iobinding(io_binding, forward_io_binding, loss_gradients, loss_gradients_names, model, device):
+def _create_backward_iobinding(io_binding, loss_gradients, loss_gradients_names, model, device):
     '''Creates IO binding for a `model` inputs and output'''
-    # Feed in graph inputs - initializers, learning rate, etc.
-    inputs = forward_io_binding.get_inputs()
-    for idx, name in enumerate(forward_io_binding.get_input_names()):
-        io_binding.bind_ortvalue_input(name, inputs[idx])
-
-    # Feed in intermediate tensors from the forward run.
-    intermediates = forward_io_binding.get_outputs()
-    for idx, name in enumerate(forward_io_binding.get_output_names()):
-        io_binding.bind_ortvalue_input(name, intermediates[idx])
-
-    # Feed in loss function's gradient tensors (from PyTorch)
     for idx, name in enumerate(loss_gradients_names):
-        io_binding.bind_ortvalue_input(name, _ortvalue_from_torch_tensor(loss_gradients[idx]))
+        io_binding.bind_ortvalue_input(
+            name, _ortvalue_from_torch_tensor(loss_gradients[idx]))
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
                                device_id=_utils.get_device_index(device))
-
-    forward_io_binding.clear_binding_inputs()
-    forward_io_binding.clear_binding_outputs()
 
 
 def _check_same_device(device, argument_str, *args):
@@ -198,26 +185,21 @@ class ORTModule(torch.nn.Module):
                     training_forward_io_binding = self._training_session.io_binding()
                     training_backward_io_binding = self._training_session.io_binding()
                     run_options = C.RunOptions()
-                    if self._intermediate_tensors is None:
-                        self._intermediate_tensors = self._training_session.get_intermediate_tensors()
-
-                    if self._forward_outputs_ is None:
-                        self._forward_outputs_ = self._intermediate_tensors + self._onnx_graphs_info.user_output_names
+                    
                     # Use IO binding
-                    _create_forward_iobinding(training_forward_io_binding, inputs, self._onnx_training, self._device,
-                        self._forward_outputs_)
+                    _create_forward_iobinding(training_forward_io_binding, inputs, self._onnx_training, self._device, self._onnx_graphs_info.user_output_names)
 
                     # Run and return module outputs.
                     run_options.only_execute_path_to_fetches = False
-                    self._training_session.run_forward(run_options, training_forward_io_binding)
+                    ort_values = self._training_session.run_forward(run_options, training_forward_io_binding)
 
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
-                        forward_output) for forward_output in training_forward_io_binding.get_outputs_from(len(self._intermediate_tensors)))
+                        forward_output) for forward_output in training_forward_io_binding.get_outputs())
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
                     output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
-                    ctx.run_info = onnxruntime.training.RunStateInfo(run_options, training_forward_io_binding, training_backward_io_binding, output_info)
+                    ctx.run_info = onnxruntime.training.RunStateInfo(run_options, training_forward_io_binding, training_backward_io_binding, output_info, ort_values)
 
                     # Assert that the outputs and model device match
                     _check_same_device(
@@ -256,14 +238,11 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    backward_grad_output_ortvalue = [_ortvalue_from_torch_tensor(
-                        grad_output) for grad_output in contiguous_grad_outputs]
 
                     # Run and get results
-                    _create_backward_iobinding(ctx.run_info.backward_io_binding, ctx.run_info.forward_io_binding, contiguous_grad_outputs,
-                        self._onnx_graphs_info.loss_gradient_names, self._onnx_training, self._device)
+                    _create_backward_iobinding(ctx.run_info.backward_io_binding, contiguous_grad_outputs, self._onnx_graphs_info.loss_gradient_names, self._onnx_training, self._device)
 
-                    self._training_session.run_backward(ctx.run_info.run_options, ctx.run_info.backward_io_binding)
+                    self._training_session.run_backward(ctx.run_info.run_options, ctx.run_info.backward_io_binding, ctx.run_info.ort_values)
                     backward_outputs = ctx.run_info.backward_io_binding.get_outputs()
 
                     # Return input and initializer gradients
@@ -297,7 +276,6 @@ class ORTModule(torch.nn.Module):
                     # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
                     # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
                     # on the DLpack tensors, the memory can be freed.
-                    ctx.run_info.backward_io_binding.clear_binding_inputs()
                     ctx.run_info.backward_io_binding.clear_binding_outputs()
                     return tuple(results)
 

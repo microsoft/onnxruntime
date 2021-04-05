@@ -306,26 +306,6 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
   }
 
   gradient_graph.SetOutputs(new_output_args);
-  gradient_graph.Resolve();
-  GraphViewer gradient_graph_viewer(gradient_graph);
-  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
-  std::unordered_set<std::string> backward_inputs_from_forward_names;
-  for (auto node_index : gradient_node_topology_list) {
-    auto& node = *gradient_graph.GetNode(node_index);
-    if (node.Name().find("_Grad") == std::string::npos)
-      continue;
-    for (const auto& node_arg : node.InputDefs()) {
-      // Aggregate all backward graph inputs that are coming from forward graph.
-      // Note: This will contain initializers, stashed tensors as well as anything else.
-
-      if ((node_arg->Name().find("_grad") == std::string::npos) &&
-          (node_arg->Name().find("_external") == std::string::npos) &&
-          (backward_inputs_from_forward_names.find(node_arg->Name()) == backward_inputs_from_forward_names.end())) {
-        backward_inputs_from_forward_names.insert(node_arg->Name());
-        training_graph_info_.forward_intermediate_tensor_names.emplace_back(node_arg->Name());
-      }
-    }
-  }
 }
 
 }  // namespace training

@@ -50,7 +50,6 @@ struct TrainingGraphInfo {
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
-  std::vector<std::string> forward_intermediate_tensor_names{};
   std::vector<std::string> loss_gradient_names{};
 };
 

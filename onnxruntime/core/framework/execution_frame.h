@@ -40,7 +40,7 @@ class IExecutionFrame {
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches, IOBinding* io_binding, bool clear_io_binding);
+            const std::vector<OrtValue>& fetches, bool take_ort_values, std::vector<OrtValue>* ort_values);
 
  public:
   virtual ~IExecutionFrame();
@@ -78,7 +78,9 @@ class IExecutionFrame {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
   Status ReleaseMLValue(int ort_value_idx);
-
+  // All the intermediate values for the entire graph.
+  // Input and Output values are passed in by executors
+  std::vector<OrtValue>* all_values_;
  protected:
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
@@ -95,7 +97,7 @@ class IExecutionFrame {
 
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
-    return all_values_[ort_value_index];
+    return (*all_values_)[ort_value_index];
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
@@ -111,11 +113,9 @@ class IExecutionFrame {
 
   const NodeIndexInfo& node_index_info_;
 
-  // All the intermediate values for the entire graph.
-  // Input and Output values are passed in by executors
-  std::vector<OrtValue> all_values_;
 
-  // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
+
+  // perf optimization to avoid calling (*all_values_).size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
   const std::vector<int> fetch_mlvalue_idxs_;
@@ -133,7 +133,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 const SessionState& session_state, IOBinding* io_binding, bool clear_io_binding);
+                 const SessionState& session_state, bool take_ort_values, std::vector<OrtValue>* ort_values);
 
   ~ExecutionFrame() override;
 

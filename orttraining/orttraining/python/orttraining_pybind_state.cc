@@ -481,19 +481,18 @@ void addObjectMethodsForTraining(py::module& m) {
       .def(py::init([](PyInferenceSession* session) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
       }))
-      .def("run_forward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> void {
-        Status status = agent->RunForward(run_options, *io_binding.Get());
+      .def("run_forward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> std::vector<OrtValue>* {
+        std::vector<OrtValue>* ort_values;
+        Status status = agent->RunForward(run_options, *io_binding.Get(), reinterpret_cast<std::vector<OrtValue>*>(&ort_values));
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
+        return ort_values;
       })
-      .def("run_backward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> void {
-        Status status = agent->RunBackward(run_options, *io_binding.Get());
+      .def("run_backward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding, std::vector<OrtValue>* ort_values) -> void {
+        Status status = agent->RunBackward(run_options, *io_binding.Get(), ort_values);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-      .def("get_intermediate_tensors", [](TrainingAgent* agent) -> std::vector<std::string> {
-        return agent->GetIntermediateTensors();
       });
 
   py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
@@ -517,7 +516,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &TrainingGraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape)
-      .def_readwrite("forward_intermediate_tensor_names", &TrainingGraphInfo::forward_intermediate_tensor_names)
       .def_readwrite("loss_gradient_names", &TrainingGraphInfo::loss_gradient_names);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");

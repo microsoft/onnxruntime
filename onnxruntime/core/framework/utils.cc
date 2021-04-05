@@ -518,31 +518,31 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, size_t program_counter_start, size_t program_counter_end,
-                                       IOBinding* io_binding, const bool only_execute_path_to_fetches = false) {
+                                       std::vector<OrtValue>* ort_values, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(program_counter_start, program_counter_end, io_binding, terminate_flag, only_execute_path_to_fetches));
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(program_counter_start, program_counter_end, ort_values, terminate_flag, only_execute_path_to_fetches));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(program_counter_start, program_counter_end, io_binding, terminate_flag, only_execute_path_to_fetches));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(program_counter_start, program_counter_end, ort_values, terminate_flag, only_execute_path_to_fetches));
     } else {
       p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
     }
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-  //const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+  const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
   // see if we can skip copies due to the types of execution providers available
-  //if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
+  if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                         logger));
-  /*} else {
+  } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
@@ -581,7 +581,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
     }
-  }*/
+  }
 
   return Status::OK();
 }
@@ -608,15 +608,15 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, bool only_execute_path_to_fetches,
                             size_t program_counter_start, size_t program_counter_end,
-                            IOBinding* io_binding) {
+                            std::vector<OrtValue>* ort_values) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, program_counter_start, program_counter_end, io_binding, 
-                                 only_execute_path_to_fetches);
+                                 execution_mode, terminate_flag, logger, program_counter_start, program_counter_end, 
+                                 ort_values, only_execute_path_to_fetches);
 
   return status;
 }

@@ -357,7 +357,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
     EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Non-zero status code returned while running YieldOp node."));
   }
 
-  {
+  /*{
     // Run with new RunForward/RunBackward.
     SessionOptions so2;
     so2.session_logid = "BreakOpTestPass";
@@ -389,7 +389,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
     const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
     EXPECT_THAT(backward_io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
                 ::testing::ContainerEq(gsl::make_span(output_expected)));
-  }
+  }*/
 }
 #endif
 
