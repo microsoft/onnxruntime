@@ -15,6 +15,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -73,6 +74,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
       rule_transformer->Register(make_unique<ExpandElimination>());
       rule_transformer->Register(make_unique<CastElimination>());
+      rule_transformer->Register(make_unique<DivMulFusion>());
       rule_transformer->Register(make_unique<EliminateDropout>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
