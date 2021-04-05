@@ -536,7 +536,7 @@ def test_gradient_correctness_conv1d():
         ort_prediction = run_step(ort_model, x)
         
         assert torch.allclose(ort_prediction, pt_prediction, atol=1e-5)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-4, atol=5e-4)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-3, atol=1e-3)
 
 def test_module_with_non_differential_output():
     device = 'cuda'
