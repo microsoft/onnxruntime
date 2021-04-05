@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 #include <cmath>
 
@@ -46,7 +47,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 
   // Min max operation granularity: AVX512 can potentially handle 64 ~ 128 floats
   // per iteration.
-  const size_t granularity = 128;
+  const int granularity = 128;
   std::ptrdiff_t block_size;
   std::ptrdiff_t num_blocks;
   if (concurrency::ThreadPool::ShouldParallelize(thread_pool) && num_of_elements > granularity) {
@@ -66,8 +67,8 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), 0, 0};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     auto begin_idx = begin * block_size;
-    auto end_idx = std::min(num_of_elements, end * block_size);
-    auto agg_idx = begin / num_blocks;
+    auto end_idx = std::min(std::ptrdiff_t(num_of_elements), end * block_size);
+    auto agg_idx = begin % num_blocks;
     MlasFindMinMaxElement(&(data[begin_idx]), &aggregate[agg_idx].min, &aggregate[agg_idx].max, end_idx - begin_idx);
   });
 
@@ -122,67 +123,5 @@ void ParQuantizeLinear(const float* Input,
     MlasQuantizeLinear(&(Input[begin_idx]), &(Output[begin_idx]), end_idx - begin_idx, Scale, ZeroPoint);
   });
 }
-
-
-/**
- * Encapsulating the batched GEMM operation, including parameter preparation
- * and invoking the MLAS GEMM function. 
- * 
- * Note that we only support uniform batch (same shapes) at this point
- */
-class MLAS_GEMM_U8X8_BATCH_CALLER {
- public:
-  MLAS_GEMM_U8X8_BATCH_CALLER(
-      size_t M, size_t N, size_t K,
-      bool b_is_packed, bool b_is_signed,
-      size_t batch_size = 0) {
-    if (batch_size > 0) {
-      parameters_.reserve(batch_size);
-    }
-    parameters_.emplace_back();
-    auto& param = parameters_[0];
-    param.M = M;
-    param.N = N;
-    param.K = K;
-    param.BIsPacked = b_is_packed;
-    param.BIsSigned = b_is_signed;
-  }
-
-  void AddData(
-      const uint8_t* A, size_t lda, uint8_t zero_point_a,
-      const void* B, size_t ldb, const uint8_t* zero_point_b,
-      bool per_col_zero_points,
-      int32_t* C, size_t ldc,
-      const MLAS_QGEMM_OUTPUT_PROCESSOR* output_processor = nullptr) {
-    auto* ptr = &(parameters_[0]);
-    if (ptr->A) {
-      parameters_.emplace_back();
-      ptr = &(parameters_[parameters_.size() - 1]);
-      ptr->M = parameters_[0].M;
-      ptr->N = parameters_[0].N;
-      ptr->K = parameters_[0].K;
-      ptr->BIsPacked = parameters_[0].BIsPacked;
-      ptr->BIsSigned = parameters_[0].BIsSigned;
-    }
-
-    ptr->A = A;
-    ptr->lda = lda;
-    ptr->ZeroPointA = zero_point_a;
-    ptr->B = B;
-    ptr->ldb = ldb;
-    ptr->ZeroPointB = zero_point_b;
-    ptr->PerColumnZeroPoints = per_col_zero_points;
-    ptr->C = C;
-    ptr->ldc = ldc;
-    ptr->OutputProcessor = output_processor;
-  }
-
-  void Run(MLAS_THREADPOOL* ThreadPool) {
-    MlasGemmBatch(parameters_.data(), parameters_.size(), ThreadPool);
-  }
-
- private:
-  std::vector<MLAS_GEMM_U8X8_PARAMETERS> parameters_;
-};
 
 }  // namespace onnxruntime

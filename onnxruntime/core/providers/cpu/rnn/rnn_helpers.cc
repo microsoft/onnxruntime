@@ -287,10 +287,13 @@ void ComputeGemm(const int M,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-  gemm_params.M = static_cast<size_t>(M);
-  gemm_params.N = static_cast<size_t>(N);
-  gemm_params.K = static_cast<size_t>(K);
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  gemm_shape.M = static_cast<size_t>(M);
+  gemm_shape.N = static_cast<size_t>(N);
+  gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.BIsSigned = b_is_signed;
+  
+  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
   gemm_params.A = a_data_quant;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;
@@ -298,11 +301,11 @@ void ComputeGemm(const int M,
   gemm_params.ldb = static_cast<size_t>(N);
   gemm_params.ZeroPointB = &b_zero_point;
   gemm_params.BIsPacked = weights.is_prepacked_;
-  gemm_params.BIsSigned = b_is_signed;
   gemm_params.C = C_buffer;
   gemm_params.ldc = ld_C_buffer;
   gemm_params.OutputProcessor = &output_processor;
-  MlasGemm(&gemm_params, thread_pool);
+
+  MlasGemm(gemm_shape, gemm_params, thread_pool);
 }
 
 namespace deepcpu {
