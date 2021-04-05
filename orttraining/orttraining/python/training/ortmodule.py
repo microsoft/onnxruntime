@@ -327,8 +327,8 @@ class ORTModule(torch.nn.Module):
         self._loglevel = getattr(logging, 'WARNING')
 
         # Debug flags
-        self._save_onnx = False
-        self._save_onnx_prefix = ''
+        self._save_onnx = True
+        self._save_onnx_prefix = 'conv1d'
 
         from torch.utils.cpp_extension import ROCM_HOME
         self.is_rocm_pytorch = (True if (
