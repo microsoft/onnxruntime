@@ -1827,7 +1827,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   // Used to allocate ROCM device memory
   auto rocm_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
   if (nullptr == rocm_alloc) {
-    rocm_alloc = CreateRocmAllocator(info_.device_id, info_.hip_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+    rocm_alloc = CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
     allocator_manager->InsertAllocator(rocm_alloc);
   }
   TryInsertAllocator(rocm_alloc);
