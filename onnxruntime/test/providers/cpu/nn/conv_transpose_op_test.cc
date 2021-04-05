@@ -20,16 +20,15 @@ struct ConvTransposeOpAttributes {
   string auto_pad;
 };
 
-void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
-                                    const vector<vector<float>>& inputs,
-                                    const vector<vector<int64_t>>& input_shapes,
-                                    const std::initializer_list<float>& expected_output,
-                                    const vector<int64_t>& expected_output_shape,
-                                    bool is_filter_initializer = false,
-                                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                                    const std::string& err_str = "",
-                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
-  OpTester test("ConvTranspose");
+void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
+                         const vector<vector<float>>& inputs,
+                         const vector<vector<int64_t>>& input_shapes,
+                         const std::initializer_list<float>& expected_output,
+                         const vector<int64_t>& expected_output_shape,
+                         OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                         const std::string& err_str = "",
+                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+  OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
 
