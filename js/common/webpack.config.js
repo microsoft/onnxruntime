@@ -5,6 +5,7 @@ function buildConfig({
   suffix = '',
   format = 'umd',
   target = 'ES2017',
+  mode = 'production',
   devtool = 'source-map'
 }) {
   return {
@@ -29,13 +30,14 @@ function buildConfig({
         ]
       }]
     },
-    mode: 'production',
+    mode: mode,
     devtool: devtool,
   };
 }
 
 module.exports = (env, argv) => {
   return [
+    buildConfig({ format: 'umd', mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
     buildConfig({ format: 'umd', suffix: '.min', target: 'es5' }),
     buildConfig({ format: 'commonjs', suffix: '.node', target: 'es5' }),
   ];
