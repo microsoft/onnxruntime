@@ -1005,9 +1005,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #endif
 
   // Memory pattern tracer allocates all initializers on a single continous
-  // buffer. This has the effect of reducing memory fragementation. 
+  // buffer. This has the effect of reducing memory fragementation.
   // Further more, NCCL kernels require initializers to be allocated
-  // continously. 
+  // continously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
   // release some initializers. See OpKernel::PrePack(). Letting all initializers
@@ -1052,12 +1052,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
+#ifndef ENABLE_TRAINING
   const auto disable_prepacking =
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));
   }
+#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));

@@ -27,6 +27,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -525,6 +526,26 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     ASSERT_TRUE(op_to_count["Add"] == 0);
     ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
   }
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/div_mul.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<DivMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)

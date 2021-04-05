@@ -9,11 +9,9 @@
 namespace onnxruntime {
 namespace test {
 
-auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+static auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
-const std::string MS_DOMAIN = "com.microsoft";
-
-void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
+inline void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
   EXPECT_NE(shape1, nullptr);
   EXPECT_NE(shape2, nullptr);
   if ((shape1 != nullptr) && (shape2 != nullptr)) {
@@ -50,45 +48,49 @@ inline void CreateValueInfo(
   }
 }
 
-inline void TestShapeInference(
-    const std::string& op_type,
-    const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
-    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
-    ONNX_NAMESPACE::ValueInfoProto& output) {
+inline void TestShapeInference(const std::string& op_type,
+                               const std::string& op_domain,
+                               int op_version,
+                               int ir_version,
+                               const std::vector<ONNX_NAMESPACE::ValueInfoProto>& inputs,
+                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+                               ONNX_NAMESPACE::ValueInfoProto& output) {
   ONNX_NAMESPACE::ModelProto model;
   // Set opset (domain + version)
   ONNX_NAMESPACE::OperatorSetIdProto* op_set_id = model.add_opset_import();
-  op_set_id->set_domain(MS_DOMAIN);
-  op_set_id->set_version(1);
-  model.set_ir_version(6);
+  op_set_id->set_domain(op_domain);
+  op_set_id->set_version(op_version);
+  model.set_ir_version(ir_version);
   model.set_producer_name("onnx");
 
   // Set model graph
   ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
   graph->set_name("test-op");
-  graph->add_value_info();
 
   // Set add operator node to graph
-  auto& node = *graph->add_node();
-  node.set_op_type(op_type);
-  node.set_domain(MS_DOMAIN);
-  node.set_name("test_node");
+  auto node = graph->add_node();
+  node->set_op_type(op_type);
+  node->set_domain(op_domain);
+  node->set_name("test_node");
 
   // Add node inputs and graph inputs
-  for (auto const& n_ : inputs) {
-    node.add_input(n_.name());
-    *graph->add_input() = n_;
-  }
+	for (auto const& n_ : inputs) {
+	  node->add_input(n_.name());
+	  auto in = graph->add_input();
+	  *in = n_;
+	  auto v_ = graph->add_value_info();
+	  *v_ = n_;
+	}
 
   // Add node attributes
   for (auto const& attr : attributes) {
-    node.add_attribute()->CopyFrom(attr);
+    node->add_attribute()->CopyFrom(attr);
   }
 
-  node.add_output("Output");
+  node->add_output("Output");
 
+  ONNX_NAMESPACE::shape_inference::InferShapes(model, true, schema_registry);
   ONNX_NAMESPACE::checker::check_model(model);
-  ONNX_NAMESPACE::shape_inference::InferShapes(model, false, schema_registry);
 
   auto inferredGraph = model.graph();
   int index = static_cast<int>(inputs.size());  // index for value_info of output
@@ -102,6 +104,5 @@ inline void TestShapeInference(
   auto inferred_shape = inferred_output.mutable_type()->mutable_tensor_type()->mutable_shape();
   CheckShapeEquality(shape, inferred_shape);
 }
-
 }  // namespace test
 }  // namespace onnxruntime
