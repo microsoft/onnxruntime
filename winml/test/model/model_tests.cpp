@@ -143,6 +143,10 @@ std::string GetTestDataPath() {
     auto hardcodedModelPath = parentPath.string() + "\\models";
     if (std::filesystem::exists(hardcodedModelPath) && hardcodedModelPath.length() <= MAX_PATH) {
       return hardcodedModelPath;
+    } else {
+      std::string errorStr = "WINML_TEST_DATA_PATH environment variable path not found and \"models\" folder not found in same directory as test exe.\n";
+      std::cerr << errorStr;
+      throw std::exception(errorStr.c_str());
     }
   }
   const std::string testDataPathFolderName = "\\testData\\";
