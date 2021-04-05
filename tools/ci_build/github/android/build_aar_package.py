@@ -82,9 +82,6 @@ def _build_aar(args):
     _env['ANDROID_HOME'] = os.path.abspath(args.android_sdk_path)
     _env['ANDROID_NDK_HOME'] = os.path.abspath(args.android_ndk_path)
 
-    # If not using shell on Window, will not be able to find commands in path
-    _shell = True if is_windows() else False
-
     # Temp dirs to hold building results
     _intermediates_dir = os.path.join(build_dir, 'intermediates')
     _build_flavor = build_settings['build_flavor']
@@ -105,7 +102,7 @@ def _build_aar(args):
         if args.include_ops_by_config is not None:
             _build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
 
-        subprocess.run(_build_command, env=_env, shell=_shell, check=True, cwd=REPO_DIR)
+        subprocess.run(_build_command, env=_env, shell=False, check=True, cwd=REPO_DIR)
 
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
@@ -137,6 +134,9 @@ def _build_aar(args):
         '-DtargetSdkVer=' + str(build_settings['android_target_sdk_version'])
     ]
 
+    # If not using shell on Window, will not be able to find gradle in path
+    _shell = True if is_windows() else False
+
     # clean, build, and publish to a local directory
     subprocess.run(_gradle_command + ['clean'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
     subprocess.run(_gradle_command + ['build'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
@@ -159,7 +159,7 @@ def parse_args():
     parser.add_argument("--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
                         help="Path to the Android NDK")
 
-    parser.add_argument('--build_dir', type=pathlib.Path, default=os.path.join(REPO_DIR, 'build/android_aar'),
+    parser.add_argument('--build_dir', type=str, default=os.path.join(REPO_DIR, 'build/android_aar'),
                         help='Provide the root directory for build output')
 
     parser.add_argument(
