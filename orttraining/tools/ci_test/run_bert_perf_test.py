@@ -37,7 +37,7 @@ def main():
     ]
 
     configs['MI100_32G'] = [
-        Config(True, 128, 128, 20, 225),
+        Config(True, 128, 128, 20, 240),
     ]
 
     # run BERT training
@@ -76,7 +76,7 @@ def main():
         subprocess.run(cmds).check_returncode()
         if c.expected_perf > 0.0:
             json_filename = 'onnxruntime_perf_metrics_{}.onnx_bert_{}_{}_Lamb.json'.format(model, precision_prefix, c.max_seq_length)
-            with open(os.path.join('results', json_filename)) as json_file:
+            with open(os.path.join(SCRIPT_DIR, 'results', json_filename)) as json_file:
                 results = json.load(json_file)
                 assert(results['EndToEndThroughput'] > 0.98*c.expected_perf)
     
