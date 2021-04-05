@@ -2371,10 +2371,27 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
-      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
+      std::vector<TypeProto> input_types;
+      for (size_t i = 0, n = node.InputDefs().size(); i < n; i++) {
+        auto p_node_arg = node.InputDefs().at(i);
+        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
+          auto& type = *(p_node_arg->TypeAsProto());
+          input_types.emplace_back(type);
+        } else
+          input_types.emplace_back();
+      }
+      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
+    }
+
+    // Check function's opset requirements are compatible with model's opset.
+    auto& graphImports = DomainToVersionMap();
+    for (const auto& fn_import : onnx_function_proto.opset_import()) {
+      auto it = graphImports.find(fn_import.domain());
+      if ((it != graphImports.end()) && (it->second != fn_import.version()))
+        return; // Incompatible. Do not use this function expansion.
     }
 
     auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,

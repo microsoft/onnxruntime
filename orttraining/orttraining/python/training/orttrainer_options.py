@@ -3,7 +3,7 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
-
+import onnxruntime as ort
 
 class ORTTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
@@ -277,7 +277,18 @@ class ORTTrainerOptions(object):
                             'default' : True
                         }
                     }
-                }
+                },
+                'provider_options':{
+                    'type': 'dict',
+                    'default': {},
+                    'required': False,
+                    'schema': {}
+                },
+                'session_options': {
+                    'type': 'SessionOptions',
+                    'nullable': True,
+                    'default': None
+                },
              }
 
     Keyword arguments:
@@ -383,6 +394,11 @@ class ORTTrainerOptions(object):
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        session_options (onnxruntime.SessionOptions):
+            The SessionOptions instance that TrainingSession will use.
+        provider_options (dict): 
+            The provider_options for customized execution providers. it is dict map from EP name to 
+            a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
         .. code-block:: python
@@ -459,9 +475,13 @@ class ORTTrainerOptionsValidator(cerberus.Validator):
     _LOSS_SCALER = cerberus.TypeDefinition(
         'loss_scaler', (loss_scaler.LossScaler,), ())
 
+    _SESSION_OPTIONS = cerberus.TypeDefinition(
+        'session_options', (ort.SessionOptions,),())
+
     types_mapping = cerberus.Validator.types_mapping.copy()
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
+    types_mapping['session_options'] = _SESSION_OPTIONS
 
 
 def _check_is_callable(field, value, error):
@@ -731,5 +751,17 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             }
         }
-    }
+    },
+    'provider_options':{
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'allow_unknown': True,
+        'schema': {}
+    },
+    'session_options': {
+        'type': 'session_options',
+        'nullable': True,
+        'default': None
+    },
 }

@@ -21,33 +21,38 @@ limitations under the License.
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
 #include "processthreadsapi.h"
 #include <codecvt>
 #include <locale>
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
+#endif
 #else
 #include <sched.h>
+#endif
 #endif
 
 namespace onnxruntime {
 
 namespace concurrency {
 
-ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* threal_pool_name) : 
+#if !defined(ORT_MINIMAL_BUILD)
+ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_pool_name) : 
     num_threads_(num_threads) {
   child_thread_stats_.assign(num_threads, {});
-  if (threal_pool_name) {
+  if (thread_pool_name) {
 #ifdef _WIN32
     using convert_type = std::codecvt_utf8<wchar_t>;
     std::wstring_convert<convert_type, wchar_t> converter;
-    threal_pool_name_ = converter.to_bytes(threal_pool_name);
+    thread_pool_name_ = converter.to_bytes(thread_pool_name);
 #else
-    threal_pool_name_ = threal_pool_name;
+    thread_pool_name_ = thread_pool_name;
 #endif
   } else {
-    threal_pool_name_ = "unnamed_thread_pool";
+    thread_pool_name_ = "unnamed_thread_pool";
   }
 }
 
@@ -72,7 +77,7 @@ std::string ThreadPoolProfiler::Stop() {
   std::stringstream ss;
   ss << "{\"main_thread\": {"
      << "\"thread_pool_name\": \""
-     << threal_pool_name_ << "\", "
+     << thread_pool_name_ << "\", "
      << GetMainThreadStat().Reset()
      << "}, \"sub_threads\": {"
      << DumpChildThreadStat()
@@ -119,11 +124,13 @@ void ThreadPoolProfiler::MainThreadStat::LogCore() {
 #ifdef _WIN32
   core_ = GetCurrentProcessorNumber();
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
   uint32_t CPUInfo[4];
   __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
   if ((CPUInfo[3] & (1 << 9)) != 0) {
     core_ = (unsigned)CPUInfo[1] >> 24;
   }
+#endif
 #else
   core_ = sched_getcpu();
 #endif
@@ -197,11 +204,13 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
 #ifdef _WIN32
       child_thread_stats_[thread_idx].core_ = GetCurrentProcessorNumber();
 #elif defined(__APPLE__)
+#if defined(__x86_64__) || defined(__i386__)
       uint32_t CPUInfo[4];
       __cpuid_count(1, 0, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
       if ((CPUInfo[3] & (1 << 9)) != 0) {
         child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
       }
+#endif
 #else
       child_thread_stats_[thread_idx].core_ = sched_getcpu();
 #endif
@@ -220,6 +229,7 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
   }
   return ss.str();
 }
+#endif
 
   // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
