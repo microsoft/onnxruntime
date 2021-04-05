@@ -90,8 +90,14 @@ void OrtReleaseTensor(OrtValue* tensor) {
   Ort::OrtRelease(tensor);
 }
 
-void OrtRun(Ort::Session* session,
-            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
-            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
-  Ort::ThrowOnError(Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs));
+int OrtRun(Ort::Session* session,
+           const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
+           const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
+  OrtStatusPtr status = Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs);
+  OrtErrorCode error_code = ORT_OK;
+  if (status) {
+    error_code = Ort::GetApi().GetErrorCode(status);
+    Ort::GetApi().ReleaseStatus(status);
+  }
+  return error_code;
 }

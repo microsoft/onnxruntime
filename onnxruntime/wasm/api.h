@@ -96,12 +96,13 @@ void EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
 /**
  * inference the model.
  * @param session handle of the specified session
+ * @returns error code defined in enum OrtErrorCode
  */
-void EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
-                                 const char** input_names,
-                                 const ort_tensor_handle_t* inputs,
-                                 size_t input_count,
-                                 const char** output_names,
-                                 size_t output_count,
-                                 ort_tensor_handle_t* outputs);
+int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
+                                const char** input_names,
+                                const ort_tensor_handle_t* inputs,
+                                size_t input_count,
+                                const char** output_names,
+                                size_t output_count,
+                                ort_tensor_handle_t* outputs);
 };
