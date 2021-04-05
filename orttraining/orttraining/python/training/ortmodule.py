@@ -16,6 +16,7 @@ import onnx
 import onnxruntime
 import torch
 import inspect
+import warnings
 from inspect import signature
 from enum import IntEnum
 from typing import Iterator, Optional, Tuple
@@ -304,8 +305,7 @@ class ORTModule(torch.nn.Module):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._original_module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                raise NotImplementedError(
-                    "The model's forward method has **kwargs parameter which is currently not supported.")
+                warnings.warn("The model's forward method has **kwargs parameter which is not supported.")
 
         self._onnx_inference = None
 
