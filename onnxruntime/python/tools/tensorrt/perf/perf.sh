@@ -1,7 +1,5 @@
 #!/bin/bash
 
-
-
 while getopts d:o:m: parameter
 do case "${parameter}"
 in 
