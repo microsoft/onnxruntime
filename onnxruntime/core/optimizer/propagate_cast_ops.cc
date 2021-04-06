@@ -190,7 +190,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
 // SearchDownstream:
 // Recursively traverse the graph downstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP32 Cast operation up the graph.
-static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast)
+static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast, std::unordered_set<NodeArg*>& require_type_change)
 {
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
@@ -217,6 +217,16 @@ static std::string GatherNames(C const& items)
   std::transform(items.begin(), items.end(), back_inserter(names), [](T n) { return n->Name(); });
   return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b;});
 }
+static void ChangeTypeToFP16(std::unordered_set<NodeArg*>& require_type_change, const logging::Logger& logger)
+{
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
+  for (NodeArg* input : require_type_change) {
+    if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+      input->UpdateTypeAndShape(type_proto, true, true, logger);
+    }
+  }
+}
 
 static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& logger)
 {
@@ -230,13 +240,15 @@ static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& l
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT)) {
       std::unordered_set<NodeArg*> require_cast;
+      std::unordered_set<NodeArg*> require_type_change;
       NodeArg* cast_output = node->MutableOutputDefs()[0];
-      SearchDownstream(graph, cast_output, require_cast);
+      SearchDownstream(graph, cast_output, require_cast, require_type_change);
       if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
         // Remove Cast operation
         VLOGS(logger, 1) << "PropagateForwards: Removed Cast node  " << node->Name();
         RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, false);
+        ChangeTypeToFP16(require_type_change, logger);
         VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
         modified = true;
       }
@@ -279,6 +291,7 @@ static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& l
   return modified;
 }
 
+
 static bool PropagateBackwards(Graph& graph, Node* node, const logging::Logger& logger)
 {
   bool modified = false;
@@ -298,15 +311,9 @@ static bool PropagateBackwards(Graph& graph, Node* node, const logging::Logger& 
         VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name();
         RemoveCastNodes(graph, {node});
         InsertCastNodes(graph, require_cast, true);
+        ChangeTypeToFP16(require_type_change, logger)
         VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes "
                   << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
-        ONNX_NAMESPACE::TypeProto type_proto;
-        type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
-        for (NodeArg* input : require_type_change) {
-          if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
-            input->UpdateTypeAndShape(type_proto, true, true, logger);
-          }
-        }
         VLOGS(logger, 1) << "PropagateBackwards: Changed the type from float to float16 : "
                   << GatherNames<std::unordered_set<NodeArg*>>(require_type_change);
         modified = true;
