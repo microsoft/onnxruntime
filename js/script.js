@@ -356,50 +356,6 @@ function ot_checkValidity(){
 
 
 
-
-function selectedOption(option, selection, category) {
-     //allow deselect   
-    if(selection.id==opts[category]){
-        $(selection).removeClass("selected");
-        $(selection).removeClass("unsupported");
-        opts[category] = '';
-    }
-    else{
-        $(option).removeClass("selected");
-        $(option).removeClass("unsupported");
-        $(selection).addClass("selected");
-        opts[category] = selection.id;
-    }
-
-    resetOptions();
-
-    var all_selected = document.getElementsByClassName('selected r-option');
-    // console.log(all_selected);
-    // console.log(opts);
-
-    var isSupported = commandMessage(buildMatcher());
-  
-    //mark unsupported for selected elements
-    if (isSupported==false){
-        mark_unsupported(all_selected, false);
-    }
-    else{
-        for(var i = 0; i<all_selected.length; i++){
-            $(all_selected[i]).removeClass("unsupported");
-        }
-    }
-
-    checkValidity();
-
-    //if full selection is valid, don't gray out other options
-    if(opts['os']!="" && opts['architecture']!="" && opts['hardwareAcceleration']!="" && opts['language']!="" && isSupported==true){
-        // console.log(opts);
-       resetOptions();
-
-    }
-}
-
-
 function mark_unsupported(selection, training){
     
     if(training==true){
@@ -412,25 +368,61 @@ function mark_unsupported(selection, training){
     }
     else{
         for(var i = 0; i<selection.length; i++){
-        if(selection[i].id.indexOf('ot_') == -1){
-                $(selection[i]).addClass("unsupported");
-        }
+            if(selection[i].id.indexOf('ot_') == -1){
+                    $(selection[i]).addClass("unsupported");
+            }
         }
     }
 }
 
-function ot_selectedOption(option, selection, category) {
-    // $(option).removeClass("selected");
-    // $(selection).addClass("selected");
-    // ot_opts[category] = selection.id;
-    // ot_commandMessage(ot_buildMatcher());
+function selectedOption(option, selection, category) {
+    //allow deselect   
+   if(selection.id==opts[category]){
+       $(selection).removeClass("selected");
+       $(selection).removeClass("unsupported");
+       opts[category] = '';
+   }
+   else{
+       $(option).removeClass("selected");
+       $(option).removeClass("unsupported");
+       $(selection).addClass("selected");
+       opts[category] = selection.id;
+   }
 
-    //allow deselect, disable for acceleration and architecture since they only have 1 item
-    if(selection.id==ot_opts[category] && ot_defaultSelection==false && category!='ot_hardwareAcceleration' && category!='ot_architecture'){
+   resetOptions();
+
+   var all_selected = document.getElementsByClassName('selected r-option');
+
+   //get list of supported combos
+   var isSupported = commandMessage(buildMatcher());
+ 
+   //mark unsupported for selected elements
+   if (isSupported==false){
+       mark_unsupported(all_selected, false);
+   }
+   else{
+       for(var i = 0; i<all_selected.length; i++){
+           $(all_selected[i]).removeClass("unsupported");
+       }
+   }
+
+   checkValidity();
+
+   //if full selection is valid, don't gray out other options
+   if(opts['os']!="" && opts['architecture']!="" && opts['hardwareAcceleration']!="" && opts['language']!="" && isSupported==true){
+       // console.log(opts);
+      resetOptions();
+
+   }
+}
+
+function ot_selectedOption(option, selection, category) {
+
+    //allow deselect, disable for architecture since they only have 1 item
+    if(selection.id==ot_opts[category] && ot_defaultSelection==false && category!='ot_architecture'){
         $(selection).removeClass("selected");
         $(selection).removeClass("unsupported");
         ot_opts[category] = '';
-        // console.log("deselected");
     }
     else{
         $(option).removeClass("selected");
@@ -537,11 +529,44 @@ function ot_buildMatcher() {
 }
 
 var ot_validCombos = {
+   //linux
     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-"ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
-    "<i>Coming soon!"
+    "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+
+    "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_C++,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_linux,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    
+    //windows
+    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_C++,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    //mac
+    "ot_mac,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>."
 };
 
 function ot_commandMessage(key) {
@@ -549,7 +574,7 @@ function ot_commandMessage(key) {
     $("#ot_command").removeClass("invalid");
 
     if(ot_opts['ot_os']=='' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
-        console.log(ot_opts);
+        // console.log(ot_opts);
         $("#ot_command span").html(
             "Please select a combination of resources"
         ) 
@@ -560,7 +585,8 @@ function ot_commandMessage(key) {
         ) 
         $("#ot_command").addClass("invalid");
         return false;
-    } else {
+    }
+    else {
         $("#ot_command span").html(ot_validCombos[key]);
         $("#ot_command").addClass("valid");
         return true;
@@ -597,7 +623,7 @@ var validCombos = {
     "windows,Python(3.6-3.9),X64,CUDA":
         "pip install onnxruntime-gpu",
 
-"linux,Python(3.6-3.9),ARM64,CUDA":
+    "linux,Python(3.6-3.9),ARM64,CUDA":
         "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
     
     "linux,C-API,X64,CUDA":
@@ -627,26 +653,27 @@ var validCombos = {
     "windows,C-API,X86,DefaultCPU":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
-"windows,C-API,ARM32,DefaultCPU":
+    "windows,C-API,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
-"windows,C++,ARM32,DefaultCPU":
+    "windows,C++,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
-"windows,C#,ARM32,DefaultCPU":
+    "windows,C#,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
-"windows,C-API,ARM64,DefaultCPU":
+    "windows,C-API,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
      
-"windows,C++,ARM64,DefaultCPU":
+    "windows,C++,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
-"windows,C#,ARM64,DefaultCPU":
+    "windows,C#,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
-"windows,C++,X64,DefaultCPU":
+    "windows,C++,X64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
     "windows,C++,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
     
@@ -655,7 +682,6 @@ var validCombos = {
         
     "windows,C#,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
 
     "linux,C-API,X64,DefaultCPU":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
