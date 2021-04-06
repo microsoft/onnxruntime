@@ -53,6 +53,14 @@ Abstract:
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
 #endif
+#if defined(__wasm__)
+#define MLAS_TARGET_WASM
+#if defined(__wasm_simd128__)
+#define MLAS_TARGET_WASM_SIMD
+#else
+#define MLAS_TARGET_WASM_SCALAR
+#endif
+#endif
 
 //
 // Define the support levels for the target architecture.
@@ -344,6 +352,9 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+#if defined(MLAS_TARGET_WASM)
+    MlasConvAlgorithmDepthwise,
+#endif
 };
 
 struct MLAS_CONV_PARAMETERS {
