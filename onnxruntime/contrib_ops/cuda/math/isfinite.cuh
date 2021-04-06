@@ -3,7 +3,7 @@
 
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "orttraining/training_ops/cuda/math/isfinite.h"
+#include "contrib_ops/cuda/math/isfinite.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -1792,45 +1792,6 @@ Example 4:
           "The output tensor. Its shape is the same as the input.",
           "T1");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("IsAllFinite")
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr("isinf_only",
-            "If true, check only for Inf, -Inf.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Attr("isnan_only",
-            "If true, check only for NaN.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .TypeConstraint(
-          "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)"},
-          "Constrain the output to a boolean tensor.")
-      .Input(0, "input", "Input tensors to check.", "V",
-             OpSchema::Variadic)
-      .Output(
-          0,
-          "output",
-          "The output scalar. Its value is true if all input "
-          "tensors are finite. Otherwise, the output value would "
-          "be false.",
-          "T")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        bool isinf_only = static_cast<bool>(getAttribute(ctx, "isinf_only", int64_t(0)));
-        bool isnan_only = static_cast<bool>(getAttribute(ctx, "isnan_only", int64_t(0)));
-        ORT_ENFORCE(!(isinf_only && isnan_only),
-                    "Both attributes isinf_only and isnan_only cannot be set. Unset both to check for both conditions.");
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-      });
-
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
 )DOC";
