@@ -385,6 +385,22 @@ ThreadPool::~ThreadPool() = default;
 void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
                                                      const std::ptrdiff_t block_size,
                                                      const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  if (total <= 0) {
+    return;
+  } else if (total <= block_size) {
+    fn(0, total);
+    return;
+  }
+  if (underlying_threadpool_) {
+    underlying_threadpool_->RunInParallel(fn, total, block_size);
+  } else {
+    fn(0, total);
+  }
+}
+  /*
+void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
+                                                     const std::ptrdiff_t block_size,
+                                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
   if (total <= 0)
     return;
 
@@ -415,7 +431,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
   // run_work.
   RunInParallel(run_work, num_work_items, block_size);
-}
+}*/
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
   int d_o_p = DegreeOfParallelism(this);

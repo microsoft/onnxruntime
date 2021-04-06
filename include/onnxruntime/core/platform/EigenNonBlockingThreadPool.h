@@ -294,6 +294,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
                              unsigned n, std::ptrdiff_t block_size) = 0;
+  virtual void RunInParallel(const std::function<void(std::ptrdiff_t from, std::ptrdiff_t to)>& fn,
+                             std::ptrdiff_t total, std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling()  = 0;
   virtual std::string StopProfiling() = 0;
 };
@@ -315,6 +317,7 @@ class ThreadPoolParallelSection {
   std::atomic<bool> active{false};
 
   std::atomic<unsigned> worker_idx{0};
+  std::atomic_llong worker_idx_l{0};
 
   // Count of the number of tasks that completed normally.  Other
   // tasks may be running currently, or may be present in work queues,
@@ -1072,6 +1075,69 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+}
+
+void RunInParallel(const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn,
+                   std::ptrdiff_t total, std::ptrdiff_t block_size) override {
+  profiler_.LogStartAndCoreAndBlock(block_size);
+  PerThread* pt = GetPerThread();
+  ThreadPoolParallelSection ps;
+  StartParallelSectionInternal(*pt, ps);
+
+  Task worker = [&]() {
+    while (true) {
+      auto from = ps.worker_idx_l.fetch_add(block_size, std::memory_order_relaxed);
+      if (from >= total) {
+        break;
+      }
+      auto to = std::min(total, from + block_size);
+      fn(from, to);
+    }
+  };
+
+  Task worker_dist = [&]() {
+    worker();
+    ps.tasks_finished.fetch_add(1, std::memory_order_relaxed);
+  };
+
+  std::function<bool(int, Task&, bool)> enqueue_fn = [&, this](int idx, Task w, bool logging) {
+    WorkerData& td = worker_data_[idx];
+    Queue& q = td.queue;
+    unsigned w_idx;
+    Task t = q.PushBackWithTag(w, pt->tag, w_idx);
+    if (t) {
+      return false;
+    } else {
+      td.EnsureAwake();
+      if (logging) {
+        ps.tasks.push_back({idx, w_idx});
+      }
+      return true;
+    }
+  };
+
+  bool dist_done = false;
+  Task dist_task = [&]() {
+    for (auto i = 0; i < num_threads_; i++) {
+      enqueue_fn(i, worker_dist, true);
+    }
+    dist_done = true;
+  };
+
+  bool dist_start = enqueue_fn(0, dist_task, false);
+  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+
+  worker();
+  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
+
+  if (dist_start) {
+    while (!dist_done) {
+      onnxruntime::concurrency::SpinPause();
+    }
+  }
+
+  EndParallelSectionInternal(*pt, ps);
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
