@@ -1432,3 +1432,19 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   ASSERT_TRUE(exception_thrown);
 }
 #endif
+
+TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
+  Ort::SessionOptions session_options;
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#else
+  // arena is enabled but the sole initializer will still be allocated from non-arena memory
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+#endif
+
+  // disable using arena for the sole initializer in the model
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "1");
+
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+}

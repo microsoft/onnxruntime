@@ -231,7 +231,7 @@ void* BFCArena::Reserve(size_t size) {
 
   std::lock_guard<OrtMutex> lock(lock_);
 
-  LOGS_DEFAULT(WARNING) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
+  LOGS_DEFAULT(INFO) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
 
   void* ptr = device_allocator_->Alloc(size);
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
