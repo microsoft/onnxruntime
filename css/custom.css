@@ -413,6 +413,7 @@ a .abbr[data-original-title], a abbr[title]{
         border: 1px solid #1a1a1a;
     }
 
+
   .r-wrap.command-block .r-heading::before {
     border-left: none;
   }
@@ -450,7 +451,7 @@ a .abbr[data-original-title], a abbr[title]{
     font-size: 18px;
     margin: 2px 2px;
     border: 1px solid #ccc;
-    background-color: rgb(172, 205, 241);
+    background-color: #fff;
     display: -webkit-box;
     display: -webkit-flex;
     display: -ms-flexbox;
@@ -488,7 +489,8 @@ a .abbr[data-original-title], a abbr[title]{
   }
 
   .r-wrap .r-content .r-option.command-container a{
-    color:  rgb(172, 205, 241);
+    color:  #fff;
+    text-decoration: underline;
 	font-weight: bold;
   }
   .r-wrap .r-content .r-option.command-container{
@@ -502,11 +504,23 @@ a .abbr[data-original-title], a abbr[title]{
 	background-color:#000;
     color: #fff;
   }
+
+  .r-wrap .r-content #command.r-option.valid span, .r-wrap .r-content #command.r-option.valid span:hover,
+  .r-wrap .r-content #ot_command.r-option.valid span, .r-wrap .r-content #ot_command.r-option.valid span:hover {
+	background-color:green;
+  }
+
+  .r-wrap .r-content #command.r-option.invalid span, .r-wrap .r-content #command.r-option.invalid span:hover,
+  .r-wrap .r-content #ot_command.r-option.invalid span, .r-wrap .r-content #ot_command.r-option.invalid span:hover {
+	border: 2px solid #cc0000;
+  }
+
   .r-wrap .r-content .r-option.command-container a.link:hover,
   .r-wrap .r-content .r-option.command-container a.link:focus,
   .r-wrap .r-content .r-option.command-container a.link:active {
-    color: #a0dcf9;
+    color: #000;
 }
+
   .r-wrap .r-content .r-option span:hover {
     background-color:#0F77D2;
     color: #fff;
@@ -517,12 +531,19 @@ a .abbr[data-original-title], a abbr[title]{
     color: #212529;
   }
 
+
+
 .r-wrap .r-content #command.r-option span:hover, .r-wrap .r-content #ot_command.r-option span:hover {
     background-color: #000;
     color: #fff;
     border: 1px solid #ccc;
     cursor: default;
   }
+
+
+
+ 
+
 .col-disable span:hover,
 .col-disable span:focus,
 .col-disable span:active,
