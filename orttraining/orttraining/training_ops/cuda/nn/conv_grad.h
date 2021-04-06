@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/common.h"
-// #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
@@ -50,9 +49,6 @@ class ConvGrad final : public CudaKernel {
   Status ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const;
   Status ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const;
   Status ComputeBiasGradient(Tensor* dB, const Tensor* dY) const;
-
-  //   mutable CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> s_;
-  //   mutable CudnnConvState<cudnnConvolutionBwdFilterAlgoPerf_t> s_;
 };
 
 }  // namespace cuda

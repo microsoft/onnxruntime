@@ -345,8 +345,8 @@ Status CudnnConvolutionDescriptor::Set(
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
   }
 
-  // Revisit: Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
-  // This is setting math_type to CUDNN_DATA_FLOAT for half input
+  // This piece of code is copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // Setting math_type to CUDNN_DATA_FLOAT for half input
   cudnnDataType_t math_type = data_type;
   if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
@@ -366,10 +366,6 @@ Status CudnnConvolutionDescriptor::Set(
   if (data_type == CUDNN_DATA_HALF) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
   }
-  // else if (dataType == CUDNN_DATA_FLOAT && !allow_tf32) {
-  // #if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8000
-  //     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
-  // #endif
 
   return Status::OK();
 }

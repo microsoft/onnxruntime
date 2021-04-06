@@ -6,7 +6,6 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-// #include "core/providers/cuda/tensor/slice.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -51,6 +50,7 @@ cudnnStatus_t getWorkspaceSize(
       sz);
 }
 
+// TODO: we can cache the descriptors, and only update if the input shape changes
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& input, const Tensor& output, const Tensor& weight, const Tensor* bias) const {
   const TensorShape& i_shape = input.Shape();
@@ -142,6 +142,7 @@ template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const {
   if (dW == nullptr) return Status::OK();
 
+  // TODO: implement the algoritm search
   cudnnConvolutionBwdFilterAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdFilterAlgo;
   if (args_.data_type == CUDNN_DATA_HALF) {
@@ -175,6 +176,7 @@ template <typename T>
 Status ConvGrad<T>::ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const {
   if (dX == nullptr) return Status::OK();
 
+  // TODO: implement the algoritm search
   cudnnConvolutionBwdDataAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdDataAlgo;
   if (args_.data_type == CUDNN_DATA_HALF) {
