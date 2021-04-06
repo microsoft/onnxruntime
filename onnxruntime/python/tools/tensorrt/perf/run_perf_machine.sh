@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parse Arguments
-while getopts d:o:m: parameter
+while getopts o:m: parameter
 do case "${parameter}"
 in 
 o) OPTION=${OPTARG};;
@@ -15,12 +15,12 @@ PERF_DIR=/home/hcsuser/perf/
 # Select models to be tested or run selected-models 
 if [ $OPTION == "onnx-zoo-models" ]
 then 
-    MODEL_PATH='model.json'
+    MODEL_PATH='model_list.json'
 fi 
 
 if [ $OPTION == "many-models" ]
 then 
-    MODEL_PATH=/usr/share/mount/many-models
+    MODEL_PATH=/home/hcsuser/mount/many-models
 fi 
 
 if [ $OPTION == "partner-models" ]
