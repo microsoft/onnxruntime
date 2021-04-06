@@ -23,6 +23,14 @@
 
 #include "core/common/make_unique.h"
 
+#if !defined(UNUSED_VARIABLE)
+#if defined(__GNUC__)
+# define UNUSED_VARIABLE __attribute__((unused))
+#else
+# define UNUSED_VARIABLE
+#endif
+#endif
+
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
