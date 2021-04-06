@@ -5,6 +5,7 @@ project (onnxruntime-node)
 set(CMAKE_CXX_STANDARD 14)
 
 add_compile_definitions(NAPI_VERSION=${napi_build_version})
+add_compile_definitions(ORT_API_MANUAL_INIT)
 
 # dist variables
 execute_process(COMMAND node -e "console.log(process.arch)"
