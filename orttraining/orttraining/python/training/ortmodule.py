@@ -18,6 +18,7 @@ import torch
 import inspect
 from inspect import signature
 from enum import IntEnum
+from typing import Iterator, Optional, Tuple
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
@@ -505,3 +506,52 @@ class ORTModule(torch.nn.Module):
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the state_dict() method so that the state dict key names
+        # do not contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+                        strict: bool = True):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the load_state_dict() method so that the loaded state dict
+        # key names does not need to contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.load_state_dict(
+            state_dict, strict=strict)
+
+    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_buffer(name, tensor, persistent=persistent)
+
+    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_parameter(name, param)
+
+    def get_parameter(self, target: str) -> torch.nn.Parameter:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_parameter(target)
+
+    def get_buffer(self, target: str) -> torch.Tensor:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_buffer(target)
+
+    def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.parameters(recurse=recurse)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_parameters(prefix=prefix, recurse=recurse)
+
+    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.buffers(recurse=recurse)
+
+    def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_buffers(prefix=prefix, recurse=recurse)
