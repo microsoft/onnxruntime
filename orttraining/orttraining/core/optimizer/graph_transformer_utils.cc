@@ -117,8 +117,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
       }
-      if (config.propagate_cast_ops) {
-        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(compatible_eps));
+      if (config.propagate_cast_ops_level > 0) {
+        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(config.propagate_cast_ops_level, compatible_eps));
       }
     } break;
 

@@ -3886,7 +3886,7 @@ TEST_F(GraphTransformationTests, PropagateCastOp) {
     ASSERT_STATUS_OK(graph.Resolve());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-        onnxruntime::make_unique<PropagateCastOps>(), TransformerLevel::Level1));
+        onnxruntime::make_unique<PropagateCastOps>(1), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
