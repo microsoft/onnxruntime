@@ -26,6 +26,7 @@ if(had_error)
     message(FATAL_ERROR "Failed to find NPM: " ${had_error})
 endif()
 
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci --ort-skip-build
@@ -33,3 +34,4 @@ add_custom_target(nodejs_binding_wrapper ALL
     WORKING_DIRECTORY ${NODEJS_BINDING_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 add_dependencies(nodejs_binding_wrapper onnxruntime)
+endif()
