@@ -57,3 +57,8 @@ def check_model_correctness(testcase, model_path_origin, model_path_to_check, in
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]
         np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
+
+def check_op_nodes(testcase, model_path, node_checker):
+    model = onnx.load(Path(model_path))
+    for node in model.graph.node:
+        testcase.assertTrue(node_checker(node))
