@@ -42,10 +42,10 @@ static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save
 static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
 
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
-// "0": disable. ORT doesn't do fusion logic for QDQ format.
-// "1": enable. ORT does fusion logic for QDQ format.
-// Its default value is "1"
-static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
+// "0": enable. ORT does fusion logic for QDQ format.
+// "1": disable. ORT doesn't do fusion logic for QDQ format.
+// Its default value is "0"
+static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.

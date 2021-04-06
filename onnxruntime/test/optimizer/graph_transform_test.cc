@@ -359,12 +359,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   // Check DequantizeLinear aren't constant folded for default setting.
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
-  // set SessionOptionsEnableQuantQDQ to enable it explicitly
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "1");
+  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "0");
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
