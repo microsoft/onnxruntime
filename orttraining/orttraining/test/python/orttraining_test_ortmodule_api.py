@@ -271,6 +271,7 @@ def test_forward_call_multiple_positional_arguments_var_keyword():
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    ort_model = ORTModule(model)
 
     # # TODO: remove exception check and uncomment the rest of the test when
     # # PyTorch ONNX exporter supports **kwargs.
