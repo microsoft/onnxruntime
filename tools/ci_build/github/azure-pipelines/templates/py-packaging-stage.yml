@@ -235,17 +235,30 @@ stages:
           # Python39:
           #   PythonVersion: '3.9'
       steps:
-      - task: CmdLine@2
-        inputs:
-          script: |
-            azcopy cp https://onnxruntimepackages.blob.core.windows.net/$web/onnxruntime_nightly.html .
-        displayName: 'get onnxruntime_nightly.html'
 
-      - task: CmdLine@2
+      - task: AzureCLI@2
         inputs:
-          script: |
-            azcopy cp https://onnxruntimepackages.blob.core.windows.net/$web/onnxruntime_nightly.html .
-        displayName: 'upload onnxruntime_nightly.html'
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+          condition: succeededOrFailed()
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html && \
+            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlname="$(basename -- ${files[0]})" && \
+            echo $whlname && \
+            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name $whlname --file ${files[0]} && \
+            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+          condition: succeededOrFailed()
 
       - checkout: self
         clean: true
@@ -326,30 +339,6 @@ stages:
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
           ArtifactName: onnxruntime_gpu
-
-      - task: AzureCLI@2
-        inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
-          condition: succeededOrFailed()
-
-      - task: AzureCLI@2
-        inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html && \
-            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
-            echo ${files[0]} && \
-            whlname="$(basename -- ${files[0]})" && \
-            echo $whlname && \
-            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name $whlname --file ${files[0]} && \
-            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
-          condition: succeededOrFailed()
 
       # - script: |
       #     sudo apt-get update
