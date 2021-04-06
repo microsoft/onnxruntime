@@ -31,6 +31,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -76,6 +77,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<DivMulFusion>());
       rule_transformer->Register(make_unique<EliminateDropout>());
+      rule_transformer->Register(make_unique<NotWhereFusion>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
