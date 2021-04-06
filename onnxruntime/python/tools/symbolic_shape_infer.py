@@ -1106,11 +1106,11 @@ class SymbolicShapeInference:
                                           get_shape_from_sympy_shape(new_sympy_shape)))
 
         # handle sympy_data if needed, for slice in shape computation
-        if node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1:
+        if node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1 and len(steps) == 1:
             input_sympy_data = self.sympy_data_[node.input[0]]
             if type(input_sympy_data) == list or (type(input_sympy_data) == np.array
                                                   and len(input_sympy_data.shape) == 1):
-                self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]]
+                self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]:steps[0]]
 
     def _infer_SoftmaxCrossEntropyLoss(self, node):
         vi = self.known_vi_[node.output[0]]
