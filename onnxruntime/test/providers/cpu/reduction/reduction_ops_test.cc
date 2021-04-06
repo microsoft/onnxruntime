@@ -866,6 +866,23 @@ TEST(ReductionOpTest, EigenSum) {
   ASSERT_EQ(out6, expected);
 }
 
+TEST(ReductionOpTest, ReduceMax_KR_parallel) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {4, 3},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {3.f, 6.f, 9.f, 12.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMax_KR) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -1624,6 +1641,23 @@ TEST(ReductionOpTest, ReduceMin_KR) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMin_KR_parallel) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {4, 3},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {1.f, 4.f, 7.f, 10.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMin_KR_keepdims) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -2129,6 +2163,23 @@ TEST(ReductionOpTest, ReduceSum_KR) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {3}, {10.0f, 26.0f, 42.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_KR_parallel) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {4, 3},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {4}, {6.0f, 15.0f, 24.0f, 33.0f});
   test.Run();
 }
 
