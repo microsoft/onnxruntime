@@ -486,7 +486,8 @@ class ORTModule(torch.nn.Module):
         sample_inputs_copy, sample_kwargs_copy = \
             _ortmodule_io.deepcopy_model_input(
                 *inputs, **kwargs)
-
+        print(sample_inputs_copy)
+        print(sample_kwargs_copy)
         try:
             with torch.no_grad():
                 torch.onnx.export(self._flattened_output_module,
