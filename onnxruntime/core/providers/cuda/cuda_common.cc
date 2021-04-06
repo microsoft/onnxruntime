@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 namespace onnxruntime {
 namespace cuda {

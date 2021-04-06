@@ -115,7 +115,7 @@ bool QkvToContext(
   T zero = (T)(0.f);
 
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  // TODO: for 1D mask, move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
+  // TODO: move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
   T alpha = use_raw_attention_mask ? one : (T)(rsqrt_head_size);
   
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
