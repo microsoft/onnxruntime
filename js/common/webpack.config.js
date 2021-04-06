@@ -13,7 +13,10 @@ function buildConfig({
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: `ort-common${suffix}.js`,
-      libraryTarget: format,
+      library: {
+        name: 'ort',
+        type: format
+      }
     },
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
