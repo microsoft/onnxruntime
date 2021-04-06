@@ -1110,24 +1110,27 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
   };
 
   Task call_worker_fn = [&]() {
-    unsigned my_idx = ++ps.worker_idx;
+    unsigned my_idx = ps.worker_idx++;
     fn(my_idx);
     ps.tasks_finished++;
   };
 
   bool dist_done = false;
+  bool work_done = false;
   Task dist_task = [&] () {
     for (auto i = 1; i < num_threads_; i++) {
       enqueue_fn(i, call_worker_fn, true);
     }
     dist_done = true;
+    fn(ps.worker_idx++);
+    work_done = true;
   };
 
   bool dist_start = enqueue_fn(0, dist_task, false);
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
-  fn(0);
+  fn(ps.worker_idx++);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
   if (dist_start) {
     while (!dist_done) {
@@ -1139,6 +1142,11 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::pt
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
+  if (dist_start) {
+    while (!work_done) {
+      onnxruntime::concurrency::SpinPause();
+    }
+  }
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
