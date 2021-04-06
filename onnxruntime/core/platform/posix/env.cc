@@ -132,7 +132,7 @@ class PosixThread : public EnvThread {
                        new Param{name_prefix, index, start_address, param, thread_options});
     if (s != 0)
       ORT_THROW("pthread_create failed");
-#if !defined(__APPLE__) && !defined(__ANDROID__)
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
     if (!thread_options.affinity.empty()) {
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
