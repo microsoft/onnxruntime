@@ -92,10 +92,6 @@ class GradientGraphBuilder {
     return non_differentiable_y_node_arg_names_;
   }
 
-  const std::unordered_set<std::string>& GetBackwardInputsFromForwardNames() const {
-    return backward_inputs_from_forward_names_;
-  }
-
  private:
   std::unordered_set<const NodeArg*> y_node_args_;
   std::unordered_set<const NodeArg*> x_node_args_;
@@ -127,7 +123,6 @@ class GradientGraphBuilder {
 
   // key: name of the gradient, value: num of gradients pending
   std::unordered_map<std::string, int> pending_;
-  std::unordered_set<std::string> backward_inputs_from_forward_names_;
 
   /**
   Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain

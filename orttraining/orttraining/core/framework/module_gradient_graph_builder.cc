@@ -176,12 +176,7 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
-  /*const std::unordered_set<std::string>& backward_inputs_from_forward = grad_graph_builder.GetBackwardInputsFromForwardNames();
-  for (const auto& input : backward_inputs_from_forward) {
-    if (x_node_arg_names.find(input) == x_node_arg_names.end()) {
-      training_graph_info_.forward_intermediate_tensor_names.emplace_back(input);
-    }
-  }*/
+
   return Status::OK();
 }
 

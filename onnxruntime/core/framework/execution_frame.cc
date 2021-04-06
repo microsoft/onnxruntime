@@ -75,6 +75,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
     p_ort_value = nullptr;
   } else {
+
+    ORT_ENFORCE((ort_value_idx >=0) && (static_cast<size_t>(ort_value_idx) < all_values_size_));
+    
     p_ort_value = &((*all_values_)[ort_value_idx]);
 
     if (p_ort_value->IsAllocated()) {
@@ -135,8 +138,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // 1. resize the all_value_ vector
-  all_values_ = new std::vector<OrtValue>();
-  all_values_->resize(all_values_size_);
+  all_values_ = new PointerWrapper(new std::vector<OrtValue>(), all_values_size_);
+  all_values_->Get()->resize(all_values_size_);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -225,11 +228,13 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   if (take_ort_values) {
-    all_values_ = ort_values;
+    all_values_ = new PointerWrapper(ort_values, all_values_size_);
   } else {
-    all_values_ = new std::vector<OrtValue>();
+    all_values_ = new PointerWrapper(new std::vector<OrtValue>(), all_values_size_);
+
     // 1. resize the all_value_ vector
-    all_values_->resize(all_values_size_);
+    all_values_->Get()->resize(all_values_size_);
+    std::cout<<"\n\nYESSSS..."<<std::flush;
   }
 
   // 2. Handle non-empty output vector
@@ -238,6 +243,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs_[idx];
+      
+      ORT_ENFORCE((ort_value_idx >=0) && (static_cast<size_t>(ort_value_idx) < all_values_size_));
+
       (*all_values_)[ort_value_idx] = fetches[idx];
     }
   }
@@ -280,6 +288,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
       } else {
+        
+        ORT_ENFORCE((ort_value_index >=0) && (static_cast<size_t>(ort_value_index) < all_values_size_));
+
         (*all_values_)[ort_value_index] = entry.second;
       }
     }
@@ -288,6 +299,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   // 4. handle feed in values. these can override initializer values so must be last
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
+    
+    ORT_ENFORCE((ort_value_idx >=0) && (static_cast<size_t>(ort_value_idx) < all_values_size_));
+
     // we are sharing the underline tensor/object for MLValue
     (*all_values_)[ort_value_idx] = feeds[idx];
   }

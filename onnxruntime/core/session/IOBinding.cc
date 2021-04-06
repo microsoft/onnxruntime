@@ -34,7 +34,6 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   if (ml_value.IsTensor()) {
     OrtValue new_mlvalue;
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-    new_mlvalue = ml_value;
     add_or_replace(rc.first, rc.second, new_mlvalue);
   } else {
     add_or_replace(rc.first, rc.second, ml_value);

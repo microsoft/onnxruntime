@@ -450,7 +450,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Done with execution.";
 
 if(program_counter_start_ == 0) {
-  *reinterpret_cast<std::vector<OrtValue>**>(ort_values_) = frame.all_values_;
+  *reinterpret_cast<std::vector<OrtValue>**>(ort_values_) = frame.GetAllOrtValues()->Get();
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -493,7 +493,7 @@ if(program_counter_start_ == 0) {
   }
   
   if(program_counter_start_ != 0) {
-    delete frame.all_values_;
+    delete frame.GetAllOrtValues();
   }
 
   return Status::OK();

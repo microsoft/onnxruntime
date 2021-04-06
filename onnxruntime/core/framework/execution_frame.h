@@ -26,6 +26,29 @@ class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 
+class PointerWrapper {
+ public:
+  PointerWrapper(std::vector<OrtValue>* ptr, size_t size) : ptr_{ptr}, size_{size} {};
+
+  ~PointerWrapper() {
+    delete ptr_;
+  }
+
+  OrtValue& operator[](size_t index) {
+    ORT_ENFORCE(index < size_);
+
+    return (*ptr_)[index];
+  }
+
+  std::vector<OrtValue>* Get() {
+    return ptr_;
+  }
+
+ private:
+  std::vector<OrtValue>* ptr_;
+  size_t size_;
+};
+
 class IExecutionFrame {
  protected:
   // Derived class must call Init in its ctor. We need to use some of the virtual methods in Init and those aren't
@@ -78,9 +101,9 @@ class IExecutionFrame {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
   Status ReleaseMLValue(int ort_value_idx);
-  // All the intermediate values for the entire graph.
-  // Input and Output values are passed in by executors
-  std::vector<OrtValue>* all_values_;
+
+  PointerWrapper* GetAllOrtValues() { return all_values_; }
+
  protected:
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
@@ -113,7 +136,9 @@ class IExecutionFrame {
 
   const NodeIndexInfo& node_index_info_;
 
-
+  // All the intermediate values for the entire graph.
+  // Input and Output values are passed in by executors
+  PointerWrapper* all_values_;
 
   // perf optimization to avoid calling (*all_values_).size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
