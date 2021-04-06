@@ -962,8 +962,7 @@
     [
         "LessOrEqual ai.onnx CPUExecutionProvider",
         8848289292300988248
-    ]
-
+    ],
     [
         "Log ai.onnx CPUExecutionProvider",
         268464912229648680
