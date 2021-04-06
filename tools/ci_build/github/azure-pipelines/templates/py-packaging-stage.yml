@@ -329,7 +329,7 @@ stages:
 
       - task: AzureCLI@2
         inputs:
-          azureSubscription: 'AIInfraBuild'
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
           scriptType: 'bash'
           scriptLocation: 'inlineScript'
           inlineScript: |
@@ -338,7 +338,7 @@ stages:
 
       - task: AzureCLI@2
         inputs:
-          azureSubscription: 'AIInfraBuild'
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
           scriptType: 'bash'
           scriptLocation: 'inlineScript'
           inlineScript: |
