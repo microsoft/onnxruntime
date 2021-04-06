@@ -69,7 +69,6 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
-
   return Status::OK();
 }
 
