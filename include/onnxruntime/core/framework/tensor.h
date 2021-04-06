@@ -87,10 +87,10 @@ class Tensor final {
    * \param shape Shape of the tensor
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
-   * \param allocator Allocator used to free the pre-allocated memory
+   * \param deleter Allocator used to free the pre-allocated memory
    * \param offset Offset in bytes to start of Tensor within p_data. 
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> allocator,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
          ptrdiff_t offset = 0);
 
   ~Tensor();
