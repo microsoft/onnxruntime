@@ -328,26 +328,28 @@ stages:
           ArtifactName: onnxruntime_gpu
 
       - task: AzureCLI@2
-          inputs:
-            azureSubscription: 'AIInfraBuild'
-            scriptType: 'bash'
-            scriptLocation: 'inlineScript'
-            inlineScript: |
-              az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+        inputs:
+          azureSubscription: 'AIInfraBuild'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+          condition: succeededOrFailed()
 
       - task: AzureCLI@2
-          inputs:
-            azureSubscription: 'AIInfraBuild'
-            scriptType: 'bash'
-            scriptLocation: 'inlineScript'
-            inlineScript: |
-              az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html && \
-              files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
-              echo ${files[0]} && \
-              whlname="$(basename -- ${files[0]})" && \
-              echo $whlname && \
-              az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name $whlname --file ${files[0]} && \
-              az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+        inputs:
+          azureSubscription: 'AIInfraBuild'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html && \
+            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlname="$(basename -- ${files[0]})" && \
+            echo $whlname && \
+            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name $whlname --file ${files[0]} && \
+            az storage blob upload --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
+          condition: succeededOrFailed()
 
       # - script: |
       #     sudo apt-get update
