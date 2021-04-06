@@ -1435,7 +1435,45 @@ Example 4:
           "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* DropoutGrad (dy, mask, optional ratio) => dX 
+                 dX = Where (mask, dY / (1-ratio), 0)
+              where ratio = 0.5 if not specified
+            */
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+
+            if (ctx.hasInput(2)) {
+              // ratio specified.
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dY"}, "Div", {"dY", "scale"}},
+                  {{"dX"}, "Where", {"mask", "scaled_dY", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            } else {
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dY"}, "Div", {"dY", "scale"}},
+                  {{"dX"}, "Where", {"mask", "scaled_dY", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            }
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)

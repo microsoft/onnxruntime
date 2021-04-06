@@ -16,6 +16,8 @@
 
 #include "test/framework/test_utils.h"
 
+#define _LOCAL_DEBUG_FLAG_ 1
+
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -175,6 +177,9 @@ struct FunctionTestCase {
 
     if (inline_call) {
       graph.InlineFunction(call_node);
+#if _LOCAL_DEBUG_FLAG_
+      std::cout << graph << std::endl;
+#endif
       status = graph.Resolve();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
@@ -270,6 +275,26 @@ TEST(SoftmaxGradExpansionTest, OpsetTest) {
   auto results2 = onnxruntime::test::Run(*model1, testCase.input_value_map, testCase.output_names);
 
   AssertEqual(results1, results2);
+}
+
+static void InitDropoutGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
+  int64_t size = 1;
+  for (auto dim : shape)
+    size *= dim;
+
+  std::vector<float> value(size);
+  for (int64_t i = 0; i < size; i++)
+    value[i] = float(i)/10.0f;
+
+  testCase.AddInput("dY", shape, value);
+  testCase.AddInput("Y", shape, value);
+  testCase.AddOutput("dX");
+}
+
+TEST(DropoutGradExpansionTest, WithoutRatio) {
+  FunctionTestCase testCase("DropoutGrad");
+  InitDropoutGradTestCase(testCase, {16, 4, 4});
+  testCase.RunTest();
 }
 
 }  // namespace test
