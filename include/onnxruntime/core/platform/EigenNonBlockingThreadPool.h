@@ -1117,12 +1117,15 @@ void RunInParallel(const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn
     }
   };
 
-  bool dist_done = false;
+  std::atomic<bool> dist_done = false;
+  std::atomic<bool> work_done = false;
   Task dist_task = [&]() {
-    for (auto i = 0; i < num_threads_; i++) {
+    for (auto i = 1; i < num_threads_; i++) {
       enqueue_fn(i, worker_dist, true);
     }
-    dist_done = true;
+    dist_done.store(true, std::memory_order_release);
+    worker();
+    work_done.store(true, std::memory_order_release);
   };
 
   bool dist_start = enqueue_fn(0, dist_task, false);
@@ -1132,12 +1135,19 @@ void RunInParallel(const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   if (dist_start) {
-    while (!dist_done) {
+    while (!dist_done.load(std::memory_order_acquire)) {
       onnxruntime::concurrency::SpinPause();
     }
   }
 
   EndParallelSectionInternal(*pt, ps);
+
+  if (dist_start) {
+    while (!work_done.load(std::memory_order_acquire)) {
+      onnxruntime::concurrency::SpinPause();
+    }
+  }
+
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
