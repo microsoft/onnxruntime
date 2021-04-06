@@ -19,13 +19,13 @@ VOLUME=$MACHINE_PERF_DIR:$DOCKER_PERF_DIR
 # Add Remaining Variables
 if [ $OPTION == "onnx-zoo-models" ]
 then 
-    MODEL_PATH=model.json
+    MODEL_PATH=model_list.json
 fi 
 
 if [ $OPTION == "many-models" ]
 then 
     MODEL_PATH=/usr/share/mount/many-models
-    VOLUME=$VOLUME' -v /home/hcsuser/mount/test:/usr/share/mount/many-models'
+    VOLUME=$VOLUME' -v /home/hcsuser/mount/many-models:/usr/share/mount/many-models'
 fi 
 
 if [ $OPTION == "partner-models" ]
