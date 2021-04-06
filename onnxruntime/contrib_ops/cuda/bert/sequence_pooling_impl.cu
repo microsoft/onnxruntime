@@ -92,6 +92,7 @@ bool SequencePooling(
 }
 
 bool LaunchSequencePoolingKernel(
+  cudaStream_t stream,
   void* output,
   const void* input,
   const void* sentence_lengthes,
@@ -100,8 +101,6 @@ bool LaunchSequencePoolingKernel(
   const int num_sequences,
   const int sequence_length_for_split,
   const size_t element_size) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
     return SequencePooling<half>(

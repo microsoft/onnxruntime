@@ -55,6 +55,7 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t element_size = sizeof(T);
   if (!LaunchSequencePoolingKernel(
+          Stream(),
           output_tensor->template MutableData<T>(),
           //masks_tensor->template MutableData<T>(),
           input_tensor->template Data<T>(),

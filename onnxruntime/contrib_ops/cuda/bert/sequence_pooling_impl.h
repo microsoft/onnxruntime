@@ -8,6 +8,7 @@ namespace contrib {
 namespace cuda {
 
 bool LaunchSequencePoolingKernel(
+    cudaStream_t stream,
     void* output,
     //void* masks,
     const void* input,
