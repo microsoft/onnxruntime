@@ -15,10 +15,11 @@ Propagate FP16 Cast operations up the graph and FP32 Cast operations down the gr
 */
 class PropagateCastOps : public GraphTransformer {
 public:
-  PropagateCastOps(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("PropagateCastOps", compatible_execution_providers) {}
+  PropagateCastOps(int level, const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  int level_;
 };
 
 }  // namespace onnxruntime

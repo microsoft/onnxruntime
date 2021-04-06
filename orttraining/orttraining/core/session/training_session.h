@@ -253,7 +253,7 @@ class TrainingSession : public InferenceSession {
       // Number of layers to apply recompute
       int number_recompute_layers{0};
       // Propagate FP16 Cast operations up and FP32 operations down
-      int propagate_cast_ops{false};
+      int propagate_cast_ops_level{0};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};

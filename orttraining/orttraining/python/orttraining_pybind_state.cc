@@ -65,7 +65,9 @@ struct TrainingParameters {
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
   bool enable_adasum = false;
-  bool propagate_cast_ops = false;
+
+  // transformation
+  int propagate_cast_ops_level = 0;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -229,7 +231,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
-  config.graph_transformer_config.propagate_cast_ops = parameters.propagate_cast_ops;
+  config.graph_transformer_config.propagate_cast_ops_level = parameters.propagate_cast_ops_level;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -351,7 +353,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("model_with_gradient_graph_path", &TrainingParameters::model_with_gradient_graph_path)
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
-      .def_readwrite("propagate_cast_ops", &TrainingParameters::propagate_cast_ops);
+      .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -509,7 +511,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("gelu_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("propagate_cast_ops", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops);
+      .def_readwrite("propagate_cast_ops_level", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_level);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",
