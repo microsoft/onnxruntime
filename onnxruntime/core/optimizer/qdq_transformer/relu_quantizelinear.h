@@ -3,22 +3,27 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
 /**
-    @Class ReluQuantTransformer
+    @Class ReluQuantFusion
 
-    Transformer that fuse Relu into followed QuantizeLinear
-    */
-class ReluQuantTransformer : public GraphTransformer {
+    Rewrite rule that fuses Relu into followed QuantizeLinear
+ */
+class ReluQuantFusion : public RewriteRule {
  public:
-  ReluQuantTransformer() noexcept : GraphTransformer("ReluQuantTransformer") {}
+  ReluQuantFusion() noexcept : RewriteRule("ReluQuantRewrite") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Relu"};
+  }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

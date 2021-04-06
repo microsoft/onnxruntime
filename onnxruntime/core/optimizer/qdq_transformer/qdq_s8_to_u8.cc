@@ -23,16 +23,14 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& q_node = *q_node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(q_node, modified, graph_level, logger));
 
-    if (q_node.OpType() != "QuantizeLinear" ||
-        !graph_utils::MatchesOpSetDomain(q_node, kOnnxDomain) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(q_node, "QuantizeLinear", {10, 13}) ||
         !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, q_node, 1)) {
       continue;
     }
 
     Node& dq_node = *graph.GetNode(q_node.OutputNodesBegin()->Index());
-    if (dq_node.OpType() != "DequantizeLinear" ||
-        !graph_utils::MatchesOpSetDomain(dq_node, kOnnxDomain) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) ||
         !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
       continue;
     }

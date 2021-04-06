@@ -70,6 +70,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
       rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
       rules.push_back(onnxruntime::make_unique<ConvBNFusion>());
+      rules.push_back(onnxruntime::make_unique<ReluQuantFusion>());
       break;
 
     case TransformerLevel::Level2:
@@ -139,10 +140,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>());
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
-
-      if (!disable_quant_qdq) {
-        transformers.emplace_back(onnxruntime::make_unique<ReluQuantTransformer>());
-      }
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
