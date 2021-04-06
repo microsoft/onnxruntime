@@ -157,8 +157,11 @@ static bool RemoveBackToBackCasts(Graph& graph, const logging::Logger& logger)
 // SearchUpstream:
 // Recursively traverse the graph upstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP16 Cast operation down the graph.
-static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast, std::unordered_set<NodeArg*>& require_type_change)
+static bool SearchUpstream(Graph& graph, NodeArg* node_arg,
+                           std::unordered_set<NodeArg*>& require_cast,
+                           std::unordered_set<NodeArg*>& require_type_change)
 {
+  bool modified = false;
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
     // The graph inputs don't have the producer nodes
@@ -167,33 +170,40 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, std::unordered_set<N
     }
   } else {
     if (node->OutputDefs().size() > 1) {
-      return;
+      return false;
     }
     std::string op_type = node->OpType();
-    if (op_type == "Cast" && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
-      // This Cast node and the Cast node that will be created later will cancel out
-      require_cast.insert(node_arg);
-    } else if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
+    if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end() &&
         std::find(fp16_safe.begin(), fp16_safe.end(), op_type) == fp16_safe.end()) {
       if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
         require_cast.insert(node_arg);
       }
     } else {
-      require_type_change.insert(node_arg);
       for (NodeArg* node_input : node->MutableInputDefs()) {
-        SearchUpstream(graph, node_input, require_cast, require_type_change);
+        modified |= SearchUpstream(graph, node_input, require_cast, require_type_change);
+      }
+      if (modified) {
+        require_type_change.insert(node_arg);
       }
     }
   }
+  return modified;
 }
 
 // SearchDownstream:
 // Recursively traverse the graph downstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP32 Cast operation up the graph.
-static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set<NodeArg*>& require_cast, std::unordered_set<NodeArg*>& require_type_change)
+static bool SearchDownstream(Graph& graph, NodeArg* node_arg,
+                             std::unordered_set<NodeArg*>& require_cast,
+                             std::unordered_set<NodeArg*>& require_type_change)
 {
+  bool modified = false;
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
+      // If the node has other inputs don't try to propagate
+      if (node->InputDefs().size() > 1) {
+          return false;
+      }
       std::string op_type = node->OpType();
       if (std::find(fp16_allow.begin(), fp16_allow.end(), op_type) == fp16_allow.end()) {
         if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
@@ -201,11 +211,15 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set
         }
       } else {
         for (NodeArg* node_output : node->MutableOutputDefs()) {
-          SearchDownstream(graph, node_output, require_cast, require_type_change);
+          modified |= SearchDownstream(graph, node_output, require_cast, require_type_change);
+        }
+        if (modified) {
+          require_type_change.insert(node_arg);
         }
       }
     }
   }
+  return modified;
 }
 
 // GatherNames collects all the names from the pointers of the objects stores in the container class C
@@ -242,15 +256,19 @@ static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& l
       std::unordered_set<NodeArg*> require_cast;
       std::unordered_set<NodeArg*> require_type_change;
       NodeArg* cast_output = node->MutableOutputDefs()[0];
-      SearchDownstream(graph, cast_output, require_cast, require_type_change);
-      if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
-        // Remove Cast operation
-        VLOGS(logger, 1) << "PropagateForwards: Removed Cast node  " << node->Name();
-        RemoveCastNodes(graph, {node});
-        InsertCastNodes(graph, require_cast, false);
-        ChangeTypeToFP16(require_type_change, logger);
-        VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
-        modified = true;
+      if (SearchDownstream(graph, cast_output, require_cast, require_type_change)) {
+        if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
+          // Remove Cast operation
+          VLOGS(logger, 1) << "PropagateForwards: Removed Cast node  " << node->Name();
+          RemoveCastNodes(graph, {node});
+          InsertCastNodes(graph, require_cast, false);
+          VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes "
+                           << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
+          ChangeTypeToFP16(require_type_change, logger);
+          VLOGS(logger, 1) << "PropagateBackwards: Changed the type from float to float16 : "
+                    << GatherNames<std::unordered_set<NodeArg*>>(require_type_change);
+          modified = true;
+        }
       }
     }
   } else {
@@ -277,18 +295,19 @@ static bool PropagateBackwards(Graph& graph, Node* node, const logging::Logger& 
       std::unordered_set<NodeArg*> require_cast;
       NodeArg* cast_input = node->MutableInputDefs()[0];
       std::unordered_set<NodeArg*> require_type_change;
-      SearchUpstream(graph, cast_input, require_cast, require_type_change);
-      if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
-        // Remove Cast operation
-        VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name();
-        RemoveCastNodes(graph, {node});
-        InsertCastNodes(graph, require_cast, true);
-        ChangeTypeToFP16(require_type_change, logger)
-        VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes "
-                  << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
-        VLOGS(logger, 1) << "PropagateBackwards: Changed the type from float to float16 : "
-                  << GatherNames<std::unordered_set<NodeArg*>>(require_type_change);
-        modified = true;
+      if (SearchUpstream(graph, cast_input, require_cast, require_type_change)) {
+        if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
+          // Remove Cast operation
+          VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name();
+          RemoveCastNodes(graph, {node});
+          InsertCastNodes(graph, require_cast, true);
+          ChangeTypeToFP16(require_type_change, logger);
+          VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes "
+                    << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
+          VLOGS(logger, 1) << "PropagateBackwards: Changed the type from float to float16 : "
+                    << GatherNames<std::unordered_set<NodeArg*>>(require_type_change);
+          modified = true;
+        }
       }
     }
   } else {
