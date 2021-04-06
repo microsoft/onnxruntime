@@ -121,7 +121,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        const nv_bfloat16* B, int ldb,
                                        const nv_bfloat16* beta,
                                        nv_bfloat16* C, int ldc,
-                                       const cudaDeviceProp& prop) {
+                                       const cudaDeviceProp& /*prop*/) {
   float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
   float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
 
@@ -248,8 +248,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               const nv_bfloat16* beta,
                                               nv_bfloat16* Carray[], int ldc,
                                               int batch_count,
-                                              const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+                                              const cudaDeviceProp& /*prop*/) {
   float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
   float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
 
