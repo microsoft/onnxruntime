@@ -1019,22 +1019,24 @@ def run_onnxruntime(args, models):
                     "sequence_length": 1,
                     "datetime": str(datetime.now()),}
                     
-                # get standalone TensorRT perf
-                try: 
-                    if args.track_memory: 
-                            ep = standalone_trt_fp16 if fp16 else standalone_trt
-                            p = start_memory_tracking()            
-                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                            mem_usage = end_memory_tracking(p, True)
-                            if result and mem_usage: 
-                                result["memory"] = mem_usage
+                if trt in ep and args.trtexec:
+                    
+                    # get standalone TensorRT perf
+                    try: 
+                        ep = standalone_trt_fp16 if fp16 else standalone_trt
+                        if args.track_memory: 
+                                p = start_memory_tracking()            
+                                result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                                mem_usage = end_memory_tracking(p, True)
+                                if result and mem_usage: 
+                                    result["memory"] = mem_usage
 
-                    else: 
-                        result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                except Exception as e: 
-                    logger.error(e)
-                    update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
-                    continue
+                        else: 
+                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                    except Exception as e: 
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        continue
 
                 else: 
                     result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
