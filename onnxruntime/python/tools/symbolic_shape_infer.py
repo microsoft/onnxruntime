@@ -133,6 +133,7 @@ class SymbolicShapeInference:
             'Sub': self._infer_symbolic_compute_ops,
             'Tile': self._infer_Tile,
             'TopK': self._infer_TopK,
+            'Transpose': self._infer_Transpose,
             'Unsqueeze': self._infer_Unsqueeze,
             'Where': self._infer_symbolic_compute_ops,
             'ZipMap': self._infer_ZipMap,
@@ -699,6 +700,22 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                               new_shape))
+
+    def _infer_Transpose(self, node):
+        data_shape = self._get_shape(node, 0)
+        vi = self.known_vi_[node.output[0]]
+        perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
+
+        new_sympy_shape = self._get_sympy_shape(node, 0)
+        for i, perm_idx in enumerate(perm):
+            new_sympy_shape[i] = data_shape[perm_idx]
+
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
+                                                  vi.type.tensor_type.elem_type,
+                                                  get_shape_from_sympy_shape(new_sympy_shape)))
+        if node.input[0] in self.sympy_data_:
+            input_data = self.sympy_data_[node.input[0]]
+            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape), axes=tuple(perm)).flatten().tolist()
 
     def _infer_Gather(self, node):
         data_shape = self._get_shape(node, 0)
