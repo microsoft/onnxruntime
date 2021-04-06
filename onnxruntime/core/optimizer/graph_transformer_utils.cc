@@ -125,7 +125,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+  bool disable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
@@ -134,14 +134,15 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level1: {
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, enable_quant_qdq));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, !disable_quant_qdq));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>());
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>());
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
 
-      if (enable_quant_qdq)
+      if (!disable_quant_qdq) {
         transformers.emplace_back(onnxruntime::make_unique<ReluQuantTransformer>());
+      }
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
@@ -164,7 +165,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                            onnxruntime::kAclExecutionProvider,
                                                                            onnxruntime::kArmNNExecutionProvider};
 
-      if (enable_quant_qdq) {
+      if (!disable_quant_qdq) {
         transformers.emplace_back(onnxruntime::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
       }
