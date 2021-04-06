@@ -25,7 +25,7 @@ namespace {
     // This function does not access any of the class-level members, that's why
     // keeping it in a empty namespace, so that it can't be called outside this cpp file.
     
-    void VerifyOutputSizes(const int output_index, const onnxruntime::Node& node,
+    void VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
                                             const onnxruntime::TensorShape* output_shape) {
       onnxruntime::ProtoHelperNodeContext protoContext(node);
       onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
@@ -42,7 +42,7 @@ namespace {
       const auto& tensortype = outputproto->tensor_type();
       if (tensortype.has_shape()) {
         const auto& shape = tensortype.shape();
-        ORT_ENFORCE(shape.dim_size() == output_shape->NumDimensions(),
+        ORT_ENFORCE(shape.dim_size() == int(output_shape->NumDimensions()),
                     "Number of dimension of output shape didn't match with model's expected number of dimension of output shape");
         for (uint32_t output_dim = 0; output_dim < output_shape->NumDimensions(); ++output_dim) {
           if (shape.dim(output_dim).has_dim_value()) {
