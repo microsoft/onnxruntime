@@ -14,8 +14,8 @@ namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int64_t);
-}
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
+}  // namespace op_kernel_type_control
 
 namespace {
 using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,

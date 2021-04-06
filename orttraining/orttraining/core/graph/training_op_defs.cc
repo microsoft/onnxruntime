@@ -473,7 +473,7 @@ void RegisterTrainingOpSchemas() {
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
-      .Output(1, "dW", "Gradient of W", "T")
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
@@ -1332,7 +1332,8 @@ Example 4:
       .Output(1, "per_input_length",
               "Vector of length of each concatenated "
               "input along the 'axis' dimension",
-              "Tint")
+              "Tint",
+              OpSchema::Optional)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -1368,9 +1369,11 @@ Example 4:
           output_shape->add_dim();
         }
 
-        ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
-        per_input_len_shape.add_dim()->set_dim_value(numInputs);
-        updateOutputShape(ctx, 1, per_input_len_shape);
+        if (ctx.getNumOutputs() > 1) {
+          ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+          per_input_len_shape.add_dim()->set_dim_value(numInputs);
+          updateOutputShape(ctx, 1, per_input_len_shape);
+        }
 
         for (size_t i = 0; i < numInputs; i++) {
           const auto& shape = ctx.getInputType(i)->tensor_type().shape();

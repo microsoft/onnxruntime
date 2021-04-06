@@ -4,10 +4,6 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
-#ifdef USE_TENSORRT
-#include <cuda_runtime.h>
-#endif
-
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -302,7 +298,8 @@ struct ProviderHost {
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
 
   // IDataTransfer
-  virtual void IDataTransfer__operator_delete(IDataTransfer* p) = 0;
+  virtual Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) = 0;
+  virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) = 0;
 
   // IndexedSubGraph_MetaDef
   virtual std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() = 0;
@@ -714,14 +711,6 @@ struct DataTransferManager {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
 
   PROVIDER_DISALLOW_ALL(DataTransferManager)
-};
-
-struct IDataTransfer {
-  static void operator delete(void* p) { g_host->IDataTransfer__operator_delete(reinterpret_cast<IDataTransfer*>(p)); }
-
-  IDataTransfer() = delete;
-  IDataTransfer(const IDataTransfer&) = delete;
-  void operator=(const IDataTransfer&) = delete;
 };
 
 struct IndexedSubGraph_MetaDef {

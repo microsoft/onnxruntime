@@ -709,6 +709,10 @@ endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
 if(onnxruntime_PREFER_SYSTEM_LIB)
   find_package(re2)
 endif()
@@ -895,6 +899,7 @@ if (onnxruntime_USE_ARMNN)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  add_definitions(-DUSE_DNNL=1)
   include(dnnl)
 endif()
 
@@ -1137,6 +1142,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
+  elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)  
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()

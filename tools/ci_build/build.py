@@ -10,7 +10,6 @@ import re
 import shutil
 import subprocess
 import sys
-import hashlib
 import platform
 from amd_hipify import amd_hipify
 from distutils.version import LooseVersion
@@ -280,8 +279,12 @@ def parse_arguments():
         choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
         help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
-    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument(
+        "--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
+        help="Path to the Android SDK")
+    parser.add_argument(
+        "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
+        help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
     parser.add_argument("--android_run_emulator", action="store_true",
@@ -565,34 +568,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     dep_packages.append('cerberus')
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
-                    'files.pythonhosted.org'] + dep_packages)
-
-
-# We need to install Torch to test certain functionalities of the ORT Python package
-def install_torch():
-    # Command works for both Windows
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
-                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
-                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
-
-
-def check_md5(filename, expected_md5):
-    if not os.path.exists(filename):
-        return False
-    hash_md5 = hashlib.md5()
-    BLOCKSIZE = 1024 * 64
-    with open(filename, "rb") as f:
-        buf = f.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hash_md5.update(buf)
-            buf = f.read(BLOCKSIZE)
-    hex = hash_md5.hexdigest()
-    if hex != expected_md5:
-        log.info('md5 mismatch, expect %s, got %s' % (expected_md5, hex))
-        os.remove(filename)
-        return False
-    return True
+    run_subprocess([sys.executable, '-m', 'pip', 'install'] + dep_packages)
 
 
 def setup_test_data(build_dir, configs):
@@ -797,8 +773,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
 
     if args.android:
+        if not args.android_ndk_path:
+            raise BuildError("android_ndk_path required to build for Android")
+        if not args.android_sdk_path:
+            raise BuildError("android_sdk_path required to build for Android")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
+                args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -1713,7 +1694,7 @@ def generate_documentation(source_dir, build_dir, configs):
             cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
-        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
+        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
@@ -1728,7 +1709,7 @@ def generate_documentation(source_dir, build_dir, configs):
 
     docdiff = ''
     try:
-        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path], cwd=source_dir)
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:

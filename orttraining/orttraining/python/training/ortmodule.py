@@ -18,6 +18,7 @@ import torch
 import inspect
 from inspect import signature
 from enum import IntEnum
+from typing import Iterator, Optional, Tuple
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
@@ -366,11 +367,8 @@ class ORTModule(torch.nn.Module):
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
-
         if self._save_onnx:
-            onnx.save(self._onnx_inference,
-                      self._save_onnx_prefix + '_inference.onnx')
-
+            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
         self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
@@ -397,6 +395,9 @@ class ORTModule(torch.nn.Module):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._verbosity)
+        # enable dumping optimized training graph
+        if self._save_onnx:
+            session_options.optimized_model_filepath = self._save_onnx_prefix + '_training_optimized.onnx'
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
@@ -412,8 +413,10 @@ class ORTModule(torch.nn.Module):
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
         if self._save_onnx:
-            onnx.save(self._onnx_training,
-                      self._save_onnx_prefix + '_training.onnx')
+            inference_optimized_model = onnx.load_model_from_string(
+                self._module_gradient_graph_builder.get_inference_optimized_model())
+            onnx.save(inference_optimized_model, self._save_onnx_prefix + '_inference_optimized.onnx')
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
         self._flattened_output_module.eval()
@@ -503,3 +506,52 @@ class ORTModule(torch.nn.Module):
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the state_dict() method so that the state dict key names
+        # do not contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+                        strict: bool = True):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the load_state_dict() method so that the loaded state dict
+        # key names does not need to contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.load_state_dict(
+            state_dict, strict=strict)
+
+    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_buffer(name, tensor, persistent=persistent)
+
+    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_parameter(name, param)
+
+    def get_parameter(self, target: str) -> torch.nn.Parameter:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_parameter(target)
+
+    def get_buffer(self, target: str) -> torch.Tensor:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_buffer(target)
+
+    def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.parameters(recurse=recurse)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_parameters(prefix=prefix, recurse=recurse)
+
+    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.buffers(recurse=recurse)
+
+    def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_buffers(prefix=prefix, recurse=recurse)

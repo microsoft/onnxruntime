@@ -14,7 +14,7 @@ python3 /onnxruntime_src/tools/ci_build/op_registration_validator.py
 
 # Run a full build of ORT.
 # We need the ORT python package to generate the ORT format files and the required ops config files.
-# We do not run tests since those are covered by other CIs
+# We do not run tests in this command since those are covered by other CIs.
 python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir /build --cmake_generator Ninja \
     --config Debug \
@@ -22,7 +22,13 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --build_wheel \
     --skip_tests \
+    --enable_training_ops \
     --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+
+# Run kernel def hash verification test
+pushd /build/Debug
+ORT_TEST_STRICT_KERNEL_DEF_HASH_CHECK=1 ./onnxruntime_test_all --gtest_filter="KernelDefHashTest.ExpectedCpuKernelDefHashes"
+popd
 
 # Install the ORT python wheel
 python3 -m pip install --user /build/Debug/dist/*

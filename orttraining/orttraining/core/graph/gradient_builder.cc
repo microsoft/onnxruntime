@@ -711,7 +711,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   std::vector<ArgDef> outputs;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       outputs.push_back(GI(i));
     } else {
