@@ -82,15 +82,17 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     }
   }
 
-  std::string compiled_blob_path;
   if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
-    compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
+    const std::string model_blob_path = ov_compiled_blobs_dir + "/" + model_blob_name;
+    const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
     try {
       if(vpu_status == true) {
         LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
-        exe_network_ = global_context_.ie_core.ImportNetwork(blob_path, hw_target, {});
+        exe_network_ = global_context_.ie_core.ImportNetwork(model_blob_path, hw_target, {});
       } else {
         LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
+        if (compiled_blob_path.empty())
+          throw std::runtime_error("The compiled blob path is not set");
         exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
       }
     } catch (InferenceEngine::details::InferenceEngineException &e) {
