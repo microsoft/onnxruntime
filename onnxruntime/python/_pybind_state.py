@@ -40,6 +40,11 @@ if platform.system() == "Windows":
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
             # specified explicitly using the new API introduced in Python 3.8.
             os.add_dll_directory(cuda_bin_dir)
+            cuda_root = os.path.join(cuda_bin_dir, "..", "..")
+            for root, _, files in os.walk(cuda_root):
+                for f in files:
+                    if f == "cupti.lib":
+                        os.add_dll_directory(root)
         else:
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are

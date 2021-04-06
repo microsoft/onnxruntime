@@ -45,7 +45,7 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
-  virtual ~TrainingSession() {};
+  virtual ~TrainingSession(){};
 
   /**
    * The training configuration options.
@@ -337,6 +337,19 @@ class TrainingSession : public InferenceSession {
   */
   common::Status Save(const PathString& model_uri, SaveOption opt);
 
+  /** Save the model using an external file for initializers larger than the threshold (in bytes).
+  This function is useful to avoid hitting the size limit for protobufs when using large models, in
+  particular after auto-diff.
+  @param model_uri the path for the new model.
+  @param external_file_uri the name for the external initializers file. This is a plain string because
+  it needs to be saved into the onnx protobuf, where wchar is not supported.
+  @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
+  in the external file. Initializer smaller than this threshold are included in the onnx file.
+  */
+  common::Status SaveWithExternalInitializers(const PathString& model_uri,
+                                              const std::string& external_file_name,
+                                              size_t initializer_size_threshold);
+
   /** Update the session initializers with passed-in state tensors
    * @param state_tensors A map of state tensors to set, usually loaded from a checkpoint.
    * @param strict Whether entries in state_tensors which are unknown or not present in the model are treated as an error or ignored.
@@ -475,13 +488,11 @@ class TrainingSession : public InferenceSession {
                                   GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
-                                  const std::vector<std::string>& custom_list = {});
+                                  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list) override;
+                                 TransformerLevel graph_optimization_level) override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
@@ -509,16 +520,16 @@ class TrainingSession : public InferenceSession {
       std::string& loss_name,
       const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
       optional<std::string>& loss_scale_input_name);
-  
+
   virtual common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
@@ -602,14 +613,14 @@ class PipelineTrainingSession final : public TrainingSession {
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
 
   common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
 
   // Set some PipelineContext fields based on configuration result
   // returned by TrainingSession::ConfigureForTraining.

@@ -375,6 +375,24 @@ class Greater final : public OpKernel {
 };
 
 template <typename T>
+class LessOrEqual final : public OpKernel {
+ public:
+  LessOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class GreaterOrEqual final : public OpKernel {
+ public:
+  GreaterOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
 class Mean_6 final : public OpKernel {
  public:
   Mean_6(const OpKernelInfo& info) : OpKernel(info) {

@@ -10,8 +10,9 @@ namespace onnxruntime {
 namespace rocm {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
-constexpr const char* kMemLimit = "hip_mem_limit";
+constexpr const char* kMemLimit = "gpu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
+constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -29,7 +30,8 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
       ProviderOptionsParser{}
           // TODO validate info.device_id
           .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
-          .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.hip_mem_limit)
+          .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
+          .AddAssignmentToReference(rocm::provider_option_names::kConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)
@@ -41,7 +43,8 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
 ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
   const ProviderOptions options{
       {rocm::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
-      {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.hip_mem_limit)},
+      {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
+      {rocm::provider_option_names::kConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
   };

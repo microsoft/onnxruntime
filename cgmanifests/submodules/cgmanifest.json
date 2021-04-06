@@ -242,7 +242,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "237926eab41de21fb9addc4b03b751fd6a3343ec",
+          "commitHash": "fe2433d3dd677ed5c582e194a49a632e707d0543",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -272,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "dc22bb323ece3c65419717be8a0d3d0f318a61fa",
+          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -446,6 +446,16 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        },
+        "comments": "git submodule at cmake/external/dlpack"
       }
     }
   ]

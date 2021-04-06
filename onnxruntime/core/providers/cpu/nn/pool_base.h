@@ -106,7 +106,8 @@ class PoolBase {
 
  protected:
   PoolBase(const OpKernelInfo& info)
-      : op_name_(info.GetKernelDef().OpName()),
+      : op_name_(info.GetKernelDef().OpName().rfind("QLinear", 0) != 0 ?
+                     info.GetKernelDef().OpName() : info.GetKernelDef().OpName().substr(7)),
         pool_attrs_(info, op_name_, GetStartVersion(info)) {
   }
 

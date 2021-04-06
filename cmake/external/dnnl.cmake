@@ -2,7 +2,7 @@ include (ExternalProject)
 
 set(DNNL_URL https://github.com/oneapi-src/onednn)
 # If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.7)
+set(DNNL_TAG v1.8.1)
 
 if(WIN32)
   set(DNNL_SHARED_LIB dnnl.dll)
@@ -15,9 +15,7 @@ else()
   endif()  
 endif()
 
-if(onnxruntime_USE_DNNL AND onnxruntime_ENABLE_TRAINING AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
-  message(FATAL_ERROR "--enable_training not supported with dnnl GPU runtime. Remove '--enable_training' or remove '--dnnl_gpu_runtime'.")
-elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+if(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
   message(FATAL_ERROR "--dnnl_opencl_root required")
 elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
   message(FATAL_ERROR "--dnnl_gpu_runtime required")

@@ -14,12 +14,12 @@ First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inf
 
 ## Limitations
 
-Due to CUDA implementation of Attention kernel, maximum hidden dimension is 4096 for float16 model and 2048 for float32 model in GPU. Normally, maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
+Due to CUDA implementation of Attention kernel, maximum number of attention heads is 1024. Normally, maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
 
 ## Export a transformer model to ONNX
 
 PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
-Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX. 
+Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
 For Keras2onnx, please refer to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
 For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
 
@@ -31,7 +31,7 @@ You can use commands like the following to convert a pre-trained PyTorch GPT-2 m
 ```
 python -m onnxruntime.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
 python -m onnxruntime.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
-python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
+python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p fp32 --optimize_onnx
 ```
 
 The tool will also verify whether the ONNX model and corresponding PyTorch model generate same outputs given same random inputs.
@@ -134,13 +134,13 @@ We tested on Tesla V100-PCIE-16GB GPU (CPU is Intel Xeon(R) E5-2690 v4) for diff
 
 The model has 12 layers and 768 hidden, with input_ids as input.
 
-| engine      | version | precision | b | s=8  | s=16 | s=32 | s=64 | s=128 | s=256 | s=512 | 
-|-------------|---------|-----------|---|------|------|------|------|-------|-------|-------| 
-| torchscript | 1.5.1   | fp32      | 1 | 7.92 | 8.78 | 8.91 | 9.18 | 9.56  | 9.39  | 12.83 | 
-| onnxruntime | 1.4.0   | fp32      | 1 | 1.38 | 1.42 | 1.67 | 2.15 | 3.11  | 5.37  | 10.74 | 
-| onnxruntime | 1.4.0   | fp16      | 1 | 1.30 | 1.29 | 1.31 | 1.33 | 1.45  | 1.95  | 3.36  | 
-| onnxruntime | 1.4.0   | fp32      | 4 | 1.51 | 1.93 | 2.98 | 5.01 | 9.13  | 17.95 | 38.15 | 
-| onnxruntime | 1.4.0   | fp16      | 4 | 1.27 | 1.35 | 1.43 | 1.83 | 2.66  | 4.40  | 9.76  | 
+| engine      | version | precision | b | s=8  | s=16 | s=32 | s=64 | s=128 | s=256 | s=512 |
+|-------------|---------|-----------|---|------|------|------|------|-------|-------|-------|
+| torchscript | 1.5.1   | fp32      | 1 | 7.92 | 8.78 | 8.91 | 9.18 | 9.56  | 9.39  | 12.83 |
+| onnxruntime | 1.4.0   | fp32      | 1 | 1.38 | 1.42 | 1.67 | 2.15 | 3.11  | 5.37  | 10.74 |
+| onnxruntime | 1.4.0   | fp16      | 1 | 1.30 | 1.29 | 1.31 | 1.33 | 1.45  | 1.95  | 3.36  |
+| onnxruntime | 1.4.0   | fp32      | 4 | 1.51 | 1.93 | 2.98 | 5.01 | 9.13  | 17.95 | 38.15 |
+| onnxruntime | 1.4.0   | fp16      | 4 | 1.27 | 1.35 | 1.43 | 1.83 | 2.66  | 4.40  | 9.76  |
 
 [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) is used to get the results.
 
@@ -171,7 +171,7 @@ python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8
 
 ### Benchmark.py
 
-If you use run_benchmark.sh, you need not use benchmark.py directly. You can skip this section if you do not want to know the details. 
+If you use run_benchmark.sh, you need not use benchmark.py directly. You can skip this section if you do not want to know the details.
 
 Below is example to runing benchmark.py on pretrained model bert-base-cased on GPU.
 

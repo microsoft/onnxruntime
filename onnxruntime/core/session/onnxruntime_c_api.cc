@@ -1838,6 +1838,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 }
 #endif
 
+#ifndef USE_ROCM
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(rocm_options);
+  return CreateStatus(ORT_FAIL, "ROCM execution provider is not enabled.");
+}
+#endif
+
 #if defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
                     _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
@@ -1916,7 +1925,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_7 = {
+static constexpr OrtApi ort_api_1_to_8 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2098,6 +2107,7 @@ static constexpr OrtApi ort_api_1_to_7 = {
     &OrtApis::AddInitializer,
     &OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools,
     &OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
+    &OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
     &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
     &OrtApis::SetGlobalDenormalAsZero,
     &OrtApis::CreateArenaCfg,
@@ -2109,6 +2119,10 @@ static constexpr OrtApi ort_api_1_to_7 = {
     &OrtApis::SetCurrentGpuDeviceId,
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 8 - In development, feel free to add/remove/rearrange here
+    &OrtApis::KernelInfoGetAttributeArray_float,
+    &OrtApis::KernelInfoGetAttributeArray_int64,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2117,7 +2131,7 @@ static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "S
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_7;
+    return &ort_api_1_to_8;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);
