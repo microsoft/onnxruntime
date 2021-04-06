@@ -481,16 +481,16 @@ void addObjectMethodsForTraining(py::module& m) {
       .def(py::init([](PyInferenceSession* session) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
       }))
-      .def("run_forward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> std::vector<OrtValue>* {
-        std::vector<OrtValue>* ort_values;
+      .def("run_forward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding) -> void* {
+        void* ort_values;
         Status status = agent->RunForward(run_options, *io_binding.Get(), reinterpret_cast<std::vector<OrtValue>*>(&ort_values));
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
         return ort_values;
       })
-      .def("run_backward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding, std::vector<OrtValue>* ort_values) -> void {
-        Status status = agent->RunBackward(run_options, *io_binding.Get(), ort_values);
+      .def("run_backward", [](TrainingAgent* agent, RunOptions& run_options, SessionIOBinding& io_binding, void* ort_values) -> void {
+        Status status = agent->RunBackward(run_options, *io_binding.Get(), reinterpret_cast<std::vector<OrtValue>*>(ort_values));
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });

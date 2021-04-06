@@ -19,8 +19,9 @@ common::Status TrainingAgent::RunForward(onnxruntime::RunOptions& run_options, o
 }
 
 common::Status TrainingAgent::RunBackward(onnxruntime::RunOptions& run_options, onnxruntime::IOBinding& io_binding, std::vector<OrtValue>* ort_values) {
-  run_options.program_counter_start = inference_session_.GetBreakpointAndEndPoint().first;
-  run_options.program_counter_end = inference_session_.GetBreakpointAndEndPoint().second;
+  auto bp = inference_session_.GetBreakpointAndEndPoint();
+  run_options.program_counter_start = bp.first;
+  run_options.program_counter_end = bp.second;
   return inference_session_.Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                                 &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), ort_values);
 }
