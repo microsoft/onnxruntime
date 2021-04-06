@@ -31,6 +31,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -68,6 +69,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<DivMulFusion>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
+      rules.push_back(onnxruntime::make_unique<NotWhereFusion>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
       rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
