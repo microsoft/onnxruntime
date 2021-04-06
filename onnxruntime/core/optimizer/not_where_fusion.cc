@@ -21,6 +21,22 @@ Condition ->  Not -> Where ->
 Condition -> Where ->
       value1-|  |
       value0----|
+
+It also fuses when not node has multiple where consumer nodes:
+
+Condition ->  Not -> Where ->
+              |    v0-|  |
+              |    v1----|
+              |----> Where ->
+                  v0-|  |
+                  v1----|
+
+Condition -> Where ->
+      |   v1-|  |
+      |   v0----|
+      |----> Where ->
+          v1-|  |
+          v0----|
  */
 bool NotWhereFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Where", {9})) {
@@ -88,7 +104,7 @@ Status NotWhereFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
     const Node* where_input1_node = graph_utils::GetInputNode(where_node, 1);
     const Node* where_input2_node = graph_utils::GetInputNode(where_node, 2);
 
-    int output1_idx, output2_idx;
+    int output1_idx = -1, output2_idx = -1;
     if (where_input1_node) {
       output1_idx = graph_utils::GetNodeOutputIndexFromOutputName(*where_input1_node, where_inputs[1]->Name());
       graph.RemoveEdge(where_input1_node->Index(), where_node.Index(), output1_idx, 1);
