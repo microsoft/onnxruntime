@@ -9,8 +9,6 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
         account_key=account_key
     )
 
-    python_wheel_path = whl_files[0]
-
     blob_name = os.path.basename(python_wheel_path)
     block_blob_service.create_blob_from_path(container_name, blob_name, python_wheel_path)
 
