@@ -150,6 +150,13 @@ OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTI
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
+
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_allocator.h"
+onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
@@ -481,6 +488,54 @@ static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHos
 
 #endif
 
+#ifdef USE_ROCM
+
+static bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+static AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+static void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
+}
+
+static void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
+}
+
+static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
+
 /*
  * Register execution provider with options.
  */
@@ -590,9 +645,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   info.device_id = cuda_device_id;
                   info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }();
 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external CUDA allocator.
+      external_allocator_info = info.external_allocator_info;
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 #endif
@@ -899,6 +959,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                   info.device_id = cuda_device_id;
                   info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }()),
 #endif
@@ -986,9 +1047,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
   });
   // TODO remove deprecated global config
-  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+  m.def("set_gpu_mem_limit", [](const int64_t limit) {
     LogDeprecationWarning(
-        "set_cuda_mem_limit",
+        "set_gpu_mem_limit",
         "CUDA execution provider option \"gpu_mem_limit\", ROCM execution provider option \"gpu_mem_limit\"");
     gpu_mem_limit = gsl::narrow<size_t>(limit);
   });
@@ -1227,6 +1288,15 @@ void addObjectMethods(py::module& m, Environment& env) {
           // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
           // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+#elif USE_ROCM
+          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+          CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
 
 #else
       throw std::runtime_error(
@@ -1342,6 +1412,8 @@ void addObjectMethods(py::module& m, Environment& env) {
 
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+#elif USE_ROCM
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
 #else
     GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
