@@ -695,8 +695,8 @@ TYPED_TEST(PadOpTest, Pad_Constant_DimWithZeroInput) {
 //          as "pads & values" fields have been added as attribute.
 //      In order to fix this test, shape inference methods needs to be fixed.
 
-TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
-  using T = TypeParam;
+//TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
+  //using T = TypeParam;
   //RunAllOpsetAllDomainPadTests<T>({0},  // 1D
   //                                {},
   //                                {1, 1},
@@ -720,7 +720,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
   //                                {2, 4, 0},
   //                                {},
   //                                "edge");
-}
+//}
 
 TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
   using T = TypeParam;
