@@ -15,6 +15,8 @@ namespace cuda {
 
 struct ConvolutionArgs {
   cudnnHandle_t handle;
+  cudnnDataType_t data_type;
+
   CudnnTensor i_desc, o_desc, b_desc;
   CudnnFilterDescriptor w_desc;
   CudnnConvolutionDescriptor c_desc;

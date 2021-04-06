@@ -19,6 +19,8 @@ from inspect import signature
 from onnxruntime.training import _utils, ORTModule
 import _test_helpers
 
+# Import autocasting libs
+from torch.cuda import amp
 
 # PyTorch model definitions for tests
 
@@ -507,7 +509,8 @@ def test_gradient_correctness():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
-def test_gradient_correctness_conv1d():
+@pytest.mark.parametrize("use_fp16", [False, True])
+def test_gradient_correctness_conv1d(use_fp16):
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super(NeuralNetConv1D, self).__init__()
@@ -525,8 +528,9 @@ def test_gradient_correctness_conv1d():
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
-        prediction = model(x)
-        loss = prediction.sum()
+        with amp.autocast(use_fp16):
+            prediction = model(x)
+            loss = prediction.sum()
         loss.backward()
         return prediction
 
@@ -535,8 +539,12 @@ def test_gradient_correctness_conv1d():
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
         
-        assert torch.allclose(ort_prediction, pt_prediction, atol=1e-5)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-3, atol=1e-3)
+        if use_fp16:
+            assert torch.allclose(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1e-2)
+        else:
+            assert torch.allclose(ort_prediction, pt_prediction, atol=1e-5)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-3, atol=1e-3)
 
 def test_module_with_non_differential_output():
     device = 'cuda'

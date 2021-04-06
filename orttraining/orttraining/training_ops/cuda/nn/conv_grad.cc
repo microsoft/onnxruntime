@@ -98,19 +98,20 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& input, const Tensor& output, const
   }
 
   args_.handle = CudnnHandle();
-  ORT_RETURN_IF_ERROR(args_.i_desc.Set(i_dims, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(args_.o_desc.Set(o_dims, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+  args_.data_type = CudnnTensor::GetDataType<CudaT>();
+  ORT_RETURN_IF_ERROR(args_.i_desc.Set(i_dims, args_.data_type));
+  ORT_RETURN_IF_ERROR(args_.o_desc.Set(o_dims, args_.data_type));
+  ORT_RETURN_IF_ERROR(args_.w_desc.Set(w_dims, args_.data_type));
   ORT_RETURN_IF_ERROR(args_.c_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                        gsl::narrow_cast<int>(conv_attrs_.group),
-                                       CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
+                                       CUDNN_CROSS_CORRELATION, args_.data_type));
 
   if (bias) {
     const TensorShape& b_shape = bias->Shape();
     ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
     std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
     b_dims[1] = b_shape[0];
-    ORT_RETURN_IF_ERROR(args_.b_desc.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(args_.b_desc.Set(b_dims, args_.data_type));
   }
 
   return Status::OK();
@@ -143,8 +144,13 @@ Status ConvGrad<T>::ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Te
 
   cudnnConvolutionBwdFilterAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdFilterAlgo;
+  if (args_.data_type == CUDNN_DATA_HALF) {
+    perf.mathType = CUDNN_TENSOR_OP_MATH;
+  } else {
+    perf.mathType = CUDNN_DEFAULT_MATH;
+  }
   CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
-  // CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
 
   void* dw_data = dW->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
@@ -171,8 +177,13 @@ Status ConvGrad<T>::ComputeInputGradient(Tensor* dX, const Tensor* dY, const Ten
 
   cudnnConvolutionBwdDataAlgoPerf_t perf;
   perf.algo = kDefaultConvBwdDataAlgo;
+  if (args_.data_type == CUDNN_DATA_HALF) {
+    perf.mathType = CUDNN_TENSOR_OP_MATH;
+  } else {
+    perf.mathType = CUDNN_DEFAULT_MATH;
+  }
   CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
-  // CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
 
   void* dx_data = dX->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
