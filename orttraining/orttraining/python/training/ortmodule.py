@@ -71,22 +71,22 @@ def _check_same_device(device, argument_str, *args):
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
+def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
+    gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
+    gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
+    torch_gpu_allocator_addresses_cpp_source = f"#include <torch/extension.h>\n" \
+    f"#include <c10/{gpu_identifier}/{gpu_allocator_header}.h>\n" \
+    f"size_t gpu_caching_allocator_raw_alloc_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);\n" \
+    f"}}\n" \
+    f"size_t gpu_caching_allocator_raw_delete_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);\n" \
+    f"}}\n"
 
-def _load_torch_allocator_cpp_extension(verbosity):
-    torch_cuda_allocator_addresses_cpp_source = """
-    #include <torch/extension.h>
-    #include <c10/cuda/CUDACachingAllocator.h>
-    size_t cuda_caching_allocator_raw_alloc_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
-    }
-    size_t cuda_caching_allocator_raw_delete_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
-    }
-    """
-
-    return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
-                       functions=['cuda_caching_allocator_raw_alloc_address',
-                                  'cuda_caching_allocator_raw_delete_address'],
+    return load_inline(name='inline_extension', cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
+                       extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
+                       functions=['gpu_caching_allocator_raw_alloc_address',
+                                  'gpu_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
 
@@ -334,15 +334,12 @@ class ORTModule(torch.nn.Module):
         self.is_rocm_pytorch = (True if (
             (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        # CPP extension to get torch CUDA allocator's alloc and free function addresses
-        # Disable external allocator for ROCM EP since external allocator is not supported yet.
-        self._use_external_cuda_allocator = (
-            False if self.is_rocm_pytorch else True)
-        if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension(
-                self._verbosity)
-            self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
-            self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+        self._use_external_gpu_allocator = True
+        if self._use_external_gpu_allocator:
+            # CPP extension to get torch GPU allocator's alloc and free function addresses
+            self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
+            self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
     def _is_training(self):
         return self._flattened_output_module.training and torch.is_grad_enabled()
@@ -379,9 +376,9 @@ class ORTModule(torch.nn.Module):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
-            if self._use_external_cuda_allocator:
-                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
-                    self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+            if self._use_external_gpu_allocator:
+                provider_options = [{"device_id": str(self._device.index), "gpu_external_alloc": str(
+                    self._torch_alloc), "gpu_external_free": str(self._torch_free)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
