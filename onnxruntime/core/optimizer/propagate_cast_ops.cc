@@ -201,7 +201,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg, std::unordered_set
         }
       } else {
         for (NodeArg* node_output : node->MutableOutputDefs()) {
-          SearchDownstream(graph, node_output, require_cast);
+          SearchDownstream(graph, node_output, require_cast, require_type_change);
         }
       }
     }
@@ -252,34 +252,6 @@ static bool PropagateForwards(Graph& graph, Node* node, const logging::Logger& l
         VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
         modified = true;
       }
-    }
-  } else if (std::find(fp16_safe.begin(), fp16_safe.end(), node->OpType()) != fp16_safe.end()) {
-    bool all_inputs_have_casts = true;
-    std::vector<NodeArg*>& inputs = node->MutableInputDefs();
-    for (NodeArg* input : inputs) {
-      Node* producer = graph.GetMutableProducerNode(input->Name());
-      if (producer && producer->OpType() == "Cast") {
-        const NodeAttributes& attributes = producer->GetAttributes();
-        ORT_ENFORCE(attributes.find("to") != attributes.end());
-        if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT)) {
-          continue;
-        }
-      }
-      all_inputs_have_casts = false;
-      break;
-    }
-    if (all_inputs_have_casts) {
-      VLOGS(logger, 1) << "PropagateForwards: Removed Cast nodes producing"
-                       << GatherNames<std::vector<NodeArg*>>(inputs)
-                       << " feeding the same compute node " << node->Name();
-      for (NodeArg* input : inputs) {
-        Node* producer = graph.GetMutableProducerNode(input->Name());
-        RemoveCastNodes(graph, {producer});
-      }
-      NodeArg* node_arg = node->MutableOutputDefs()[0];
-      InsertCastNodes(graph, {node_arg}, false);
-      VLOGS(logger, 1) << "PropagateForwards: Inserted Cast node to " << node_arg->Name();
-      modified = true;
     }
   } else {
     for (NodeArg* output: node->MutableOutputDefs()) {
@@ -405,6 +377,110 @@ static bool RemoveUnnecessaryCasts(Graph& graph, const logging::Logger& logger)
   }
   return modified;
 }
+// PropagateFP32CastsFromInputsToOutputs
+// This non recursive fusion, checks whether the given node is fp16 safe op and 
+// whether all non-floatingpoint inputs are cast to fp32
+// and propagates cast op to the non-floatingpoint outputs.
+static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node, const logging::Logger& logger)
+{
+  bool modified = false;
+  if (std::find(fp16_safe.begin(), fp16_safe.end(), node->OpType()) != fp16_safe.end()) {
+    bool has_float_inputs = false;
+    bool all_float_inputs_have_casts = true;
+    std::vector<Node*> casts;
+    std::unordered_set<NodeArg*> require_type_change;
+    for (NodeArg* input : node->MutableInputDefs()) {
+      if (input->TypeAsProto()->tensor_type().elem_type() != TensorProto::FLOAT) {
+        continue;
+      }
+      has_float_inputs = true;
+      Node* producer = graph.GetMutableProducerNode(input->Name());
+      if (producer && producer->OpType() == "Cast") {
+        const NodeAttributes& attributes = producer->GetAttributes();
+        ORT_ENFORCE(attributes.find("to") != attributes.end());
+        if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT)) {
+          casts.push_back(producer);
+          require_type_change.insert(input);
+          continue;
+        }
+      }
+      all_float_inputs_have_casts = false;
+      break;
+    }
+    if (has_float_inputs && all_float_inputs_have_casts && casts.size() > 0) {
+      VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Removed Cast nodes "
+                       << GatherNames<std::vector<Node*>>(casts)
+                       << " feeding the same compute node " << node->Name();
+      RemoveCastNodes(graph, casts);
+      std::unordered_set<NodeArg*> node_args;
+      for (NodeArg* output : node->MutableOutputDefs()) {
+        if (output->Exists() && output->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+          node_args.insert(output);
+        }
+      }
+      InsertCastNodes(graph, node_args, false);
+      ChangeTypeToFP16(require_type_change, logger);
+      VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Inserted Cast node to " 
+                       << GatherNames(node_args);
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+// PropagateFP16CastsFromOutputsToInputs
+// This non recursive fusion, checks whether the given node is fp16 safe op and 
+// whether all non-floatingpoint outputs are cast to fp16
+// and propagates cast op to the non-floatingpoint inputs.
+static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node, const logging::Logger& logger)
+{
+  bool modified = false;
+  if (std::find(fp16_safe.begin(), fp16_safe.end(), node->OpType()) != fp16_safe.end()) {
+    bool has_float_outputs = false;
+    bool all_float_outputs_have_casts = true;
+    std::vector<Node*> casts; // Cast nodes to propagate.
+    std::vector<NodeArg*>& outputs = node->MutableOutputDefs();
+    std::unordered_set<NodeArg*> require_type_change;
+    for (auto iter = outputs.begin(); iter != outputs.end() && all_float_outputs_have_casts; ++iter) {
+      NodeArg* output = *iter;
+      if (output->TypeAsProto()->tensor_type().elem_type() != TensorProto::FLOAT) {
+        continue;
+      }
+      has_float_outputs = true;
+      std::vector<Node*> consumers = graph.GetMutableConsumerNodes(output->Name());
+      for (auto node_iter = consumers.begin(); node_iter != consumers.end() && all_float_outputs_have_casts; ++node_iter) {
+        Node* consumer = *node_iter;
+        if (consumer && consumer->OpType() == "Cast") {
+          const NodeAttributes& attributes = consumer->GetAttributes();
+          ORT_ENFORCE(attributes.find("to") != attributes.end());
+          if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16)) {
+            casts.push_back(consumer);
+            continue;
+          }
+        }
+        all_float_outputs_have_casts = false;
+      }
+      require_type_change.insert(output);
+    }
+    if (has_float_outputs && all_float_outputs_have_casts && casts.size() > 0 ) {
+      VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Removed Cast nodes "
+                       << GatherNames<std::vector<Node*>>(casts)
+                       << " feeding the same compute node " << node->Name();
+      RemoveCastNodes(graph, casts);
+      std::unordered_set<NodeArg*> node_args;
+      for (NodeArg* input : node->MutableInputDefs()) {
+        if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+          node_args.insert(input);
+        }
+      }
+      InsertCastNodes(graph, node_args, true);
+      ChangeTypeToFP16(require_type_change, logger);
+      VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Inserted Cast node to " << GatherNames(node_args);
+      modified = true;
+    }
+  }
+  return modified;
+}
 
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(graph_level);
@@ -431,6 +507,16 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
     // Propagate FP16 Casts backward
     for (Node& node : graph.Nodes()) {
       local_modified |= PropagateBackwards(graph, &node, logger);
+    }
+
+    // Propagate FP16 Casts from outputs to inputs
+    for (Node& node : graph.Nodes()) {
+      local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, &node, logger);
+    }
+
+    // Propagate FP32 Casts from inputs to outputs
+    for (Node& node : graph.Nodes()) {
+      local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, &node, logger);
     }
 
     modified |= local_modified;
