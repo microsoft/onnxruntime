@@ -564,7 +564,20 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node, cons
 // 2. Propagate fp32 casts forwards
 // 3. Propagate fp16 casts back
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(graph_level);
+  // First apply the transformation to the subgraphs.
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto node_index : node_topology_list) {
+    auto* node_ptr = graph.GetNode(node_index);
+    if (nullptr == node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
+
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+  }
+
   bool local_modified = false;
   do {
     if (local_modified) {
