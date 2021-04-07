@@ -102,6 +102,8 @@ Abstract:
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 #include "core/platform/threadpool.h"
+#else
+#include  <functional>
 #endif
 
 #if defined(_OPENMP)
@@ -766,6 +768,21 @@ MlasExecuteThreaded(
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+/**
+ * @brief Distribute multiple iteration of work over a thread pool if supported
+ * 
+ * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
+ * @param Iterations [IN]          Total number of iterations
+ * @param CostOfCyclePerIter [IN]  Estimated cost of cycles per iteration
+ * @param Work [IN]                Logic for computing a range of iterations [begin, end)
+ */
+void
+MlasTryParallel(
+    MLAS_THREADPOOL* ThreadPool,
+    const std::ptrdiff_t Iterations,
+    const double CostOfCyclePerIter,
+    const std::function<void(std::ptrdiff_t begin, std::ptrdiff_t end)>& Work);
 
 inline
 ptrdiff_t

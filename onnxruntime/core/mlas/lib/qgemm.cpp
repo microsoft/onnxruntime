@@ -21,15 +21,11 @@ Abstract:
 // Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_PARAMETERS {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS Shape;
-    MLAS_GEMM_U8X8_DATA_PARAMS Data;
-};
-
 typedef
 void
 (MLAS_GEMM_U8X8_OPERATION)(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -226,7 +222,8 @@ MlasGemmU8X8Kernel(
 template<typename KernelType>
 void
 MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -241,7 +238,9 @@ Routine Description:
 
 Arguments:
 
-    Parameters - Supplies the structure containing the GEMM parameters.
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
 
     RangeStartM - Supplies the starting row index to output.
 
@@ -266,20 +265,20 @@ Return Value:
     MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
     MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
 
-    const size_t K = Parameters->Shape.K;
+    const size_t K = Shape->K;
 
-    const size_t lda = Parameters->Data.lda;
-    const size_t ldb = Parameters->Data.ldb;
-    const size_t ldc = Parameters->Data.ldc;
+    const size_t lda = Data->lda;
+    const size_t ldb = Data->ldb;
+    const size_t ldc = Data->ldc;
 
-    const uint8_t* A = Parameters->Data.A + RangeStartM * lda;
-    const uint8_t* B = (const uint8_t*)Parameters->Data.B + RangeStartN;
-    int32_t* C = Parameters->Data.C + RangeStartM * ldc + RangeStartN;
-    const uint8_t* PackedZeroPointB = Parameters->Data.PerColumnZeroPoints ?
-        Parameters->Data.ZeroPointB + RangeStartN : nullptr;
+    const uint8_t* A = Data->A + RangeStartM * lda;
+    const uint8_t* B = (const uint8_t*)Data->B + RangeStartN;
+    int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
+    const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
+        Data->ZeroPointB + RangeStartN : nullptr;
 
-    int32_t ZeroPointA = Parameters->Data.ZeroPointA;
-    int32_t ZeroPointB = typename KernelType::OffsetBType(*Parameters->Data.ZeroPointB);
+    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
     // Try to use a GEMV kernel if supported by this kernel type.
@@ -287,8 +286,8 @@ Return Value:
 
     if ((RangeCountM == 1) &&
         (ZeroPointA == 0) && (PackedZeroPointB == nullptr) && (ZeroPointB == 0) &&
-        (Parameters->Data.OutputProcessor == nullptr)) {
-        if (MlasGemmU8X8TryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Parameters->Shape.BIsSigned)) {
+        (Data->OutputProcessor == nullptr)) {
+        if (MlasGemmU8X8TryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->BIsSigned)) {
             return;
         }
     }
@@ -299,7 +298,7 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Parameters->Shape.BIsSigned);
+    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -333,7 +332,7 @@ Return Value:
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
-                    Parameters->Shape.BIsSigned);
+                    Shape->BIsSigned);
             }
 
             //
@@ -347,7 +346,7 @@ Return Value:
                 CountN,
                 CountK,
                 ColumnSumBuffer,
-                Parameters->Shape.BIsSigned);
+                Shape->BIsSigned);
 
             MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
 
@@ -423,14 +422,14 @@ Return Value:
                         (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
                         ZeroMode);
 
-                    if (PostProcess && Parameters->Data.OutputProcessor != nullptr) {
-                        Parameters->Data.OutputProcessor->Process(
-                            Parameters->Data.C,
+                    if (PostProcess && Data->OutputProcessor != nullptr) {
+                        Data->OutputProcessor->Process(
+                            Data->C,
                             RangeStartM + m + CountM - RowsRemaining,
                             RangeStartN + n,
                             RowsHandled,
                             CountN,
-                            Parameters->Data.ldc);
+                            Data->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -449,7 +448,8 @@ Return Value:
 template<typename KernelType>
 void
 MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -464,7 +464,9 @@ Routine Description:
 
 Arguments:
 
-    Parameters - Supplies the structure containing the GEMM parameters.
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
 
     RangeStartM - Supplies the starting row index to output.
 
@@ -488,19 +490,19 @@ Return Value:
     MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
     MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
 
-    const size_t K = Parameters->Shape.K;
+    const size_t K = Shape->K;
 
-    const size_t lda = Parameters->Data.lda;
-    const size_t ldc = Parameters->Data.ldc;
+    const size_t lda = Data->lda;
+    const size_t ldc = Data->ldc;
 
-    const uint8_t* A = Parameters->Data.A + RangeStartM * lda;
-    const uint8_t* PackedB = (const uint8_t*)Parameters->Data.B;
-    int32_t* C = Parameters->Data.C + RangeStartM * ldc + RangeStartN;
-    const uint8_t* PackedZeroPointB = Parameters->Data.PerColumnZeroPoints ?
-        Parameters->Data.ZeroPointB + RangeStartN : nullptr;
+    const uint8_t* A = Data->A + RangeStartM * lda;
+    const uint8_t* PackedB = (const uint8_t*)Data->B;
+    int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
+    const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
+        Data->ZeroPointB + RangeStartN : nullptr;
 
-    int32_t ZeroPointA = Parameters->Data.ZeroPointA;
-    int32_t ZeroPointB = typename KernelType::OffsetBType(*Parameters->Data.ZeroPointB);
+    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -508,14 +510,14 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Parameters->Shape.BIsSigned);
+    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
     //
 
     const size_t AlignedN =
-        (Parameters->Shape.N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+        (Shape->N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
     const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
     PackedB = (const uint8_t*)(PackedColumnSumBuffer + AlignedN);
     PackedColumnSumBuffer += RangeStartN;
@@ -561,7 +563,7 @@ Return Value:
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
-                    Parameters->Shape.BIsSigned);
+                    Shape->BIsSigned);
             }
 
             //
@@ -638,14 +640,14 @@ Return Value:
                         (PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
                         ZeroMode);
 
-                    if (PostProcess && Parameters->Data.OutputProcessor != nullptr) {
-                        Parameters->Data.OutputProcessor->Process(
-                            Parameters->Data.C,
+                    if (PostProcess && Data->OutputProcessor != nullptr) {
+                        Data->OutputProcessor->Process(
+                            Data->C,
                             RangeStartM + m + CountM - RowsRemaining,
                             RangeStartN + n,
                             RowsHandled,
                             CountN,
-                            Parameters->Data.ldc);
+                            Data->ldc);
                     }
 
                     c += ldc * RowsHandled;
@@ -2667,28 +2669,37 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
  * Utility in paritioning matrix mul, output stide size
  * in M and N dimensions
  */
-inline void MlasGemmU8X82DStride(
-    size_t M, size_t N, size_t K,
+MLAS_FORCEINLINE
+void
+MlasGemmU8X82DStride(
+    size_t M,
+    size_t N,
+    size_t K,
     const MLAS_GEMM_U8X8_DISPATCH* dispatch,
-    ptrdiff_t& ThreadStrideM, ptrdiff_t& ThreadStrideN,
-    ptrdiff_t& ThreadCountM, ptrdiff_t& ThreadCountN)
+    ptrdiff_t& ThreadStrideM,
+    ptrdiff_t& ThreadStrideN,
+    ptrdiff_t& ThreadCountM,
+    ptrdiff_t& ThreadCountN)
 {
-  ThreadStrideM = dispatch->ThreadStrideM;
-  ThreadStrideN = dispatch->ThreadStrideN;
+    ThreadStrideM = dispatch->ThreadStrideM;
+    ThreadStrideN = dispatch->ThreadStrideN;
 
-  // TODO stride N must be multiple of 16 due to packing logic
-  // need a way to ensure this.
+    // TODO stride N must be multiple of 16 due to packing logic
+    // need a way to ensure this.
 
-  //
-  // ensure we have a big enough block in case K is too small
-  //
-  ptrdiff_t multipler = MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN* K) + 1;
-  ThreadStrideN = std::min(ptrdiff_t(N), ThreadStrideN * multipler);
-  multipler = MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN * K) + 1;
-  ThreadStrideM = std::min(ptrdiff_t(M), ThreadStrideM * multipler);
+    //
+    // ensure we have a big enough block in case K is too small
+    //
+    ptrdiff_t multipler =
+        MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN * K) + 1;
+    ThreadStrideN = std::min(ptrdiff_t(N), ThreadStrideN * multipler);
 
-  ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
-  ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
+    multipler = 
+        MLAS_QGEMM_THREAD_COMPLEXITY / (ThreadStrideM * ThreadStrideN * K) + 1;
+    ThreadStrideM = std::min(ptrdiff_t(M), ThreadStrideM * multipler);
+
+    ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
+    ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
 }
 
 /**
@@ -2697,28 +2708,36 @@ inline void MlasGemmU8X82DStride(
  * @param [IN]  M 
  * @param [IN]  N 
  * @param [IN]  K 
- * @param [IN}  BIsSigned          Whether B matrix is int_8
+ * @param [IN]  BIsSigned          Whether B matrix is int_8
  * @param [OUT] TargetThreadCount  Total number of segments to run in parallel
  * @param [OUT] CostInCycles       Estimated execution cost for each segment
 */
-inline void MlasGemmSegWork(size_t M, size_t N, size_t K, bool BIsSigned,
-                     ptrdiff_t& TargetThreadCount, double& CostInCycles)
+MLAS_FORCEINLINE
+void
+MlasGemmSegWork(
+    size_t M,
+    size_t N,
+    size_t K,
+    bool BIsSigned,
+    ptrdiff_t& TargetThreadCount,
+    double& CostInCycles)
 {
-  const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
-  ptrdiff_t StrideM;
-  ptrdiff_t StrideN;
-  ptrdiff_t ThreadCountM;
-  ptrdiff_t ThreadCountN;
-  MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch, StrideM, StrideN, ThreadCountM, ThreadCountN);
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    ptrdiff_t StrideM;
+    ptrdiff_t StrideN;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
+    MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch, StrideM, StrideN, ThreadCountM, ThreadCountN);
 
-  TargetThreadCount = ThreadCountM * ThreadCountN;
-  CostInCycles = double(StrideM) * double(StrideN) * double(K);
+    TargetThreadCount = ThreadCountM * ThreadCountN;
+    CostInCycles = double(StrideM) * double(StrideN) * double(K);
 }
 
 
 void
 MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
     )
 /*++
@@ -2730,7 +2749,9 @@ Routine Description:
 
 Arguments:
 
-    Context - Supplies the pointer to the context for the threaded operation.
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
 
     ThreadId - Supplies the current index of the threaded operation.
 
@@ -2740,11 +2761,11 @@ Return Value:
 
 --*/
 {
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Parameters->Shape.BIsSigned);
+    const auto *GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
 
-    const size_t M = Parameters->Shape.M;
-    const size_t N = Parameters->Shape.N;
-    const size_t K = Parameters->Shape.K;
+    const size_t M = Shape->M;
+    const size_t N = Shape->N;
+    const size_t K = Shape->K;
 
     //
     // Partition the operation
@@ -2772,21 +2793,22 @@ Return Value:
 
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
-    if (Parameters->Data.BIsPacked) {
+    if (Data->BIsPacked) {
         GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
     } else {
         GemmU8X8Operation = GemmU8X8Dispatch->Operation;
     }
 
-    GemmU8X8Operation(Parameters, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
 
 
 void
 MLASCALL
-MlasGemm(const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-         const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
-         MLAS_THREADPOOL* ThreadPool)
+MlasGemm(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS &Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS &DataParams,
+    MLAS_THREADPOOL *ThreadPool)
 /*++
 
 Routine Description:
@@ -2796,7 +2818,9 @@ Routine Description:
 
 Arguments:
 
-    Parameters - Supplies the structure containing the GEMM parameters.
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
@@ -2807,39 +2831,36 @@ Return Value:
 
 --*/
 {
-  MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
 
 void
 MLASCALL
-MlasGemmBatch(const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-              const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
-              const size_t BatchN,
-              MLAS_THREADPOOL* ThreadPool) {
-  const size_t M = Shape.M;
-  const size_t N = Shape.N;
-  const size_t K = Shape.K;
+MlasGemmBatch(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool)
+{
+    // Segment the work for parallelization. This is a two dimentional work
+    // partition. The idea is to generate a group of not-too-small work
+    // chunks and let the thread pool load balance them
 
-  // Segment the work for parallelization. This is a two dimentional work partition.
-  // The idea is to generate a group of not-too-small work chunks and let the thread
-  // pool load balance them
+    std::ptrdiff_t BlksPerGemm;
+    double cost;
+    MlasGemmSegWork(Shape.M, Shape.N, Shape.K, Shape.BIsSigned,
+        BlksPerGemm, cost);
 
-  std::ptrdiff_t BlksPerGemm;
-  double cost;
-  MlasGemmSegWork(M, N, K, Shape.BIsSigned, BlksPerGemm, cost);
-
-  MLAS_THREADPOOL::TryParallelFor(
-      ThreadPool, BlksPerGemm * BatchN, cost,
-      [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-        for (auto idx = begin; idx < end; idx++) {
-          const auto gemm_i = idx / BlksPerGemm;
-          const auto blk_i = idx % BlksPerGemm;
-          struct MLAS_GEMM_U8X8_PARAMETERS params;
-          params.Data = DataParams[gemm_i];
-          params.Shape = Shape;
-          MlasGemmU8X8Threaded(&params, blk_i);
-        }
-      });
+    MlasTryParallel(
+        ThreadPool, BlksPerGemm * BatchN, cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end)
+        {
+            for (auto idx = begin; idx < end; idx++) {
+                const auto gemm_i = idx / BlksPerGemm;
+                const auto blk_i = idx % BlksPerGemm;
+                MlasGemmU8X8Threaded(&Shape, &DataParams[gemm_i], blk_i);
+            }
+        });
 }
 
 

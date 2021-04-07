@@ -59,3 +59,51 @@ MlasExecuteThreaded(
     });
 #endif
 }
+
+
+void
+MlasTryParallel(
+    MLAS_THREADPOOL * ThreadPool,
+    const std::ptrdiff_t Iterations,
+    const double CostOfCyclePerIter,
+    const std::function<void(std::ptrdiff_t begin, std::ptrdiff_t end)>& Work)
+{
+    //
+    // Execute the routine directly if only one iteration is specified.
+    //
+    if (Iterations == 1) {
+        Work(0, Iterations);
+        return;
+    }
+
+#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+    //
+    // Fallback to OpenMP or a serialized implementation.
+    //
+
+    //
+    // Execute the routine for the specified number of iterations.
+    //
+#ifdef _OPENMP
+#pragma omp parallel for
+    // TODO!! batching iterations together based on available degree of parallelism
+    const std::ptrdiff_t block = static_cast<std::ptrdiff_t>(
+        ceil(double(MLAS_SGEMM_THREAD_COMPLEXITY) / (CostOfCyclePerIter + 1)));
+#elif
+    const std::ptrdiff_t block = Iterations;
+#endif
+        
+    for (ptrdiff_t tid = 0; tid < Iterations; tid += block) {
+        const auto end = std::min(Iterations, tid + block);
+        Work(tid, end);
+    }
+#else
+    //
+    // Schedule the threaded iterations using the thread pool object.
+    //
+
+    MLAS_THREADPOOL::TryParallelFor(ThreadPool, Iterations, CostOfCyclePerIter, Work);
+#endif
+}

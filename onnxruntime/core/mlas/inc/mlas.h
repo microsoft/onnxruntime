@@ -311,14 +311,13 @@ MlasGemm(
     );
 
 /** 
- * Batched GEMM, takes an array of MLAS_GEMM_U8X8_PARAMETERS
- * for multiplying multiple pairs of matrices. 
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices. 
  * Note:  We only support uniform batching, so shapes and types of the
- *        input must be same: M, N, K, BIsPacked, BIsSigned must be the
+ *        input must be same: M, N, K, BIsSigned must be the
  *        same across all parameter blocks. 
  * 
  * @param [IN]  Shape        A single shape descriptor for all the multiplications
- * @param [IN]  Parameters   Data descriptor for the matrices.
+ * @param [IN]  DataParams   Array of data descriptors for the matrices.
  * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
  * @param [IN]  ThreadPool   optional thread pool for parallel processing
  */
