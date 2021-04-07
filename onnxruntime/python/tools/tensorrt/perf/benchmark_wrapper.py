@@ -8,7 +8,6 @@ import json
 import re
 import pprint
 from benchmark import *
-from perf_utils import get_latest_commit_hash
 
 def write_model_info_to_file(model, path):
     with open(path, 'w') as file:
@@ -19,8 +18,8 @@ def get_ep_list(comparison):
         ep_list = [cpu, acl]
     else:   
         # test with cuda and trt
-        ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
-    return ep_list 
+        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
+    return ep_list
 
 def main():
     args = parse_arguments()
@@ -47,32 +46,43 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
+        
         if args.ep: 
             ep_list = [args.ep]
         else:
             ep_list = get_ep_list(args.comparison)
+        
         for ep in ep_list:
+            
+            command =  ["python3",
+                        "benchmark.py",
+                        "-r", args.running_mode,
+                        "-m", model_list_file,
+                        "-o", args.perf_result_path,
+                        "--write_test_result", "false"]
+            
+            if "Standalone" in ep: 
+                if args.running_mode == "validate": 
+                    continue 
+                else:
+                    trtexec_path = get_trtexec_path()    
+                    command.extend(["--trtexec", trtexec_path])
+                    ep = trt_fp16 if "fp16" in ep else trt 
+
+            command.extend(["--ep", ep])
+            
             if args.running_mode == "validate":
-                p = subprocess.run(["python3",
-                                    "benchmark.py",
-                                    "-r", args.running_mode,
-                                    "-m", model_list_file,
-                                    "--ep", ep,
-                                    "-o", args.perf_result_path,
-                                    "--write_test_result", "false",
-                                    "--benchmark_fail_csv", benchmark_fail_csv,
-                                    "--benchmark_metrics_csv", benchmark_metrics_csv])
+                command.extend(["--benchmark_fail_csv", benchmark_fail_csv,
+                                "--benchmark_metrics_csv", benchmark_metrics_csv])
+            
             elif args.running_mode == "benchmark":
-                p = subprocess.run(["python3",
-                                    "benchmark.py",
-                                    "-r", args.running_mode,
-                                    "-m", model_list_file,
-                                    "--ep", ep,
-                                    "-t", str(args.test_times),
-                                    "-o", args.perf_result_path,
-                                    "--write_test_result", "false",
-                                    "--benchmark_latency_csv", benchmark_latency_csv,
-                                    "--benchmark_success_csv", benchmark_success_csv]) 
+                command.extend(["-t", str(args.test_times),
+                                "-o", args.perf_result_path,
+                                "--write_test_result", "false",
+                                "--benchmark_latency_csv", benchmark_latency_csv,
+                                "--benchmark_success_csv", benchmark_success_csv]) 
+            
+            p = subprocess.run(command)
             logger.info(p)
 
             if p.returncode != 0:
@@ -116,11 +126,10 @@ def main():
         logger.info("=======================================================")
 
         model_status = {}
-        success_path = os.path.join(path, benchmark_success_csv)
-        if os.path.exists(success_path):
-            model_success = read_success_from_file(success_path)
+        if os.path.exists(LATENCY_FILE):
+            model_latency = read_map_from_file(LATENCY_FILE)
             is_fail = False
-            model_status = build_status(model_status, model_success, is_fail)
+            model_status = build_status(model_status, model_latency, is_fail)
         if os.path.exists(FAIL_MODEL_FILE):
             model_fail = read_map_from_file(FAIL_MODEL_FILE)
             is_fail = True

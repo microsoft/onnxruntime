@@ -53,7 +53,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
   CUDAExecutionProviderInfo info{};
   info.device_id = gsl::narrow<OrtDevice::DeviceId>(cuda_options->device_id);
-  info.cuda_mem_limit = cuda_options->cuda_mem_limit;
+  info.gpu_mem_limit = cuda_options->gpu_mem_limit;
   info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy);
   info.cudnn_conv_algo_search = cuda_options->cudnn_conv_algo_search;
   info.do_copy_in_default_stream = cuda_options->do_copy_in_default_stream;

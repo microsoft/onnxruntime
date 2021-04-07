@@ -48,21 +48,30 @@ jobs:
   - script: |-
       cd ./build/RelWithDebInfo &&\
       ../../tools/ci_build/github/pai/pai_test_launcher.sh
-    displayName: 'Run unit tests'
+    displayName: 'Run onnxruntime unit tests'
 
-#  - script: |-
-#     python orttraining/tools/ci_test/run_batch_size_test.py \
-#       --binary_dir build/RelWithDebInfo \
-#       --model_root training_e2e_test_data/models \
-#       --gpu_sku MI100_32G
-#    displayName: 'Run batch size test'
-#    condition: succeededOrFailed() # ensure all tests are run
+  - script: |-
+     python orttraining/tools/ci_test/run_batch_size_test.py \
+       --binary_dir build/RelWithDebInfo \
+       --model_root training_e2e_test_data/models \
+       --gpu_sku MI100_32G
+    displayName: 'Run C++ BERT-L batch size test'
+    condition: succeededOrFailed() # ensure all tests are run
 
+  - script: |-
+     python orttraining/tools/ci_test/run_bert_perf_test.py \
+        --binary_dir build/RelWithDebInfo \
+        --model_root training_e2e_test_data/models \
+        --training_data_root training_e2e_test_data/data \
+        --gpu_sku MI100_32G
+    displayName: 'Run C++ BERT-L performance test'
+    condition: succeededOrFailed() # ensure all tests are run
+  
   - script: |-
      python orttraining/tools/ci_test/run_convergence_test.py \
        --binary_dir build/RelWithDebInfo \
        --model_root training_e2e_test_data/models \
        --training_data_root training_e2e_test_data/data \
        --gpu_sku MI100_32G
-    displayName: 'Run convergence test'
+    displayName: 'Run C++ BERT-L convergence test'
     condition: succeededOrFailed() # ensure all tests are run

@@ -39,6 +39,12 @@ However, benchmark.py creates only one process to run all the model inferences o
 - **-o, --perf_result_path**: (*default: result*) Directory for perf result..
 - **--fp16**: (*default: True*) Enable TensorRT/CUDA FP16 and include the performance of this floating point optimization.
 - **--trtexec**: Path of standalone TensorRT executable, for example: trtexec.
+- **--track_memory**: Track memory usage of CUDA and TensorRT execution providers
+
+### Validation Configuration 
+- **--percent_mismatch**: The allowed percentage of values to be incorrect when comparing given outputs to ORT outputs. 
+- **--rtol**: The relative tolerance for validating ORT outputs.
+- **--atol**: The absolute tolerance for validating ORT outputs.
 
 ### Results
 After running validation and benchmark. The metrics are written into five different csv files in 'result' directory or the directory you specified with -o argument.
@@ -46,6 +52,7 @@ After running validation and benchmark. The metrics are written into five differ
 - **benchmark_success_xxxx.csv**: Lists all the models that can be successfully inferenced by TensorRT/CUDA, as well as other related metrics.
 - **benchmark_latency_xxxx.csv**: Lists all the models with inference latecy of TensorRT/CUDA and TensorRT Float32/Float16 performance gain compared with CUDA.
 - **benchmark_metrics_xxxx.csv**: List how much and percentage of model operators that are run by TensorRT and what percentage of execution time is running on TensorRT.
+- **benchmark_status_xxxx.csv**: List of all the models and the status as pass or fail for each execution provider.
 - **benchmark_system_info_xxxx.csv**: includes CUDA version, TensorRT version and CPU information.
 
 Thoese metrics will be shown on the standard output as well.
@@ -176,11 +183,53 @@ The output of running benchmark:
                        'Tensorrt_gain(%)': '54.94 %'}}
 
 ```
+
+```
+=========================================
+=========== CUDA/TRT Status =============
+=========================================
+{   'BERT-Squad': {   'CUDAExecutionProvider': 'Pass',
+                      'CUDAExecutionProvider_fp16': 'Pass',
+                      'TensorrtExecutionProvider': 'Pass',
+                      'TensorrtExecutionProvider_fp16': 'Fail'}
+}
+```
+
+#### Comparing Runs
+```
+python comparison_script.py -p "prev" -c "current" -o "output.csv"
+```
+- **compare_latency.py**: creates a csv file with any regressions in average latencies 
+- **new_failures.py**: creates a csv file with any new failures
+
 ## Others
-ort_build_latest.py: This script should be run before running the benchmark.py to make sure the latest ORT wheel file is being used.
+
+### Setting Up Perf Models
+- setup_onnx_zoo.py: Create a text file 'links.txt' with download links from onnx zoo models, or setup in the same folder structure. Extracts the models and creates the json file perf script will be run with.
+- setup_many_models.sh: ./setup_many_models "wget_link_to_models" to extract all the models.
+
+### Building ORT Env
+build_images.sh: This script should be run before running run_perf_docker.sh to make sure the docker images are up to date.
+- **-o, --ort_dockerfile_path**: Path to ORT Docker File.
+- **-p, --perf_dockerfile_path**: Path to EP Perf Docker File.
+- **-b, --branch**: ORT branch name you are perf testing on.
+- **-i, --image**: What the perf docker image will be named.
+
+ort_build_latest.py: This script should be run before running run_perf_machine.sh or benchmark.py to make sure the latest ORT wheel file is being used.
 - **-o, --ort_master_path**: ORT master repo.
 - **-t, --tensorrt_home**: TensorRT home directory.
 - **-c, --cuda_home**: CUDA home directory.
+
+### Running Perf Script 
+run_perf_docker.sh: Runs the perf script in docker environment. 
+- **-d, --docker_image**: Name of perf docker image.
+- **-o, --option**: Name of which models you want to run {onnx-zoo-models, many-models, partner-models, selected-models}
+- **-m, --model_path**: Path to models either json or folder.
+
+run_perf_machine.sh: Runs the perf script in docker environment. 
+- **-o, --option**: Name of which models you want to run {onnx-zoo-models, many-models, partner-models, selected-models}
+- **-m, --model_path**: Path to models either json or folder.
+
 ## Dependencies
 - When inferencing model using CUDA float16, this script following script to convert nodes in model graph from float32 to float16. It also modifies the converting script a little bit to better cover more model graph conversion.
 https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py

@@ -12,14 +12,8 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
  public:
   QDQSimpleTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
-    if (parents.size() != 1 || children.size() != 1) {
-      return false;
-    }
-
-    FillQDQOptionalZeroPoint(parents);
-    FillQDQOptionalZeroPoint(children);
-
+ protected:
+  bool TransformImpl(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
     graph_.RemoveEdge(parents[0]->Index(), node_.Index(), 0, 0);
     graph_.RemoveEdge(node_.Index(), children[0]->Index(), 0, 0);
 
@@ -33,6 +27,22 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
   }
 };
 
+class QDQReshapeTransformer : public QDQSimpleTransformer {
+ public:
+  QDQReshapeTransformer(Node& node, Graph& graph) : QDQSimpleTransformer(node, graph) {}
+
+ protected:
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (1 != dq_nodes.size() ||  // check that input *data* is output of DequantizeLinear
+        node_.MutableOutputDefs().size() != q_nodes.size() ||
+        graph_.GetNodeOutputsInGraphOutputs(node_).size() > 0) {
+      return false;
+    }
+
+    return true;
+  }
+};
+
 DEFINE_QDQ_CREATOR(MaxPool, QDQSimpleTransformer)
-DEFINE_QDQ_CREATOR(Reshape, QDQSimpleTransformer)
+DEFINE_QDQ_CREATOR(Reshape, QDQReshapeTransformer)
 }  // namespace onnxruntime

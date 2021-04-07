@@ -322,6 +322,16 @@ TEST(DropoutGradExpansionTest, WithRatio) {
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<float>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
+TEST(GeluGradExpansionTest, 2D) {
+  FunctionTestCase testCase("GeluGrad");
+  std::vector<int64_t> shape{16, 4};
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<float>("X", shape);
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
