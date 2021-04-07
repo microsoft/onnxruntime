@@ -88,6 +88,7 @@ class SymbolicShapeInference:
             'Add': self._infer_symbolic_compute_ops,
             'ArrayFeatureExtractor': self._infer_ArrayFeatureExtractor,
             'AveragePool': self._infer_Pool,
+            'BatchNormalization': self._infer_BatchNormalization,
             'Cast': self._infer_Cast,
             'CategoryMapper': self._infer_CategoryMapper,
             'Compress': self._infer_Compress,
@@ -872,6 +873,24 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_BatchNormalization(self, node):
+        new_sympy_shape = self._get_shape(node, 0)
+        vi_y = self.known_vi_[node.output[0]]
+        vi_y.CopyFrom(helper.make_tensor_value_info(node.output[0],
+            vi_y.type.tensor_type.elem_type,
+            get_shape_from_sympy_shape(new_sympy_shape)))
+
+        # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
+        c_sized_input_vi = self.known_vi_[node.input[1]]
+        for i in [1, 2, 3, 4]:
+            if i < len(node.output):
+                # all of these parameters have the same shape as the 1st input
+                new_sympy_shape = self._get_shape(node, 1)
+                vi_c_shaped_output = self.known_vi_[node.output[i]]
+                vi_c_shaped_output.CopyFrom(helper.make_tensor_value_info(node.output[i],
+                    c_sized_input_vi.type.tensor_type.elem_type,
+                    get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_Range(self, node):
         vi = self.known_vi_[node.output[0]]
