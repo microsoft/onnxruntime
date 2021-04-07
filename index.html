@@ -160,7 +160,7 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
 													<div class="row os">
-														<div class="col-lg-2dot4 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="windows">
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="0" aria-selected="false" id="windows">
 															<span>Windows</span>
 														</div>
 														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
@@ -187,12 +187,12 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
 													<div class="row language">
-														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="Python(3.6-3.9)"><span>Python (3.6-3.9)</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="Python(3.6-3.9)"><span>Python (3.6-3.9)</span></div>
 														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
 														<div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C"><span>C</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C-API"><span>C</span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Java"><span>Java</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Javascript"><span>Javascript (Node.js)</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Javascript"><span>Node.js</span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="WinRT"><span>WinRT</span></div>
 														
 			
@@ -207,7 +207,7 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
 													<div class="row architecture">
-														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="X64">
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="X64">
 															<span><abbr>X64</abbr></span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
 															<span><abbr>X86</abbr></span></div>
@@ -226,30 +226,33 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
 													<div class="row hardwareAcceleration">
-														<div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="0" aria-selected="false" id="DefaultCPU">
 															<span>Default&nbsp; <abbr>CPU</abbr></span></div>
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
-															<span>ACL (Preview)</span></div>	
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
-															<span>ArmNN (Preview)</span></div>	
+														
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
 															<span><abbr>CUDA</abbr></span></div>
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
 															<span>Direct<abbr>ML</abbr></span></div>
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
 															<span><abbr>DNNL</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
+															<span>OpenVINO</span></div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
+															<span>Tensor<abbr>RT</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
+															<span>ACL (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
+															<span>ArmNN (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="CoreML">
+															<span>CoreML (Preview)</span></div>		
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MIGraphX">
 															<span>MIGraphX (Preview)</span></div>
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NNAPI">
 															<span>NNAPI (Preview)</span></div>	
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
-															<span><abbr>NUPHAR (Preview)</abbr></span></div>
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
-															<span>OpenVINO</span></div>
+															<span><abbr>NUPHAR (Preview)</abbr></span></div>		
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="RockchipNPU">
 															<span>Rockchip NPU (Preview)</span></div>	
-														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
-															<span>Tensor<abbr>RT</abbr></span></div>
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="VitisAI">
 															<span>Vitis AI (Preview)</span></div>	
 														</div>
@@ -264,7 +267,7 @@
 													<div class="row">
 														<div class="col r-option command-container" id="command" role="status">
 															<span>
-																Please select a combination of resources.
+																Please select a combination of resources
 															</span>
 														</div>
 													</div>
@@ -282,13 +285,13 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="ot_selectOS"><abbr title="Operating System">OS</abbr></h3>
-													<p id="ot_decriptionOS" class="sr-only"><abbr>OS</abbr> list contains one item</p>
+													<p id="ot_decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-1" aria-labelledby="ot_selectOS" aria-describedby="ot_decriptionOS">
 													<div class="row ot_os">
-														<div class="col r-option" role="option" tabindex="0" aria-selected="true" id="ot_linux">
-															<span>Linux</span>
-														</div>
+														<div class="col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_linux"><span>Linux</span></div>
+														<div class="col r-option" role="option" tabindex="-1" aria-selected="false" id="ot_windows"><span>Windows</span></div>
+														<div class="col r-option" role="option" tabindex="-1" aria-selected="false" id="ot_mac"><span>Mac</span></div>
 													</div>
 												</div>
 											</div>
@@ -301,7 +304,7 @@
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-2" aria-labelledby="ot_selectLanguage" aria-describedby="ot_decriptionLanguage">
 													<div class="row ot_language">
 														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_PyTorch"><span>PyTorch</span></div>
-														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="ot_TensorFlow"><span>TensorFlow</span></div>
+														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="ot_C++"><span>C++</span></div>
 													</div>
 												</div>
 											</div>
@@ -322,13 +325,14 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
-													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains one item</p>
+													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains four items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration" aria-describedby="ot_decriptionHardwareAcceleration">
 													<div class="row ot_hardwareAcceleration">
-														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA">
-															<span><abbr>CUDA</abbr></span>
-														</div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_DefaultCPU"><span><abbr>Default CPU</abbr></span></div>
+														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA"><span><abbr>CUDA</abbr></span></div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_AMD"><span><abbr>AMD GPU</abbr></span></div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_DNNL"><span><abbr>DNNL</abbr></span></div>
 													</div>
 												</div>
 											</div>
@@ -341,7 +345,7 @@
 													<div class="row">
 														<div class="col r-option command-container" id="ot_command" role="status">
 															<span>
-																Please select a combination of resources.
+																Please select a combination of resources
 															</span>
 														</div>
 													</div>
