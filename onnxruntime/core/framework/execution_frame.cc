@@ -4,6 +4,7 @@
 #include "core/framework/execution_frame.h"
 
 #include <sstream>
+#include <optional>
 
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
@@ -20,42 +21,6 @@
 #endif
 
 using namespace onnxruntime::common;
-
-namespace {
-    // This function does not access any of the class-level members, that's why
-    // keeping it in a empty namespace, so that it can't be called outside this cpp file.
-    
-    void VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
-                                            const onnxruntime::TensorShape* output_shape) {
-      onnxruntime::ProtoHelperNodeContext protoContext(node);
-      onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
-
-      const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
-
-      if (outputproto == nullptr) {
-        return;
-      }
-
-      if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
-        return;
-      }
-      const auto& tensortype = outputproto->tensor_type();
-      if (tensortype.has_shape()) {
-        const auto& shape = tensortype.shape();
-        ORT_ENFORCE(shape.dim_size() == int(output_shape->NumDimensions()),
-                    "Number of dimension of output shape didn't match with model's expected number of dimension of output shape");
-        for (uint32_t output_dim = 0; output_dim < output_shape->NumDimensions(); ++output_dim) {
-          if (shape.dim(output_dim).has_dim_value()) {
-            int64_t expected_size = shape.dim(output_dim).dim_value();
-            int64_t actual_size = (*output_shape)[output_dim];
-            ORT_ENFORCE(expected_size == actual_size,
-                        "Actual dimension(", actual_size, ") didn't match with expected dimension (", expected_size,
-                        ") for outputProtoIndex: ", output_index);
-          }
-        }
-      }
-    }
-}
 
 namespace onnxruntime {
 
@@ -130,6 +95,46 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
   return status;
 }
 
+void IExecutionFrame::VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
+                                       const onnxruntime::TensorShape* output_shape) {
+  onnxruntime::ProtoHelperNodeContext protoContext(node);
+  onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
+
+  const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
+
+  if (outputproto == nullptr) {
+    return;
+  }
+
+  if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
+    return;
+  }
+  const auto& tensortype = outputproto->tensor_type();
+  if (tensortype.has_shape()) {
+    const auto& shape = tensortype.shape();
+    if (shape.dim_size() == int(output_shape->NumDimensions())) {
+      if (GetLogger() != NULL) {
+        LOGS(*GetLogger(), WARNING) << "Number of dimension of output shape didn't match "
+                                               << "with model's expected number of dimension of output shape";
+      }
+      return;
+    }
+
+    for (uint32_t output_dim = 0; output_dim < output_shape->NumDimensions(); ++output_dim) {
+      if (shape.dim(output_dim).has_dim_value()) {
+        int64_t expected_size = shape.dim(output_dim).dim_value();
+        int64_t actual_size = (*output_shape)[output_dim];
+        if (expected_size != actual_size) {
+          if (GetLogger() != NULL) {
+            LOGS(*GetLogger(), WARNING) << "Actual dimension(" << actual_size << ") didn't match with expected dimension ("
+                                                   << expected_size << ") for outputProtoIndex: " << output_index;
+          }
+          return;
+        }
+      }
+    }
+  }
+}
 bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
   // By default, there is not information about inferred shape, so this default
   // implementation always returns false. The derived class of IExecutionFrame
@@ -650,6 +655,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
+}
+
+const logging::Logger* ExecutionFrame::GetLogger() {
+  return &(session_state_.Logger());
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {

@@ -94,6 +94,11 @@ class IExecutionFrame {
     return all_values_[ort_value_index];
   }
 
+  void VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
+                         const onnxruntime::TensorShape* output_shape);
+
+  virtual const logging::Logger* GetLogger() = 0;
+
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
   virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
@@ -172,6 +177,7 @@ class ExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
+  const logging::Logger* GetLogger() override;
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
