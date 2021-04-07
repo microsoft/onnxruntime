@@ -362,6 +362,20 @@ and present state are optional. Present state could appear in output even when p
         AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
+    // draft register for gpt3attention
+    ONNX_CONTRIB_OPERATOR_SCHEMA(Gpt3Attention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Attention_ver1_doc)
+      .Input(0, "input", "input", "T")
+      .Input(1, "hidden_state", "hidden_state", "T", OpSchema::Optional)
+      .Output(0, "output", "same shape with input", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
