@@ -1646,15 +1646,15 @@ TEST(ReductionOpTest, ReduceMin_KR_parallel) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {4, 3},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {4}, {1.f, 4.f, 7.f, 10.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {4}, {11.f, 14.f, 17.f, 20.f});
   test.Run();
 }
 
@@ -1663,15 +1663,15 @@ TEST(ReductionOpTest, ReduceMin_KR_keepdims) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<float>("data", {3, 4},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {3, 1}, {1.f, 5.f, 9.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {3, 1}, {11.f, 15.f, 19.f});
   test.Run();
 }
 
@@ -1680,15 +1680,15 @@ TEST(ReductionOpTest, ReduceMin_RK) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {3, 4},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {4}, {1.f, 2.f, 3.f, 4.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {4}, {11.f, 12.f, 13.f, 14.f});
   test.Run();
 }
 
@@ -1697,15 +1697,15 @@ TEST(ReductionOpTest, ReduceMin_RK_keepdims) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<float>("data", {3, 4},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {1, 4}, {1.f, 2.f, 3.f, 4.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {1, 4}, {11.f, 12.f, 13.f, 14.f});
   test.Run();
 }
 
@@ -1714,15 +1714,15 @@ TEST(ReductionOpTest, ReduceMin_KRK) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {3, 2}, {1.f, 2.f, 5.f, 6.f, 9.f, 10.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {3, 2}, {11.f, 12.f, 15.f, 16.f, 19.f, 20.f});
   test.Run();
 }
 
@@ -1731,15 +1731,15 @@ TEST(ReductionOpTest, ReduceMin_KRK_keepdims) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<float>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
-  test.AddOutput<float>("reduced", {3, 1, 2}, {1.f, 2.f, 5.f, 6.f, 9.f, 10.f});
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {3, 1, 2}, {11.f, 12.f, 15.f, 16.f, 19.f, 20.f});
   test.Run();
 }
 
