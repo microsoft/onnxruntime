@@ -77,14 +77,15 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
 
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_y);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_z);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_z);
+
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -95,7 +96,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
                             feeds);
 }
 
-#endif  // !(ORT_MINIMAL_BUILD
+#endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
