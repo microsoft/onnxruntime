@@ -134,7 +134,8 @@ static bool RemoveBackToBackCasts(Graph& graph, const logging::Logger& logger)
       ORT_ENFORCE(attributes.find("to") != attributes.end());
       bool is_fp = attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT);
       bool is_fp16 = attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16);
-      for (NodeArg* cast_output : node.MutableOutputDefs()) {
+      if (node.MutableOutputDefs().size() == 1) {
+        NodeArg* cast_output = node.MutableOutputDefs()[0];
         for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
           if (child->OpType() == "Cast") {
             const NodeAttributes& child_attributes = child->GetAttributes();
