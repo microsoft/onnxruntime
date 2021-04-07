@@ -121,7 +121,7 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
 }
 
 const logging::Logger* OptimizerExecutionFrame::GetLogger() {
-  return NULL;
+  return nullptr;
 }
 
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
