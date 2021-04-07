@@ -19,6 +19,8 @@ from inspect import signature
 from onnxruntime.training import _utils, ORTModule
 import _test_helpers
 
+# Import autocasting libs
+from torch.cuda import amp
 
 # PyTorch model definitions for tests
 
@@ -506,6 +508,43 @@ def test_gradient_correctness():
         
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+@pytest.mark.parametrize("use_fp16", [False, True])
+def test_gradient_correctness_conv1d(use_fp16):
+    class NeuralNetConv1D(torch.nn.Module):
+        def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
+            super(NeuralNetConv1D, self).__init__()
+            self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
+            self.conv2 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
+
+        def forward(self, input):
+            out = self.conv1(input.permute(0, 2, 1).contiguous())
+            out = self.conv2(out).permute(0, 2, 1).contiguous()
+            return out
+
+    device = 'cuda'
+    N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
+    pt_model = NeuralNetConv1D(C_in, C_out, kernel_size, padding=1).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x):
+        with amp.autocast(use_fp16):
+            prediction = model(x)
+            loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for step in range(10):
+        x = torch.randn(N, seq_len, C_in, device=device, requires_grad=True)
+        pt_prediction = run_step(pt_model, x)
+        ort_prediction = run_step(ort_model, x)
+        
+        if use_fp16:
+            assert torch.allclose(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1e-2)
+        else:
+            assert torch.allclose(ort_prediction, pt_prediction, atol=1e-5)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=1e-3)
 
 def test_module_with_non_differential_output():
     device = 'cuda'
@@ -1566,3 +1605,122 @@ def test_model_with_constant_and_registered_parameters():
     # Make sure model runs without any exception
     output = ort_model(x)
     assert output is not None
+
+def test_state_dict():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    state_dict_ort = ort_model.state_dict()
+    state_dict_pt = pt_model.state_dict()
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+    # Call forward once
+    ort_model(x)
+    pt_model(x)
+
+    state_dict_ort = ort_model.state_dict()
+    state_dict_pt = pt_model.state_dict()
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+def test_load_state_dict():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    state_dict_pt = pt_model.state_dict()
+    list(next(iter(state_dict_pt.items())))[1] += 10
+    ort_model.load_state_dict(state_dict_pt)
+    state_dict_ort = ort_model.state_dict()
+
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+    # Call forward once
+    ort_model(x)
+    pt_model(x)
+
+    state_dict_pt = pt_model.state_dict()
+    ort_model.load_state_dict(state_dict_pt)
+    state_dict_ort = ort_model.state_dict()
+
+    assert state_dict_pt
+    assert len(state_dict_pt.keys()) == len(state_dict_ort.keys())
+    for param_name, param_value in state_dict_pt.items():
+        assert param_name in state_dict_ort
+        assert torch.equal(param_value, state_dict_ort[param_name])
+
+def test_named_parameters():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    named_parameters_pt = [name for name, _ in pt_model.named_parameters()]
+    named_parameters_ort = [name for name, _ in ort_model.named_parameters()]
+
+    assert len(named_parameters_pt) > 0
+    assert named_parameters_pt == named_parameters_ort
+
+def test_parameters():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    parameters_pt = [param for param in pt_model.parameters()]
+    parameters_ort = [param for param in ort_model.parameters()]
+
+    assert len(parameters_pt) > 0
+    assert len(parameters_pt) == len(parameters_ort)
+    assert all(torch.equal(parameters_pt[i], parameters_ort[i]) for i in range(len(parameters_pt)))
+
+def test_named_buffers():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    pt_model.register_buffer('sample_buffer_pt', torch.tensor(torch.randn(N, D_in, device=device)))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    named_buffers_pt = [name for name, _ in pt_model.named_buffers()]
+    named_buffers_ort = [name for name, _ in ort_model.named_buffers()]
+
+    assert len(named_buffers_pt) > 0
+    assert named_buffers_pt == named_buffers_ort
+
+    ort_model.register_buffer('sample_buffer_ort', torch.tensor(torch.randn(N, D_in, device=device)))
+    named_buffers_ort = [name for name, _ in ort_model.named_buffers()]
+    assert named_buffers_ort == ['sample_buffer_pt', 'sample_buffer_ort']
+
+def test_buffers():
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    pt_model.register_buffer('sample_buffer_pt', torch.tensor(torch.randn(N, D_in, device=device)))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    buffers_pt = [buffer for buffer in pt_model.buffers()]
+    buffers_ort = [buffer for buffer in ort_model.buffers()]
+
+    assert len(buffers_pt) > 0
+    assert len(buffers_pt) == len(buffers_ort)
+    assert all(torch.equal(buffers_pt[i], buffers_ort[i]) for i in range(len(buffers_pt)))
+
+    x = torch.tensor(torch.randn(N, D_in, device=device))
+    ort_model.register_buffer('sample_buffer_ort', x)
+    buffers_ort = [buffer for buffer in ort_model.buffers()]
+    assert len(buffers_ort) == 2
+    assert torch.equal(buffers_ort[1], x)

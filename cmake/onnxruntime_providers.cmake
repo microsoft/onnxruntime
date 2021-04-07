@@ -139,10 +139,20 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
   file(GLOB_RECURSE onnxruntime_cpu_full_training_only_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -398,9 +408,13 @@ if (onnxruntime_USE_DNNL)
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/dnnl/exported_symbols.lst")
+    set_target_properties(onnxruntime_providers_dnnl PROPERTIES
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH_USE_LINK_PATH FALSE)
     target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
   elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections")
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\$ORIGIN")
     target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/dnnl/symbols.def")
@@ -583,7 +597,7 @@ if (onnxruntime_USE_OPENVINO)
   target_link_libraries(onnxruntime_providers_openvino onnxruntime_providers_shared ${OPENVINO_LIB_LIST})
 
   if(MSVC)
-    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
+    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4099 /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
   endif()
 
   if(APPLE)
@@ -1022,7 +1036,7 @@ if (onnxruntime_USE_ROCM)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
   # During transition to separate hipFFT repo, put hipfft/include early
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/include/hipcub ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+  target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
   target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)

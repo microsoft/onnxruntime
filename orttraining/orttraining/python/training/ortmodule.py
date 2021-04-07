@@ -18,6 +18,7 @@ import torch
 import inspect
 from inspect import signature
 from enum import IntEnum
+from typing import Iterator, Optional, Tuple
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
@@ -70,22 +71,22 @@ def _check_same_device(device, argument_str, *args):
                 raise RuntimeError(
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
+def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
+    gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
+    gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
+    torch_gpu_allocator_addresses_cpp_source = f"#include <torch/extension.h>\n" \
+    f"#include <c10/{gpu_identifier}/{gpu_allocator_header}.h>\n" \
+    f"size_t gpu_caching_allocator_raw_alloc_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);\n" \
+    f"}}\n" \
+    f"size_t gpu_caching_allocator_raw_delete_address() {{\n" \
+    f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);\n" \
+    f"}}\n"
 
-def _load_torch_allocator_cpp_extension(verbosity):
-    torch_cuda_allocator_addresses_cpp_source = """
-    #include <torch/extension.h>
-    #include <c10/cuda/CUDACachingAllocator.h>
-    size_t cuda_caching_allocator_raw_alloc_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
-    }
-    size_t cuda_caching_allocator_raw_delete_address() {
-        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
-    }
-    """
-
-    return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
-                       functions=['cuda_caching_allocator_raw_alloc_address',
-                                  'cuda_caching_allocator_raw_delete_address'],
+    return load_inline(name='inline_extension', cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
+                       extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
+                       functions=['gpu_caching_allocator_raw_alloc_address',
+                                  'gpu_caching_allocator_raw_delete_address'],
                        verbose=verbosity < Verbosity.WARNING, with_cuda=True)
 
 
@@ -333,15 +334,12 @@ class ORTModule(torch.nn.Module):
         self.is_rocm_pytorch = (True if (
             (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        # CPP extension to get torch CUDA allocator's alloc and free function addresses
-        # Disable external allocator for ROCM EP since external allocator is not supported yet.
-        self._use_external_cuda_allocator = (
-            False if self.is_rocm_pytorch else True)
-        if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension(
-                self._verbosity)
-            self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
-            self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+        self._use_external_gpu_allocator = True
+        if self._use_external_gpu_allocator:
+            # CPP extension to get torch GPU allocator's alloc and free function addresses
+            self._torch_gpu_allocator = _load_torch_gpu_allocator_cpp_extension(self._verbosity, self.is_rocm_pytorch)
+            self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
     def _is_training(self):
         return self._flattened_output_module.training and torch.is_grad_enabled()
@@ -366,11 +364,8 @@ class ORTModule(torch.nn.Module):
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
-
         if self._save_onnx:
-            onnx.save(self._onnx_inference,
-                      self._save_onnx_prefix + '_inference.onnx')
-
+            onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
         self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
@@ -381,9 +376,9 @@ class ORTModule(torch.nn.Module):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
-            if self._use_external_cuda_allocator:
-                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(
-                    self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+            if self._use_external_gpu_allocator:
+                provider_options = [{"device_id": str(self._device.index), "gpu_external_alloc": str(
+                    self._torch_alloc), "gpu_external_free": str(self._torch_free)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
@@ -397,6 +392,9 @@ class ORTModule(torch.nn.Module):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._verbosity)
+        # enable dumping optimized training graph
+        if self._save_onnx:
+            session_options.optimized_model_filepath = self._save_onnx_prefix + '_training_optimized.onnx'
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options)
@@ -412,8 +410,10 @@ class ORTModule(torch.nn.Module):
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
         if self._save_onnx:
-            onnx.save(self._onnx_training,
-                      self._save_onnx_prefix + '_training.onnx')
+            inference_optimized_model = onnx.load_model_from_string(
+                self._module_gradient_graph_builder.get_inference_optimized_model())
+            onnx.save(inference_optimized_model, self._save_onnx_prefix + '_inference_optimized.onnx')
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
 
     def eval(self: T) -> T:
         self._flattened_output_module.eval()
@@ -503,3 +503,52 @@ class ORTModule(torch.nn.Module):
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the state_dict() method so that the state dict key names
+        # do not contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.state_dict(
+            destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+                        strict: bool = True):
+        """Override original method to delegate execution to the base module"""
+
+        # Override the load_state_dict() method so that the loaded state dict
+        # key names does not need to contain the _flattened_output_module._base_module prefix
+        return self._flattened_output_module._base_module.load_state_dict(
+            state_dict, strict=strict)
+
+    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_buffer(name, tensor, persistent=persistent)
+
+    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+        """Override original method to delegate execution to the base module"""
+        self._flattened_output_module._base_module.register_parameter(name, param)
+
+    def get_parameter(self, target: str) -> torch.nn.Parameter:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_parameter(target)
+
+    def get_buffer(self, target: str) -> torch.Tensor:
+        """Override original method to delegate execution to the base module"""
+        return self._flattened_output_module._base_module.get_buffer(target)
+
+    def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.parameters(recurse=recurse)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_parameters(prefix=prefix, recurse=recurse)
+
+    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.buffers(recurse=recurse)
+
+    def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+        """Override original method to delegate execution to the base module"""
+        yield from self._flattened_output_module._base_module.named_buffers(prefix=prefix, recurse=recurse)
