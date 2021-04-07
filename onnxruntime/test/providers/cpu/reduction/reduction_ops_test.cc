@@ -2251,6 +2251,25 @@ TEST(ReductionOpTest, ReduceSum_RK) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_RK_parallel) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  std::vector<float> in_data(128);
+  for (size_t i = 0; i < in_data.size(); ++i)
+    in_data[i] = (float)i;
+  test.AddInput<float>("data", {4, 32}, in_data);
+  std::vector<float> expected(32);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    expected[i] = 0;
+    for (size_t j = 0; j < 4; ++j) {
+      expected[i] += in_data[i + j * expected.size()];
+    }
+  }
+  test.AddOutput<float>("reduced", {32}, expected);
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{0});
