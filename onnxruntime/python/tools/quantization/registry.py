@@ -14,6 +14,7 @@ from .operators.lstm import LSTMQuant
 from .operators.split import QSplit
 from .operators.pad import QPad
 from .operators.direct_q8 import Direct8BitOp
+from .operators.resize import QResize
 
 CommonOpsRegistry = {"Gather": GatherQuant,
                      "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
@@ -41,6 +42,7 @@ QLinearOpsRegistry = {
     "GlobalAveragePool": QGlobalAveragePool,
     "Split": QSplit,
     "Pad": QPad,
+    "Resize" : QResize,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 

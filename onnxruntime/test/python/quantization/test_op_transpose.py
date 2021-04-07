@@ -65,7 +65,7 @@ class TestOpTranspose(unittest.TestCase):
     def test_quantize_transpose(self):
         np.random.seed(1)
         model_fp32_path = 'transpose_fp32.onnx'
-        model_uint8_path = 'transpost_uint8.onnx'
+        model_uint8_path = 'transpose_uint8.onnx'
         data_reader = self.input_feeds(1, {'input': [3, 7]})
         self.construct_model_matmul_transpose(model_fp32_path, [3, 7], [7, 5], [5, 3])
         quantize_static(model_fp32_path, model_uint8_path, data_reader)

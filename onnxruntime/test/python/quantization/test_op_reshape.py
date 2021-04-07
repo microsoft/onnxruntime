@@ -11,7 +11,7 @@ import onnx
 import numpy as np
 from onnx import helper, TensorProto
 from onnxruntime.quantization import quantize_static
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_nodes
 
 class TestOpReshape(unittest.TestCase):
     def input_feeds(self, n, name2shape):
