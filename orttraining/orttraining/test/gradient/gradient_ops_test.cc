@@ -1040,13 +1040,18 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
 }
 
 TEST(GradientCheckerTest, ConvGrad) {
-  ConvGradientCheckerTest(nullptr);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
+  if (HasCudaEnvironment(700)) {
+    execution_providers.push_back(DefaultCUDAExecutionProvider());
+  }
 
 #ifdef USE_DNNL
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-  ConvGradientCheckerTest(&execution_providers);
 #endif
+
+  ConvGradientCheckerTest(&execution_providers);
 }
 
 static void TestConcatOpGrad(const std::string& op_type,
