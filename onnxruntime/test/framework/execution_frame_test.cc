@@ -106,7 +106,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 }
 
 TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
-  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), 
+      {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -149,8 +150,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_TRUE(p_ml_value != nullptr);
 
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_same_as_input, p_ml_value, *node, size_t(0)));
-  EXPECT_THROW(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node, size_t(0)),
-               OnnxRuntimeException);
+  ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node, size_t(0)));
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {

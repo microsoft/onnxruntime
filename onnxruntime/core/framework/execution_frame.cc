@@ -4,7 +4,6 @@
 #include "core/framework/execution_frame.h"
 
 #include <sstream>
-#include <optional>
 
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
@@ -184,7 +183,7 @@ void IExecutionFrame::VerifyOutputSizes(int output_index, const onnxruntime::Nod
   const auto& tensortype = outputproto->tensor_type();
   if (tensortype.has_shape()) {
     const auto& shape = tensortype.shape();
-    if (shape.dim_size() == int(output_shape->NumDimensions())) {
+    if (shape.dim_size() != int(output_shape->NumDimensions())) {
       if (GetLogger() != NULL) {
         LOGS(*GetLogger(), WARNING) << "Number of dimension of output shape didn't match "
                                                << "with model's expected number of dimension of output shape";
