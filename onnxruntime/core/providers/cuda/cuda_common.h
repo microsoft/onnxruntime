@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
@@ -176,13 +175,6 @@ class HalfGemmOptions {
 
   static HalfGemmOptions instance;
 };
-
-// The environment variable is for testing purpose only, and it might be removed in the future.
-// The value is an integer, and its bits have the following meaning:
-//   0x01 - aggregate in fp16
-//   0x02 - disallow reduced precision reduction. No effect when aggregate in fp16.
-//   0x04 - pedantic
-constexpr const char* kCudaGemmOptions = "ORT_CUDA_GEMM_OPTIONS";
 
 }  // namespace cuda
 }  // namespace onnxruntime
