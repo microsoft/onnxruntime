@@ -425,7 +425,8 @@ def test_torch_nn_module_to_api(original_device, to_argument):
     model = model.to(to_argument)
     x = x.to(to_argument)
     model(x)
-    assert _utils.get_device_str(model._device) == _utils.get_device_str(torch.device(to_argument))
+    assert _utils.get_device_str(model._execution_manager(model._is_training())._device) == \
+        _utils.get_device_str(torch.device(to_argument))
 
 def test_model_without_device():
     # Model doesn't have device (CPU is assumed)
@@ -475,7 +476,7 @@ def test_input_requires_grad_saved(device):
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device, requires_grad=True) + 1
     model(x)
-    assert model._input_names_require_grad == ['input1']
+    assert model._execution_manager(model._is_training())._input_names_require_grad == ['input1']
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_backward_creates_input_grad(device):
@@ -826,11 +827,19 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
     N, D_in, H, D_out = 32, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device, requires_grad=True)
-    model(x.data)
-    module_gradient_graph_builder = model._module_gradient_graph_builder
-    model(x)
-    assert module_gradient_graph_builder != model._module_gradient_graph_builder
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+    y.requires_grad_(True)
+    output_x = torch.sum(model(x))
+    output_x.backward()
+    assert x.grad is None
+    module_gradient_graph_builder_training = \
+        model._execution_manager(model._is_training())._graph_builder
+    output_y = torch.sum(model(y))
+    output_y.backward()
+    assert y.grad is not None
+    assert module_gradient_graph_builder_training != \
+        model._execution_manager(model._is_training())._graph_builder
 
 @pytest.mark.parametrize("device", ['cuda'])
 def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
@@ -1416,7 +1425,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     x = torch.randn(N, D_in, device=data_device)
     with pytest.raises(RuntimeError) as runtime_error:
         ort_model(x)
-    assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
+    assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
 
 def test_forward_returns_none_type_as_output():
     class NeuralNetNoneTypeOutput(torch.nn.Module):
@@ -1527,7 +1536,7 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
-    training_session1 = model._training_session
+    training_session1 = model._execution_manager(model._is_training())._execution_agent
     weight_grad_2 = model._original_module.fc1.weight.grad
     bias_grad_2 = model._original_module.fc1.bias.grad
     assert weight_grad_2 is not None
@@ -1537,7 +1546,7 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
-    training_session2 = model._training_session
+    training_session2 = model._execution_manager(model._is_training())._execution_agent
     weight_grad_3 = model._original_module.fc1.weight.grad
     bias_grad_3 = model._original_module.fc1.bias.grad
 
@@ -1724,3 +1733,64 @@ def test_buffers():
     buffers_ort = [buffer for buffer in ort_model.buffers()]
     assert len(buffers_ort) == 2
     assert torch.equal(buffers_ort[1], x)
+
+def test_eval_with_dropout():
+    class NeuralNetDropout(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetDropout, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.dropout = torch.nn.Dropout()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            out = self.dropout(out)
+            return out
+
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetDropout(D_in, H, D_out).to(device)
+    model.eval()
+    ort_model = ORTModule(copy.deepcopy(model))
+    ort_model.eval()
+
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    # Make sure model runs without any exception
+    output = ort_model(x)
+    output_pt = model(y)
+
+    assert output is not None
+    assert output_pt is not None
+    # Assert that the output from torch is the same as the one from ORTModule
+    assert torch.equal(output, output_pt)
+
+def test_with_torch_no_grad_context():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+
+    x = torch.randn(N, D_in, device=device)
+    y = x.clone()
+
+    # Make sure model runs without any exception
+    output = None
+    output_pt = None
+    with torch.no_grad():
+        output = ort_model(x)
+        output_pt = model(y)
+
+    assert output is not None
+    assert output_pt is not None
+    # Assert that the output from torch is the same as the one from ORTModule
+    assert torch.equal(output, output_pt)
+
+    assert output.grad is None and output_pt.grad is None
