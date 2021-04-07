@@ -165,7 +165,7 @@ struct NchwcTestHelper {
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
                           const std::function<void(InferenceSessionWrapper& session)>& check_nchwc_graph,
-                          int opset_version = 12) {
+                          int opset_version = 13) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
@@ -668,6 +668,40 @@ TEST(NchwcOptimizerTests, ConvBinary) {
   // Verify that the optimizer keeps the inputs to the binary operator as NCHWc
   // and only reorders the output of the binary operator.
   std::vector<std::string> op_types{"Add", "Sum", "Mul"};
+  for (auto& op_type : op_types) {
+    test_case(op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
+  auto test_case = [&](const std::string& op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 32, 25, 21});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* pool_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {32, 32, 3, 3});
+      helper.AddNode("GlobalAveragePool", {input_arg}, {pool_output_arg});
+      helper.AddNode(op_type, {conv_output_arg, pool_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.GlobalAveragePool"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Reshape"], 3);
+      EXPECT_EQ(op_to_count[op_type], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Verify that the optimizer keeps the inputs to the binary operator as NCHWc
+  // and only reorders the output of the binary operator.
+  std::vector<std::string> op_types{"Add", "Sum"};
   for (auto& op_type : op_types) {
     test_case(op_type);
   }
