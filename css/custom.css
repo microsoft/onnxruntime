@@ -203,8 +203,9 @@ a.link:active .link-arrow{
     height: 55px;
 }
 .sponsor-logo img{
-    max-height: 60px;
+   max-width:150px;
 }
+
 
 .blue-text{
     color: #0F77D2;
@@ -590,7 +591,7 @@ a .abbr[data-original-title], a abbr[title]{
     max-width: 100%;
 }
 .news-img img{
-    max-height: 130px;
+    max-height: 150px;
 }
 .resources-img {
     position: relative;
@@ -620,6 +621,23 @@ a .abbr[data-original-title], a abbr[title]{
 }
 .blue-title-columns h3{
     font-size: 24px;
+}
+.blue-title-columns h3.quote{
+    font-size: 18px;
+    text-align: center;
+}
+.blue-title-columns h3.hardware{
+    font-size: 18px;
+}
+.row.blue-title-columns{
+    margin-bottom:30px;
+}
+.blue-title-columns span.quote-attribution{
+    font-size: 18px;
+    font-weight: normal;
+    font-style: italic;
+    color: #0F77D2; 
+    text-align: right;
 }
 .blue-title-columns h2{
     font-size: 24px;
