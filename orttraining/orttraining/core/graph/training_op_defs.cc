@@ -468,11 +468,12 @@ void RegisterTrainingOpSchemas() {
           "Constrain index tensor to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
