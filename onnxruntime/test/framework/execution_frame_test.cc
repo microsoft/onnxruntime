@@ -150,7 +150,11 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   ASSERT_TRUE(p_ml_value != nullptr);
 
+  // Calling the method with correct shape. It should work without any warnings.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_same_as_input, p_ml_value, *node, size_t(0)));
+
+  frame.ReleaseMLValue(1);
+  // Calling the method with in-correct shape. It should work but this time it should display a warning message.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node, size_t(0)));
 }
 

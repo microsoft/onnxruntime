@@ -94,10 +94,10 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
   return status;
 }
 
-void IExecutionFrame::VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
-                                       const onnxruntime::TensorShape* output_shape) {
-  onnxruntime::ProtoHelperNodeContext protoContext(node);
-  onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
+void IExecutionFrame::VerifyOutputSizes(int output_index, const Node& node,
+                                       const TensorShape* output_shape) {
+  ProtoHelperNodeContext protoContext(node);
+  OpNodeProtoHelper<ProtoHelperNodeContext> info(&protoContext);
 
   const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
 
@@ -111,17 +111,22 @@ void IExecutionFrame::VerifyOutputSizes(int output_index, const onnxruntime::Nod
   const auto& tensortype = outputproto->tensor_type();
   if (tensortype.has_shape()) {
     const auto& shape = tensortype.shape();
-    if (shape.dim_size() != int(output_shape->NumDimensions())) {
-      if (GetLogger() != NULL) {
-        LOGS(*GetLogger(), WARNING) << "Number of dimension of output shape didn't match "
-                                               << "with model's expected number of dimension of output shape";
+
+    int actualNumDims = static_cast<int>(output_shape->NumDimensions());
+    int expectedNumDims = shape.dim_size();
+    if (actualNumDims != expectedNumDims) {
+      if (GetLogger() != nullptr) {
+        LOGS(*GetLogger(), WARNING) << "Number of dimension(" << actualNumDims << ") of output shape didn't match "
+                                               << "with model's expected number("<< expectedNumDims <<") of dimension of output shape";
       }
       return;
     }
 
-    for (uint32_t output_dim = 0; output_dim < output_shape->NumDimensions(); ++output_dim) {
-      if (shape.dim(output_dim).has_dim_value()) {
-        int64_t expected_size = shape.dim(output_dim).dim_value();
+    for (uint32_t output_dim = 0, end = actualNumDims; output_dim < end; ++output_dim) {
+      const auto dim = shape.dim(output_dim);
+      
+      if (dim.has_dim_value()) {
+        int64_t expected_size = dim.dim_value();
         int64_t actual_size = (*output_shape)[output_dim];
         if (expected_size != actual_size) {
           if (GetLogger() != NULL) {
