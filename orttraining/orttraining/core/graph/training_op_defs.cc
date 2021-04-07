@@ -1451,6 +1451,11 @@ Example 4:
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
 
+            // std::vector<FunctionBodyHelper::NodeDef> body{
+            //     ONNX_NAMESPACE::Const("dX", 0.0f, elem_type)};
+
+            // return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            
             if (ctx.hasInput(2)) {
               // ratio specified.
               std::vector<FunctionBodyHelper::NodeDef> body{
@@ -1458,8 +1463,8 @@ Example 4:
                   ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
                   {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
                   {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dY"}, "Div", {"dY", "scale"}},
-                  {{"dX"}, "Where", {"mask", "scaled_dY", "C0"}}};
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
               return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             } else {
@@ -1468,11 +1473,12 @@ Example 4:
                   ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
                   ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
                   {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dY"}, "Div", {"dY", "scale"}},
-                  {{"dX"}, "Where", {"mask", "scaled_dY", "C0"}}};
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
               return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             }
+            
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)

@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "core/framework/data_types.h"
 #include "core/graph/model.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "orttraining/core/graph/training_op_defs.h"
@@ -15,6 +16,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 #include "test/framework/test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 #define _LOCAL_DEBUG_FLAG_ 1
 
@@ -132,6 +134,43 @@ struct FunctionTestCase {
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
 
+  template <typename T>
+  void AddInput(std::string input_name, std::vector<int64_t> shape) {
+    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    input_args.emplace_back(input_name, &arg_type);
+
+    // int64_t size = 1;
+    // for (auto dim : shape)
+    //   size *= dim;
+
+    RandomValueGenerator random{};
+    std::vector<T> data = random.Uniform<T>(shape, 0.0f, 1.0f);
+
+    OrtValue ort_value;
+    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    input_values.push_back(std::make_pair(input_name, ort_value));
+    input_value_map.insert(std::make_pair(input_name, ort_value));
+  }
+
+  template <>
+  void AddInput<bool>(std::string input_name, std::vector<int64_t> shape) {
+    auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, shape);
+    input_args.emplace_back(input_name, &arg_type);
+
+    int64_t size = 1;
+    for (auto dim : shape)
+      size *= dim;
+
+    std::vector<bool> data(size);
+    for (int64_t i = 0; i < size; i++)
+      data[i] = bool(i % 2);
+
+    OrtValue ort_value;
+    CreateMLValue<bool>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    input_values.push_back(std::make_pair(input_name, ort_value));
+    input_value_map.insert(std::make_pair(input_name, ort_value));
+  }
+
   void AddOutput(std::string output_name) {
     output_names.emplace_back(output_name);
     output_args.emplace_back(output_name, nullptr);
@@ -199,16 +238,8 @@ struct FunctionTestCase {
 };
 
 static void InitSoftmaxGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
-
-  std::vector<float> value(size);
-  for (int64_t i = 0; i < size; i++)
-    value[i] = float(i);
-
-  testCase.AddInput("dY", shape, value);
-  testCase.AddInput("Y", shape, value);
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<float>("Y", shape);
   testCase.AddOutput("dX");
 }
 
@@ -277,23 +308,21 @@ TEST(SoftmaxGradExpansionTest, OpsetTest) {
   AssertEqual(results1, results2);
 }
 
-static void InitDropoutGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
-
-  std::vector<float> value(size);
-  for (int64_t i = 0; i < size; i++)
-    value[i] = float(i)/10.0f;
-
-  testCase.AddInput("dY", shape, value);
-  testCase.AddInput("Y", shape, value);
-  testCase.AddOutput("dX");
-}
-
 TEST(DropoutGradExpansionTest, WithoutRatio) {
   FunctionTestCase testCase("DropoutGrad");
-  InitDropoutGradTestCase(testCase, {16, 4, 4});
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
+TEST(DropoutGradExpansionTest, WithRatio) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
   testCase.RunTest();
 }
 
