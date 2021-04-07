@@ -206,12 +206,27 @@ template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
+                                     const TimePoint& start_time, const TimePoint& end_time,
+                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
+                                     bool sync_gpu) {
+  EndTimeAndRecordEvent(category, event_name, TimeDiffMicroSeconds(start_time, end_time),
+                        TimeDiffMicroSeconds(profiling_start_time_, start_time), event_args, sync_gpu);
+}
+
+void Profiler::EndTimeAndRecordEvent(EventCategory category,
+                                     const std::string& event_name,
                                      const TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                                     bool /*sync_gpu*/) {
-  long long dur = TimeDiffMicroSeconds(start_time);
-  long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+                                     bool sync_gpu) {
+  EndTimeAndRecordEvent(category, event_name, TimeDiffMicroSeconds(start_time),
+                        TimeDiffMicroSeconds(profiling_start_time_, start_time), event_args, sync_gpu);
+}
 
+void Profiler::EndTimeAndRecordEvent(EventCategory category,
+                                     const std::string& event_name,
+                                     long long dur, long long ts,
+                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
+                                     bool /*sync_gpu*/) {
   EventRecord event(category, logging::GetProcessId(),
                     logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
   if (profile_with_logger_) {

@@ -130,7 +130,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time;
+  TimePoint kernel_begin_time, kernel_end_time;
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
@@ -357,9 +357,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << "\n";
 #endif
 
+      kernel_end_time = std::chrono::high_resolution_clock::now();
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time,
+                                                     kernel_begin_time, kernel_end_time,
                                                      // Log additional operation args / info.
                                                      {
                                                          {"op_name", p_op_kernel->KernelDef().OpName()},
