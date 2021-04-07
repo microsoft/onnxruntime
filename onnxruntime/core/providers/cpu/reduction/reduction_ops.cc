@@ -680,6 +680,30 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
                   new_input_shape);
     }
     return output;
+  } else if ((fast_kind & ReduceAggregatorSum<T>::fast_reduce()) > 0) {
+    switch (fast_kind) {
+      case FastReduceKindValues::KR: {
+        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+        return output;
+      }
+      case FastReduceKindValues::RK: {
+        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+        ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+        return output;
+      }
+      case FastReduceKindValues::KRK: {
+        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+        ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+        return output;
+      }
+      case FastReduceKindValues::R:
+      case FastReduceKindValues::K:
+      case FastReduceKindValues::NONE:
+      default:
+        // Former implementation prevails in this case.
+        break;
+    }
   }
 
   ResultsNoTransposePrepareForReduce last_results;
