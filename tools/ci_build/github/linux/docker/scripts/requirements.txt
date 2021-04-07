@@ -4,7 +4,7 @@ mypy
 pytest
 setuptools>=41.4.0
 wheel
-git+http://github.com/onnx/onnx.git@a717033977fc75dbc0f7b6fd13604365d143c359#egg=onnx
+git+http://github.com/onnx/onnx.git@29e7aa7048809784465d06e897f043a4600642b2#egg=onnx
 argparse
 sympy==1.1.1
 flake8
