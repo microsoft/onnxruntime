@@ -522,8 +522,8 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_invertible_layernorm_grad",
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
-      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph);
-      .def_readwrite("graph_transformer_config", &ModuleGradientGraphBuilderConfiguration::graph_transformer_config);
+      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
+      .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
                                       R"pbdoc(The information of split graphs for frontend.)pbdoc");
