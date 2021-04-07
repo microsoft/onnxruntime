@@ -203,9 +203,9 @@ a.link:active .link-arrow{
     height: 55px;
 }
 .sponsor-logo img{
-   max-width:150px;
+   max-height:60px;
+   max-width: 150px;
 }
-
 
 .blue-text{
     color: #0F77D2;
@@ -592,6 +592,7 @@ a .abbr[data-original-title], a abbr[title]{
 }
 .news-img img{
     max-height: 150px;
+    max-width: 200px;
 }
 .resources-img {
     position: relative;
@@ -704,8 +705,3 @@ a .abbr[data-original-title], a abbr[title]{
   div.tbl_panel[aria-hidden='false'] {
      display:block;
   }
-
-
-
-
-
