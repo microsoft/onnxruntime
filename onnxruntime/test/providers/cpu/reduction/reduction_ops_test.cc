@@ -1880,7 +1880,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -1946,6 +1946,7 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 
 // Add more UTs for half as needed
 #endif
+
 TEST(ReductionOpTest, ReduceSum_apex_reduction) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -2034,7 +2035,7 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
   }
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
