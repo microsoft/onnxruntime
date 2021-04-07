@@ -17,6 +17,7 @@
 #include "orttraining/test/gradient/gradient_checker.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/cuda_op_test_utils.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
@@ -1044,7 +1045,7 @@ TEST(GradientCheckerTest, ConvGrad) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
 
   if (HasCudaEnvironment(700)) {
-    execution_providers.push_back(DefaultCUDAExecutionProvider());
+    execution_providers.push_back(DefaultCudaExecutionProvider());
   }
 
 #ifdef USE_DNNL
