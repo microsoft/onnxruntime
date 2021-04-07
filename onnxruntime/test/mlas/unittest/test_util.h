@@ -161,9 +161,9 @@ class MlasTestBase {
   virtual void ExecuteLong(void) {}
 };
 
-typedef std::function<size_t(bool is_short_execute)> TestRegistor;
+typedef std::function<size_t(bool is_short_execute)> TestRegister;
 
-bool AddTestRegistor(TestRegistor test_registor);
+bool AddTestRegister(TestRegister test_register);
 
 //
 // Base Test Fixture which setup/teardown MlasTest in one test suite.

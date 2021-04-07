@@ -53,7 +53,7 @@ template <> MlasFindMinMaxElementsTest* MlasTestFixture<MlasFindMinMaxElementsTe
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasFindMinMaxElementsTest>::RegisterShortExecute() : 0;
 });
 

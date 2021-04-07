@@ -42,6 +42,6 @@ static size_t Pool2dNchwcRegistShortExecute() {
   return count;
 }
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? Pool2dNchwcRegistShortExecute() : Pool2dNchwcRegistLongExecute();
 });

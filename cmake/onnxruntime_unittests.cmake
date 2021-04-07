@@ -953,8 +953,8 @@ if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
 endif()
 
 file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/mlas/*.h"
-  "${TEST_SRC_DIR}/mlas/test_*.cpp"
+  "${TEST_SRC_DIR}/mlas/unittest/*.h"
+  "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
 )
 onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
 if(MSVC)

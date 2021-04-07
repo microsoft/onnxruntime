@@ -90,7 +90,7 @@ class MlasReorderOutputTest : public MlasTestBase {
 
 template <> MlasReorderOutputTest* MlasTestFixture<MlasReorderOutputTest>::mlas_tester(nullptr);
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return (MlasNchwcGetBlockSize() > 1 && is_short_execute)
              ? MlasDirectShortExecuteTests<MlasReorderOutputTest>::RegisterShortExecute()
              : 0;

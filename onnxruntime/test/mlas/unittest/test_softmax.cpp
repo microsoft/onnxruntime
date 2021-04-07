@@ -100,7 +100,7 @@ class MlasSoftmaxTest : public MlasTestBase {
 template <> MlasSoftmaxTest<false>* MlasTestFixture<MlasSoftmaxTest<false>>::mlas_tester(nullptr);
 template <> MlasSoftmaxTest<true>* MlasTestFixture<MlasSoftmaxTest<true>>::mlas_tester(nullptr);
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasSoftmaxTest<false>>::RegisterShortExecute();

@@ -160,6 +160,6 @@ class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
 
 template <> MlasQLinearGlobalAveragePoolU8Test* MlasTestFixture<MlasQLinearGlobalAveragePoolU8Test>::mlas_tester(nullptr);
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasQLinearGlobalAveragePoolU8Test>::RegisterShortExecute() : 0;
 });

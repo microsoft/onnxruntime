@@ -66,7 +66,7 @@ class MlasQuantizeLinearTest : public MlasTestBase {
 template <> MlasQuantizeLinearTest<int8_t>* MlasTestFixture<MlasQuantizeLinearTest<int8_t>>::mlas_tester(nullptr);
 template <> MlasQuantizeLinearTest<uint8_t>* MlasTestFixture<MlasQuantizeLinearTest<uint8_t>>::mlas_tester(nullptr);
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
       count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<int8_t>>::RegisterShortExecute();

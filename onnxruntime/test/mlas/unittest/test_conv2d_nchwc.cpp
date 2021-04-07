@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "test_conv2d_nchwc.h"
 #include "test_conv2d_fixture.h"
@@ -31,6 +33,6 @@ static size_t Conv2dNchwcRegistShortExecute() {
     return count;
 }
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegistor([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? Conv2dNchwcRegistShortExecute() : Conv2dNchwcRegistLongExecute();
 });

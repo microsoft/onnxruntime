@@ -30,28 +30,28 @@ class LongShortExecuteManager {
     return s_instance;
   };
 
-  void AddTestRegistor(TestRegistor test_registor) {
-    test_registors_.push_back(test_registor);
+  void AddTestRegister(TestRegister test_register) {
+    test_registers_.push_back(test_register);
   }
 
   size_t RegisterAll(bool is_short_execute) {
     size_t count = 0;
-    for (const auto& r : instance().test_registors_) {
+    for (const auto& r : instance().test_registers_) {
       count += r(is_short_execute);
     }
     return count;
   }
 
  private:
-  LongShortExecuteManager() : test_registors_() {}
+  LongShortExecuteManager() : test_registers_() {}
   LongShortExecuteManager(const LongShortExecuteManager&) = delete;
   LongShortExecuteManager& operator=(const LongShortExecuteManager&) = delete;
 
-  std::list<TestRegistor> test_registors_;
+  std::list<TestRegister> test_registers_;
 };
 
-bool AddTestRegistor(TestRegistor test_registor) {
-  LongShortExecuteManager::instance().AddTestRegistor(test_registor);
+bool AddTestRegister(TestRegister test_register) {
+  LongShortExecuteManager::instance().AddTestRegister(test_register);
   return true;
 }
 
@@ -59,11 +59,11 @@ int main(int argc, char** argv) {
   bool is_short_execute = (argc <= 1 || strcmp("--long", argv[1]) != 0);
   std::cout << "-------------------------------------------------------" << std::endl;
   if (is_short_execute) {
-    std::cout << "----Running quick check mode. Enable more complete test" << std::endl;
-    std::cout << "----  with '--long' as first argument!" << std::endl;
+    std::cout << "----Running normal quick check mode. To enable more complete test," << std::endl;
+    std::cout << "----  run with '--long' as first argument!" << std::endl;
   }
   auto test_count = LongShortExecuteManager::instance().RegisterAll(is_short_execute);
-  std::cout << "----Total " << test_count << " tests registered programmablely!" << std::endl;
+  std::cout << "----Total " << test_count << " tests registered programmably!" << std::endl;
   std::cout << "-------------------------------------------------------" << std::endl;
 
   ::testing::InitGoogleTest(&argc, argv);
