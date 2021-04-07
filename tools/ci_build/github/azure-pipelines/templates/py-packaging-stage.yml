@@ -341,11 +341,13 @@ stages:
           scriptType: 'bash'
           scriptLocation: 'inlineScript'
           inlineScript: |
+            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
             tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path, $(Build.ArtifactStagingDirectory)/Release/dist/*.whl, \
-                --account_name, onnxruntimepackages, \
-                --account_key, $(orttrainingpackagestorageaccountkey), \
-                --container_name,  "$web"
+                --python_wheel_path ${files[0]} \
+                --account_name onnxruntimepackages \
+                --account_key $(orttrainingpackagestorageaccountkey) \
+                --container_name '$web'
           condition: succeededOrFailed()
           displayName: 
 
