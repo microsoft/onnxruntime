@@ -225,15 +225,8 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
           [data, out, batch_size, N, n_rows](ptrdiff_t b) {
             int64_t begin = batch_size * b;
             int64_t end = begin + batch_size < N ? begin + batch_size : N;
-            //const T* p;
             for (int64_t row = 1; row < n_rows; ++row) {
               EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(data + row * N + begin, end - begin);
-              /*
-              p = data + row * N;
-              for (int64_t j = begin; j < end; ++j) {
-                out[j] += p[j];
-              }
-              */
             }
           },
           0);
@@ -365,10 +358,36 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
   }
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
-                           Tensor& output, concurrency::ThreadPool*) {
+                           Tensor& output, concurrency::ThreadPool* tp) {
     ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
     ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
-    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().maxCoeff();
+    if (fast_shape[0] >= 4 && fast_shape[1] >= 32) {
+      int64_t batch_size = 1024;
+      int64_t n_rows = fast_shape[0];
+      int64_t N = fast_shape[1];
+      int64_t batch = N / batch_size + (N % batch_size > 0 ? 1 : 0);
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      memcpy(out, data, N * sizeof(T));
+
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp,
+          SafeInt<int32_t>(batch),
+          [data, out, batch_size, N, n_rows](ptrdiff_t b) {
+            int64_t begin = batch_size * b;
+            int64_t end = begin + batch_size < N ? begin + batch_size : N;
+            const T* p;
+            for (int64_t row = 1; row < n_rows; ++row) {
+              p = data + row * N;
+              for (int64_t j = begin; j < end; ++j) {
+                out[j] = out[j] > p[j] ? out[j] : p[j];
+              }
+            }
+          },
+          0);
+    } else {
+      EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().maxCoeff();
+    }
   }
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
@@ -515,10 +534,36 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
   }
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
-                           Tensor& output, concurrency::ThreadPool*) {
+                           Tensor& output, concurrency::ThreadPool* tp) {
     ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
     ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
-    EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().minCoeff();
+    if (fast_shape[0] >= 4 && fast_shape[1] >= 32) {
+      int64_t batch_size = 1024;
+      int64_t n_rows = fast_shape[0];
+      int64_t N = fast_shape[1];
+      int64_t batch = N / batch_size + (N % batch_size > 0 ? 1 : 0);
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      memcpy(out, data, N * sizeof(T));
+
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp,
+          SafeInt<int32_t>(batch),
+          [data, out, batch_size, N, n_rows](ptrdiff_t b) {
+            int64_t begin = batch_size * b;
+            int64_t end = begin + batch_size < N ? begin + batch_size : N;
+            const T* p;
+            for (int64_t row = 1; row < n_rows; ++row) {
+              p = data + row * N;
+              for (int64_t j = begin; j < end; ++j) {
+                out[j] = out[j] < p[j] ? out[j] : p[j];
+              }
+            }
+          },
+          0);
+    } else {
+      EigenVectorMap<T>(output.MutableData<T>(), fast_shape[1]) = ConstEigenMatrixMap<T>(input.Data<T>(), fast_shape[1], fast_shape[0]).rowwise().minCoeff();
+    }
   }
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
