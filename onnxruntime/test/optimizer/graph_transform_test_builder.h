@@ -240,7 +240,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       int opset_version = 12);
+                       int opset_version = 12,
+                       double per_sample_tolerance = 0.0,
+                       double relative_per_sample_tolerance = 0.0);
 
 }  // namespace test
 }  // namespace onnxruntime

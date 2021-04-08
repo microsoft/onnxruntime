@@ -477,6 +477,24 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+//GreaterOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status GreaterOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &ImplT2_GreaterOrEqual);
+
+  return Status::OK();
+}
+
+//LessOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status LessOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &ImplT2_LessOrEqual);
+
+  return Status::OK();
+}
+
 BINARY_LOGICALOP_REGISTER_UZILHFD(Equal, 13)
 BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(Equal, 13, bool)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Equal, 11, 12)
@@ -488,6 +506,9 @@ BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 13)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Less, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
+BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 12)
+BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 12)
+
 
 }  // namespace cuda
 }  // namespace onnxruntime
