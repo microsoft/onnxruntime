@@ -35,7 +35,7 @@ static bool IsFP16Safe(const std::string& op_type, size_t level)
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level)
 {
-  bool fp16_allow = false;
+  bool fp16_allow = std::find(allow_list.begin(), allow_list.end(), op_type) != allow_list.end();
   for (size_t i=0; i < level && i < fp16_allow_ops.size() && !fp16_allow; ++i) {
     fp16_allow = std::find(fp16_allow_ops[i].begin(), fp16_allow_ops[i].end(), op_type) != fp16_allow_ops[i].end();
   }

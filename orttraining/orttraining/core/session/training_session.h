@@ -254,6 +254,7 @@ class TrainingSession : public InferenceSession {
       int number_recompute_layers{0};
       // Propagate FP16 Cast operations up and FP32 operations down
       int propagate_cast_ops_level{0};
+      std::vector<std::string> propagate_cast_ops_allow;
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
