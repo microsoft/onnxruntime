@@ -1887,6 +1887,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
     } else if (strcmp(arena_config_keys[i], "shrink_on_every_run") == 0) {
       (*out)->shrink_on_every_run = (arena_config_values[i] != 0);
     } else {
+      // free before we return unsuccessful status
+      delete *out;
       return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid key found");
     }
   }
