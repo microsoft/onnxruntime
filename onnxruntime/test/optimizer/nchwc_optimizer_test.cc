@@ -10,6 +10,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include <cmath>
 
 #include "gtest/gtest.h"
 
