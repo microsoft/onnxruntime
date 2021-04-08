@@ -675,7 +675,8 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
     // using this code, however the common case here is multiplying a NxCxHxW
     // matrix by a NxCx1x1 vector. The implementation of Mul does not currently
     // vectorize well for the case of broadcasting a NCHWc sized channel block.
-    // This case is better served by a
+    // This case should be handled by a ScaleShift kernel that can broadcast a
+    // multiply/add vector (BatchNormalization can also be reimplemented with this).
     for (size_t n = 0; n < input_defs_count; n++) {
       std::string reshape_input_def_name = graph_.GenerateNodeArgName("reshape");
       auto* reshape_input_arg = &graph_.GetOrCreateNodeArg(reshape_input_def_name, nullptr);
