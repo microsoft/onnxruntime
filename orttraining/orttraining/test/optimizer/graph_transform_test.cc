@@ -14,7 +14,6 @@
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
-#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
