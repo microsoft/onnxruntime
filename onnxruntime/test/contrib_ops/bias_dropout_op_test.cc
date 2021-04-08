@@ -25,8 +25,8 @@ using namespace onnxruntime::test;
 
 enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
 
-// BiasDropout kernel is only implemented for CUDA
-#ifdef USE_CUDA
+// BiasDropout kernel is only implemented for CUDA/ROCM
+#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                         TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false, bool has_residual = true) {

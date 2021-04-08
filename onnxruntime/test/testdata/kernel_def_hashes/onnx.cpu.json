@@ -856,6 +856,22 @@
         16852011221046024392
     ],
     [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        3999586969438630368
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        8317279776362716048
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        14896183015337647264
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        17416867432093505280
+    ],
+    [
         "GRU ai.onnx CPUExecutionProvider",
         2706165712066264784
     ],
@@ -966,6 +982,22 @@
     [
         "Less ai.onnx CPUExecutionProvider",
         17960128831236491008
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        1261667279452953168
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        2051143717905239376
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        4697898477799165704
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        8848289292300988248
     ],
     [
         "Log ai.onnx CPUExecutionProvider",

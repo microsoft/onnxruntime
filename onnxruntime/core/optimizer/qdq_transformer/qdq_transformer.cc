@@ -20,29 +20,24 @@ class QDQTransformerImpl {
 
   void Transform(Node& node) {
     // extract DequantizeLinear from parents and QuantizeLinear in children
-    std::vector<const Node*> parents = graph_utils::FindParentsByType(node, DQOPTypeName);
-    std::vector<const Node*> children = graph_utils::FindChildrenByType(node, QOPTypeName);
+    std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, DQOPTypeName);
+    std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QOPTypeName);
 
-    if (parents.size() == 0) {
-      return;
-    }
-
-    // track dq output edges count
-    for (auto parent_node : parents) {
-      if (!dq_output_edges_count_.count(parent_node)) {
-        dq_output_edges_count_[parent_node] = parent_node->GetOutputEdgesCount();
+    // track DequantizeLinear output edges count
+    for (auto dq_node : dq_nodes) {
+      if (!dq_output_edges_count_.count(dq_node)) {
+        dq_output_edges_count_[dq_node] = dq_node->GetOutputEdgesCount();
       }
     }
 
     std::unique_ptr<QDQOperatorTransformer> op_trans = QDQRegistry::CreateQDQTransformer(node, graph_);
-
-    if (op_trans && op_trans->Transform(parents, children)) {
-      for (auto parent_node : parents) {
-        dq_output_edges_count_[parent_node]--;
+    if (op_trans && op_trans->Transform(dq_nodes, q_nodes)) {
+      for (auto dq_node : dq_nodes) {
+        dq_output_edges_count_[dq_node]--;
       }
 
-      UpdateNodesToRemove(parents);
-      UpdateNodesToRemove(children);
+      UpdateNodesToRemove(dq_nodes);
+      UpdateNodesToRemove(q_nodes);
       if (!op_trans->KeepNode()) {
         nodes_to_remove_.insert(node.Index());
       }
@@ -59,7 +54,16 @@ class QDQTransformerImpl {
  private:
   void UpdateNodesToRemove(const std::vector<const Node*>& nodes) {
     for (auto node : nodes) {
-      if (dq_output_edges_count_[node] == 0 && !nodes_to_remove_.count(node->Index())) {
+      if (nodes_to_remove_.count(node->Index())) {
+        continue;
+      }
+
+      auto it = dq_output_edges_count_.find(node);
+      // Add to nodes_to_remove_ directly if it is QuantizeLinear
+      if (it == dq_output_edges_count_.end()) {
+        nodes_to_remove_.insert(node->Index());
+      } else if (it->second == 0 &&                                     // node has no edges
+                 graph_.GetNodeOutputsInGraphOutputs(*node).empty()) {  // node outputs are not graph outputs
         nodes_to_remove_.insert(node->Index());
       }
     }

@@ -108,7 +108,7 @@ RUN mv $OPENMPI_DIR/bin/mpirun $OPENMPI_DIR/bin/mpirun.real && \
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-ARG CACHE_DATA=2020-12-06
+ARG CACHE_DATA=2021-04-02
 
 # ONNX Runtime
 WORKDIR $GITHUB_DIR
@@ -186,12 +186,12 @@ RUN locale-gen en_US.UTF-8
 
 # Workaround an issue in AMD compiler which generates poor GPU ISA
 # when the type of kernel parameter is a structure and “pass-by-value” is used
-ENV HSA_NO_SCRATCH_RECLAIM=1
+# ENV HSA_NO_SCRATCH_RECLAIM=1
 
 # Distributed training related environment variables
 ENV HSA_FORCE_FINE_GRAIN_PCIE=1
-ENV NCCL_DEBUG=INFO
-ENV RCCL_ALLTOALL_KERNEL_DISABLE=1
+# ENV NCCL_DEBUG=INFO
+# ENV RCCL_ALLTOALL_KERNEL_DISABLE=1
 # ENV NCCL_DEBUG_SUBSYS=INIT,COLL
 
 WORKDIR ${WORKSPACE_DIR}/script

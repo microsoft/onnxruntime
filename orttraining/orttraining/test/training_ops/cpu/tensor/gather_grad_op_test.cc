@@ -97,13 +97,14 @@ void RunGatherGradTestWithRandomData(
 }
 }  // namespace
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 //TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
+#ifdef USE_CUDA
   if (NeedSkipIfCudaArchLowerThan(700)) {
     return;
   }
-
+#endif
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<MLFloat16>("data", {3, 3},
