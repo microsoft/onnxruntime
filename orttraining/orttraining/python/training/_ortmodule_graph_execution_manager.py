@@ -84,6 +84,7 @@ class GraphExecutionManager(ABC):
 
         # Graph transformer config
         self._propagate_cast_ops_level = 0
+        self._propagate_cast_ops_allow = {}
 
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -266,5 +267,6 @@ class GraphExecutionManager(ABC):
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
         grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
