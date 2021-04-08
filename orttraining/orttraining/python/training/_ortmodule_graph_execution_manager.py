@@ -8,6 +8,8 @@ from . import _utils, _ortmodule_utils, _ortmodule_output_transformation as _ort
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 from abc import ABC, abstractmethod
 import io
 import inspect
@@ -89,6 +91,8 @@ class GraphExecutionManager(ABC):
         # default execution order is priority-based for both dynamic/static shape input for now
         # if we observe benefit of static shape, we can expose this flag to user
         self._use_static_shape = False
+        # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
+        self._run_symbolic_shape_infer = False
         self._input_names_require_grad = None
         self._module_output_schema = None
 
@@ -182,6 +186,9 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+
+        if self._run_symbolic_shape_infer:
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
         return True
 
