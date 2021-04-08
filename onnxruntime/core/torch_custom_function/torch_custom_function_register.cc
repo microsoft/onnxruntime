@@ -3,6 +3,7 @@
 
 #include "torch_custom_function_register.h"
 #include <Python.h>
+#include <sstream>
 #include <mutex>
 
 namespace onnxruntime {
@@ -42,12 +43,26 @@ void OrtTorchFunctionPool::RegisterBackward(
 
 PyObject* OrtTorchFunctionPool::GetForward(
     const std::string& custom_function_name) {
-  return forward_pool.at(custom_function_name);
+  auto it = forward_pool.find(custom_function_name);
+  if (it == forward_pool.end()) {
+    std::ostringstream oss;
+    oss << "No custom forward function registered for "
+        << custom_function_name << std::endl;
+    throw std::runtime_error(oss.str());
+  }
+  return it->second;
 };
 
 PyObject* OrtTorchFunctionPool::GetBackward(
     const std::string& custom_function_name) {
-  return backward_pool.at(custom_function_name);
+  auto it = backward_pool.find(custom_function_name);
+  if (it == backward_pool.end()) {
+    std::ostringstream oss;
+    oss << "No custom backward function registered for "
+        << custom_function_name << std::endl;
+    throw std::runtime_error(oss.str());
+  }
+  return it->second;
 };
 
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
