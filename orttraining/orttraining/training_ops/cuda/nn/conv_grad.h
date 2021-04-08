@@ -29,6 +29,9 @@ class ConvGrad final : public CudaKernel {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   ConvGrad(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
+#if (defined(CUDA_VERSION) && (CUDA_VERSION < 10000) || (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 700)))
+    ORT_THROW("ConvGrad CUDA kernel is not yet tested on __CUDA_ARCH__ lower than 700");
+#endif
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
   }

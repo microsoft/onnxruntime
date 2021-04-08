@@ -17,6 +17,7 @@
 #include "orttraining/test/gradient/gradient_checker.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/cuda_op_test_utils.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
@@ -1040,13 +1041,18 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
 }
 
 TEST(GradientCheckerTest, ConvGrad) {
-  ConvGradientCheckerTest(nullptr);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
+  if (HasCudaEnvironment(700)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
 
 #ifdef USE_DNNL
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-  ConvGradientCheckerTest(&execution_providers);
 #endif
+
+  ConvGradientCheckerTest(&execution_providers);
 }
 
 static void TestConcatOpGrad(const std::string& op_type,
