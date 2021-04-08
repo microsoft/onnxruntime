@@ -203,8 +203,8 @@ a.link:active .link-arrow{
     height: 55px;
 }
 .sponsor-logo img{
-   max-height:80px;
    max-width: 100%;
+   height: 100px;
 }
 .hw-logo img{
     max-width:150px;
