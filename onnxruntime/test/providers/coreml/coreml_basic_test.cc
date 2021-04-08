@@ -18,7 +18,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
-#endif  // !(ORT_MINIMAL_BUILD
+#endif  // !(ORT_MINIMAL_BUILD)
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -31,7 +31,7 @@ namespace onnxruntime {
 namespace test {
 
 // We want to run UT on CPU only to get output value without losing precision to pass the verification
-static uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
 
 #if !defined(ORT_MINIMAL_BUILD)
 
