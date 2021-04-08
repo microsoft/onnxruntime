@@ -157,7 +157,7 @@ profiling::Profiler::~Profiler() {
 }
 #endif
 
-::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
+::onnxruntime::TimePoint profiling::Profiler::Now() const {
   ORT_ENFORCE(enabled_);
   return std::chrono::high_resolution_clock::now();
 }
@@ -180,7 +180,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   enabled_ = true;
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = Now();
   DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
   if (device_profiler) {
     device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
@@ -192,7 +192,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = ToMBString(file_name);
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = Now();
   DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
   if (device_profiler) {
     device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
