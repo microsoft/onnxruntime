@@ -82,6 +82,9 @@ class GraphExecutionManager(ABC):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+        # Graph transformer config
+        self._propagate_cast_ops_level = 0
+
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = None
@@ -261,5 +264,7 @@ class GraphExecutionManager(ABC):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
+        grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
