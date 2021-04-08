@@ -1212,7 +1212,7 @@ Run one of the following build scripts from the ONNX Runtime repository root,
            --xcode_code_signing_team_id <Your Apple developmemt team ID>
 ```
 
-##### CoreML Execution Provider
+##### iOS CoreML Execution Provider
 
 If you want to use CoreML Execution Provider on iOS, see [CoreML Execution Provider](../reference/execution-providers/CoreML-ExecutionProvider.md).
 

@@ -23,7 +23,7 @@ The CoreML EP requires iOS devices with iOS 13 or higher, or mac computers with 
 
 ## Build CoreML EP
 
-For build instructions, please see the [BUILD page](../../how-to/build.md#coreml-execution-provider).
+For build instructions for iOS devices, please see the [BUILD page](../../how-to/build.md#ios-coreml-execution-provider).
 
 ## Using CoreML EP in C/C++
 
