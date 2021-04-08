@@ -248,7 +248,7 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     # stable:
     # onnxruntime-1.7.0+cu111.training-cp36-cp36m-linux_x86_64.whl
     # nightly:
-    # onnxruntime-1.7.0.dev20210401+cu111.training-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime-1.7.0.dev20210408+cu111.training-cp36-cp36m-linux_x86_64.whl
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     # we further suggest the same naming convention for all onnxruntime packages, for example:
@@ -360,7 +360,6 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
-print("version_number: ", version_number)
 # Setup
 setup(
     name=package_name,
