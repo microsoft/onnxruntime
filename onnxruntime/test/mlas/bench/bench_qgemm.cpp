@@ -59,7 +59,7 @@ void QGEMM(benchmark::State& state, bool pack_b) {
     packed_b_size = MlasGemmPackBSize(N, K, b_is_signed);
     pack_b_holder.resize(packed_b_size * batch);
     for (int i = 0; i < batch; i++) {
-      MlasGemmPackB(N, K, B_holder.data(), N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
+      MlasGemmPackB(N, K, B_holder.data() + N * K * i, N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
     }
     gemm_params.BIsPacked = true;
   } else {
