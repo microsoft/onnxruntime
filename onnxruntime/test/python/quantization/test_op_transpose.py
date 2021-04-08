@@ -10,8 +10,9 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static
+from onnxruntime.quantization import quantize_static, QuantFormat
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_nodes
+
 
 class TestOpTranspose(unittest.TestCase):
     def input_feeds(self, n, name2shape):
@@ -47,9 +48,8 @@ class TestOpTranspose(unittest.TestCase):
         matmul_node = onnx.helper.make_node('MatMul', matmul_inputs, matmul_outputs, name=matmul_name)
 
         # make Transpose node
-        kwargs = {'perm' : (1, 0) }
+        kwargs = {'perm': (1, 0)}
         transpose_node = onnx.helper.make_node('Transpose', [matmul_output_name], [output_name], name="transpose_node", **kwargs)
-
 
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
@@ -66,18 +66,28 @@ class TestOpTranspose(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = 'transpose_fp32.onnx'
         model_uint8_path = 'transpose_uint8.onnx'
-        data_reader = self.input_feeds(1, {'input': [3, 7]})
+        model_uint8_qdq_path = 'transpose_uint8_qdq.onnx'
+
         self.construct_model_matmul_transpose(model_fp32_path, [3, 7], [7, 5], [5, 3])
+
+        # Verify QOperator model
+        data_reader = self.input_feeds(1, {'input': [3, 7]})
         quantize_static(model_fp32_path, model_uint8_path, data_reader)
-
-        data_reader.rewind()
-        qdq_nodes = {'QLinearMatMul': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1, 'Transpose': 1}
-
         # make sure transpose become xint8 operator, its input name could tell that
-        check_op_nodes(self, model_uint8_path, lambda node : (node.name != "transpose_node" or node.input[0] != 'matmul_output'))
-
-        check_op_type_count(self, model_uint8_path, **qdq_nodes)
+        check_op_nodes(self, model_uint8_path, lambda node: (node.name != "transpose_node" or node.input[0] != 'matmul_output'))
+        qnode_counts = {'QLinearMatMul': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1, 'Transpose': 1}
+        check_op_type_count(self, model_uint8_path, **qnode_counts)
+        data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
+
+        # Verify QDQ model
+        data_reader.rewind()
+        quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
+        qdqnode_counts = {'MatMul': 1, 'QuantizeLinear': 2, 'DequantizeLinear': 3, 'Transpose': 1}
+        check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
+        data_reader.rewind()
+        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
+
 
 if __name__ == '__main__':
     unittest.main()
