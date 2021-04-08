@@ -204,6 +204,7 @@ a.link:active .link-arrow{
 }
 .sponsor-logo img{
    max-height:80px;
+   max-width: 100%;
 }
 .hw-logo img{
     max-width:150px;
@@ -216,9 +217,13 @@ h3.blue-text{
     font-weight: 700;
 }
 
+.article-blurb{
+    color: #000000; 
+}
+
 .news{
     background-color: #e8e8e8;
-    padding:15px;
+    padding:3rem;
     font-size:18px;
 }
 
@@ -602,17 +607,15 @@ a .abbr[data-original-title], a abbr[title]{
 .subheading{
     font-size: 24px;
 }
-.news-img img,
+
 .resources-img img {
     max-width: 100%;
 }
 .news-img img{
-    max-height: 150px;
-    max-width: 200px;
+    max-width: 100%;
 }
-.news-img div{
-    display:table-cell;
-    vertical-align: middle;
+.news-img{
+    padding-left: 3rem;
 }
 .resources-img {
     position: relative;

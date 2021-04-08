@@ -27,7 +27,7 @@
         max-height: 50px;
     }
     .news-img img {
-        max-height: 110px;
+        max-width: 100%;
     }
   }
   
@@ -99,7 +99,7 @@
         font-size: 22px;
     }
     .news-img img {
-        max-height: 90px;
+        max-width: 100%;
     }
   }
 
@@ -257,7 +257,7 @@
         padding-top: 60px;
     }
     .news-img img {
-        max-height: 110px;
+        max-width: 100%;
     }
   }
   
