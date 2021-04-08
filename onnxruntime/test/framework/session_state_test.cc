@@ -8,6 +8,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -170,6 +171,57 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
       }
     }
   }
+}
+
+// Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
+// if the relevant session option config flag is set
+TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
+  std::basic_ostringstream<ORTCHAR_T> oss;
+  oss << ORT_TSTR("testdata/mul_1.onnx");
+  Status status;
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, DefaultLoggingManager().DefaultLogger())).IsOK())
+      << status;
+  Graph& graph = model->MainGraph();
+
+  ExecutionProviders execution_providers;
+  CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
+  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  KernelRegistryManager krm;
+  status = krm.RegisterKernels(execution_providers);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState session_state(graph, execution_providers, false, nullptr, nullptr, dtm,
+                             DefaultLoggingManager().DefaultLogger(), profiler);
+
+  // Partition the graph
+  GraphPartitioner partitioner(krm, execution_providers);
+  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  // Finalize the session state
+  SessionOptions so;
+  // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
+  so.AddConfigEntry(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "1");
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
+
+  // Fetch the CPU arena-allocator from the session state
+  OrtMemoryInfo mem_info(CPU, OrtArenaAllocator);
+  AllocatorPtr alloc = session_state.GetAllocator(mem_info);
+  ASSERT_TRUE(alloc != nullptr);
+
+  // Get stats for the CPU arena-based allocator
+  AllocatorStats alloc_stats;
+  static_cast<BFCArena*>(alloc.get())->GetStats(&alloc_stats);
+
+  // Test that we have made 1 Reserve() call (for allocating memory for the sole initializer in the model)
+  // and that we have made no calls that does an allocation from arena memory (0 calls to Alloc())
+  ASSERT_EQ(alloc_stats.num_allocs, 0);    // no calls to Alloc()
+  ASSERT_EQ(alloc_stats.num_reserves, 1);  // one call to Reserve() for the sole initializer in the model
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
