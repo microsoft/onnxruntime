@@ -16,8 +16,8 @@ class PythonOp final : public CudaKernel {
  public:
   PythonOp(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("input_types", input_types_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("output_types", output_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_types_));
   };
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -36,8 +36,8 @@ class PythonOpGrad final : public CudaKernel {
  public:
   PythonOpGrad(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("input_types", input_types_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("output_types", output_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_types_));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

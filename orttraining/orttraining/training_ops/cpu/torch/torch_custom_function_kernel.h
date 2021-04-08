@@ -16,8 +16,8 @@ class PythonOp final : public OpKernel {
  public:
   PythonOp(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    input_types_ = info.GetAttrsOrDefault("input_types", std::vector<int64_t>());
-    output_types_ = info.GetAttrsOrDefault("output_types", std::vector<int64_t>());
+    input_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
+    output_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
 
     std::string err;
     auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForward(name_);
@@ -55,8 +55,8 @@ class PythonOpGrad final : public OpKernel {
  public:
   PythonOpGrad(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    input_types_ = info.GetAttrsOrDefault("input_types", std::vector<int64_t>());
-    output_types_ = info.GetAttrsOrDefault("output_types", std::vector<int64_t>());
+    input_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
+    output_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
 
     std::string err;
     auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackward(name_);
