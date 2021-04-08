@@ -4,7 +4,7 @@
 
 import os
 import argparse
-from azure.storage.blob import BlockBlobService
+from azure.storage.blob import BlockBlobService, ContentSettings
 
 
 def upload_whl(python_wheel_path, account_name, account_key, container_name):
@@ -32,7 +32,12 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
         for item in lines:
             f.write("%s\n" % item)
 
-    block_blob_service.create_blob_from_path(container_name, html_blob_name, download_path_to_html)
+    content_settings = ContentSettings(content_type='text/html')
+    block_blob_service.create_blob_from_path(
+        container_name,
+        html_blob_name,
+        download_path_to_html,
+        content_settings=content_settings)
 
 
 if __name__ == "__main__":

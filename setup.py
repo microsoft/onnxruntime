@@ -4,6 +4,8 @@
 #--------------------------------------------------------------------------
 
 from setuptools import setup, find_packages, Extension
+from packaging import version
+from packaging.version import Version
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
@@ -244,9 +246,9 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
-    # onnxruntime-1.7.0+cu11.1.training-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime-1.7.0+cu111.training-cp36-cp36m-linux_x86_64.whl
     # nightly:
-    # onnxruntime-1.7.0.dev20210401+cu11.1.training-cp36-cp36m-linux_x86_64.whl
+    # onnxruntime-1.7.0.dev20210401+cu111.training-cp36-cp36m-linux_x86_64.whl
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     # we further suggest the same naming convention for all onnxruntime packages, for example:
@@ -258,6 +260,8 @@ if parse_arg_remove_boolean(sys.argv, '--enable_training'):
     # has one benefit: it enforce single onnxruntime installation in an invironment.
     package_name = 'onnxruntime'
     if cuda_version:
+        # removing '.' to make Cuda version number in the same form as Pytorch.
+        cuda_version = cuda_version.replace('.', '')
         local_version = '+cu' + cuda_version + ".training"
 
 package_data = {}
@@ -320,7 +324,19 @@ if nightly_build:
       #The following line is only for local testing
       build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      build_suffix = build_suffix.replace('.','')
+      build_suffix = build_suffix.replace('.', '')
+
+    if parse_arg_remove_boolean(sys.argv, '--enable_training'):
+        # with training package, we need to bump up version minor number so that
+        # nightly releases take precedence over the latest release when --pre is used during pip install.
+        # eventually this shall be the behavior of all onnxruntime releases.
+        # alternatively we may bump up version number right after every release.
+        ort_version = version.parse(version_number)
+        if isinstance(ort_version, Version):
+            version_number = '{major}.{minor}.{macro}'.format(
+                major=ort_version.major,
+                minor=ort_version.minor + 1,
+                macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
