@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #include "core/common/logging/logging.h"
 #include "core/providers/coreml/coreml_execution_provider.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
@@ -119,5 +117,3 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
