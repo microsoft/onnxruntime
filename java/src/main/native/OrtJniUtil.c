@@ -507,6 +507,7 @@ size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint
 
 size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, jarray output) {
     uint32_t outputLength = (*jniEnv)->GetArrayLength(jniEnv,output);
+    if (outputLength == 0) return 0;
     size_t consumedSize = outputLength * onnxTypeSize(onnxType);
     switch (onnxType) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
@@ -534,9 +535,12 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             return consumedSize;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: { // stored as a uint16_t
-            float *floatArr = malloc(sizeof(float) * outputLength);
+            jfloat *floatArr = malloc(sizeof(jfloat) * outputLength);
+            if(floatArr == NULL) {
+                throwOrtException(jniEnv, 1, "Not enough memory");
+            }
             uint16_t *halfArr = (uint16_t *) tensor;
-            for (uint32_t i = 0; i < outputLength; i++) {
+            for (uint32_t i = 0; i != outputLength; i++) {
                 floatArr[i] = convertHalfToFloat(halfArr[i]);
             }
             jfloatArray typedArr = (jfloatArray) output;
@@ -647,6 +651,7 @@ void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* a
             checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,curSize,(void**)&tempBuffer));
             bufferSize = curSize;
         }
+        if(tempBuffer == NULL) throwOrtException(jniEnv, 1, "Not enough memory");
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
         tempBuffer[curSize-1] = '\0';
         jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
@@ -991,29 +996,29 @@ jint throwOrtException(JNIEnv *jniEnv, int messageId, const char *message) {
 jint convertErrorCode(OrtErrorCode code) {
     switch (code) {
         case ORT_OK:
-			return 0;
+            return 0;
         case ORT_FAIL:
-			return 1;
+            return 1;
         case ORT_INVALID_ARGUMENT:
-			return 2;
+            return 2;
         case ORT_NO_SUCHFILE:
-			return 3;
+            return 3;
         case ORT_NO_MODEL:
-			return 4;
+            return 4;
         case ORT_ENGINE_ERROR:
-			return 5;
+            return 5;
         case ORT_RUNTIME_EXCEPTION:
-			return 6;
+            return 6;
         case ORT_INVALID_PROTOBUF:
-			return 7;
+            return 7;
         case ORT_MODEL_LOADED:
-			return 8;
+            return 8;
         case ORT_NOT_IMPLEMENTED:
-			return 9;
+            return 9;
         case ORT_INVALID_GRAPH:
-			return 10;
+            return 10;
         case ORT_EP_FAIL:
-			return 11;
+            return 11;
         default:
             return -1; // Unknown error code
     }
@@ -1024,6 +1029,9 @@ void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
         const char* message = api->GetErrorMessage(status);
         size_t len = strlen(message)+1;
         char* copy = malloc(sizeof(char)*len);
+        if (copy == NULL) {
+          throwOrtException(jniEnv, 1, "Not enough memory");
+        }
         memcpy(copy,message,len);
         int messageId = convertErrorCode(api->GetErrorCode(status));
         api->ReleaseStatus(status);
