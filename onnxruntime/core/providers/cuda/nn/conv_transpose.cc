@@ -108,10 +108,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
-                                           p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc,
-                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group)));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
+                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group),
+                                           mode, CudnnTensor::GetDataType<CudaT>()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();

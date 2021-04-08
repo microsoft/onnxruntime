@@ -6,9 +6,17 @@
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
+#include "core/providers/cuda/torch_wrapper/torch_wrapper.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+#ifdef USE_TORCH
+#define HANDLE_EXTERNAL_OUTPUTS_ATTR .ExternalOutputs()
+#else
+#define HANDLE_EXTERNAL_OUTPUTS_ATTR
+#endif
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
@@ -19,7 +27,8 @@ namespace cuda {
       1, 10,                                                                    \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+      HANDLE_EXTERNAL_OUTPUTS_ATTR,                                             \
       Conv<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Conv,                                                                     \
@@ -27,7 +36,8 @@ namespace cuda {
       11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+      HANDLE_EXTERNAL_OUTPUTS_ATTR,                                             \
       Conv<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -54,6 +64,24 @@ static Status SliceOutUnwantedOutputSection(const void* input_data,
 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
+#ifdef USE_TORCH
+  auto* ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  OrtValue input = *ctx_internal->GetInputMLValue(0);
+  OrtValue weight = *ctx_internal->GetInputMLValue(1);
+  const OrtValue* bias_ptr = nullptr;
+  if (context->InputCount() >= 3) {
+    bias_ptr = ctx_internal->GetInputMLValue(2);
+  }
+
+  // ONNX supports asymmetric padding, whereas PyTorch supports only symmetric padding.
+  // i.e., onnx_pads = torch_padding + torch_padding
+  std::vector<int64_t> torch_padding(conv_attrs_.pads.begin(), conv_attrs_.pads.begin() + conv_attrs_.pads.size() / 2);
+  OrtValue result = torch_wrapper::convolution(input, weight, bias_ptr, conv_attrs_.strides, torch_padding,
+                                               conv_attrs_.dilations, conv_attrs_.group);
+  ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(0, result));
+  return Status::OK();
+#endif
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -187,8 +215,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
+                                           gsl::narrow_cast<int>(conv_attrs_.group),
                                            mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(conv_attrs_.group)));
 
       if (has_bias) {
         const Tensor* B = context->Input<Tensor>(2);
@@ -301,6 +329,7 @@ Status CudnnConvolutionDescriptor::Set(
     const std::vector<int64_t>& pads,
     const std::vector<int64_t>& strides,
     const std::vector<int64_t>& dilations,
+    int groups,
     cudnnConvolutionMode_t mode,
     cudnnDataType_t data_type) {
   if (!desc_)
@@ -315,6 +344,10 @@ Status CudnnConvolutionDescriptor::Set(
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
   }
 
+  // Revisit: Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // This is setting math_type to CUDNN_DATA_FLOAT for half input
+  cudnnDataType_t math_type = data_type;
+  if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
       gsl::narrow_cast<int>(rank),
@@ -322,7 +355,20 @@ Status CudnnConvolutionDescriptor::Set(
       stride_dims.data(),
       dilation_dims.data(),
       mode,
-      data_type));
+      math_type));
+
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
+
+  // Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // See Note [behavior of cudnnFind and cudnnGet] at /pytorch/aten/src/ATen/native/cudnn/Conv_v7.cpp
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
+  if (data_type == CUDNN_DATA_HALF) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  }
+  // else if (dataType == CUDNN_DATA_FLOAT && !allow_tf32) {
+  // #if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8000
+  //     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
+  // #endif
 
   return Status::OK();
 }

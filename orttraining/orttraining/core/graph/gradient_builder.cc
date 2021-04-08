@@ -740,7 +740,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   }
 
   return std::vector<NodeDef>{
-      NodeDef("ConvGrad",
+      NodeDef(OpDef{"ConvGrad", kMSDomain, 1},
               {GO(0), I(0), I(1)},
               outputs,
               SrcNodeAttributes())};

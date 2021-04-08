@@ -129,6 +129,19 @@ option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests."
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
+# LIBTORCH_HOME can be either a path to libtorch downloaded from Pytorch website,
+# Pytorch python package installed using Anaconda, Pytorch build folder if you built
+# Pytorch from source, and so on.
+# This D_GLIBCXX_USE_CXX11_ABI flag should match what is used when compiling Pytorch/LibTorch and
+# all other ORT dependencies.
+# Do not build using multi-threading when ABI is set. Some packages have their
+# own logics to determine this flag and seems resulting race conditions.
+if (onnxruntime_USE_TORCH)
+  add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0 -DUSE_TORCH=1 -DTHRUST_IGNORE_CUB_VERSION_CHECK)
+  list(APPEND CMAKE_PREFIX_PATH "${onnxruntime_TORCH_HOME}")
+  find_package(Torch REQUIRED PATHS "${onnxruntime_TORCH_HOME}")
+endif()
+
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
 
@@ -1051,7 +1064,9 @@ if (onnxruntime_USE_CUDA)
     else()
       # the following compute capabilities are removed in CUDA 11 Toolkit
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
+        if (NOT onnxruntime_USE_TORCH)
+          set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
+        endif()
       endif()
       # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80

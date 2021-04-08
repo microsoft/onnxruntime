@@ -321,7 +321,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
       << " provider_type: " << provider_type;
 
   // now check the contents of the tensors
-  auto null_deleter = [](void*) {};
+  auto null_deleter = +[](void*) {};
 
   for (size_t i = 0; i < output_num_tensors; ++i) {
     OrtValue temp_value;

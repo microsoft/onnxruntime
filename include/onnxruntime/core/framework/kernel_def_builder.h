@@ -75,6 +75,8 @@ class KernelDef {
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
 
+  bool HasExternalOutputs() const { return external_outputs_; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -128,6 +130,9 @@ class KernelDef {
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+
+  // Whether the outputs are from external.
+  bool external_outputs_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -214,6 +219,15 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
+
+  /**
+     Specify that this kernel's output buffers are passed from external, 
+     i.e. not created or managed by ORT's memory allocator.
+  */
+  KernelDefBuilder& ExternalOutputs() {
+    kernel_def_->external_outputs_ = true;
+    return *this;
+  }
 
   /**
      Specify that this kernel requires an input arg

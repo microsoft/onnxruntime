@@ -228,9 +228,11 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ConvGrad,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvGrad<float>);
 
