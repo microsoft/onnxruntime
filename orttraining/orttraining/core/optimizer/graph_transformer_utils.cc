@@ -73,7 +73,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<ExpandElimination>());
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<EliminateDropout>());
-      rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
