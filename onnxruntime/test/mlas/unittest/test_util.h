@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <random>
+#include <sstream>
 #if defined(_WIN32)
 #include <windows.h>
 #else
@@ -77,7 +78,7 @@ class MatrixGuardBuffer {
 #endif
 
       if (_BaseBuffer == nullptr) {
-        ORT_THROW_EX(std::bad_alloc);
+        abort();
       }
 
       //
@@ -91,7 +92,7 @@ class MatrixGuardBuffer {
       }
 #else
       if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-        ORT_THROW_EX(std::bad_alloc);
+        abort();
       }
 #endif
 

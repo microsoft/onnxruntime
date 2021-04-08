@@ -135,6 +135,10 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
       test_registered += RegisterSingleTest(1, 1, 16, i, i, 32, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
       test_registered += RegisterSingleTest(1, 1, 16, i, i, 32, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
       test_registered += RegisterSingleTest(1, 1, 16, i, i, 32, 1, i, 0, 0, 0, 0, 1, 1, 1, 1);
+      test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+      test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+      test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 2, 2);
     }
     return test_registered;
   }

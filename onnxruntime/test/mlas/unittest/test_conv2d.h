@@ -273,6 +273,31 @@ class MlasConv2DTest : public MlasTestBase {
       Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 
+    for (unsigned gc = 0; gc < _countof(cs); gc++) {
+      for (unsigned ih = 0; ih < _countof(is); ih++) {
+        for (unsigned iw = 0; iw < _countof(is); iw++) {
+          fprintf(stderr, "Handling depthwise %ux%ux%u\n", cs[gc], is[ih], is[iw]);
+          for (unsigned p0 = 0; p0 < 2; p0++) {
+            for (unsigned p1 = 0; p1 < 2; p1++) {
+              for (unsigned p2 = 0; p2 < 2; p2++) {
+                for (unsigned p3 = 0; p3 < 2; p3++) {
+                  for (unsigned dh = 1; dh <= 2; dh++) {
+                    for (unsigned dw = 1; dw <= 2; dw++) {
+                      for (unsigned sh = 1; sh <= 2; sh++) {
+                        for (unsigned sw = 1; sw <= 2; sw++) {
+                          Test(1, cs[gc], 1, is[ih], is[iw], 1, 3, 3, p0, p1, p2, p3, dh, dw, sh, sw);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (unsigned ic = 0; ic < _countof(cs); ic++) {
       for (unsigned ih = 0; ih < _countof(is); ih++) {
         for (unsigned iw = 0; iw < _countof(is); iw++) {

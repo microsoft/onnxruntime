@@ -15,6 +15,12 @@ namespace ONNX_NAMESPACE {
 // For floating-value constants of different precision:
 TensorProto ToTensor(double value, TensorProto_DataType elem_type);
 
+// Utility function to construct a constant of given type/precision.
+inline static FunctionBodyHelper::NodeDef Const(const std::string& name, double value, TensorProto_DataType elem_type) {
+  return FunctionBodyHelper::NodeDef{
+      {name}, "Constant", {}, {{"value", ToTensor(value, elem_type)}}};
+}
+
 // Utility function to construct a FunctionProto from an opschema (for the signature information),
 // a sequence of NodeDefs (for the function body), and the relied opsets.
 bool BuildFunctionProto(FunctionProto& functionProto,

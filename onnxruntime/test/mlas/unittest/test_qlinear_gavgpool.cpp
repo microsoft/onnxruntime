@@ -12,7 +12,7 @@ class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
   static void CalculateGlobalAvgPoolU8(
       const uint8_t* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last,
       uint8_t* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale) {
-    int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
+    int32_t bias = -x_zero_point * static_cast<int32_t>(hw);
     int64_t stride_image = channel_last ? channel : 1;
     int64_t stride_channel = channel_last ? 1 : hw;
 
