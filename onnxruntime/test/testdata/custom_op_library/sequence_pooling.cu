@@ -84,7 +84,7 @@ void SequencePoolingCuda(
   const int num_sequences_max = 256;
   const dim3 grid(batch_size, 1, hidden_size);
   const dim3 block(num_sequences_max, 1, 1);
-
+  cudaDeviceSynchronize();
   SequencePoolingCudaKernel<float><<<grid, block, 0, 0>>>(input, sentence_lengthes, num_sequences, sequence_length_for_split, output);
   cudaDeviceSynchronize();
 }
@@ -100,7 +100,7 @@ void SequencePoolingCuda(
   const int num_sequences_max = 256;
   const dim3 grid(batch_size, 1, hidden_size);
   const dim3 block(num_sequences_max, 1, 1);
-
+  cudaDeviceSynchronize();
   SequencePoolingCudaKernel<half><<<grid, block, 0, 0>>>(input, sentence_lengthes, num_sequences, sequence_length_for_split, output);
   cudaDeviceSynchronize();
 }
