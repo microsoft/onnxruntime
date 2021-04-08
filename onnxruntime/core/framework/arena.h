@@ -25,7 +25,6 @@ class IArenaAllocator : public IAllocator {
   virtual void* Reserve(size_t size) = 0;
   // Free call need to be thread safe.
   void Free(void* p) override = 0;
-  // OnRunEnd call need to be thread safe.
   Status OnRunEnd() override = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
