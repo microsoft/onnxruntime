@@ -133,3 +133,7 @@ class ORTModule(torch.nn.Module):
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
         """Override original method to delegate execution to the base module"""
         yield from self._flattened_module._base_module.named_buffers(prefix=prefix, recurse=recurse)
+
+    def _replicate_for_data_parallel(self):
+        raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                  "Please use torch.nn.parallel.DistributedDataParallel instead.")
