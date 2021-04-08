@@ -493,6 +493,7 @@ a .abbr[data-original-title], a abbr[title]{
     background-color: #0F77D2;
     color: #fff;
     border: 0px solid #000;
+
   }
 
   .r-wrap .r-content .r-option.unsupported span,
@@ -501,6 +502,7 @@ a .abbr[data-original-title], a abbr[title]{
   .r-wrap .r-content .r-option.unsupported span:active{
     border: 2px solid #cc0000;
   }
+
 
   .r-wrap .r-content .r-option.gray span,
   .r-wrap .r-content .r-option.gray span:hover,
@@ -530,12 +532,14 @@ a .abbr[data-original-title], a abbr[title]{
   .r-wrap .r-content #command.r-option.valid span, .r-wrap .r-content #command.r-option.valid span:hover,
   .r-wrap .r-content #ot_command.r-option.valid span, .r-wrap .r-content #ot_command.r-option.valid span:hover {
 	background-color:green;
+
   }
 
   .r-wrap .r-content #command.r-option.invalid span, .r-wrap .r-content #command.r-option.invalid span:hover,
   .r-wrap .r-content #ot_command.r-option.invalid span, .r-wrap .r-content #ot_command.r-option.invalid span:hover {
 	border: 2px solid #cc0000;
   }
+
 
   .r-wrap .r-content .r-option.command-container a.link:hover,
   .r-wrap .r-content .r-option.command-container a.link:focus,

@@ -1096,6 +1096,7 @@ var validCombos = {
     
     "linux,C++,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+
     
     "mac,C-API,ARM64,CoreML":
         "<i>Coming soon!</i>",
