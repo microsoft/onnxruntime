@@ -2422,7 +2422,7 @@ TEST(GradientCheckerTest, ClipGrad) {
     EXPECT_IS_TINY(max_error);
   }
 }
-/*
+
 TEST(GradientCheckerTest, TileGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -2431,16 +2431,15 @@ TEST(GradientCheckerTest, TileGrad) {
   // default values for optional tensors like axes and steps.
   {
     TensorInfo x_info({2, 4}, true);
-    TensorInfo start_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    TensorInfo end_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 1, 2}, {1, 2, 1, 2}};
+    TensorInfo repeat_info({2,2}, false);
+    std::vector<std::vector<float>> x_datas = {{1, 2, 1, 2, 1, 2, 1, 2}};
 
-    TensorInfo y_info({1, 2}, true);
+    TensorInfo y_info({2, 1}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
   }
-}*/
+}
 
 }  // namespace test
 }  // namespace onnxruntime
