@@ -6,6 +6,7 @@
 from ._ortmodule_training_manager import TrainingManager
 from ._ortmodule_inference_manager import InferenceManager
 
+
 class GraphExecutionManagerFactory(object):
     def __init__(self, module):
         self._training_manager = TrainingManager(module)
