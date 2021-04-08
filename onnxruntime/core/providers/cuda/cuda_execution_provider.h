@@ -102,7 +102,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
-  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
 
  private:
@@ -121,7 +121,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                      CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
     ~PerThreadContext();
 

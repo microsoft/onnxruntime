@@ -18,6 +18,7 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
+from onnxruntime import SessionOptions
 
 
 ###############################################################################
@@ -99,7 +100,9 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'extra_postprocess': None,
             'onnx_opset_version' : 12,
             'enable_onnx_contrib_ops': True,
-        }
+        },
+        'provider_options':{},
+        'session_options': None,
     }
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
@@ -532,6 +535,15 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert_allclose(lr_list[0],
                         expected_values[optimization_step], rtol=rtol, err_msg="lr mismatch")
 
+def testInstantiateORTTrainerOptions():
+    session_options = SessionOptions()
+    session_options.enable_mem_pattern = False
+    provider_options = {'EP1': {'key':'val'}}
+    opts = {'session_options' : session_options, 
+            'provider_options' : provider_options}
+    opts = orttrainer.ORTTrainerOptions(opts)
+    assert(opts.session_options.enable_mem_pattern is False)
+    assert(opts._validated_opts['provider_options']['EP1']['key'] == 'val')
 
 @pytest.mark.parametrize("step_fn, lr_scheduler, expected_lr_values, device", [
     ('train_step', None, None, 'cuda'),

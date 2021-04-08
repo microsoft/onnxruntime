@@ -82,22 +82,22 @@ class TestInferenceSession(unittest.TestCase):
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
                 self.assertIn('CUDAExecutionProvider', sess.get_providers())
 
-                # test get/set of "cuda_mem_limit" configuration.
+                # test get/set of "gpu_mem_limit" configuration.
                 options = sess.get_provider_options()
                 self.assertIn('CUDAExecutionProvider', options)
                 option = options['CUDAExecutionProvider']
-                self.assertIn('cuda_mem_limit', option)
-                ori_mem_limit = option['cuda_mem_limit']
+                self.assertIn('gpu_mem_limit', option)
+                ori_mem_limit = option['gpu_mem_limit']
                 new_mem_limit = int(ori_mem_limit) // 2
-                option['cuda_mem_limit'] = new_mem_limit
+                option['gpu_mem_limit'] = new_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_mem_limit'], str(new_mem_limit))
 
-                option['cuda_mem_limit'] = ori_mem_limit
+                option['gpu_mem_limit'] = ori_mem_limit
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_mem_limit'], ori_mem_limit)
 
                 def test_get_and_set_option_with_values(option_name, option_values):
                     provider_options = sess.get_provider_options()
@@ -121,12 +121,12 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values(
                     'do_copy_in_default_stream', [0, 1])
 
-                option['cuda_external_alloc'] = '0'
-                option['cuda_external_free'] = '0'
+                option['gpu_external_alloc'] = '0'
+                option['gpu_external_free'] = '0'
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_external_alloc'], '0')
-                self.assertEqual(options['CUDAExecutionProvider']['cuda_external_free'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_external_alloc'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_external_free'], '0')
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -138,15 +138,15 @@ class TestInferenceSession(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = -1024
+                option['gpu_mem_limit'] = -1024
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = 1024.1024
+                option['gpu_mem_limit'] = 1024.1024
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                option['cuda_mem_limit'] = 'wrong_value'
+                option['gpu_mem_limit'] = 'wrong_value'
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
@@ -535,11 +535,13 @@ class TestInferenceSession(unittest.TestCase):
         tags = ['pid', 'dur', 'ts', 'ph', 'X', 'name', 'args']
         with open(profile_file) as f:
             lines = f.readlines()
+            lines_len = len(lines)
+            self.assertTrue(lines_len > 8)
             self.assertTrue('[' in lines[0])
-            for i in range(1, 8):
+            for i in range(1, lines_len-1):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
-            self.assertTrue(']' in lines[8])
+            self.assertTrue(']' in lines[-1])
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():

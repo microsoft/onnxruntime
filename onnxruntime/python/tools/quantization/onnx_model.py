@@ -1,4 +1,5 @@
 import onnx
+import itertools
 from .quant_utils import find_by_name
 from pathlib import Path
 
@@ -197,6 +198,7 @@ class ONNXModel:
         '''
         Save model to external data, which is needed for model size > 2GB
         '''
+        self.topological_sort()
         if use_external_data_format:
             onnx.external_data_helper.convert_model_to_external_data(self.model,
                                                                      all_tensors_to_one_file=True,
@@ -254,3 +256,40 @@ class ONNXModel:
             if output.name == output_name:
                 return True
         return False
+
+    def topological_sort(self):
+        deps_count = [0]*len(self.nodes()) # dependency count of each node
+        deps_to_nodes = {} # input to node indice
+        for node_idx, node in enumerate(self.nodes()):
+            # CANNOT use len(node.input) directly because input can be optional
+            deps_count[node_idx] = sum(1 for _ in node.input if _ )
+            for input_name in node.input:
+                if input_name not in deps_to_nodes:
+                    deps_to_nodes[input_name] = [node_idx]
+                else:
+                    deps_to_nodes[input_name].append(node_idx)
+
+        # initialize sorted_nodes
+        sorted_nodes = []
+        for input in itertools.chain(self.initializer(), self.model.graph.input):
+            for node_idx in deps_to_nodes[input.name]:
+                deps_count[node_idx] = deps_count[node_idx] - 1
+                if deps_count[node_idx] == 0:
+                    sorted_nodes.append(self.nodes()[node_idx])
+
+        s = 0
+        e = len(sorted_nodes)
+
+        while s < e:
+            for output in sorted_nodes[s].output:
+                if output in deps_to_nodes:
+                    for node_idx in deps_to_nodes[output]:
+                        deps_count[node_idx] = deps_count[node_idx] - 1
+                        if deps_count[node_idx] == 0:
+                            sorted_nodes.append(self.nodes()[node_idx])
+                            e = e + 1
+            s = s + 1
+
+        assert(e == len(self.graph().node)), "Graph is not a DAG"
+        self.graph().ClearField('node')
+        self.graph().node.extend(sorted_nodes)

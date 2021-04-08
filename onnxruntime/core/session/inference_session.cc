@@ -941,9 +941,11 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                                        GraphPartitioner::Mode::kOrtFormatLoad,
                                                        &compiled_kernel_hashes));
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   if (!compiled_kernel_hashes.empty()) {
     session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
   }
+#endif
 
   return Status::OK();
 }

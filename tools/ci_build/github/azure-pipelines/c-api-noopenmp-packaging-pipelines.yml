@@ -85,7 +85,7 @@ jobs:
 - template: templates/win-ci.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ort_build_pool_name: 'Win-GPU-2019'
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -160,7 +160,7 @@ jobs:
 - job: Final_Jar_Testing_Windows_GPU
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-gpu-winbuild'
   timeoutInMinutes: 60
   variables:
   - name: runCodesignValidationInjection
