@@ -129,7 +129,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* dW = context->Output(1, W->Shape());
   Tensor* dB = context->Output(2, {M});
 
-  ORT_RETURN_IF_ERROR(PrepareArgs(*dX, *dY, *dW, dB));
+  ORT_RETURN_IF_ERROR(PrepareArgs(*X, *dY, *W, dB));
 
   ORT_RETURN_IF_ERROR(ComputeWeightGradient(dW, dY, X));
   ORT_RETURN_IF_ERROR(ComputeInputGradient(dX, dY, W));
