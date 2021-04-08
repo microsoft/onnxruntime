@@ -73,8 +73,9 @@ void QGEMM(benchmark::State& state, bool pack_b) {
       gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
     }
   }
-
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch, tp.get());
+  for (auto _ : state) {
+    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch, tp.get());
+  }
 }
 
 static void QGemmSize(benchmark::internal::Benchmark* b) {

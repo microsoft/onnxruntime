@@ -64,7 +64,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
     aggregate[i].max = std::numeric_limits<float>::lowest();
   }
 
-  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), 0, 0};
+  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), 2.0, static_cast<double>(block_size)};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(std::ptrdiff_t(num_of_elements), end * block_size);
@@ -116,7 +116,7 @@ void ParQuantizeLinear(const float* Input,
                        concurrency::ThreadPool* thread_pool) {
   const std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
-  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), 0};
+  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
