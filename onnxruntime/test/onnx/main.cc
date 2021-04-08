@@ -355,7 +355,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
-          nullptr};
+          nullptr};  // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");

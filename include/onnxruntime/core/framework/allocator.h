@@ -12,10 +12,27 @@
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
 struct OrtArenaCfg {
-  size_t max_mem;                // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
+  OrtArenaCfg() : max_mem(0),
+                  arena_extend_strategy(-1),
+                  initial_chunk_size_bytes(-1),
+                  max_dead_bytes_per_chunk(-1),
+                  initial_regrowth_chunk_size_bytes_after_shrink(-1),
+                  shrink_on_every_run(false) {}
+  OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+              int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink,
+              bool shrink_on_every_run) : max_mem(max_mem),
+                                          arena_extend_strategy(arena_extend_strategy),
+                                          initial_chunk_size_bytes(initial_chunk_size_bytes),
+                                          max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
+                                          initial_regrowth_chunk_size_bytes_after_shrink(initial_regrowth_chunk_size_bytes_after_shrink),
+                                          shrink_on_every_run(shrink_on_every_run) {}
+
+  size_t max_mem;                                      // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;                           // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;                        // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;                        // use -1 to allow ORT to choose the default
+  int initial_regrowth_chunk_size_bytes_after_shrink;  // use -1 to allow ORT to choose the default
+  bool shrink_on_every_run;                            // default `false`
 };
 
 namespace onnxruntime {
@@ -43,6 +60,11 @@ class IAllocator {
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
   const OrtMemoryInfo& Info() const { return memory_info_; };
+
+  /**
+     Some allocators may optionally choose to do some cleanup after every Run() call
+  */
+  virtual Status OnRunEnd() { return Status::OK(); }
 
   /**
      optional CreateFence interface, as provider like DML has its own fence

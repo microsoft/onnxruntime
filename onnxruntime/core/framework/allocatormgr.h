@@ -22,7 +22,7 @@ struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
                         OrtDevice::DeviceId device_id0 = 0,
                         bool use_arena0 = true,
-                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
+                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1, -1, false})
       : device_alloc_factory(device_alloc_factory0),
         device_id(device_id0),
         use_arena(use_arena0),
@@ -54,7 +54,7 @@ class AllocatorManager {
   AllocatorMap allocators_;
   // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
   MemoryInfoSet mem_info_set_;
-  
+
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;

@@ -1432,3 +1432,45 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   ASSERT_TRUE(exception_thrown);
 }
 #endif
+
+#ifdef USE_CUDA
+TEST(CApiTest, configure_cuda_arena) {
+  const auto& api = Ort::GetApi();
+
+  Ort::SessionOptions session_options;
+
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_regrowth_chunk_size_bytes_after_shrink", "shrink_on_every_run"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1};
+
+  OrtArenaCfg* arena_cfg = nullptr;
+  ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 6, &arena_cfg) == nullptr);
+  std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+
+  OrtCUDAProviderOptions cuda_provider_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(nullptr);
+  cuda_provider_options.arena_cfg = arena_cfg;
+
+  session_options.AppendExecutionProvider_CUDA(cuda_provider_options);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  RunSession<float>(default_allocator.get(),
+                    session,
+                    inputs,
+                    "Y",
+                    expected_dims_y,
+                    expected_values_y,
+                    nullptr);
+}
+#endif

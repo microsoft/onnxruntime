@@ -1868,6 +1868,33 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
+                    _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out) {
+  API_IMPL_BEGIN
+  *out = new OrtArenaCfg();
+
+  for (size_t i = 0; i < num_keys; ++i) {
+    if (strcmp(arena_config_keys[i], "max_mem") == 0) {
+      (*out)->max_mem = arena_config_values[i];
+    } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
+      (*out)->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
+      (*out)->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
+      (*out)->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_regrowth_chunk_size_bytes_after_shrink") == 0) {
+      (*out)->initial_regrowth_chunk_size_bytes_after_shrink = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "shrink_on_every_run") == 0) {
+      (*out)->shrink_on_every_run = (arena_config_values[i] != 0);
+    } else {
+      return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid key found");
+    }
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
@@ -2123,6 +2150,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
+    &OrtApis::CreateArenaCfgV2,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

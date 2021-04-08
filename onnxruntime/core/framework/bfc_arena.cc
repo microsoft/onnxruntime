@@ -9,7 +9,9 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
-                   int max_dead_bytes_per_chunk)
+                   int max_dead_bytes_per_chunk,
+                   int intial_regrowth_chunk_size_bytes_after_shrink,
+                   bool shrink_on_every_run)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -18,13 +20,19 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
+      allocation_region_counter_(0),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
-      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk) {
+      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
+      intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink),
+      shrink_on_every_run_(shrink_on_every_run) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
+                     << " intial_regrowth_chunk_size_bytes_after_shrink: " << intial_regrowth_chunk_size_bytes_after_shrink_
                      << " memory limit: " << total_memory
-                     << " arena_extend_strategy " << static_cast<int32_t>(arena_extend_strategy);
+                     << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy)
+                     << " shrink on every run: " << shrink_on_every_run_;
+
   // static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy); doesn't work on this compiler
 
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(initial_chunk_size_bytes_)));
@@ -170,7 +178,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
                      << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+  region_manager_.AddAllocationRegion(mem_addr, bytes, allocation_region_counter_++);
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -230,6 +238,8 @@ void* BFCArena::Reserve(size_t size) {
     return nullptr;
 
   std::lock_guard<OrtMutex> lock(lock_);
+  LOGS_DEFAULT(WARNING) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
+
   void* ptr = device_allocator_->Alloc(size);
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
@@ -278,7 +288,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   }
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
-                     << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
+                     << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
 
   // Try to extend
   auto status = Extend(rounded_bytes);
@@ -405,6 +415,78 @@ void BFCArena::Free(void* p) {
   } else {
     DeallocateRawInternal(p);
   }
+}
+
+Status BFCArena::OnRunEnd() {
+  if (shrink_on_every_run_) {
+    return Shrink();
+  }
+  return Status::OK();
+}
+
+Status BFCArena::Shrink() {
+  std::lock_guard<OrtMutex> lock(lock_);
+  auto num_regions = region_manager_.regions().size();
+  std::vector<void*> region_ptrs;
+  std::vector<size_t> region_sizes;
+  region_ptrs.reserve(num_regions);
+  region_sizes.reserve(num_regions);
+  for (const auto& region : region_manager_.regions()) {
+    // Even if any byte is left unused in the first allocation region, we do not want to consider it for de-allocation
+    // TODO: Reason comment
+    if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested || region.id() != 0) {
+      region_ptrs.push_back(region.ptr());
+      region_sizes.push_back(region.memory_size());
+    }
+  }
+
+  int64_t i = 0;
+  for (void* region_ptr : region_ptrs) {
+    bool deallocate_region = true;
+    ChunkHandle region_begin_chunk = region_manager_.get_handle(region_ptr);
+    ChunkHandle h = region_begin_chunk;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        // at-least one used chunk found in the allocation region -
+        // so we cannot deallocate it
+        deallocate_region = false;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (deallocate_region) {
+      auto shrink_size = region_sizes[i];
+      stats_.num_deallocs += 1;
+      stats_.total_allocated_bytes -= shrink_size;
+
+      LOGS_DEFAULT(VERBOSE) << device_allocator_->Info().name << " BFC Arena shrunk by "
+                            << shrink_size << " bytes. "
+                            << " The total allocated bytes is now " << stats_.total_allocated_bytes;
+
+      h = region_begin_chunk;
+      ChunkHandle temp = region_begin_chunk;
+      while (h != kInvalidChunkHandle) {
+        const Chunk* c = ChunkFromHandle(h);
+        temp = c->next;
+        RemoveFreeChunkFromBin(h);
+        DeleteChunk(h);
+        h = temp;
+      }
+
+      device_allocator_->Free(region_ptr);
+      region_manager_.RemoveAllocationRegion(region_ptr);
+    }
+
+    ++i;
+  }
+
+  // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
+  // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
+  curr_region_allocation_bytes_ = intial_regrowth_chunk_size_bytes_after_shrink_;
+
+  return Status::OK();
 }
 
 void BFCArena::DeallocateRawInternal(void* ptr) {

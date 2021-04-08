@@ -60,7 +60,7 @@ ONNX_OPERATOR_KERNEL_EX(
 }  // namespace cuda
 
 AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info) {
+                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info, OrtArenaCfg* arena_cfg) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -78,9 +78,12 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         },
         device_id,
         true,
-        {gpu_mem_limit,
-         static_cast<int>(arena_extend_strategy),
-         -1, -1});
+        {arena_cfg ? arena_cfg->max_mem : gpu_mem_limit,
+         arena_cfg ? static_cast<int>(arena_cfg->arena_extend_strategy) : static_cast<int>(arena_extend_strategy),
+         arena_cfg ? arena_cfg->initial_chunk_size_bytes : -1,
+         arena_cfg ? arena_cfg->max_dead_bytes_per_chunk : -1,
+         arena_cfg ? arena_cfg->initial_regrowth_chunk_size_bytes_after_shrink : -1,
+         arena_cfg ? arena_cfg->shrink_on_every_run : false});
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -88,7 +91,8 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 }
 
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info) {
+                                                          ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
+                                                          OrtArenaCfg* arena_cfg) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   stream_ = stream;
 
@@ -99,7 +103,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
   // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info);
+  allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, arena_cfg);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -198,7 +202,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, info_.arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -298,6 +302,9 @@ Status CUDAExecutionProvider::OnRunEnd() {
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  // Only call OnRunEnd() for the default memory type allocator asoociated with the CUDA EP.
+  // Ignore other allocators this EP is associated with (like CUDA_PINNED, CUDA_CPU) because they are to do with host memory.
+  GetAllocator(info_.device_id, OrtMemTypeDefault)->OnRunEnd();
   ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
@@ -2046,7 +2053,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   // Used to allocate CUDA device memory
   auto cuda_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
   if (nullptr == cuda_alloc) {
-    cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+    cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info, info_.arena_cfg);
     allocator_manager->InsertAllocator(cuda_alloc);
   }
   TryInsertAllocator(cuda_alloc);
