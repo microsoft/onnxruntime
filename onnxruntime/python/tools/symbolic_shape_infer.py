@@ -703,20 +703,12 @@ class SymbolicShapeInference:
                                               new_shape))
 
     def _infer_Transpose(self, node):
-        data_shape = self._get_shape(node, 0)
-        vi = self.known_vi_[node.output[0]]
-        perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
-
-        new_sympy_shape = self._get_sympy_shape(node, 0)
-        for i, perm_idx in enumerate(perm):
-            new_sympy_shape[i] = data_shape[perm_idx]
-
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
-                                                  vi.type.tensor_type.elem_type,
-                                                  get_shape_from_sympy_shape(new_sympy_shape)))
         if node.input[0] in self.sympy_data_:
+            data_shape = self._get_shape(node, 0)
+            perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
             input_data = self.sympy_data_[node.input[0]]
-            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape), axes=tuple(perm)).flatten().tolist()
+            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape),
+                                                            axes=tuple(perm)).flatten().tolist()
 
     def _infer_Gather(self, node):
         data_shape = self._get_shape(node, 0)
@@ -875,22 +867,13 @@ class SymbolicShapeInference:
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_BatchNormalization(self, node):
-        new_sympy_shape = self._get_shape(node, 0)
-        vi_y = self.known_vi_[node.output[0]]
-        vi_y.CopyFrom(helper.make_tensor_value_info(node.output[0],
-            vi_y.type.tensor_type.elem_type,
-            get_shape_from_sympy_shape(new_sympy_shape)))
+        self._propagate_shape_and_type(node)
 
         # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
-        c_sized_input_vi = self.known_vi_[node.input[1]]
         for i in [1, 2, 3, 4]:
             if i < len(node.output):
                 # all of these parameters have the same shape as the 1st input
-                new_sympy_shape = self._get_shape(node, 1)
-                vi_c_shaped_output = self.known_vi_[node.output[i]]
-                vi_c_shaped_output.CopyFrom(helper.make_tensor_value_info(node.output[i],
-                    c_sized_input_vi.type.tensor_type.elem_type,
-                    get_shape_from_sympy_shape(new_sympy_shape)))
+                self._propagate_shape_and_type(node, input_index=1, output_index=i)
 
     def _infer_Range(self, node):
         vi = self.known_vi_[node.output[0]]
@@ -1125,7 +1108,8 @@ class SymbolicShapeInference:
                                           get_shape_from_sympy_shape(new_sympy_shape)))
 
         # handle sympy_data if needed, for slice in shape computation
-        if node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1 and len(steps) == 1:
+        if (node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1
+                and len(steps) == 1):
             input_sympy_data = self.sympy_data_[node.input[0]]
             if type(input_sympy_data) == list or (type(input_sympy_data) == np.array
                                                   and len(input_sympy_data.shape) == 1):
