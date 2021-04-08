@@ -327,7 +327,7 @@ The DNNL execution provider can be built for Intel CPU or GPU. To build for Inte
 
 To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
 
-###### Windows 
+###### Windows
 
 `.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
 ###### Linux
@@ -601,7 +601,7 @@ The Batch Normalization operator is set by default to use the CPU execution prov
 ./build.sh --use_armnn --armnn_bn
 ```
 
-To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the ArmNN home directory and build directory respectively. 
+To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the ArmNN home directory and build directory respectively.
 The ARM Compute Library home directory and build directory must also be available, and can be specified if needed using --acl_home and --acl_libs respectively.
 
 ```bash
@@ -618,7 +618,7 @@ See more information on the RKNPU Execution Provider [here](../reference/executi
 * Supported platform: RK1808 Linux
 * See [Build ARM](#ARM) below for information on building for ARM devices
 * Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
-  
+
 ```
 set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
 set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
@@ -740,7 +740,7 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ---
 
 ### Architectures
-#### 64-bit x86 
+#### 64-bit x86
 
 Also known as [x86_64](https://en.wikipedia.org/wiki/X86-64) or AMD64. This is the default.
 
@@ -889,7 +889,7 @@ This option is very fast and allows the package to be built in minutes, but is c
     Then run the docker
 
     Ubuntu:
-    
+
     ```bash
     docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -it --rm quay.io/pypa/manylinux2014_aarch64 /bin/bash
     ```
@@ -913,12 +913,12 @@ This option is very fast and allows the package to be built in minutes, but is c
     ```
 
     From the output:
-    
+
     ```
     CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
     5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
     ```
-    
+
     You'll see the docker instance id is: 5a796e98db05. Use the following command to export the root filesystem as the sysroot for future use.
 
     ```bash
@@ -1133,7 +1133,7 @@ e.g. using the paths from our example
 
 ###### Build Android Archive (AAR)
 
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in `<your_build_dir>/java/build/android/outputs/aar`, by using the above building commands with `--build_java`
 
 To build on Windows with `--build_java` enabled you must also:
 
@@ -1187,7 +1187,7 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
-##### Build Instructions
+##### iOS Build Instructions
 
 Run one of the following build scripts from the ONNX Runtime repository root,
 ###### Cross build for iOS simulator
@@ -1211,6 +1211,14 @@ Run one of the following build scripts from the ONNX Runtime repository root,
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
            --xcode_code_signing_team_id <Your Apple developmemt team ID>
 ```
+
+##### CoreML Execution Provider
+
+If you want to use CoreML Execution Provider on iOS, see [CoreML Execution Provider](../reference/execution-providers/CoreML-ExecutionProvider.md).
+
+###### Build Instructions
+
+CoreML Execution Provider can be built using building commands in [iOS Build instructions](#ios-build-instructions) with `--use_coreml`
 
 ---
 
