@@ -224,11 +224,12 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
-                                     long long dur, long long ts,
+                                     long long duration,         //duration of the op
+                                     long long time_from_start,  //time difference between op start time and profiler start time
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
   EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
+                    logging::GetThreadId(), event_name, time_from_start, duration, {event_args.begin(), event_args.end()});
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {

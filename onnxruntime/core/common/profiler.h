@@ -84,11 +84,6 @@ class Profiler {
                              const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
-  void EndTimeAndRecordEvent(EventCategory category,
-                             const std::string& event_name,
-                             long long dur, long long ts,
-                             const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                             bool sync_gpu = false);
   /*
   Write profile data to the given stream in chrome format defined below.
   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#
@@ -120,6 +115,13 @@ class Profiler {
   }
 
  private:
+  void EndTimeAndRecordEvent(EventCategory category,
+                             const std::string& event_name,
+                             long long duration,         //duration of the op
+                             long long time_from_start,  //time difference between op start time and profiler start time
+                             const std::initializer_list<std::pair<std::string, std::string>>& event_args,
+                             bool sync_gpu = false);
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   /**
