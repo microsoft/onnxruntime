@@ -665,6 +665,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_OPENVINO
       OrtOpenVINOProviderOptions params;
       params.device_type = openvino_device_type.c_str();
+      std::string blob_dump_path;
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -681,10 +682,22 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
+          } else if (option.first == "use_compiled_network") {
+            if (option.second == "True") {
+              params.use_compiled_network = true;
+            } else if (option.second == "False") {
+              params.use_compiled_network = false;
+            } else {
+              ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
+            }
+
           } else if (option.first == "device_id") {
             params.device_id = option.second.c_str();
           } else if (option.first == "num_of_threads") {
             params.num_of_threads = std::stoi(option.second);
+          } else if (option.first == "blob_dump_path") {
+            blob_dump_path = option.second;
+            params.blob_dump_path = blob_dump_path.c_str();
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -967,7 +980,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, ""),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
