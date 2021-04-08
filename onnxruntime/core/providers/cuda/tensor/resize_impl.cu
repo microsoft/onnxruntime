@@ -10,7 +10,7 @@ using onnxruntime::UpsampleMode;
 
 __device__ int NearestPixel_SIMPLE(float x_original, bool is_down_sampling) {
   if (is_down_sampling) {
-    return static_cast<int>(ceil(x_original));
+    return static_cast<int>(roundf(x_original));
   } else {
     return static_cast<int>(x_original);
   }
@@ -18,21 +18,21 @@ __device__ int NearestPixel_SIMPLE(float x_original, bool is_down_sampling) {
 
 __device__ int NearestPixel_ROUND_PREFER_FLOOR(float x_original, bool) {
   if (x_original == static_cast<int>(x_original) + 0.5f) {
-    return static_cast<int>(floor(x_original));
+    return static_cast<int>(roundf(x_original));
   }
-  return static_cast<int>(round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_ROUND_PREFER_CEIL(float x_original, bool) {
-  return static_cast<int>(round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_FLOOR(float x_original, bool) {
-  return static_cast<int>(floor(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_CEIL(float x_original, bool) {
-  return static_cast<int>(ceil(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 using CudaFunctionNearestPixel = int (*)(float, bool);
@@ -173,7 +173,7 @@ __global__ void _ResizeNearestMappingKernel2D(
           extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_height < 1);
       if (dim >= input_height) dim = input_height - 1;
-      if (dim < 0) dim = 0;    
+      if (dim < 0) dim = 0;
     }
 
     dims_mapping[id].origin_ = dim;
@@ -190,7 +190,7 @@ __global__ void _ResizeNearestMappingKernel2D(
           extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
       dim = calc_nearest_pixel(orig_coord, scales_width < 1);
       if (dim >= input_width) dim = input_width - 1;
-      if (dim < 0) dim = 0; 
+      if (dim < 0) dim = 0;
     }
 
     dims_mapping[id].origin_ = dim;
@@ -229,7 +229,7 @@ __global__ void _ResizeNearestMappingKernel(
         dims_mapping[id].extrapolate_ = static_cast<int>(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
         dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
         if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
-        if (dim < 0) dim = 0;      
+        if (dim < 0) dim = 0;
       }
 
       dims_mapping[id].origin_ = dim;
@@ -395,9 +395,9 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     dims_mapping[id].origin_ = z_int;
     dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.5f : input_z - z_int;
   } else if (id >= output_depth && id < (output_depth + output_height)) {  //  y = id - output_depth
-    float input_y = scale_height == 1 ? static_cast<float>(id - output_depth) : 
-                                        transform_coordinate(static_cast<float>(id - output_depth), scale_height, 
-                                        static_cast<float>(output_height), static_cast<float>(input_height), 
+    float input_y = scale_height == 1 ? static_cast<float>(id - output_depth) :
+                                        transform_coordinate(static_cast<float>(id - output_depth), scale_height,
+                                        static_cast<float>(output_height), static_cast<float>(input_height),
                                         roi_height_start, roi_height_end);
 
     dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (input_y < 0 || input_y > static_cast<float>(input_height - 1)));
@@ -433,12 +433,12 @@ __global__ void _ResizeTrilinearKernel(
   div_output_image.divmod(id, bxc, output_image_index);
   CUDA_LONG input_index = bxc * input_depth * input_height * input_width;
   int output_z, output_y, output_x, temp;
-  
+
   div_output_height.divmod(output_image_index, output_z, temp);
   div_output_width.divmod(temp, output_y, output_x);
 
-  if (dims_mapping[output_z].extrapolate_ || 
-      dims_mapping[output_y + output_depth].extrapolate_ || 
+  if (dims_mapping[output_z].extrapolate_ ||
+      dims_mapping[output_y + output_depth].extrapolate_ ||
       dims_mapping[output_x + output_depth + output_height].extrapolate_) {
     output_data[id] = extrapolation_value;
     return;
@@ -452,7 +452,7 @@ __global__ void _ResizeTrilinearKernel(
 
   float x_offset_0 = dims_mapping[output_x + output_depth + output_height].weight_;
   int x_int = dims_mapping[output_x + output_depth + output_height].origin_;
-  
+
   input_index += z_int * input_height * input_width + y_int * input_width + x_int;
 
   T x000 = input_data[input_index];
@@ -535,7 +535,7 @@ __global__ void _ResizeCubicCoordinateMapping(
       static_cast<float>(max_input_coord),
       (is_y_axis ? roi_height_start : roi_width_start),
       (is_y_axis ? roi_height_end : roi_width_end));
-  int coord_int = static_cast<int>(floor(input_coordinat));
+  int coord_int = static_cast<int>(roundf(input_coordinat));
   float s_coord = abs(input_coordinat - coord_int);
   float coeff_sum = 1.0f;
   float coeff_0 = static_cast<float>(((cubic_coeff_a * (s_coord + 1) - 5 * cubic_coeff_a) * (s_coord + 1) + 8 * cubic_coeff_a) * (s_coord + 1) - 4 * cubic_coeff_a);

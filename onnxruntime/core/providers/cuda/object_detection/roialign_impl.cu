@@ -20,7 +20,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-  
+
 template <typename T>
 __device__ T bilinear_interpolate(
     const T* bottom_data,
@@ -130,9 +130,9 @@ __global__ void RoIAlignForward(
     // We use roi_bin_grid to sample the grid and mimic integral
     int roi_bin_grid_h = (sampling_ratio > 0)
         ? sampling_ratio
-        : ceil(roi_height / pooled_height); // e.g., = 2
+        : roundf(roi_height / pooled_height); // e.g., = 2
     int roi_bin_grid_w =
-        (sampling_ratio > 0) ? sampling_ratio : ceil(roi_width / pooled_width);
+        (sampling_ratio > 0) ? sampling_ratio : roundf(roi_width / pooled_width);
 
     // We do average (integral) pooling inside a bin
     const T count = roi_bin_grid_h * roi_bin_grid_w; // e.g. = 4
@@ -151,7 +151,7 @@ __global__ void RoIAlignForward(
 
         T val = bilinear_interpolate(
             offset_bottom_data, height, width, y, x, is_mode_avg, index);
-        
+
         if (is_mode_avg) {
           output_val += val;
         } else {
@@ -189,7 +189,7 @@ void RoiAlignImpl(
   T* top_data,
   const bool is_mode_avg,
   const int64_t* batch_indices_ptr) {
-    int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock)); 
+    int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock));
     RoIAlignForward<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       nthreads,
       bottom_data,
@@ -204,7 +204,7 @@ void RoiAlignImpl(
       roi_cols,
       top_data,
       is_mode_avg,
-      batch_indices_ptr);    
+      batch_indices_ptr);
 }
 
 #define SPECIALIZED_IMPL(T)                     \
@@ -227,6 +227,6 @@ void RoiAlignImpl(
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
-  
+
 } // namespace cuda
 } // namespace onnxruntime
