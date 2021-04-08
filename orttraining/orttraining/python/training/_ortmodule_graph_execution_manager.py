@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _ortmodule_utils, _ortmodule_output_transformation as _ortmodule_io
+from . import _ortmodule_logger as _logger
 
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
@@ -92,8 +93,8 @@ class GraphExecutionManager(ABC):
         self._input_names_require_grad = None
         self._module_output_schema = None
 
-        # Verbosity for logging
-        self._verbosity = _ortmodule_utils.Verbosity.WARNING
+        # Log level
+        self._loglevel = _logger.LogLevel.WARNING
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
@@ -113,7 +114,7 @@ class GraphExecutionManager(ABC):
         self._use_external_gpu_allocator = True
         if self._use_external_gpu_allocator:
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            self._torch_gpu_allocator = _ortmodule_utils._load_torch_gpu_allocator_cpp_extension(self._verbosity,
+            self._torch_gpu_allocator = _ortmodule_utils._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
                                                                                                  self.is_rocm_pytorch)
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
@@ -164,7 +165,7 @@ class GraphExecutionManager(ABC):
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = int(self._verbosity)
+        session_options.log_severity_level = int(self._loglevel)
 
         # enable dumping optimized training graph
         if self._save_onnx:
@@ -216,7 +217,7 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad():
+            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_copy + (sample_kwargs_copy, ),
                                   f,
@@ -226,7 +227,7 @@ class GraphExecutionManager(ABC):
                                   do_constant_folding=False,
                                   training=self._export_mode,
                                   dynamic_axes=dynamic_axes,
-                                  verbose=self._verbosity < _ortmodule_utils.Verbosity.WARNING,
+                                  verbose=self._loglevel < _logger.LogLevel.WARNING,
                                   export_params=False,
                                   keep_initializers_as_inputs=True)
         except RuntimeError as e:
