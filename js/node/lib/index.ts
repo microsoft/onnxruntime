@@ -5,4 +5,4 @@ export * from 'onnxruntime-common';
 import {registerBackend} from 'onnxruntime-common';
 import {onnxruntimeBackend} from './backend';
 
-registerBackend('cpu', onnxruntimeBackend);
+registerBackend('cpu', onnxruntimeBackend, 1);

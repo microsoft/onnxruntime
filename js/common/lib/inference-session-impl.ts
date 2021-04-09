@@ -1,4 +1,5 @@
-import {resolveBackend, SessionHandler} from './backend';
+import {SessionHandler} from './backend';
+import {resolveBackend} from './backend-impl';
 import {InferenceSession as InferenceSessionInterface} from './inference-session';
 import {OnnxValue} from './onnx-value';
 import {Tensor} from './tensor';
@@ -183,7 +184,10 @@ export class InferenceSession implements InferenceSessionInterface {
       throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
     }
 
-    const backend = await resolveBackend(options);
+    // get backend hints
+    const eps = options.executionProviders || [];
+    const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
+    const backend = await resolveBackend(backendHints);
     const handler = await (
         loadFromFilePath ? backend.createSessionHandler(filePath!, options) :
                            backend.createSessionHandler(uint8Array!, options));

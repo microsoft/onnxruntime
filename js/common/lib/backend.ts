@@ -27,30 +27,4 @@ export interface Backend {
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
 }
 
-const backends: {[name: string]: Backend} = {};
-
-export const registerBackend = (name: string, backend: Backend): void => {
-  if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
-    backends[name] = backend;
-  }
-};
-
-export const resolveBackend = async(options?: InferenceSession.SessionOptions): Promise<Backend> => {
-  if (!options || !options.executionProviders || options.executionProviders.length === 0) {
-    await backends.cpu.init();
-    return backends.cpu;
-  }
-
-  for (let ep of options.executionProviders) {
-    if (typeof ep !== 'string' && ep.name) {
-      ep = ep.name;
-    }
-    const backend = backends[ep];
-    if (backend) {
-      await backend.init();
-      return backend;
-    }
-  }
-
-  throw new Error('no available backend found.');
-};
+export {registerBackend} from './backend-impl';
