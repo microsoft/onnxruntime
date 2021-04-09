@@ -24,10 +24,10 @@
         padding: 0 10px;
     }
     .sponsor-logo img{
-        max-height: 50px;
+        max-height: 80px;
     }
     .news-img img {
-        max-height: 110px;
+        max-width: 100%;
     }
   }
   
@@ -99,7 +99,7 @@
         font-size: 22px;
     }
     .news-img img {
-        max-height: 90px;
+        max-width: 100%;
     }
   }
 
@@ -257,7 +257,7 @@
         padding-top: 60px;
     }
     .news-img img {
-        max-height: 110px;
+        max-width: 100%;
     }
   }
   
