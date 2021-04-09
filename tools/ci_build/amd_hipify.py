@@ -200,8 +200,6 @@ training_ops_excluded_files = [
                     'nn/batch_norm_grad.h',
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
-                    'optimizer/adam.cc',
-                    'optimizer/adam.cu',
                     'reduction/reduction_all.cc',
                     'reduction/reduction_ops.cc',
                     'tensor/gather_nd_grad_impl.cu',
