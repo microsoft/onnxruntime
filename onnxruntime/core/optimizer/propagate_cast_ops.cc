@@ -328,11 +328,11 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
   }
 }
 
-// GatherNames
+// ConcatNames
 // Collects all the names from the pointers of the objects stores in the container class C
 // the class should have a member functions returning a string (or a ref).
 template<typename C, typename T = typename C::value_type>
-static std::string GatherNames(C const& items)
+static std::string ConcatNames(C const& items)
 {
   std::vector<std::string> names;
   std::transform(items.begin(), items.end(), back_inserter(names), [](T n) { return n->Name(); });
@@ -488,12 +488,12 @@ static bool FuseSubgraphs(Graph& graph, Node* parent,
     if (cast_fp16_siblings.size() > 1) {
       modified = true;
       FuseNodes(graph, output, cast_fp16_siblings, removed_nodes);
-      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << GatherNames<std::vector<Node*>>(cast_fp16_siblings);
+      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp16_siblings);
     }
     if (cast_fp_siblings.size() > 1) {
       modified = true;
       FuseNodes(graph, output, cast_fp_siblings, removed_nodes);
-      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << GatherNames<std::vector<Node*>>(cast_fp_siblings);
+      VLOGS(logger, 1) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp_siblings);
     }
   }
   return modified;
@@ -553,7 +553,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
     }
     if (has_float_inputs && all_float_inputs_have_casts && casts.size() > 0) {
       VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Removed Cast nodes "
-                       << GatherNames<std::vector<Node*>>(casts)
+                       << ConcatNames<std::vector<Node*>>(casts)
                        << " feeding the same compute node " << node->Name();
       RemoveCastNodes(graph, casts, removed_nodes);
       std::unordered_set<NodeArg*> node_args;
@@ -564,8 +564,8 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       }
       InsertCastNodes(graph, node_args, false, removed_nodes);
       ChangeTypeToFP16(require_type_change, logger);
-      VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Inserted Cast node to " 
-                       << GatherNames(node_args);
+      VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Inserted Cast node to "
+                       << ConcatNames(node_args) << std::endl;
       modified = true;
     }
   }
@@ -609,7 +609,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
     }
     if (has_float_outputs && all_float_outputs_have_casts && casts.size() > 0 ) {
       VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Removed Cast nodes "
-                       << GatherNames<std::vector<Node*>>(casts)
+                       << ConcatNames<std::vector<Node*>>(casts)
                        << " feeding the same compute node " << node->Name();
       RemoveCastNodes(graph, casts, removed_nodes);
       std::unordered_set<NodeArg*> node_args;
@@ -620,7 +620,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
       InsertCastNodes(graph, node_args, true, removed_nodes);
       ChangeTypeToFP16(require_type_change, logger);
-      VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Inserted Cast node to " << GatherNames(node_args);
+      VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Inserted Cast node to " << ConcatNames(node_args);
       modified = true;
     }
   }
