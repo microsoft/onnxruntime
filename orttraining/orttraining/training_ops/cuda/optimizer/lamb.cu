@@ -322,7 +322,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const float alpha,
     const float beta,
     const float epsilon,
-    const T1 max_norm,
+    const float max_norm,
     const float alpha_correction,
     const float beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
