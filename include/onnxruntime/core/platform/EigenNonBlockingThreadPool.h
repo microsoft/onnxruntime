@@ -38,6 +38,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+#include <iostream>
+
+
 // ORT thread pool overview
 // ------------------------
 //
@@ -924,6 +927,7 @@ void EndParallelSectionInternal(PerThread &pt,
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
+    //std::cout << "wait for task_finish" << std::endl;
   }
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
@@ -1075,32 +1079,179 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
+/*
+bool SummonWorkersAsync(PerThread& pt,
+                        ThreadPoolParallelSection& ps,
+                        unsigned n,
+                        const std::function<void(unsigned)>& worker_fn,
+                        bool& dist_done) {
+  Task call_worker_fn = [&ps, worker_fn]() {
+    unsigned my_idx = ps.worker_idx++;
+    worker_fn(my_idx);
+    ps.tasks_finished++;
+  };
+
+  std::function<bool(int, Task)> enqueue_fn = [&, this](int q_idx, Task w) {
+    WorkerData& td = worker_data_[q_idx];
+    Queue& q = td.queue;
+    unsigned w_idx;
+    Task t = q.PushBackWithTag(w, pt.tag, w_idx);
+    if (t) {
+      return false;
+    } else {
+      td.EnsureAwake();
+      ps.tasks.push_back({q_idx, w_idx});
+      return true;
+    }
+  };
+
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  if (n <= current_dop) {
+    return false;
+  }
+
+  profiler_.LogStart();
+  unsigned extra_needed = n - current_dop;
+  std::vector<unsigned> good_hints, alt_hints;
+  GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+
+  Task dist_task = [&, enqueue_fn, call_worker_fn]() {
+    for (auto i = 1u; i < extra_needed; i++) {
+      Task t;
+      int q_idx;
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
+      } else {
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
+        } else {
+          q_idx = Rand(&pt.rand) % num_threads_;
+        }
+      }  //else
+      enqueue_fn(q_idx, call_worker_fn);
+    }  //for
+    dist_done = true;
+    call_worker_fn();
+  };  //dist_task
+
+  int dist_q_idx;
+  if (!good_hints.empty()) {
+    dist_q_idx = good_hints[0];
+  } else if (!alt_hints.empty()) {
+    dist_q_idx = alt_hints[0];
+  } else {
+    dist_q_idx = Rand(&pt.rand) % num_threads_;
+  }
+
+  bool dist_start = enqueue_fn(dist_q_idx, dist_task);
+  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+  return dist_start;
+}*/
+
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
-
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
-  PerThread *pt = GetPerThread();
+  PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
 
-  // Summon workers to run the function (n is the desired maximum
-  // degree of parallelism, including the main thread).  Unlike the
-  // multi-loop RunInParallelSection, this single-loop worker can run
-  // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(*pt, ps, n, fn);
+  int dist_q_idx = -1;
+  int dist_at = -1;
+  //std::atomic<bool> dist_done = false;
+  //std::atomic<bool> work_done = false;
+  bool dist_done = false;
+  bool work_done = false;
+
+  Task worker_fn = [&]() {
+    fn(ps.worker_idx++);
+    ps.tasks_finished++;
+  };
+
+  std::function<int(int, Task&, bool)> enqueue_fn = [&, this](int q_idx, Task& w, bool logging) {
+    WorkerData& td = worker_data_[q_idx];
+    Queue& q = td.queue;
+    unsigned w_idx;
+    Task t = q.PushBackWithTag(w, pt->tag, w_idx);
+    if (t) {
+      return -1;
+    } else {
+      td.EnsureAwake();
+      if (logging) {
+        ps.tasks.push_back({q_idx, w_idx});
+      }
+      return static_cast<int>(w_idx);
+    }
+  };
+
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  unsigned extra_needed = n > current_dop ? n - current_dop : 0;
+  std::vector<unsigned> good_hints, alt_hints;
+
+  Task dist_task = [&]() {
+    for (auto i = 1u; i < extra_needed; i++) {
+      int q_idx;
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
+      } else {
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
+        } else {
+          q_idx = Rand(&pt->rand) % num_threads_;
+        }
+      }  //else
+      enqueue_fn(q_idx, worker_fn, true);
+    }  //for
+    dist_done = true;
+    fn(ps.worker_idx++);
+    work_done = true;
+  };  //dist_task
+
+  if (extra_needed > 0) {
+    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    if (!good_hints.empty()) {
+      dist_q_idx = good_hints[0];
+    } else if (!alt_hints.empty()) {
+      dist_q_idx = alt_hints[0];
+    } else {
+      dist_q_idx = Rand(&pt->rand) % num_threads_;
+    }
+    dist_at = enqueue_fn(dist_q_idx, dist_task, false);
+  }
+
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
-  fn(0);
+  fn(ps.worker_idx++);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
+
+  if (dist_at != -1) {
+    Queue& q = worker_data_[dist_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, dist_at)) {
+      dist_at = -1;
+    } else {
+      while (!dist_done) {
+        onnxruntime::concurrency::SpinPause();
+        //std::cout << "wait for dist_done" << std::endl;
+      }
+    }
+  }
 
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
+
+  if (dist_at != -1) {
+    while (!work_done) {
+      onnxruntime::concurrency::SpinPause();
+      //std::cout << "wait for work_done" << std::endl;
+    }
+  }
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
