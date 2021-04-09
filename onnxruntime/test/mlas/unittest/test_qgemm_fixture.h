@@ -40,7 +40,7 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>::GetTestSuiteName(),
+        MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
