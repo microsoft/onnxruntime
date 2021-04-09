@@ -37,7 +37,7 @@ __global__ void _AdamOptimizer_mode0(
   // Gradient scaling/clipping.
   const float g = static_cast<float>(grads[id]) / actual_scale;
   // A shared constant.
-  const float one = T4(1.0f);
+  const float one = 1.0f;
 
   // Compute exponentially-averaged historical gradient.
   const float m1o = alpha * static_cast<float>(moment_1[id]) + (one - alpha) * g;
