@@ -4,8 +4,6 @@
 #--------------------------------------------------------------------------
 
 from setuptools import setup, find_packages, Extension
-from packaging import version
-from packaging.version import Version
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
@@ -239,7 +237,8 @@ packages = [
 requirements_file = "requirements.txt"
 
 local_version = None
-if parse_arg_remove_boolean(sys.argv, '--enable_training'):
+enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
@@ -318,15 +317,17 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
     build_suffix = environ.get('BUILD_BUILDNUMBER')
     if build_suffix is None:
-      #The following line is only for local testing
-      build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+        # The following line is only for local testing
+        build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      build_suffix = build_suffix.replace('.', '')
+        build_suffix = build_suffix.replace('.', '')
 
-    if parse_arg_remove_boolean(sys.argv, '--enable_training'):
+    if enable_training:
+        from packaging import version
+        from packaging.version import Version
         # with training package, we need to bump up version minor number so that
         # nightly releases take precedence over the latest release when --pre is used during pip install.
         # eventually this shall be the behavior of all onnxruntime releases.
@@ -347,7 +348,7 @@ if wheel_name_suffix:
     package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
-if bdist_wheel is not None :
+if bdist_wheel is not None:
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
