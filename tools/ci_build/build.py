@@ -1343,6 +1343,31 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
+        if ctest_path is None:
+            # Get the "Google Test Adapter" for vstest.
+            if not os.path.exists(os.path.join(cwd,
+                                               'googletestadapter.0.17.1')):
+                run_subprocess(
+                    ['nuget.exe', 'restore',
+                     os.path.join(source_dir, 'packages.config'),
+                     '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
+                     '-PackagesDirectory', cwd])
+            cwd2 = os.path.join(cwd, config)
+            executables = ['onnxruntime_test_all.exe']
+            if args.build_shared_lib:
+                executables.append('onnxruntime_shared_lib_test.exe')
+                executables.append('onnxruntime_global_thread_pools_test.exe')
+            run_subprocess(
+                ['vstest.console.exe', '--parallel',
+                 '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
+                 '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
+                 "/Settings:%s" % os.path.join(
+                     source_dir, 'cmake\\codeconv.runsettings')] + executables,
+                cwd=cwd2, dll_path=dll_path)
+        else:
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "3600"]
+            run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
+
         if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
@@ -1671,25 +1696,26 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
 
 
 def generate_documentation(source_dir, build_dir, configs):
-    config = next(iter(configs))
-    cwd = get_config_build_dir(build_dir, config)
-    if is_windows():
-        cwd = os.path.join(cwd, config)
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
-    shutil.copy(
-        os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
-    shutil.copy(
-         os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-         cwd)
-    run_subprocess(
-        [sys.executable,
-         'gen_contrib_doc.py',
-         '--output_path', operator_doc_path], cwd=cwd)
-    run_subprocess(
-        [sys.executable,
-         'gen_opkernel_doc.py',
-         '--output_path', opkernel_doc_path], cwd=cwd)
+    for config in configs:
+        # Copy the gen_contrib_doc.py.
+        shutil.copy(
+            os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
+            os.path.join(build_dir, config))
+        shutil.copy(
+            os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
+            os.path.join(build_dir, config))
+        run_subprocess(
+            [sys.executable,
+             'gen_contrib_doc.py',
+             '--output_path', operator_doc_path],
+            cwd=os.path.join(build_dir, config))
+        run_subprocess(
+            [sys.executable,
+             'gen_opkernel_doc.py',
+             '--output_path', opkernel_doc_path],
+            cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
