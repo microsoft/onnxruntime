@@ -209,7 +209,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
                            std::unordered_set<NodeArg*>& require_cast,
                            std::unordered_set<NodeArg*>& require_type_change,
                            std::deque<onnxruntime::NodeIndex>& removed_nodes,
-                           int level)
+                           size_t level)
 {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
@@ -264,7 +264,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
                              std::unordered_set<NodeArg*>& require_cast,
                              std::unordered_set<NodeArg*>& require_type_change,
                              std::deque<onnxruntime::NodeIndex>& removed_nodes,
-                             int level)
+                             size_t level)
 {
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
