@@ -450,8 +450,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
                       {IA("dC_reduced"), SCALE},
                       {dC}));
         } else {
-          result.push_back(
-              NodeDef("Identity", {IA("dC_reduced")}, {dC}));
+          // skip Identity to avoid memcpy between ReduceSum and graph gradient output
+          NodeDef node_def = result.back();
+          if (node_def.output_args[0] == IA("dC_reduced") && node_def.op_type == "ReduceSum") {
+            node_def.output_args[0] = dC;
+            result.back() = node_def;
+          } else {
+            result.push_back(
+                NodeDef("Identity", {IA("dC_reduced")}, {dC}));
+          }
         }
       } else {
         if (has_beta && beta != 1.0f) {
