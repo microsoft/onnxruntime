@@ -175,6 +175,9 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
 // Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
 // if the relevant session option config flag is set
+// For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
+// enable this test only on x64 builds
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   std::basic_ostringstream<ORTCHAR_T> oss;
   oss << ORT_TSTR("testdata/mul_1.onnx");
@@ -223,6 +226,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   ASSERT_EQ(alloc_stats.num_allocs, 0);    // no calls to Alloc()
   ASSERT_EQ(alloc_stats.num_reserves, 1);  // one call to Reserve() for the sole initializer in the model
 }
+
+#endif
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
