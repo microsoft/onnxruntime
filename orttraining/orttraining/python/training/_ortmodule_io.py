@@ -242,7 +242,7 @@ def get_flattened_module(original_module):
             self._base_module = module
 
             def _forward(self, *args, **kwargs):
-                print("ZZZ FlattenedOutputModule _forward", inputs, kwargs)
+                print("ZZZ FlattenedOutputModule _forward", args, kwargs)
                 return _transform_output_to_flat_tuple(self._base_module(*args, **kwargs))
 
             # Exporter does not support use of **kwargs in the forward method.
