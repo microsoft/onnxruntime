@@ -26,7 +26,7 @@ from .onnx_model import ONNXModel
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
-                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options={}):
 
         # run shape inference on the model
         model = onnx.shape_inference.infer_shapes(model)
@@ -40,6 +40,7 @@ class ONNXQuantizer:
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
+        self.extra_options = extra_options if extra_options is not None else {}
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -363,27 +364,31 @@ class ONNXQuantizer:
 
         return input_scale_name, input_zp_name, [], []
 
-    def _get_quantization_params(self, param_name):
+    def _get_quantization_params(self, param_name, use_scale=None, use_zeropoint=None):
         '''
         Create initializers and inputs in the graph for zero point and scale of output.
         Zero point and scale values are obtained from self.quantization_params if specified.
             parameter param_name: Name of the quantization parameter.
             return: result, scale_name, zero_point_name, scale_shape, zero_point_shape.
         '''
-        if self.quantization_params is None or param_name not in self.quantization_params:
-            return False, "", "", "", ""
+        if use_scale is None or use_zeropoint is None:
+            if self.quantization_params is None or param_name not in self.quantization_params:
+                return False, "", "", "", ""
 
-        params = self.quantization_params[param_name]
-        if params is None or len(params) != 2:
-            raise ValueError("Quantization parameters should contain zero point and scale. "
-                             "Specified values for output {}: {}".format(param_name, params))
+            params = self.quantization_params[param_name]
+            if params is None or len(params) != 2:
+                raise ValueError("Quantization parameters should contain zero point and scale. "
+                                 "Specified values for output {}: {}".format(param_name, params))
 
-        zero_point_values = [params[0]]
+            zero_point_values = [params[0]]
+            scale_values = [params[1]]
+        else:
+            zero_point_values = [use_zeropoint]
+            scale_values = [use_scale]
+
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
         zero_point_type = self.input_qType
-
-        scale_values = [params[1]]
         scale_shape = []
         scale_name = param_name + "_scale"
 
