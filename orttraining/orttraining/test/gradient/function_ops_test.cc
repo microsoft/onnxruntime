@@ -207,6 +207,20 @@ static void InitSoftmaxGradTestCase(FunctionTestCase& testCase, std::vector<int6
   testCase.AddOutput("dX");
 }
 
+static void InitGeluGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
+  int64_t size = 1;
+  for (auto dim : shape)
+    size *= dim;
+
+  std::vector<float> value(size);
+  for (int64_t i = 0; i < size; i++)
+    value[i] = float(i) / 100.0f;
+
+  testCase.AddInput("dY", shape, value);
+  testCase.AddInput("X", shape, value);
+  testCase.AddOutput("dX");
+}
+
 TEST(SoftmaxGradExpansionTest, DefaultAxis) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2});
@@ -270,6 +284,12 @@ TEST(SoftmaxGradExpansionTest, OpsetTest) {
   auto results2 = onnxruntime::test::Run(*model1, testCase.input_value_map, testCase.output_names);
 
   AssertEqual(results1, results2);
+}
+
+TEST(GeluGradExpansionTest, 2D) {
+  FunctionTestCase testCase("GeluGrad");
+  InitGeluGradTestCase(testCase, {16, 4});
+  testCase.RunTest();
 }
 
 }  // namespace test
