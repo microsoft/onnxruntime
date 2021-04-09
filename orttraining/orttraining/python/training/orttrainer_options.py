@@ -188,6 +188,15 @@ class ORTTrainerOptions(object):
                             'type': 'integer',
                             'min': 0,
                             'default': 0
+                        },
+                        'propagate_cast_ops_level': {
+                            'type': 'integer',
+                            'default': 0
+                        },
+                        'propagate_cast_ops_allow': {
+                            'type': 'list',
+                            'schema': {'type': 'string'},
+                            'default': []
                         }
                     }
                 },
@@ -662,6 +671,15 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
+            },
+            'propagate_cast_ops_level': {
+                'type': 'integer',
+                'default': 0
+            },
+            'propagate_cast_ops_allow': {
+                'type': 'list',
+                'schema': {'type': 'string'},
+                'default': []
             }
         }
     },
