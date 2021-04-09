@@ -16,19 +16,73 @@ class PythonOp final : public CudaKernel {
  public:
   PythonOp(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_types_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_types_));
+    inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
+    ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
+    
+    // Input tensors.
+    input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
+    input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
+
+    // Input int scalars.
+    input_int_scalars_ = info.GetAttrsOrDefault("input_int_scalars", std::vector<int64_t>());
+    input_int_scalar_positions_ = info.GetAttrsOrDefault("input_int_scalar_positions", std::vector<int64_t>());
+
+    // Input float scalars.
+    input_float_scalars_ = info.GetAttrsOrDefault("input_float_scalars", std::vector<float>());
+    input_float_scalar_positions_ = info.GetAttrsOrDefault("input_float_scalar_positions", std::vector<int64_t>());
+
+    // Input int tuples.
+    input_int_tuples_ = info.GetAttrsOrDefault("input_int_tuples", std::vector<int64_t>());
+    input_int_tuple_positions_ = info.GetAttrsOrDefault("input_int_tuple_positions", std::vector<int64_t>());
+    input_int_tuple_begins_ = info.GetAttrsOrDefault("input_int_tuple_begins", std::vector<int64_t>());
+
+    // Input float tuples.
+    input_float_tuples_ = info.GetAttrsOrDefault("input_float_tuples", std::vector<float>());
+    input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
+    input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
+
+    // Output tensors.
+    output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
+    output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
   };
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+  void* instance_ = nullptr;
+
   // Name of containing class. For example, MyReLU.
   std::string name_;
-  // Input types of MyReLU.apply(...).
-  std::vector<int64_t> input_types_;
+  int64_t inplace_;
+  std::string call_convention_;
+
+  // Attributes of input tensors for calling MyReLU.apply(...).
+  // Types. input_tensor_types_[i] is the element type of the i-th tensor.
+  std::vector<int64_t> input_tensor_types_;
+  // input_tensor_types_[i] indicates if the i-th tensor should have gradient.
+  std::vector<int64_t> input_tensor_requires_grads_;
+
+  // Concatenation of all floats from apply(...) 's inputs.
+  std::vector<int64_t> input_int_scalars_;
+  std::vector<int64_t> input_int_scalar_positions_;
+
+  // Concatenation of all ints from apply(...) 's inputs.
+  std::vector<float> input_float_scalars_;
+  std::vector<int64_t> input_float_scalar_positions_;
+
+  // Concatenation of all int tuples from apply(...) 's inputs.
+  std::vector<int64_t> input_int_tuples_;
+  std::vector<int64_t> input_int_tuple_positions_;
+  std::vector<int64_t> input_int_tuple_begins_;
+
+  // Concatenation of all float tuples from apply(...) 's inputs.
+  std::vector<float> input_float_tuples_;
+  std::vector<int64_t> input_float_tuple_positions_;
+  std::vector<int64_t> input_float_tuple_begins_;
+
   // Output types of MyReLU.apply(...).
-  std::vector<int64_t> output_types_;
+  std::vector<int64_t> output_tensor_types_;
+  std::vector<int64_t> output_tensor_requires_grads_;
 };
 
 // Pytorch's torch.autograd.Function.backward(...) wrapper.
@@ -36,8 +90,8 @@ class PythonOpGrad final : public CudaKernel {
  public:
   PythonOpGrad(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_types_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
+    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -46,9 +100,9 @@ class PythonOpGrad final : public CudaKernel {
   // Name of containing class. For example, MyReLU.
   std::string name_;
   // Input types of MyReLU.backward(...).
-  std::vector<int64_t> input_types_;
-  // Output types of MyReLU.backward(...).
-  std::vector<int64_t> output_types_;
+  std::vector<int64_t> input_tensor_types_;
+  // Output types of MyReLU.apply(...).
+  std::vector<int64_t> output_tensor_types_;
 };
 
 }  // namespace contrib
