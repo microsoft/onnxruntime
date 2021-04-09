@@ -1032,10 +1032,10 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 **Using Visual C++ compilers**
 
-1. Download and install Visual C++ compilers and libraries for ARM(64).
+1. Download and install Visual C++ compilers and libraries for ARM(64) or ARM64EC (Visual 2019 16.9+).
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
 
-2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
+2. Use `.\build.bat` and specify `--arm`, `--arm64` or `--arm64ec` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
 ---
 
