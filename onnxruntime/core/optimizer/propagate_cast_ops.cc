@@ -466,7 +466,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
 }
 
 // Traverse the graph recursively searching/collecting sibling Cast op nodes to fuse and call FuseNodes.
-static bool FuseSubgraphs(Graph& graph, Node* parent,
+static bool FuseSiblingCasts(Graph& graph, Node* parent,
                           std::deque<onnxruntime::NodeIndex>& removed_nodes,
                           const logging::Logger& logger)
 {
@@ -662,7 +662,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
     // Fuse subgraphs, sibling Cast nodes with same input
     for (auto& node: graph.Nodes()) {
       if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-        local_modified |= FuseSubgraphs(graph, &node, removed_nodes, logger);
+        local_modified |= FuseSiblingCasts(graph, &node, removed_nodes, logger);
       }
     }
 
