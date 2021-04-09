@@ -49,6 +49,7 @@ class ORTModule(torch.nn.Module):
         # This is needed to be able to copy the forward signatures from the original PyTorch models
         # and possibly have different signatures for different instances.
         def _forward(self, *inputs, **kwargs):
+            print("ZZZ ORTModule _forward", inputs, kwargs)
             '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
             ONNX model is exported the first time this method is executed.
