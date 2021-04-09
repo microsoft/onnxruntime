@@ -647,10 +647,10 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
-
+  int pass = 0;
   bool local_modified = false;
   do {
-
+    VLOGS(logger, 1) << "Propagate Cast Operations Pass " << pass << ":";
     std::deque<onnxruntime::NodeIndex> removed_nodes;
 
     if (local_modified) {
@@ -700,6 +700,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       graph.RemoveNode(removed_node);
     }
     modified |= local_modified;
+    pass++;
   } while (local_modified);
 
   LOGS(logger, VERBOSE) << "Propagate Cast operations summary:";
