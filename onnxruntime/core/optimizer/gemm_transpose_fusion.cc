@@ -68,7 +68,7 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
 
   graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_gemm_node);
 
-  modified = RewriteRuleEffect::kModifiedRestOfGraph;
+  modified = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();
 }
