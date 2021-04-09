@@ -7,7 +7,6 @@ import subprocess
 import json
 import argparse
 import time
-from PIL import Image
 
 import onnx
 import onnxruntime
