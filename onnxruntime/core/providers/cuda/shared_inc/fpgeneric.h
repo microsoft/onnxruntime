@@ -15,25 +15,24 @@
 
 #include "core/providers/cuda/cuda_common.h"
 
-// Generalize library calls to be use in template functions
+using namespace onnxruntime::cuda;
 
-// gemm
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
-                                       cublasOperation_t transa,
-                                       cublasOperation_t transb,
-                                       int m, int n, int k,
-                                       const float* alpha,
-                                       const float* A, int lda,
-                                       const float* B, int ldb,
-                                       const float* beta,
-                                       float* C, int ldc,
-                                       const cudaDeviceProp& prop) {
-#ifdef ENABLE_TRAINING
+// Generalize library calls to be use in template functions
+inline cublasStatus_t
+cublasGemmHelper(cublasHandle_t handle,
+                 cublasOperation_t transa,
+                 cublasOperation_t transb,
+                 int m, int n, int k,
+                 const float* alpha,
+                 const float* A, int lda,
+                 const float* B, int ldb,
+                 const float* beta,
+                 float* C, int ldc,
+                 const cudaDeviceProp& prop) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  // TF32 uses 10 bit mantissa which has sufficient margin of precision for most use cases. It gets 8x throughput than FP32 in A100.
+  // It can be overrided by setting environment variable NVIDIA_TF32_OVERRIDE = 0 to disable TF32
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
-#else
-  ORT_UNUSED_PARAMETER(prop);
-#endif
 #else
   ORT_UNUSED_PARAMETER(prop);
 #endif
@@ -48,6 +47,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                      beta,
                      C, ldc);
 }
+
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        cublasOperation_t transa,
                                        cublasOperation_t transb,
@@ -68,6 +68,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                      beta,
                      C, ldc);
 }
+
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        cublasOperation_t transa,
                                        cublasOperation_t transb,
@@ -78,36 +79,36 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        const half* beta,
                                        half* C, int ldc,
                                        const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
-
-#ifdef ENABLE_TRAINING
-  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
-
-  // accumulating in FP32
-  return cublasGemmEx(handle,
-                      transa,
-                      transb,
-                      m, n, k,
-                      &h_a,
-                      A, CUDA_R_16F, lda,
-                      B, CUDA_R_16F, ldb,
-                      &h_b,
-                      C, CUDA_R_16F, ldc,
-                      CUDA_R_32F,
-                      CUBLAS_GEMM_DEFAULT);
-#else
-  // accumulating in FP16
-  return cublasHgemm(handle,
-                      transa,
-                      transb,
-                      m, n, k,
-                      alpha,
-                      A, lda,
-                      B, ldb,
-                      beta,
-                      C, ldc);
-#endif
+  const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
+  if (half_options->IsCompute16F()) {
+    return cublasGemmEx(handle,
+                        transa,
+                        transb,
+                        m, n, k,
+                        alpha,
+                        A, CUDA_R_16F, lda,
+                        B, CUDA_R_16F, ldb,
+                        beta,
+                        C, CUDA_R_16F, ldc,
+                        half_options->GetComputeType(),
+                        CUBLAS_GEMM_DEFAULT);
+  } else {
+    // The alpha and beta shall have same precision as compute type.
+    float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+    float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+    return cublasGemmEx(handle,
+                        transa,
+                        transb,
+                        m, n, k,
+                        &h_a,
+                        A, CUDA_R_16F, lda,
+                        B, CUDA_R_16F, ldb,
+                        &h_b,
+                        C, CUDA_R_16F, ldc,
+                        half_options->GetComputeType(),
+                        CUBLAS_GEMM_DEFAULT);
+  }
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -120,9 +121,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        const nv_bfloat16* B, int ldb,
                                        const nv_bfloat16* beta,
                                        nv_bfloat16* C, int ldc,
-                                       const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_DEFAULT_MATH);
-
+                                       const cudaDeviceProp& /*prop*/) {
   float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
   float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
 
@@ -153,15 +152,12 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               float* Carray[], int ldc,
                                               int batch_count,
                                               const cudaDeviceProp& prop) {
-#ifdef ENABLE_TRAINING
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
 #else
   ORT_UNUSED_PARAMETER(prop);
 #endif
-#else
-  ORT_UNUSED_PARAMETER(prop);
-#endif
+
   return cublasSgemmBatched(handle,
                             transa,
                             transb,
@@ -173,6 +169,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                             Carray, ldc,
                             batch_count);
 }
+
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               cublasOperation_t transa,
                                               cublasOperation_t transb,
@@ -195,6 +192,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                             Carray, ldc,
                             batch_count);
 }
+
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               cublasOperation_t transa,
                                               cublasOperation_t transb,
@@ -206,38 +204,37 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               half* Carray[], int ldc,
                                               int batch_count,
                                               const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
-
-#ifdef ENABLE_TRAINING
-  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
-
-  // accumulating in FP32
-  return cublasGemmBatchedEx(handle,
-                             transa,
-                             transb,
-                             m, n, k,
-                             &h_a,
-                             (const void**)Aarray, CUDA_R_16F, lda,
-                             (const void**)Barray, CUDA_R_16F, ldb,
-                             &h_b,
-                             (void**)Carray, CUDA_R_16F, ldc,
-                             batch_count,
-                             CUDA_R_32F,
-                             CUBLAS_GEMM_DEFAULT);
-#else
-  // accumulating in FP16
-  return cublasHgemmBatched(handle,
-                            transa,
-                            transb,
-                            m, n, k,
-                            alpha,
-                            (const __half**)Aarray, lda,
-                            (const __half**)Barray, ldb,
-                            beta,
-                            (__half**)Carray, ldc,
-                            batch_count);
-#endif
+  const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
+  if (half_options->IsCompute16F()) {
+    return cublasGemmBatchedEx(handle,
+                               transa,
+                               transb,
+                               m, n, k,
+                               alpha,
+                               (const void**)Aarray, CUDA_R_16F, lda,
+                               (const void**)Barray, CUDA_R_16F, ldb,
+                               beta,
+                               (void**)Carray, CUDA_R_16F, ldc,
+                               batch_count,
+                               half_options->GetComputeType(),
+                               CUBLAS_GEMM_DEFAULT);
+  } else {
+    float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+    float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+    return cublasGemmBatchedEx(handle,
+                               transa,
+                               transb,
+                               m, n, k,
+                               &h_a,
+                               (const void**)Aarray, CUDA_R_16F, lda,
+                               (const void**)Barray, CUDA_R_16F, ldb,
+                               &h_b,
+                               (void**)Carray, CUDA_R_16F, ldc,
+                               batch_count,
+                               half_options->GetComputeType(),
+                               CUBLAS_GEMM_DEFAULT);
+  }
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -251,8 +248,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               const nv_bfloat16* beta,
                                               nv_bfloat16* Carray[], int ldc,
                                               int batch_count,
-                                              const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+                                              const cudaDeviceProp& /*prop*/) {
   float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
   float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
 
@@ -349,37 +345,38 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      long long int strideC,
                                                      int batch_count,
                                                      const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
-
-#ifdef ENABLE_TRAINING
-  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
-  // accumulating in FP32
-  return cublasGemmStridedBatchedEx(handle,
-                                    transa,
-                                    transb,
-                                    m, n, k,
-                                    &h_a,
-                                    A, CUDA_R_16F, lda, strideA,
-                                    B, CUDA_R_16F, ldb, strideB,
-                                    &h_b,
-                                    C, CUDA_R_16F, ldc, strideC,
-                                    batch_count,
-                                    CUDA_R_32F,
-                                    CUBLAS_GEMM_DEFAULT);
-#else
-  // accumulating in FP16
-  return cublasHgemmStridedBatched(handle,
-                                    transa,
-                                    transb,
-                                    m, n, k,
-                                    alpha,
-                                    A, lda, strideA,
-                                    B, ldb, strideB,
-                                    beta,
-                                    C, ldc, strideC,
-                                    batch_count);
-#endif
+  const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
+  if (half_options->IsCompute16F()) {
+    return cublasGemmStridedBatchedEx(handle,
+                                      transa,
+                                      transb,
+                                      m, n, k,
+                                      alpha,
+                                      A, CUDA_R_16F, lda, strideA,
+                                      B, CUDA_R_16F, ldb, strideB,
+                                      beta,
+                                      C, CUDA_R_16F, ldc, strideC,
+                                      batch_count,
+                                      half_options->GetComputeType(),
+                                      CUBLAS_GEMM_DEFAULT);
+  } else {
+    // The alpha and beta shall have same precision as compute type.
+    float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+    float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+    return cublasGemmStridedBatchedEx(handle,
+                                      transa,
+                                      transb,
+                                      m, n, k,
+                                      &h_a,
+                                      A, CUDA_R_16F, lda, strideA,
+                                      B, CUDA_R_16F, ldb, strideB,
+                                      &h_b,
+                                      C, CUDA_R_16F, ldc, strideC,
+                                      batch_count,
+                                      half_options->GetComputeType(),
+                                      CUBLAS_GEMM_DEFAULT);
+  }
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -396,8 +393,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      nv_bfloat16* C, int ldc,
                                                      long long int strideC,
                                                      int batch_count,
-                                                     const cudaDeviceProp& prop) {
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+                                                     const cudaDeviceProp& /*prop*/) {
   float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
   float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
   // accumulating in FP32
@@ -420,23 +416,24 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
 inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return cublasSgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
+
 inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb, double* C, int ldc) {
   return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
+
 cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy
 inline cublasStatus_t cublasCopyHelper(cudaStream_t, cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy) {
   return cublasScopy(handle, n, x, incx, y, incy);
 }
+
 inline cublasStatus_t cublasCopyHelper(cudaStream_t, cublasHandle_t handle, int n, const double* x, int incx, double* y, int incy) {
   return cublasDcopy(handle, n, x, incx, y, incy);
 }
+
 cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy);
 #endif
-
-
-
-
