@@ -14,7 +14,7 @@ function buildConfig({
       path: path.resolve(__dirname, 'dist'),
       filename: `ort-common${suffix}.js`,
       library: {
-        name: 'ort',
+        name: format === 'commonjs' ? undefined : 'ort',
         type: format
       }
     },
