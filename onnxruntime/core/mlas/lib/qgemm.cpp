@@ -1311,8 +1311,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.K,
-    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.M,
-    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.N
+    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.M/2,
+    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.N/2
 };
 
 struct MLAS_GEMM_U8U8_KERNEL_AVX2
@@ -1403,8 +1403,8 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
-    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.M,
-    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.N,
+    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.M/2,
+    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.N/2,
 };
 
 #endif
@@ -2665,6 +2665,15 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides.N
 };
 
+struct MLAS_GEMM_U8X8_THREAD_SEG {
+    const MLAS_GEMM_U8X8_DISPATCH* dispatch;
+
+    ptrdiff_t ThreadStrideM;
+    ptrdiff_t ThreadStrideN;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
+};
+
 /**
  * Utility in paritioning matrix mul, output stide size
  * in M and N dimensions
@@ -2672,6 +2681,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
 MLAS_FORCEINLINE
 void
 MlasGemmU8X82DStride(
+    size_t NumSegs,
     size_t M,
     size_t N,
     size_t K,
@@ -2681,6 +2691,14 @@ MlasGemmU8X82DStride(
     ptrdiff_t& ThreadCountM,
     ptrdiff_t& ThreadCountN)
 {
+    if (NumSegs == 1) {
+        ThreadStrideM = M;
+        ThreadStrideN = N;
+        ThreadCountM = 1;
+        ThreadCountN = 1;
+        return;
+    }
+
     ThreadStrideM = dispatch->ThreadStrideM;
     ThreadStrideN = dispatch->ThreadStrideN;
 
@@ -2700,42 +2718,49 @@ MlasGemmU8X82DStride(
 
     ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
     ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
-}
+    if ((ThreadCountM * ThreadCountN) <= ptrdiff_t(NumSegs * 2)){
+        return;
+    }
 
-/**
- * @brief Segment the work of multiplying [M,K], [K,N] matrix for parallel
- *        processing
- * @param [IN]  M 
- * @param [IN]  N 
- * @param [IN]  K 
- * @param [IN]  BIsSigned          Whether B matrix is int_8
- * @param [OUT] TargetThreadCount  Total number of segments to run in parallel
- * @param [OUT] CostInCycles       Estimated execution cost for each segment
-*/
-MLAS_FORCEINLINE
-void
-MlasGemmSegWork(
-    size_t M,
-    size_t N,
-    size_t K,
-    bool BIsSigned,
-    ptrdiff_t& TargetThreadCount,
-    double& CostInCycles)
-{
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
-    ptrdiff_t StrideM;
-    ptrdiff_t StrideN;
-    ptrdiff_t ThreadCountM;
-    ptrdiff_t ThreadCountN;
-    MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch, StrideM, StrideN, ThreadCountM, ThreadCountN);
+    if (N >= 4 * M) {
+        // split N first
+        ptrdiff_t SegN = (N + NumSegs - 1) / NumSegs;
+        if (SegN >= (ThreadStrideN * 2)) {
+            ThreadStrideN = (SegN + ThreadStrideN - 1) / ThreadStrideN * ThreadStrideN;
+            ThreadStrideN = std::min(ptrdiff_t(N), ThreadStrideN);
+        }
+        ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
 
-    TargetThreadCount = ThreadCountM * ThreadCountN;
-    CostInCycles = double(StrideM) * double(StrideN) * double(K);
+        // split M
+        NumSegs = (NumSegs + ThreadCountN - 1) / ThreadCountN;
+        ptrdiff_t SegM = (M + NumSegs - 1) / NumSegs;
+        ThreadStrideM = (SegM + ThreadStrideM - 1) / ThreadStrideM * ThreadStrideM;
+        ThreadStrideM = std::min(ptrdiff_t(M), ThreadStrideM);
+        ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
+    }
+    else
+    {
+        // split M first
+        ptrdiff_t SegM = (M + NumSegs - 1) / NumSegs;
+        if (SegM >= (ThreadStrideM * 2)) {
+            ThreadStrideM = (SegM + ThreadStrideM - 1) / ThreadStrideM * ThreadStrideM;
+            ThreadStrideM = std::min(ptrdiff_t(M), ThreadStrideM);        
+        }
+        ThreadCountM = (M + ThreadStrideM - 1) / ThreadStrideM;
+
+        // split N 
+        NumSegs = (NumSegs + ThreadCountM - 1) / ThreadCountM;
+        ptrdiff_t SegN = (N + NumSegs - 1) / NumSegs;
+        ThreadStrideN = (SegN + ThreadStrideN - 1) / ThreadStrideN * ThreadStrideN;
+        ThreadStrideN = std::min(ptrdiff_t(N), ThreadStrideN);
+        ThreadCountN = (N + ThreadStrideN - 1) / ThreadStrideN;
+    }
 }
 
 
 void
 MlasGemmU8X8Threaded(
+    const MLAS_GEMM_U8X8_THREAD_SEG* ThreadInfo,
     const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
@@ -2761,31 +2786,14 @@ Return Value:
 
 --*/
 {
-    const auto *GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
+    ptrdiff_t ThreadIdN = ThreadId % ThreadInfo->ThreadCountN;
+    ptrdiff_t ThreadIdM = ThreadId / ThreadInfo->ThreadCountN;
 
-    const size_t M = Shape->M;
-    const size_t N = Shape->N;
-    const size_t K = Shape->K;
+    size_t RangeStartM = ThreadIdM * ThreadInfo->ThreadStrideM;
+    size_t RangeCountM = std::min(size_t(ThreadInfo->ThreadStrideM), Shape->M - RangeStartM);
 
-    //
-    // Partition the operation
-    //
-    ptrdiff_t ThreadStrideM;
-    ptrdiff_t ThreadStrideN;
-    ptrdiff_t ThreadCountM;
-    ptrdiff_t ThreadCountN;
-    MlasGemmU8X82DStride(M, N, K, GemmU8X8Dispatch,
-                         ThreadStrideM, ThreadStrideN,
-                         ThreadCountM, ThreadCountN);
-
-    ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
-    ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
-
-    size_t RangeStartM = ThreadIdM * ThreadStrideM;
-    size_t RangeCountM = std::min(size_t(ThreadStrideM), M - RangeStartM);
-
-    size_t RangeStartN = ThreadIdN * ThreadStrideN;
-    size_t RangeCountN = std::min(size_t(ThreadStrideN), N - RangeStartN);
+    size_t RangeStartN = ThreadIdN * ThreadInfo->ThreadStrideN;
+    size_t RangeCountN = std::min(size_t(ThreadInfo->ThreadStrideN), Shape->N - RangeStartN);
 
     //
     // Dispatch the partitioned operation.
@@ -2794,9 +2802,9 @@ Return Value:
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
     if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
+        GemmU8X8Operation = ThreadInfo->dispatch->PackedOperation;
     } else {
-        GemmU8X8Operation = GemmU8X8Dispatch->Operation;
+        GemmU8X8Operation = ThreadInfo->dispatch->Operation;
     }
 
     GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
@@ -2843,13 +2851,25 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool)
 {
     // Segment the work for parallelization. This is a two dimentional work
-    // partition. The idea is to generate a group of not-too-small work
-    // chunks and let the thread pool load balance them
+    // partition. We use an over subscribe factor to give the thread pool some
+    // freedom for load balancing. This one is tunable, the thread scheduling
+    // cost rises if it's too big, and we risk load inbalance when it is too
+    // small
 
-    std::ptrdiff_t BlksPerGemm;
-    double cost;
-    MlasGemmSegWork(Shape.M, Shape.N, Shape.K, Shape.BIsSigned,
-        BlksPerGemm, cost);
+    const size_t OverSubscribeFactor = 2;
+    size_t NumSegs = MlasGetMaximumThreadCount(ThreadPool) * OverSubscribeFactor;
+    NumSegs = (NumSegs + BatchN - 1) / BatchN;
+
+    MLAS_GEMM_U8X8_THREAD_SEG SegInfo;
+    SegInfo.dispatch = MlasGemmU8X8GetDispatch(Shape.BIsSigned);
+    MlasGemmU8X82DStride(NumSegs, Shape.M, Shape.N, Shape.K, SegInfo.dispatch,
+                         SegInfo.ThreadStrideM, SegInfo.ThreadStrideN,
+                         SegInfo.ThreadCountM, SegInfo.ThreadCountN);
+
+    const std::ptrdiff_t BlksPerGemm = SegInfo.ThreadCountM * SegInfo.ThreadCountN;
+    const double cost = double(SegInfo.ThreadStrideM)
+                        * double(SegInfo.ThreadStrideN) 
+                        * double(Shape.K);
 
     MlasTryParallel(
         ThreadPool, BlksPerGemm * BatchN, cost,
@@ -2858,7 +2878,7 @@ MlasGemmBatch(
             for (auto idx = begin; idx < end; idx++) {
                 const auto gemm_i = idx / BlksPerGemm;
                 const auto blk_i = idx % BlksPerGemm;
-                MlasGemmU8X8Threaded(&Shape, &DataParams[gemm_i], blk_i);
+                MlasGemmU8X8Threaded(&SegInfo, &Shape, &DataParams[gemm_i], blk_i);
             }
         });
 }
