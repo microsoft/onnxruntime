@@ -8,7 +8,7 @@ nav_order: 3
 # ONNX Runtime Java API
 {: .no_toc }
 
-The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM, using Java 8 or newer.
+The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM.
 
 ## Contents
 {: .no_toc }
@@ -16,7 +16,12 @@ The ONNX runtime provides a Java binding for running inference on ONNX models on
 * TOC placeholder
 {:toc}
 
-Release artifacts are published to Maven Central for use as a dependency in most Java build tools. The artifacts are built with support for some popular plaforms.
+
+## Supported Versions
+Java 8 or newer
+
+## Builds
+Release artifacts are published to **Maven Central** for use as a dependency in most Java build tools. The artifacts are built with support for some popular plaforms.
 
 ![Version Shield](https://img.shields.io/maven-central/v/com.microsoft.onnxruntime/onnxruntime)
 
@@ -33,7 +38,7 @@ For customization of the loading mechanism of the shared library, please see [ad
 
 The Javadoc is available [here](https://javadoc.io/doc/com.microsoft.onnxruntime/onnxruntime).
 
-## Sample Code
+## Sample
 
 An example implementation is located in
 [src/test/java/sample/ScoreMNIST.java](https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/sample/ScoreMNIST.java).

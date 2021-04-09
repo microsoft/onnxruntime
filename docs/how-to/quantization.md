@@ -1,10 +1,18 @@
 ---
 title: Quantize ONNX Models
 parent: How to
-nav_order: 7
+nav_order: 4
 ---
-# Quantization
+# Quantize ONNX Models
+{: .no_toc }
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+## Quantization Overview
 Quantization in ONNX Runtime refers to 8 bit linear quantization of an ONNX model.
 
  During quantization the floating point real values are mapped to an 8 bit quantization space and it is of the form:
@@ -65,7 +73,7 @@ Quantization has 3 main APIs:
 * quantize_qat: quantize-aware training quantization
 
 ### Options
-
+{: .no_toc }
 See below for a description of the common options to quantize_dynamic, quantize_static and quantize_qat:
 
 - **model_input**:
@@ -135,6 +143,7 @@ This Quantization tool also provides API for generating calibration table using 
 After calling the API, three different format of calibration tables are generated with filename calibration.* (FlatBuffers, Python dictionary and plain text).
 Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. (see [here](./../reference/execution-providers/TensorRT-ExecutionProvider.html#sample))
 #### Example
+{: .no_toc }
 ```
 data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)
 calibrate.collect_data(data_reader)
@@ -145,6 +154,7 @@ Please see [E2E_example_model/e2e_user_yolov3_example.py](https://github.com/mic
 #### COCO dataset evaluation
 This tool integrates the COCO dataset API to evaluate model prediction. Please make sure to install COCO API first (```pip install pycocotools```).
 #### Example
+{: .no_toc }
 ```
 dr = YoloV3DataReader(validation_dataset, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
 evaluator = YoloV3Evaluator(model_path, dr, providers=providers)

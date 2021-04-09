@@ -16,32 +16,23 @@ ONNX Runtime Node.js binding enables Node.js applications to run ONNX model infe
 * TOC placeholder
 {:toc}
 
-## Usage
+## Supported Versions
+Node.js v12.x+ or Electron v5.x+
 
-Install the latest stable version:
+## API Reference
+See [Typescript declarations](https://github.com/microsoft/onnxruntime/blob/master/nodejs/lib/inference-session.ts) and refer to [samples](#samples) for reference.
 
-```
-npm install onnxruntime
-```
+## Builds
+Builds are published to **npm** and can be installed using `npm install`
 
-Install the latest dev version:
+| Artifact      | Description | Supported Platforms |
+|-----------    |-------------|---------------------|
+|[onnxruntime](https://www.npmjs.com/package/onnxruntime)|CPU (Release)| Windows x64 CPU NAPI_v3, Linux x64 CPU NAPI_v3, MacOS x64 CPU NAPI_v3|
+|onnxruntime@dev| CPU (Dev)|Windows x64 CPU NAPI_v3, Linux x64 CPU NAPI_v3, MacOS x64 CPU NAPI_v3|
 
-```
-npm install onnxruntime@dev
-```
+To use on platforms without pre-built binaries, you can [build Node.js binding from source]((../../how-to/build.md#apis-and-language-bindings)) and consume using `npm install <onnxruntime_repo_root>/nodejs/`. 
 
-Refer to [Node.js samples](https://github.com/microsoft/onnxruntime/tree/master/samples/nodejs) for samples and tutorials.
+## Samples
+See [Tutorials: Basics - NodeJS](../../tutorials/inferencing/api-basics.md#nodejs)
 
-## Requirements
 
-ONNXRuntime works on Node.js v12.x+ or Electron v5.x+.
-
-Following platforms are supported with pre-built binaries:
-
-- Windows x64 CPU NAPI_v3
-- Linux x64 CPU NAPI_v3
-- MacOS x64 CPU NAPI_v3
-
-To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/nodejs/`. 
-
-See also [build instructions](../../how-to/build.md#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.

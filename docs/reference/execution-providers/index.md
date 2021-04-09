@@ -5,18 +5,18 @@ has_children: true
 nav_order: 2
 ---
 
-# Introduction
+# ONNX Runtime Execution Providers
 {: .no_toc }
 
-ONNX Runtime is capable of working with different HW acceleration libraries to execute the ONNX models on the hardware platform. ONNX Runtime supports an extensible framework, called **Execution Providers** (EP), to integrate with the HW specific libraries. This interface enables flexibility for the AP application developer to deploy their ONNX models in different environments in the cloud and the edge and optimize the execution by taking advantage of the compute capabilities of the platform.
+ONNX Runtime works with different hardware acceleration libraries through its extensible **Execution Providers** (EP) framework to optimally execute the ONNX models on the hardware platform. This interface enables flexibility for the AP application developer to deploy their ONNX models in different environments in the cloud and the edge and optimize the execution by taking advantage of the compute capabilities of the platform.
 
-<p align="center"><img width="50%" src="/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments"/></p>
+<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments"/></p>
 
 ONNX Runtime works with the execution provider(s) using the `GetCapability()` interface to allocate specific nodes or sub-graphs for execution by the EP library in supported hardware. The EP libraries that are pre-installed in the execution environment process and execute the ONNX sub-graph on the hardware. This architecture abstracts out the details of the hardware specific libraries that are essential to optimize the execution of deep neural networks across hardware platforms like CPU, GPU, FPGA or specialized NPUs.
 
-<p align="center"><img width="50%" src="/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()"/></p>
+<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()"/></p>
 
-ONNX Runtime supports many different execution providers today. Some of the EPs are in GA and used in live service. Many are in released in preview to enable developers to develop and customize their application using the different options.
+ONNX Runtime supports many different execution providers today. Some of the EPs are in production for live service, while others are released in preview to enable developers to develop and customize their application using the different options.
 
 ## Contents
 {: .no_toc }
@@ -24,13 +24,22 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 * TOC placeholder
 {:toc}
 
+### Summary of supported Execution Providers 
+
+|CPU|GPU|IoT/Edge/Mobile|Other|
+---|---|---|---
+|Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*|NVIDIA CUDA|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)||
+|[Intel DNNL](../execution-providers/DNNL-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Rockchip NPU](../execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
+|[Intel nGraph](../execution-providers/nGraph-ExecutionProvider.md)|[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
+||[AMD MIGraphX](../execution-providers/MIGraphX-ExecutionProvider.md) (*preview*)|[ARM-NN](../execution-providers/ArmNN-ExecutionProvider.md) (*preview*)|
+
 ### Add an Execution Provider
 
 Developers of specialized HW acceleration solutions can integrate with ONNX Runtime to execute ONNX models on their stack. To create an EP to interface with ONNX Runtime you must first identify a unique name for the EP. Follow the steps outlined [here](../../how-to/add-execution-provider.md) to integrate your code in the repo.
 
 ### Build ONNX Runtime package with EPs
 
-The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../../how-to/build.md#execution-providers).
+The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../../how-to/build/inferencing.md#execution-providers).
 
 ### APIs for Execution Provider
 

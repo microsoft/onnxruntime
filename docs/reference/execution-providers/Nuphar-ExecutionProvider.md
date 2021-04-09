@@ -1,11 +1,11 @@
 ---
-title: Nuphar
+title: NUPHAR
 parent: Execution Providers
 grand_parent: Reference
 nav_order: 10
 ---
 
-# Nuphar Execution Provider (preview)
+# Nuphar Execution Provider
 {: .no_toc }
 
 NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous Architecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
@@ -19,9 +19,9 @@ Developers can tap into the power of Nuphar through ONNX Runtime to accelerate i
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build.md#nuphar).
+For build instructions, please see the [BUILD page](../../how-to/build/eps.md#nuphar).
 
-## Using the Nuphar execution provider
+## Usage
 ### C/C++
 
 ```c++
@@ -41,7 +41,38 @@ providers = ['NupharExecutionProvider', 'CPUExecutionProvider']
 session = ort.InferenceSession(model_path, providers=providers)
 ```
 
-## Performance and Accuracy Testing
+## Configuration Options
+
+When there are conflicts of environment variables running Nuphar in multiple processes, user can specify settings string when creating the Nuphar execution provider. The string comprises of comma separated key:value pairs. Keys should be lower cased environment variable names as shown above, and separated from corresponding values with colon. For example, the equivalent string of setting environment variables of NUPHAR_CACHE_PATH/NUPHAR_CACHE_MODEL_CHECKSUM would be "nuphar_cache_path:<path_to_cache>, nuphar_cache_model_checksum:<model_file_checksum>".
+
+* Using in C/C++
+
+Settings string could be specified when creating execution provider to specify JIT cache path, as well as model checksum:
+
+```c++
+OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 1, "nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>"));
+```
+
+* Using in C#
+
+Settings string could be specified when creating session options:
+
+```csharp
+SessionOptions.MakeSessionOptionWithNupharProvider("nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>")
+```
+
+* Using in Python
+
+Settings string can be set as an execution provider-specific option. Here's an example in Python to set cache path and model checksum:
+
+```python
+nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_model_checksum:{}'.format(cache_dir, model_checksum)
+providers = [('NupharExecutionProvider', {'nuphar_settings': nuphar_settings}), 'CPUExecutionProvider']
+sess = onnxruntime.InferenceSession(model_path, providers=providers)
+```
+
+
+## Performance Tuning
 
 You can test your ONNX model's performance with [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/onnx). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
@@ -51,7 +82,7 @@ Please note that Nuphar uses TVM thread pool and parallel schedule for multi-thr
 
 This choice is to ensure to get ideal performance with the different build options. When build with USE_OPENMP or USE_MKLML, users would have to avoid thread confliction from OpenMP or MKL with their inference invocations anyway, so parallel schedule is enable to leverage existing thread pool. When not building with gomp or iomp, TVM thread pool is turned off to avoid confliction with user threads. If needed, user can set env or settings with [NUPHAR_PARALLEL_MIN_WORKLOADS](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/providers/nuphar/common/nuphar_settings.cc#L61) to 0 to disable parallel schedule, or to some non-zero value to enable parallel schedule. The non-zero value indicates the minimal number of elements being computed per thread when parallel schedule would be turned on.
 
-## Model Conversion and Quantization
+### Model Conversion and Quantization
 You may use Python script [model_editor.py](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then use [model_quantizer.py](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/providers/nuphar/scripts/model_quantizer.py) to quantize MatMul ops into MatMulInteger ops.
 
 We use dynamic per-row quantization for inputs of LSTM MatMul, so MatMul becomes three parts: quantization, MatMulInteger and dequantization. Weights for MatMulInteger are statically quantized per-column to int8. We have observed good speed-up and no loss of accuracy with this quantization scheme inside Scan for various LSTM models.
@@ -70,7 +101,7 @@ As an experiment, you may test conversion and quantization on [the BiDAF model](
 
 Speed-up in this model is ~20% on Intel Xeon E5-1620v4 (Note that AVX2 is required for Nuphar int8 GEMV performance), when comparing CPU execution provider with the floating point model with LSTM ops, vs. the Nuphar execution provider with quantized MatMulInteger inside Scan ops. Profile shows that most of the cost is in input projection outside of Scan ops, which uses MKL SGEMM. It's worth noting that MKL int8 GEMM is about the same speed as SGEMM in this model, so quantization of SGEMMs outside of Scan won't help performance. We are looking at ways to speedup int8 GEMM for better performance on quantized models.
 
-## JIT caching
+### JIT caching
 
 Windows
 ```
@@ -95,6 +126,8 @@ create_shared.sh -c /path/to/jit/cache/NUPHAR_CACHE_VERSION [-m optional_model_f
 # Checksum verification failure will cause Nuphar to fallback to JIT instead of loading binary from cache
 # run Nuphar inference again with cached JIT dll
 ```
+## Samples
+* [Sample notebook for NUPHAR execution provider](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 ## Debugging
 
@@ -145,35 +178,6 @@ NGEMM has default tiling parameters, but users can overwrite them through enviro
 
     Set it to "1" to dump partitions.
 
-## Settings
-
-When there are conflicts of environment variables running Nuphar in multiple processes, user can specify settings string when creating the Nuphar execution provider. The string comprises of comma separated key:value pairs. Keys should be lower cased environment variable names as shown above, and separated from corresponding values with colon. For example, the equivalent string of setting environment variables of NUPHAR_CACHE_PATH/NUPHAR_CACHE_MODEL_CHECKSUM would be "nuphar_cache_path:<path_to_cache>, nuphar_cache_model_checksum:<model_file_checksum>".
-
-* Using in C/C++
-
-Settings string could be specified when creating execution provider to specify JIT cache path, as well as model checksum:
-
-```c++
-OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 1, "nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>"));
-```
-
-* Using in C#
-
-Settings string could be specified when creating session options:
-
-```csharp
-SessionOptions.MakeSessionOptionWithNupharProvider("nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>")
-```
-
-* Using in Python
-
-Settings string can be set as an execution provider-specific option. Here's an example in Python to set cache path and model checksum:
-
-```python
-nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_model_checksum:{}'.format(cache_dir, model_checksum)
-providers = [('NupharExecutionProvider', {'nuphar_settings': nuphar_settings}), 'CPUExecutionProvider']
-sess = onnxruntime.InferenceSession(model_path, providers=providers)
-```
 
 ## Known issues
 * ONNX shape inference dependency

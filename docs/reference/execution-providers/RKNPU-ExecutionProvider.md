@@ -5,8 +5,10 @@ grand_parent: Reference
 nav_order: 11
 ---
 
-# RKNPU Execution Provider (preview)
-RKNPU DDK is an advanced interface to access Rockchip NPU. RKNPU Execution Provider enables deep learning inference on Rockchip NPU via RKNPU DDK.
+# RKNPU Execution Provider
+*PREVIEW*
+
+RKNPU DDK is an advanced interface to access Rockchip NPU. The RKNPU Execution Provider enables deep learning inference on Rockchip NPU via RKNPU DDK.
 
 ## Contents
 {: .no_toc }
@@ -15,19 +17,13 @@ RKNPU DDK is an advanced interface to access Rockchip NPU. RKNPU Execution Provi
 {:toc}
 
 
-## Supported platforms
-
-* RK1808 Linux
-
-*Note: RK3399Pro platform is not supported.*
-
-
 ## Build 
-For build instructions, please see the [BUILD page](../../how-to/build.md#RKNPU).
+For build instructions, please see the [BUILD page](../../how-to/build/eps.md#rknpu).
 
 ## Usage
-### C/C++
-To use RKNPU as execution provider for inferencing, please register it as below.
+**C/C++**
+
+To use RKNPU as an execution provider for inferencing, please register it as below.
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
@@ -37,9 +33,18 @@ Ort::Session session(env, model_path, sf);
 The C API details are [here](../api/c-api.md).
 
 
-## Supported Operators
+## Support Coverage
+### Supported Platform
+{: .no_toc }
 
-The table below shows the ONNX Ops supported using RKNPU Execution Provider and the mapping between ONNX Ops and RKNPU Ops.
+* RK1808 Linux
+
+*Note: RK3399Pro platform is not supported.*
+### Supported Operators
+{: .no_toc }
+
+
+The table below shows the ONNX Ops supported using the RKNPU Execution Provider and the mapping between ONNX Ops and RKNPU Ops.
 
 | **ONNX Ops** | **RKNPU Ops** |
 | --- | --- |
@@ -68,17 +73,19 @@ The table below shows the ONNX Ops supported using RKNPU Execution Provider and 
 | Clip | CLIP |
 
 
-## Supported Models
+### Supported Models
+{: .no_toc }
 
-Below Models are supported from ONNX open model zoo using RKNPU Execution Provider
 
-### Image Classification
+The following models from the ONNX model zoo are supported using the RKNPU Execution Provider
+
+**Image Classification**
 - squeezenet
 - mobilenetv2-1.0
 - resnet50v1
 - resnet50v2
 - inception_v2
 
-### Object Detection
+**Object Detection**
 - ssd
 - yolov3
