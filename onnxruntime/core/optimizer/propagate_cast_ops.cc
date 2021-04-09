@@ -19,7 +19,7 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
                                                     /* Level 2 */ {"Gather", "Where", "Dropout"}};
 static std::vector<std::unordered_set<std::string>> fp16_safe_ops = {
                                                     /* Level 0 */ {},
-                                                    /* Level 1 */ {"LayerNorm", "Gelu", "FastGelu", "Tanh"},
+                                                    /* Level 1 */ {"BiasFastGelu", "BiasGelu", "LayerNorm", "Gelu", "FastGelu", "Tanh"},
                                                     /* Level 2 */ {}};
 static std::vector<std::string> allow_list; // Specified through configuration.
 
