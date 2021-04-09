@@ -135,5 +135,20 @@ class ORTModule(torch.nn.Module):
         yield from self._flattened_module._base_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _replicate_for_data_parallel(self):
+        """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
+
+        torch.nn.DataParallel requires the model to be replicated across multiple devices, and
+        in this process, ORTModule tries to export the model to onnx on multiple devices with the same
+        sample input. Because of this multiple device export with the same sample input, torch throws an
+        exception that reads: "RuntimeError: Input, output and indices must be on the current device"
+        which can be vague to the user since they might not be aware of what happens behind the scene.
+
+        We therefore try to preemptively catch use of ORTModule with torch.nn.DataParallel and throw a
+        more meaningful exception.
+
+        Users must use torch.nn.parallel.DistributedDataParallel instead of torch.nn.DataParallel
+        which does not need model replication and is also recommended by torch to use instead.
+        """
+
         raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
                                   "Please use torch.nn.parallel.DistributedDataParallel instead.")
