@@ -279,7 +279,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
-  
+
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
@@ -289,7 +289,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
       target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
-  endforeach()  
+  endforeach()
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -617,6 +617,10 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_COREML)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "CoreML EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
@@ -1014,10 +1018,10 @@ if (onnxruntime_USE_ROCM)
       #list(APPEND HIP_CXX_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
-  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})  
+  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
 
   # Generate GPU code during compilation
-  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)  
+  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
