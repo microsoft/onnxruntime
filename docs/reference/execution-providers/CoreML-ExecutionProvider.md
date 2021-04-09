@@ -19,7 +19,7 @@ nav_order: 13
 
 ## Minimum requirements
 
-The CoreML EP requires iOS devices with iOS 13 or higher, or mac computers with macOS 10.15 or higher. It is recommended to use Apple devices equipped with Apple Neural Engine to achieve optimal performance.
+The CoreML EP requires iOS devices with iOS 13 or higher, or Mac computers with macOS 10.15 or higher. It is recommended to use Apple devices equipped with Apple Neural Engine to achieve optimal performance.
 
 ## Build CoreML EP
 
@@ -43,7 +43,7 @@ There are several run time options for CoreML Execution Provider.
 
 * COREML_FLAG_USE_CPU_ONLY
 
-   Using CPU only in CoreML EP, using this option may decrease the perf but will provide reference output value without precision loss, which is useful for validation.
+   Using CPU only in CoreML EP, using this option may decrease the performance but will provide reference output value without precision loss, which is useful for validation.
 
 * COREML_FLAG_ENABLE_ON_SUBGRAPH
 
