@@ -540,7 +540,7 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
                 throwOrtException(jniEnv, 1, "Not enough memory");
             }
             uint16_t *halfArr = (uint16_t *) tensor;
-            for (uint32_t i = 0; i != outputLength; i++) {
+            for (uint32_t i = 0; i < outputLength; i++) {
                 floatArr[i] = convertHalfToFloat(halfArr[i]);
             }
             jfloatArray typedArr = (jfloatArray) output;
