@@ -23,6 +23,8 @@ static std::vector<std::unordered_set<std::string>> fp16_safe_ops = {
                                                     /* Level 2 */ {}};
 static std::unordered_set<std::string> allow_list; // Specified through configuration.
 
+static std::vector<std::string> compute_nodes_changed; // Names of the fp16_safe_ops changed
+
 // Check whether the given opcode is fp16 safe for the given level of optimization.
 static bool IsFP16Safe(const std::string& op_type, size_t level)
 {
@@ -241,15 +243,20 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
             }
           }
         }
+        bool modified = false;
         for (NodeArg* node_input : node->MutableInputDefs()) {
           if (node_input->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT &&
               require_cast.find(node_input) != require_cast.end() &&
               require_type_change.find(node_input) != require_type_change.end()) {
+            modified = true;
             SearchUpstream(graph, node_input, require_cast, require_type_change, removed_nodes, level);
             if (require_cast.find(node_input) != require_cast.end()) {
               require_type_change.insert(node_input);
             }
           }
+        }
+        if (IsFP16Safe(op_type, level) && modified) {
+          compute_nodes_changed.push_back(node->Name());
         }
       }
     }
@@ -703,6 +710,9 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
     }
     modified |= local_modified;
   } while (local_modified);
+
+  LOGS(logger, VERBOSE) << "Propagate Cast operations summary:";
+  std::for_each(compute_nodes_changed.begin(), compute_nodes_changed.end(), [logger](std::string name){ LOGS(logger, VERBOSE) << name; });
 
   return Status::OK();
 }
