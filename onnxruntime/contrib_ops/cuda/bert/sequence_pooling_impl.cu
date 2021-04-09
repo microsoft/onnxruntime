@@ -87,7 +87,6 @@ bool SequencePooling(
   const dim3 block(num_sequences_max, 1, 1);
 
   SequencePoolingKernel<T><<<grid, block, 0, stream>>>(input, sentence_lengthes, num_sequences, sequence_length_for_split, output);
-  cudaDeviceSynchronize();
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
