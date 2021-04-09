@@ -24,7 +24,11 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlgavgpool.cpp
 )
 
-if(MSVC)
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  file(GLOB_RECURSE mlas_platform_srcs
+    "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
+  )
+elseif(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(mlas_platform_preprocess_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
@@ -54,7 +58,7 @@ if(MSVC)
       )
       list(APPEND mlas_platform_srcs ${obj_filename})
     endforeach()
-  elseif(onnxruntime_target_platform STREQUAL "ARM")
+  elseif((onnxruntime_target_platform STREQUAL "ARM") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )

@@ -52,7 +52,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
   ROCMExecutionProviderInfo info{};
   info.device_id = gsl::narrow<OrtDevice::DeviceId>(rocm_options->device_id);
-  info.hip_mem_limit = rocm_options->hip_mem_limit;
+  info.gpu_mem_limit = rocm_options->gpu_mem_limit;
   info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(rocm_options->arena_extend_strategy);
   info.miopen_conv_exhaustive_search = rocm_options->miopen_conv_exhaustive_search;
 

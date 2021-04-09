@@ -221,3 +221,34 @@ def gen_transpose_fusion_with_cast(model_path):
 
 gen_transpose_fusion_with_cast(
     "transpose_cast_matmul_4d_fusion")
+
+def gen_transpose_fusion_invalid_datatype(model_path, datatype):
+    nodes = [
+        helper.make_node(
+            "Transpose",
+            ["input_0"],
+            ["transposed_input_0"],
+            perm = [0, 1, 3, 2]),
+        helper.make_node(
+            "MatMul",
+            ["transposed_input_0", "input_1"],
+            ["output"])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", datatype, [2, 3, 'K', 'M']),
+        helper.make_tensor_value_info(
+            "input_1", datatype, [2, 3, 'K', 'N'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output", datatype, [2, 3, 'M', 'N'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, [])
+
+
+gen_transpose_fusion_invalid_datatype("transpose_matmul_4d_fusion_invalid_datatype_int32.onnx", TensorProto.INT32)
+gen_transpose_fusion_invalid_datatype("transpose_matmul_4d_fusion_invalid_datatype_int64.onnx", TensorProto.INT64)

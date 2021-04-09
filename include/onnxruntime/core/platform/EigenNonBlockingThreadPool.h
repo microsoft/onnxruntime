@@ -171,7 +171,32 @@ struct PaddingToAvoidFalseSharing {
 4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail;
 5. ThreadPoolProfiler is thread-safe.
 */
-
+#ifdef ORT_MINIMAL_BUILD
+class ThreadPoolProfiler {
+ public:
+  enum ThreadPoolEvent {
+    DISTRIBUTION = 0,
+    DISTRIBUTION_ENQUEUE,
+    RUN,
+    WAIT,
+    WAIT_REVOKE,
+    MAX_EVENT
+  };
+  ThreadPoolProfiler(int, const CHAR_TYPE*){};
+  ~ThreadPoolProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
+  void Start(){};
+  std::string Stop() { return "not available for minimal build"; }
+  void LogStart(){};
+  void LogEnd(ThreadPoolEvent){};
+  void LogEndAndStart(ThreadPoolEvent){};
+  void LogStartAndCoreAndBlock(std::ptrdiff_t){};
+  void LogCoreAndBlock(std::ptrdiff_t){};
+  void LogThreadId(int){};
+  void LogRun(int){};
+  std::string DumpChildThreadStat() { return {}; }
+};
+#else
 class ThreadPoolProfiler {
  public:
   enum ThreadPoolEvent {
@@ -222,8 +247,9 @@ class ThreadPoolProfiler {
     PaddingToAvoidFalseSharing padding_; //to prevent false sharing
   };
   std::vector<ChildThreadStat> child_thread_stats_;
-  std::string threal_pool_name_;
+  std::string thread_pool_name_;
 };
+#endif
 
 // Extended Eigen thread pool interface, avoiding the need to modify
 // the ThreadPoolInterface.h header from the external Eigen

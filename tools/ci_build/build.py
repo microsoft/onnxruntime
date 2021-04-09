@@ -5,12 +5,12 @@
 import argparse
 import contextlib
 import glob
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import hashlib
 import platform
 from amd_hipify import amd_hipify
 from distutils.version import LooseVersion
@@ -269,6 +269,10 @@ def parse_arguments():
         help="Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
+        "--arm64ec", action='store_true',
+        help="Create ARM64EC makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
     parser.add_argument(
@@ -276,8 +280,12 @@ def parse_arguments():
         choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
         help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
-    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument(
+        "--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
+        help="Path to the Android SDK")
+    parser.add_argument(
+        "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
+        help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
     parser.add_argument("--android_run_emulator", action="store_true",
@@ -310,6 +318,12 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+
+    # WebAssembly build
+    parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument(
+        "--disable_wasm_exception_catching", action='store_true',
+        help="Disable exception catching in WebAssembly.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -561,34 +575,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     dep_packages.append('cerberus')
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
-                    'files.pythonhosted.org'] + dep_packages)
-
-
-# We need to install Torch to test certain functionalities of the ORT Python package
-def install_torch():
-    # Command works for both Windows
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
-                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
-                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
-
-
-def check_md5(filename, expected_md5):
-    if not os.path.exists(filename):
-        return False
-    hash_md5 = hashlib.md5()
-    BLOCKSIZE = 1024 * 64
-    with open(filename, "rb") as f:
-        buf = f.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hash_md5.update(buf)
-            buf = f.read(BLOCKSIZE)
-    hex = hash_md5.hexdigest()
-    if hex != expected_md5:
-        log.info('md5 mismatch, expect %s, got %s' % (expected_md5, hex))
-        os.remove(filename)
-        return False
-    return True
+    run_subprocess([sys.executable, '-m', 'pip', 'install'] + dep_packages)
 
 
 def setup_test_data(build_dir, configs):
@@ -679,7 +666,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for ARM/ARM64
         # (no native compilation supported through this script).
-        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
@@ -722,6 +709,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
+                                                                  else "ON"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -793,8 +783,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
 
     if args.android:
+        if not args.android_ndk_path:
+            raise BuildError("android_ndk_path required to build for Android")
+        if not args.android_sdk_path:
+            raise BuildError("android_sdk_path required to build for Android")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
+                args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -890,6 +885,20 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
                 "-DCMAKE_C_COMPILER=" + compilers[0],
                 "-DCMAKE_CXX_COMPILER=" + compilers[1]
+            ]
+
+    if args.build_wasm:
+        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
+                                                       "Platform", "Emscripten.cmake")
+        cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file
+        ]
+        if args.disable_wasm_exception_catching:
+            # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
+            # unit test.
+            cmake_args += [
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
 
     if path_to_protoc_exe:
@@ -998,7 +1007,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
 
         build_tool_args = []
         if num_parallel_jobs != 1:
-            if is_windows() and args.cmake_generator != 'Ninja':
+            if is_windows() and args.cmake_generator != 'Ninja' and not args.build_wasm:
                 build_tool_args += [
                     "/maxcpucount:{}".format(num_parallel_jobs),
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
@@ -1626,7 +1635,7 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -1709,7 +1718,7 @@ def generate_documentation(source_dir, build_dir, configs):
             cwd=os.path.join(build_dir, config))
     docdiff = ''
     try:
-        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
+        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
@@ -1724,7 +1733,7 @@ def generate_documentation(source_dir, build_dir, configs):
 
     docdiff = ''
     try:
-        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path], cwd=source_dir)
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
@@ -1738,7 +1747,7 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
-    cross_compiling = args.arm or args.arm64 or args.android
+    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -1784,6 +1793,13 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
+
+    if args.build_wasm:
+        if not args.disable_wasm_exception_catching and args.disable_exceptions:
+            # When '--disable_exceptions' is set, we set '--disable_wasm_exception_catching' as well
+            args.disable_wasm_exception_catching = True
+        if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
+            raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
@@ -1836,8 +1852,10 @@ def main():
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
         if is_windows():
-            if args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64:
+            if args.build_wasm:
+                cmake_extra_args = ['-G', 'Ninja']
+            elif args.cmake_generator == 'Ninja':
+                if args.x86 or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
@@ -1847,7 +1865,7 @@ def main():
                 cmake_extra_args = [
                     '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
                 ]
-            elif args.arm or args.arm64:
+            elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
                 if path_to_protoc_exe is None:
@@ -1855,8 +1873,10 @@ def main():
                         cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ['-A', 'ARM']
-                else:
+                elif args.arm64:
                     cmake_extra_args = ['-A', 'ARM64']
+                elif args.arm64ec:
+                    cmake_extra_args = ['-A', 'ARM64EC']
                 cmake_extra_args += ['-G', args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -1905,9 +1925,43 @@ def main():
                         "Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
 
-        if (args.android or args.ios or args.enable_windows_store
+        if args.build_wasm:
+            # install emscripten if not exist.
+            # since emscripten doesn't support file packaging required for unit tests,
+            # need to apply patch with the specific version of emscripten.
+            # once patch is committed to emsdk repository, this must be replaced with 'latest'.
+            emsdk_version = "2.0.13"
+
+            emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
+            emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
+            emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
+            emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
+                                                           "Platform", "Emscripten.cmake")
+
+            if os.path.exists(emsdk_version_file):
+                with open(emsdk_version_file) as f:
+                    emsdk_version_data = json.load(f)
+                emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
+            if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
+                print("Installing emsdk...")
+                run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+            print("Activating emsdk...")
+            run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
+
+            if args.test:
+                # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
+                #
+                # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in
+                #       Node.js
+                #       should be removed once the following PR get merged:
+                #       https://github.com/emscripten-core/emscripten/pull/11785
+                shutil.copy(
+                    os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                    os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
+
+        if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
-            # Cross-compiling for Android and iOS
+            # Cross-compiling for Android, iOS, and WebAssembly
             path_to_protoc_exe = build_protoc_for_host(
                 cmake_path, source_dir, build_dir, args)
 

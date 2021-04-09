@@ -17,7 +17,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
-
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
   )
 
   # no Function support initially

@@ -27,6 +27,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -45,6 +46,7 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -66,6 +68,8 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -356,12 +360,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   // Check DequantizeLinear aren't constant folded for default setting.
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
-  // set SessionOptionsEnableQuantQDQ to enable it explicitly
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "1");
+  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "0");
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
@@ -523,6 +527,46 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     ASSERT_TRUE(op_to_count["Add"] == 0);
     ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
   }
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/div_mul.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<DivMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
+}
+
+TEST_F(GraphTransformationTests, NotWhereFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/not_where.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Not"] == 4);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NotWhereFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+  ASSERT_TRUE(op_to_count["Not"] == 1); // can't remove Not if it is graph output/ has consumer that's not where
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -847,20 +891,20 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
 
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
   const std::vector<PathString> model_uris = {
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion0.onnx", // Test fusion from the right input
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx", // Test fusion from the left input
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion2.onnx", // Test fusion both from the left and right inputs
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion3.onnx", // Cast nodes feed multiple MatMul nodes.
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion4.onnx", // Cast nodes feed one MatMul node and
-                                                                   // the Transpose nodes feed another MatMul node.
-      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion5.onnx"  // One Cast node and one Transpose node feed each
-                                                                   // MatMul nodes.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion0.onnx",  // Test fusion from the right input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion1.onnx",  // Test fusion from the left input
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion2.onnx",  // Test fusion both from the left and right inputs
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion3.onnx",  // Cast nodes feed multiple MatMul nodes.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion4.onnx",  // Cast nodes feed one MatMul node and
+                                                                    // the Transpose nodes feed another MatMul node.
+      MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion5.onnx"   // One Cast node and one Transpose node feed each
+                                                                    // MatMul nodes.
   };
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
     Graph& graph = p_model->MainGraph();
-    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph); // Original op count
+    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);  // Original op count
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
@@ -918,10 +962,12 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
 }
 
-TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
+TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidInput) {
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_perm.onnx",
       MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_default_perm.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_datatype_int32.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_datatype_int64.onnx",
   };
   for (const auto& model_uri : model_uris) {
     std::shared_ptr<Model> p_model;
@@ -2324,6 +2370,35 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
+static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_options) {
+  std::unique_ptr<CPUExecutionProvider> e =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  bool has_gelu_approximation = false;
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), {});
+  for (auto& transformer : transformers) {
+    if (transformer->Name() == "GeluApproximation") {
+      has_gelu_approximation = true;
+    }
+  }
+
+  EXPECT_EQ(has_gelu_approximation, is_enabled);
+}
+
+// Test session option configuration for GeluApproximation
+TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
+  SessionOptions session_options;
+
+  // GeluApproximation is not enabled by default.
+  VerifyGeluApproximation(false, session_options);
+
+  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
+  VerifyGeluApproximation(true, session_options);
+
+  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
+  VerifyGeluApproximation(false, session_options);
+}
+
 // Test Gelu -> FastGelu
 TEST_F(GraphTransformationTests, GeluApproximation_Gelu) {
   auto model_uri = MODEL_FOLDER "approximation/gelu.onnx";
@@ -2559,7 +2634,6 @@ TEST_F(GraphTransformationTests, FastGeluFusionWithCastsTest3) {
   ASSERT_TRUE(op_to_count["Cast"] == 1);
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
-
 
 struct BiasSoftmaxFusionTester {
   std::shared_ptr<Model> p_model_;
@@ -3745,6 +3819,32 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       {kCpuExecutionProvider});
 }
 #endif
+
+TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
+  auto model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.FilterEnabledOptimizers";
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  const auto& graph = session_object.GetGraph();
+
+  // check the ops that should go away if the constant folding transformer or ShapeToInitializer rewrite rule run
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+
+  ASSERT_STATUS_OK(session_object.FilterEnabledOptimizers({"ConstantFolding", "ShapeToInitializer"}));
+  ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

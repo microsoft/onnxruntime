@@ -35,7 +35,7 @@ Abstract:
 // Define the target architecture.
 //
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
 #if defined(_M_IX86) || defined(__i386__)
@@ -47,11 +47,19 @@ Abstract:
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(__arm__)
+#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
+#endif
+#if defined(__wasm__)
+#define MLAS_TARGET_WASM
+#if defined(__wasm_simd128__)
+#define MLAS_TARGET_WASM_SIMD
+#else
+#define MLAS_TARGET_WASM_SCALAR
+#endif
 #endif
 
 //
@@ -344,6 +352,9 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+#if defined(MLAS_TARGET_WASM)
+    MlasConvAlgorithmDepthwise,
+#endif
 };
 
 struct MLAS_CONV_PARAMETERS {

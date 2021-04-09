@@ -1,0 +1,238 @@
+[
+    [
+        "AdamOptimizer com.microsoft CPUExecutionProvider",
+        13275719513674142848
+    ],
+    [
+        "AveragePoolGrad ai.onnx CPUExecutionProvider",
+        5748823370585834408
+    ],
+    [
+        "BiasFastGeluGrad_dX com.microsoft CPUExecutionProvider",
+        18012658855595136536
+    ],
+    [
+        "BiasGeluGrad_dX com.microsoft CPUExecutionProvider",
+        15594101660509653368
+    ],
+    [
+        "BroadcastGradientArgs com.microsoft CPUExecutionProvider",
+        11924624129611280440
+    ],
+    [
+        "ConcatTraining com.microsoft CPUExecutionProvider",
+        407435603592769928
+    ],
+    [
+        "ConvGrad com.microsoft CPUExecutionProvider",
+        6051867985469399832
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        5281827689086376112
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        5974036940246406232
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        6251139593746398664
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        11134433709210415000
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        14442689431073529904
+    ],
+    [
+        "DropoutGrad com.microsoft CPUExecutionProvider",
+        14487527510076876072
+    ],
+    [
+        "FastGeluGrad com.microsoft CPUExecutionProvider",
+        15449034010577224840
+    ],
+    [
+        "GatherElementsGrad com.microsoft CPUExecutionProvider",
+        4371565130613539784
+    ],
+    [
+        "GatherGrad com.microsoft CPUExecutionProvider",
+        16767260238333903216
+    ],
+    [
+        "GatherNDGrad com.microsoft CPUExecutionProvider",
+        14458526033602252960
+    ],
+    [
+        "GeluGrad com.microsoft CPUExecutionProvider",
+        3065626784130845072
+    ],
+    [
+        "Group com.microsoft CPUExecutionProvider",
+        488667512000820344
+    ],
+    [
+        "InPlaceAccumulator com.microsoft CPUExecutionProvider",
+        10152728201494720480
+    ],
+    [
+        "InvertibleLayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        678361860206315480
+    ],
+    [
+        "InvertibleLayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        3647079615262464056
+    ],
+    [
+        "LayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        9571863035992961528
+    ],
+    [
+        "LayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        15120500842480246904
+    ],
+    [
+        "LogSoftmaxGrad com.microsoft CPUExecutionProvider",
+        2657523710083167200
+    ],
+    [
+        "MaxPoolGrad ai.onnx CPUExecutionProvider",
+        17526822836083413768
+    ],
+    [
+        "PassThrough com.microsoft CPUExecutionProvider",
+        15753758832962034552
+    ],
+    [
+        "ReduceAllL2 com.microsoft CPUExecutionProvider",
+        10206006236140935288
+    ],
+    [
+        "ReduceSumTraining com.microsoft CPUExecutionProvider",
+        4143442227179196240
+    ],
+    [
+        "ReduceSumTraining com.microsoft CPUExecutionProvider",
+        8270932107741781432
+    ],
+    [
+        "ReduceSumTraining com.microsoft CPUExecutionProvider",
+        10014758284200613760
+    ],
+    [
+        "ReduceSumTraining com.microsoft CPUExecutionProvider",
+        11970256914235931792
+    ],
+    [
+        "ReluGrad com.microsoft CPUExecutionProvider",
+        6194712211707544696
+    ],
+    [
+        "SGDOptimizer com.microsoft CPUExecutionProvider",
+        6413752339355984752
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        4626702086191057400
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        7066774539152819712
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        7086129391615471904
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        8529929466096310624
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        9194708927698241584
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        15004008446550052608
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        16665599877841166880
+    ],
+    [
+        "Scale com.microsoft CPUExecutionProvider",
+        17615601449933173216
+    ],
+    [
+        "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        9823114592183077488
+    ],
+    [
+        "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
+        17704727407887118880
+    ],
+    [
+        "SinGrad ai.onnx CPUExecutionProvider",
+        6971400065913943256
+    ],
+    [
+        "SliceGrad com.microsoft CPUExecutionProvider",
+        18003932513454931536
+    ],
+    [
+        "SoftmaxCrossEntropy com.microsoft CPUExecutionProvider",
+        5470752940282787040
+    ],
+    [
+        "SoftmaxCrossEntropyGrad com.microsoft CPUExecutionProvider",
+        17579254067477868408
+    ],
+    [
+        "SoftmaxCrossEntropyLoss ai.onnx CPUExecutionProvider",
+        379111282162709688
+    ],
+    [
+        "SoftmaxCrossEntropyLoss ai.onnx CPUExecutionProvider",
+        5256121368123320104
+    ],
+    [
+        "SoftmaxCrossEntropyLoss ai.onnx CPUExecutionProvider",
+        14833827121724789864
+    ],
+    [
+        "SoftmaxCrossEntropyLoss ai.onnx CPUExecutionProvider",
+        15405100773745075656
+    ],
+    [
+        "SoftmaxCrossEntropyLossGrad com.microsoft CPUExecutionProvider",
+        8253282220433537112
+    ],
+    [
+        "SoftmaxCrossEntropyLossGrad com.microsoft CPUExecutionProvider",
+        16283082098560169504
+    ],
+    [
+        "SoftmaxGrad com.microsoft CPUExecutionProvider",
+        4483165757863027152
+    ],
+    [
+        "SparseSoftmaxCrossEntropy ai.onnx CPUExecutionProvider",
+        10638058507241762520
+    ],
+    [
+        "SparseSoftmaxCrossEntropyGrad ai.onnx CPUExecutionProvider",
+        17612183648106847376
+    ],
+    [
+        "SplitTraining com.microsoft CPUExecutionProvider",
+        12689204749897364688
+    ],
+    [
+        "ZeroGradient com.microsoft CPUExecutionProvider",
+        3284255990062374928
+    ]
+]

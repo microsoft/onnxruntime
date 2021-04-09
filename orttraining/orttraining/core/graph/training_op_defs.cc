@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -343,7 +344,7 @@ void RegisterTrainingOpSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
+      .Input(1, "Y", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
@@ -356,7 +357,54 @@ void RegisterTrainingOpSchemas() {
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
+            // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
+            // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
+            // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
+            // reduction for "ReduceSum", after accounting for negative-axis specification.
+            // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
+            // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
+            auto zero1d = ToTensor(std::vector<int64_t>({0}));
+            zero1d.add_dims(1);
+
+            // nodes: {outputs, op, inputs, attributes}
+
+            // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                FunctionBodyHelper::Const<int64_t>("one", 1),
+                FunctionBodyHelper::Const<int64_t>("k", axis),
+                {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
+                {{"shape"}, "Shape", {"dY"}},
+                {{"n_as_vector"}, "Shape", {"shape"}},
+                {{"n"}, "Squeeze", {"n_as_vector", "axis_zero"}},
+            };
+
+            // For negative axis, add n to axis-value k; then use Range(...).
+            if (axis >= 0) {
+              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+            } else {
+              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
+              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
+            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
+            body.push_back({{"c"}, "Sub", {"dY", "b"}});
+            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
@@ -420,12 +468,13 @@ void RegisterTrainingOpSchemas() {
           "Constrain index tensor to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
-      .Output(1, "dW", "Gradient of W", "T")
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
@@ -1284,7 +1333,8 @@ Example 4:
       .Output(1, "per_input_length",
               "Vector of length of each concatenated "
               "input along the 'axis' dimension",
-              "Tint")
+              "Tint",
+              OpSchema::Optional)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -1320,9 +1370,11 @@ Example 4:
           output_shape->add_dim();
         }
 
-        ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
-        per_input_len_shape.add_dim()->set_dim_value(numInputs);
-        updateOutputShape(ctx, 1, per_input_len_shape);
+        if (ctx.getNumOutputs() > 1) {
+          ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+          per_input_len_shape.add_dim()->set_dim_value(numInputs);
+          updateOutputShape(ctx, 1, per_input_len_shape);
+        }
 
         for (size_t i = 0; i < numInputs; i++) {
           const auto& shape = ctx.getInputType(i)->tensor_type().shape();
@@ -1545,7 +1597,42 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* Default GeluGrad computation: 
+              dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
+            which expands to the following ONNX graph:
+            */
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
+                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
+                ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),              
+                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
+                {{"ErfTerm"}, "Erf", {"ErfArg"}},
+                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
+                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
+                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
+                {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
+                {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
+                {{"ExpTerm"}, "Exp", {"ExpArg"}},
+                {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
+                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
+                {{"dX"}, "Mul", {"dY", "FullSum"}}};
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)

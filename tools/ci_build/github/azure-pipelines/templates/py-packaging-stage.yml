@@ -274,7 +274,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
+                  --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -481,7 +481,7 @@ stages:
     - job: Windows_py_GPU_Wheels
       workspace:
         clean: all
-      pool: 'Win-GPU-2019'
+      pool: 'onnxruntime-gpu-winbuild'
       timeoutInMinutes:  240
       variables:
         CUDA_VERSION: '11.0'

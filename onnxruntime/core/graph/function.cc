@@ -180,11 +180,12 @@ static std::unordered_map<std::string, int> CreateOpsetImportsForFunction(const 
   std::unordered_map<std::string, int> function_opset_imports{graph_opset_imports};
   // merge with opset imports in function proto
   for (const auto& opset_import : func_proto.opset_import()) {
-    auto result = function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
-    ORT_ENFORCE(result.second,
+    auto opset_version = static_cast<int>(opset_import.version());
+    auto result = function_opset_imports.insert({opset_import.domain(), opset_version});
+    ORT_ENFORCE((result.first->second == opset_version),
                 "ONNX model does not support multiple opset versions for a domain. Model imports opset version ",
                 result.first->second, " for domain ", result.first->first, " and function is trying to import opset version ",
-                opset_import.version(), " for the same domain");
+                opset_version, " for the same domain");
   }
 
   return function_opset_imports;

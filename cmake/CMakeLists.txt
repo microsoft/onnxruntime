@@ -144,6 +144,10 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
+# build WebAssembly
+option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
@@ -343,6 +347,7 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
 
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
+  add_compile_definitions("ONNX_NO_EXCEPTIONS")
 
   if(MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -556,6 +561,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
   if(NOT TARGET GTest::gtest)
     message("Use gtest from submodule")
+
+    # WebAssembly doesn't support threading properly yet.
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+      set(gtest_disable_pthreads ON)
+    endif()
+
     # gtest and gmock
     set_msvc_c_cpp_compiler_warning_level(4)
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
@@ -606,7 +617,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
-if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB)
+if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 endif()
 # External dependencies
@@ -708,6 +719,10 @@ endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
 if(onnxruntime_PREFER_SYSTEM_LIB)
   find_package(re2)
 endif()
@@ -758,7 +773,7 @@ function(onnxruntime_add_shared_library target_name)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
+  elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
   endif()
@@ -778,7 +793,7 @@ function(onnxruntime_add_shared_library_module target_name)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
+  elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
   endif()
@@ -798,7 +813,7 @@ function(onnxruntime_add_executable target_name)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
+  elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
   endif()
@@ -894,6 +909,7 @@ if (onnxruntime_USE_ARMNN)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  add_definitions(-DUSE_DNNL=1)
   include(dnnl)
 endif()
 
@@ -978,7 +994,7 @@ endif()
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
@@ -1111,10 +1127,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-# DLPack is a header-only dependency
-set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-include_directories(${DLPACK_INCLUDE_DIR})
-
 if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
@@ -1140,6 +1152,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
+  elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)  
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1446,7 +1461,7 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
+  elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
   endif()
@@ -1458,7 +1473,7 @@ foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
     if (MSVC)
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
-    else()
+    elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
       target_compile_definitions(onnxruntime_providers_${provider_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
@@ -1478,7 +1493,7 @@ endif()
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
-else()
+elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
@@ -1559,6 +1574,15 @@ if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
+    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+  endif()
+
+  message(STATUS "WebAssembly Build is enabled")
+  include(onnxruntime_webassembly.cmake)
 endif()
 
 if (WINDOWS_STORE)
