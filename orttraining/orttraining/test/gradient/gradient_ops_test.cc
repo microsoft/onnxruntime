@@ -2432,7 +2432,7 @@ TEST(GradientCheckerTest, TileGrad) {
   {
     TensorInfo x_info({2, 4}, true);
     TensorInfo repeat_info({2,2}, false);
-    std::vector<std::vector<float>> x_datas = {{1, 2, 1, 2, 1, 2, 1, 2}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 1, 2}, {1, 2, 1, 2}};
 
     TensorInfo y_info({2, 1}, true);
 
