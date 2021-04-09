@@ -71,7 +71,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                              p_tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    if (alloc->Info().alloc_type == OrtArenaAllocator && disable_arena_for_initialized_tensor_memory_allocation) {
+    if (disable_arena_for_initialized_tensor_memory_allocation && alloc->Info().alloc_type == OrtArenaAllocator) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, ReserveUsingArenaFromShapeAndType(tensor_shape, type, alloc), alloc);
     } else {
@@ -92,7 +92,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     // deserialize to CPU first for non-CPU allocator, then copy
     std::unique_ptr<Tensor> p_deserialize_tensor;
-    if (alloc->Info().alloc_type == OrtArenaAllocator && disable_arena_for_initialized_tensor_memory_allocation) {
+    if (disable_arena_for_initialized_tensor_memory_allocation && default_cpu_alloc->Info().alloc_type == OrtArenaAllocator) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape,
                                                               ReserveUsingArenaFromShapeAndType(tensor_shape, type, default_cpu_alloc), default_cpu_alloc);
