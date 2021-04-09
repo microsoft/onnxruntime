@@ -1,5 +1,6 @@
 FROM quay.io/pypa/manylinux2014_x86_64:latest
 
+ARG USE_JDK11=0
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
