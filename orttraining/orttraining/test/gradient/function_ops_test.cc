@@ -86,12 +86,13 @@ Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> out
 }
 
 // Restricted to float tensors
+template <typename T>
 static void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
   auto size = tensor1.Shape().Size();
-  auto* data1 = tensor1.template Data<float>();
-  auto* data2 = tensor2.template Data<float>();
+  auto* data1 = tensor1.template Data<T>();
+  auto* data2 = tensor2.template Data<T>();
 
-  float threshold = 0.001f;
+  T threshold = T(0.001f);
 
   for (int i = 0; i < size; ++i) {
     ASSERT_NEAR(data1[i], data2[i], threshold) << "as position i:" << i;
@@ -103,7 +104,11 @@ static void AssertEqual(const std::vector<OrtValue>& results1, const std::vector
   for (int i = 0; i < results1.size(); i++) {
     auto& value1 = results1[i].Get<Tensor>();
     auto& value2 = results2[i].Get<Tensor>();
-    AssertEqual(value1, value2);
+    // Currently, only float or double:
+    if (value1.DataType() == DataTypeImpl::GetType<float>())
+      AssertEqual<float>(value1, value2);
+    else
+      AssertEqual<double>(value1, value2);
   }
 }
 
@@ -138,10 +143,6 @@ struct FunctionTestCase {
   void AddInput(std::string input_name, std::vector<int64_t> shape) {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
-
-    // int64_t size = 1;
-    // for (auto dim : shape)
-    //   size *= dim;
 
     RandomValueGenerator random{};
     std::vector<T> data = random.Uniform<T>(shape, 0.0f, 1.0f);
@@ -317,6 +318,15 @@ TEST(DropoutGradExpansionTest, WithoutRatio) {
   testCase.RunTest();
 }
 
+TEST(DropoutGradExpansionTest, WithoutRatioDouble) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<double>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
 TEST(DropoutGradExpansionTest, WithRatio) {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
@@ -326,6 +336,17 @@ TEST(DropoutGradExpansionTest, WithRatio) {
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
+
+TEST(DropoutGradExpansionTest, WithRatioDouble) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<double>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
 
 TEST(GeluGradExpansionTest, 2D) {
   FunctionTestCase testCase("GeluGrad");
