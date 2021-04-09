@@ -35,7 +35,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().StartTime();
+    tp = session_state.Profiler().Now();
   }
 
   root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
@@ -118,7 +118,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   bool keep_running = true;
   const auto& graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time;
+  TimePoint kernel_begin_time, kernel_end_time;
   const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
   const SequentialExecutionPlan& exec_plan = *session_state.GetExecutionPlan();
 
@@ -142,7 +142,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
 
     if (f_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Now();
     }
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
@@ -183,7 +183,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
-      kernel_begin_time = session_state.Profiler().StartTime();
+      kernel_begin_time = session_state.Profiler().Now();
     }
 
     // call compute on the kernel
@@ -216,14 +216,15 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     if (f_profiler_enabled) {
+      kernel_end_time = session_state.Profiler().Now();
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_kernel_time",
-                                                     kernel_begin_time,
+                                                     kernel_begin_time, kernel_end_time,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()},
                                                       {"provider", p_op_kernel->KernelDef().Provider()},
                                                       {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())}});
 
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Now();
     }
     // sync after compute for outputs
     if (exec_plan.NodeHasFence(node_index)) {
