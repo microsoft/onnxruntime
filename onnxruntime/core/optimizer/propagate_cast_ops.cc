@@ -21,7 +21,7 @@ static std::vector<std::unordered_set<std::string>> fp16_safe_ops = {
                                                     /* Level 0 */ {},
                                                     /* Level 1 */ {"BiasFastGelu", "BiasGelu", "LayerNorm", "Gelu", "FastGelu", "Tanh"},
                                                     /* Level 2 */ {}};
-static std::vector<std::string> allow_list; // Specified through configuration.
+static std::unordered_set<std::string> allow_list; // Specified through configuration.
 
 // Check whether the given opcode is fp16 safe for the given level of optimization.
 static bool IsFP16Safe(const std::string& op_type, size_t level)
@@ -711,7 +711,7 @@ PropagateCastOps::PropagateCastOps(size_t level, std::vector<std::string> _allow
                                    GraphTransformer("PropagateCastOps", compatible_execution_providers),
                                    level_(level)
 {
-  std::copy(_allow_list.begin(), _allow_list.end(), allow_list.begin());
+  std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(allow_list, allow_list.begin()));
 }
 
 } // namespace onnxruntime
