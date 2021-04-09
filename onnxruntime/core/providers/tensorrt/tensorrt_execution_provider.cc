@@ -1243,7 +1243,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &max_workspace_size_,
-            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_, &trt_profile_,
+            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_, nullptr,
             allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_};
       *state = p.release();
       return 0;
@@ -1266,7 +1266,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
-      auto trt_profile = trt_state->trt_profile;
+      auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
       int num_inputs = input_indexes.size();
       int num_outputs = output_indexes.size();
