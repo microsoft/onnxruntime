@@ -31,7 +31,7 @@ endif()
 # add custom target
 add_custom_target(js_npm_ci ALL
     COMMAND ${NPM_CLI} ci
-    WORKING_DIRECTORY ${JS_COMMON_ROOT}
+    WORKING_DIRECTORY ${JS_ROOT}
     COMMENT "NPM install on /js")
 
 add_custom_target(js_common_npm_ci ALL
