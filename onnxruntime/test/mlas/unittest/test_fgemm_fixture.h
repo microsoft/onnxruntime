@@ -61,11 +61,9 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     }
     for (size_t b = 16; b <= 256; b <<= 1) {
       test_registered += RegisterTestTransposeABProduct(b, b, b, 1.0f, 0.0f);
-      test_registered++;
     }
     for (size_t b = 256; b < 320; b += 32) {
       test_registered += RegisterTestTransposeABProduct(b, b, b, 1.0f, 0.0f);
-      test_registered++;
     }
 
     test_registered += RegisterTestTransposeABProduct(128, 3072, 768, 1.0f, 0.0f);

@@ -135,19 +135,19 @@ class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestF
     size_t test_registered = 0;
 
     for (size_t b = 1; b < 16; b++) {
-      RegisterSingleTest(b, b, b, 34, 46);
+      test_registered += RegisterSingleTest(b, b, b, 34, 46);
     }
     for (size_t b = 16; b <= 256; b <<= 1) {
-      RegisterSingleTest(b, b, b, 15, 191);
+      test_registered += RegisterSingleTest(b, b, b, 15, 191);
     }
     for (size_t b = 256; b < 320; b += 32) {
-      RegisterSingleTest(b, b, b, 223, 73);
+      test_registered += RegisterSingleTest(b, b, b, 223, 73);
     }
     for (size_t b = 1; b < 96; b++) {
-      RegisterSingleTest(1, b, 32, 0, 0);
+      test_registered += RegisterSingleTest(1, b, 32, 0, 0);
     }
-    RegisterSingleTest(43, 503, 401, 183, 223);
-    RegisterSingleTest(1024, 1024, 256, 13, 15);
+    test_registered += RegisterSingleTest(43, 503, 401, 183, 223);
+    test_registered += RegisterSingleTest(1024, 1024, 256, 13, 15);
 
     return test_registered;
   }

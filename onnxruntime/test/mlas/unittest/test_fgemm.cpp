@@ -56,9 +56,9 @@ static size_t FGemmRegistShortExecute() {
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 
-    FgemmShortExecuteTest<double, false, false>::RegisterShortExecuteTests();
+    count += FgemmShortExecuteTest<double, false, false>::RegisterShortExecuteTests();
     if (GetMlasThreadPool() != nullptr) {
-        FgemmShortExecuteTest<double, false, true>::RegisterShortExecuteTests();
+        count += FgemmShortExecuteTest<double, false, true>::RegisterShortExecuteTests();
     }
 
 #endif
