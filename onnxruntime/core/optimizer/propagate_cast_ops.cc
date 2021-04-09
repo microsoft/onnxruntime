@@ -55,6 +55,11 @@ static bool IsCastTo(const Node& node, TensorProto_DataType data_type)
   return false;
 }
 
+static bool IsType(const NodeArg& node_arg, TensorProto_DataType data_type)
+{
+  return node_arg.TypeAsProto()->tensor_type().elem_type() == data_type;
+}
+
 // InsertCastNodes
 // Insert a new Cast node after each NodeArg in the require_cast vector. The cast node is FLOAT16 if is_fp16 is True
 // and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
@@ -71,7 +76,7 @@ static Status InsertCastNodes(Graph& graph,
     // data_type is the data type of the Cast output.
     TensorProto_DataType data_type = is_fp16 ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
     TypeProto type_proto;
-    bool is_node_arg_cast_output = node_arg->TypeAsProto()->tensor_type().elem_type() == data_type;
+    bool is_node_arg_cast_output = IsType(*node_arg, data_type);
     TensorProto_DataType new_node_arg_data_type = data_type;;
     if (is_node_arg_cast_output) {
       new_node_arg_data_type = (data_type == TensorProto_DataType_FLOAT) ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
@@ -124,6 +129,7 @@ static Status InsertCastNodes(Graph& graph,
   }
   return Status::OK();
 }
+
 // RemoveCastNodes
 // Remove the cast nodes specified in casts vector and fix the graph edges accordingly.
 static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque<onnxruntime::NodeIndex>& removed_nodes)
@@ -225,7 +231,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (node == nullptr) {
     // The graph inputs don't have the producer nodes
-    if (node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+    if (IsType(*node_arg, TensorProto_DataType_FLOAT)) {
       require_cast.insert(node_arg);
     }
   } else if(std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
@@ -233,9 +239,10 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
       // This Cast node and the Cast node that will be created later will cancel out
       require_cast.insert(node_arg);
     } else {
+      std::string op_type = node->OpType();
       if (!IsFP16Allow(op_type, level) && !IsFP16Safe(op_type, level)) {
         // Cannot traverse-up beyond this point
-        if (node_arg->Exists() && node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+        if (node_arg->Exists() && IsType(*node_arg, TensorProto_DataType_FLOAT)) {
           require_cast.insert(node_arg);
         }
       } else {
@@ -244,7 +251,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
           // TODO: If the specified optimization is greater than 1 then insert a Cast to the 
           // other output_def and still propagate FP16 cast up the graph.
           if (output_def != node_arg) {
-            if (output_def->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+            if (IsType(*output_def, TensorProto_DataType_FLOAT)) {
               require_cast.insert(node_arg);
               return;
             }
@@ -252,7 +259,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
         }
         bool modified = false;
         for (NodeArg* node_input : node->MutableInputDefs()) {
-          if (node_input->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT &&
+          if (IsType(*node_input,TensorProto_DataType_FLOAT) &&
               require_cast.find(node_input) != require_cast.end() &&
               require_type_change.find(node_input) != require_type_change.end()) {
             modified = true;
@@ -290,7 +297,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
       } else {
         if (!IsFP16Allow(op_type, level)) {
           if (node_arg->Exists() &&
-              node_arg->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+              IsType(*node_arg, TensorProto_DataType_FLOAT)) {
             require_cast.insert(node_arg);
           }
         } else {
@@ -299,7 +306,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
             // TODO: If the secified level of the optimization is greater than 1 then
             // convert initializers if any from float to float16.
             if (input_def != node_arg) {
-              if (input_def->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+              if (IsType(*input_def, TensorProto_DataType_FLOAT)) {
                 require_cast.insert(node_arg);
                 return;
               }
@@ -307,7 +314,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
           }
         }       
         for (NodeArg* node_output : node->MutableOutputDefs()) {
-          if (node_output->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT &&
+          if (IsType(*node_output, TensorProto_DataType_FLOAT) &&
               require_cast.find(node_output) != require_cast.end() &&
               require_type_change.find(node_output) != require_type_change.end()) {
             SearchDownstream(graph, node_output, require_cast, require_type_change, removed_nodes, level);
@@ -338,7 +345,7 @@ static void ChangeTypeToFP16(std::unordered_set<NodeArg*>& require_type_change, 
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
   for (NodeArg* input : require_type_change) {
-    if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+    if (IsType(*input, TensorProto::FLOAT)) {
       input->UpdateTypeAndShape(type_proto, true, true, logger);
     }
   }
@@ -531,7 +538,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
     std::vector<Node*> casts;
     std::unordered_set<NodeArg*> require_type_change;
     for (NodeArg* input : node->MutableInputDefs()) {
-      if (input->TypeAsProto()->tensor_type().elem_type() != TensorProto::FLOAT) {
+      if (!IsType(*input, TensorProto::FLOAT)) {
         continue;
       }
       has_float_inputs = true;
@@ -551,7 +558,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       RemoveCastNodes(graph, casts, removed_nodes);
       std::unordered_set<NodeArg*> node_args;
       for (NodeArg* output : node->MutableOutputDefs()) {
-        if (output->Exists() && output->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+        if (output->Exists() && IsType(*output, TensorProto::FLOAT)) {
           node_args.insert(output);
         }
       }
@@ -583,7 +590,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
     std::unordered_set<NodeArg*> require_type_change;
     for (auto iter = outputs.begin(); iter != outputs.end() && all_float_outputs_have_casts; ++iter) {
       NodeArg* output = *iter;
-      if (output->TypeAsProto()->tensor_type().elem_type() != TensorProto::FLOAT) {
+      if (!IsType(*output, TensorProto::FLOAT)) {
         continue;
       }
       has_float_outputs = true;
@@ -607,7 +614,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       RemoveCastNodes(graph, casts, removed_nodes);
       std::unordered_set<NodeArg*> node_args;
       for (NodeArg* input : node->MutableInputDefs()) {
-        if (input->TypeAsProto()->tensor_type().elem_type() == TensorProto::FLOAT) {
+        if (IsType(*input, TensorProto::FLOAT)) {
           node_args.insert(input);
         }
       }
