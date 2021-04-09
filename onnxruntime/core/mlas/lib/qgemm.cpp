@@ -2820,8 +2820,9 @@ MlasGemmBatch(
     MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
 
     if (N > M) {
-        const size_t BlockedN =
-            (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) / MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 
         if (size_t(ThreadsPerGemm) > BlockedN) {
             ThreadsPerGemm = ptrdiff_t(BlockedN);
@@ -2831,6 +2832,7 @@ MlasGemmBatch(
         WorkBlock.ThreadCountN = ThreadsPerGemm;
 
     } else {
+
         if (size_t(ThreadsPerGemm) > M) {
             ThreadsPerGemm = ptrdiff_t(M);
         }
@@ -2838,6 +2840,7 @@ MlasGemmBatch(
         WorkBlock.ThreadCountM = ThreadsPerGemm;
         WorkBlock.ThreadCountN = 1;
     }
+    TargetThreadCount = ThreadsPerGemm * BatchN;
 
     const double cost = double(M) * double(N) * double(K) / ThreadsPerGemm;
     MlasTryParallel(ThreadPool, TargetThreadCount, cost, [&](ptrdiff_t begin, ptrdiff_t end) {
