@@ -17,7 +17,10 @@ std::unordered_set<std::string> fp16_safe = { "LayerNorm", "Gelu", "FastGelu", "
 // InsertCastNodes
 // Insert a new Cast node after each NodeArg in the require_cast vector. The cast node is FLOAT16 if is_fp16 is True
 // and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
-static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& require_cast, bool is_fp16)
+static Status InsertCastNodes(Graph& graph,
+                              const std::unordered_set<NodeArg*>& require_cast,
+                              bool is_fp16,
+                              std::deque<onnxruntime::NodeIndex>& removed_nodes)
 {
   //Create requirred new Cast nodes.
   for (NodeArg* node_arg : require_cast) {
@@ -58,7 +61,8 @@ static Status InsertCastNodes(Graph& graph, const std::unordered_set<NodeArg*>& 
     // Update consumers of node_arg to use the output of the cast node
     int cast_output_index = optimizer_utils::IndexOfNodeOutput(cast, cast_output);
     for (Node* consumer : graph.GetMutableConsumerNodes(node_arg->Name())) {
-      if (consumer != nullptr) {
+      if (consumer != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
         auto& consumer_inputs = consumer->MutableInputDefs();
         int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
         if (producer != nullptr) {
@@ -105,12 +109,15 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque
   if (consumers.size()>0) {
     int cast_output_index = optimizer_utils::IndexOfNodeOutput(*trail_cast, *cast_output);
     for (Node* consumer : consumers) {
-      auto& consumer_inputs = consumer->MutableInputDefs();
-      int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *cast_output);
-      graph.RemoveEdge(trail_cast->Index(), consumer->Index(), cast_output_index, input_index);
-      std::replace(consumer_inputs.begin(), consumer_inputs.end(), cast_output, cast_input);
-      if (producer) {
-        graph.AddEdge(producer->Index(), consumer->Index(), output_index, input_index);
+      if (consumer != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
+        auto& consumer_inputs = consumer->MutableInputDefs();
+        int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *cast_output);
+        graph.RemoveEdge(trail_cast->Index(), consumer->Index(), cast_output_index, input_index);
+        std::replace(consumer_inputs.begin(), consumer_inputs.end(), cast_output, cast_input);
+        if (producer) {
+          graph.AddEdge(producer->Index(), consumer->Index(), output_index, input_index);
+        }
       }
     }
     graph.UpdateConsumerNodes(cast_input->Name(), consumers);
@@ -169,7 +176,7 @@ static bool RemoveBackToBackCasts(Graph& graph,
 // Recursively DFS traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
 // inorder to move an FP16 Cast operation up the graph.
 // Visited float NodeArgs are either in require_cast or require_type_change so that the same
-// nodearg is traversed more than once.
+// nodearg is traversed not more than once.
 static void SearchUpstream(Graph& graph, NodeArg* node_arg,
                            std::unordered_set<NodeArg*>& require_cast,
                            std::unordered_set<NodeArg*>& require_type_change,
@@ -318,7 +325,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
         // Remove Cast operation
         VLOGS(logger, 1) << "PropagateForwards: Removed Cast node  " << node->Name();
         RemoveCastNodes(graph, {node}, removed_nodes);
-        InsertCastNodes(graph, require_cast, false);
+        InsertCastNodes(graph, require_cast, false, removed_nodes);
         ChangeTypeToFP16(require_type_change, logger);
         VLOGS(logger, 1) << "PropagateForwwards: Inserted Cast nodes " << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
         modified = true;
@@ -327,7 +334,9 @@ static bool PropagateForwards(Graph& graph, Node* node,
   } else {
     for (NodeArg* output: node->MutableOutputDefs()) {
       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
-        modified |= PropagateForwards(graph, consumer, removed_nodes, logger);
+        if (std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
+          modified |= PropagateForwards(graph, consumer, removed_nodes, logger);
+        }
       }
     }
   }
@@ -363,7 +372,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
         // Remove Cast operation
         VLOGS(logger, 1) << "PropagateBackwards: Removed Cast node  " << node->Name();
         RemoveCastNodes(graph, {node}, removed_nodes);
-        InsertCastNodes(graph, require_cast, true);
+        InsertCastNodes(graph, require_cast, true, removed_nodes);
         ChangeTypeToFP16(require_type_change, logger);
         VLOGS(logger, 1) << "PropagateBackwards: Inserted Cast nodes "
                   << GatherNames<std::unordered_set<NodeArg*>>(require_cast);
@@ -375,7 +384,10 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   } else {
     for (NodeArg* input: node->MutableInputDefs()) {
       Node* producer = graph.GetMutableProducerNode(input->Name());
-      modified |= PropagateBackwards(graph, producer, removed_nodes, logger);
+      if (producer != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), producer->Index()) == removed_nodes.end()) {
+         modified |= PropagateBackwards(graph, producer, removed_nodes, logger);
+      }
     }
   }
   return modified;
@@ -403,8 +415,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
                        node->Domain());
   for (Node* n : nodes) {
     removed_nodes.push_back(n->Index());
-//    graph_utils::RemoveNodeOutputEdges(graph, *n);
-//    graph.RemoveNode(n->Index());    
+    graph_utils::RemoveNodeOutputEdges(graph, *n);
   }
 }
 
@@ -512,7 +523,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
           node_args.insert(output);
         }
       }
-      InsertCastNodes(graph, node_args, false);
+      InsertCastNodes(graph, node_args, false, removed_nodes);
       ChangeTypeToFP16(require_type_change, logger);
       VLOGS(logger, 1) << "PropagateCastsFromInputsToOutputs: Inserted Cast node to " 
                        << GatherNames(node_args);
@@ -546,7 +557,9 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       std::vector<Node*> consumers = graph.GetMutableConsumerNodes(output->Name());
       for (auto node_iter = consumers.begin(); node_iter != consumers.end() && all_float_outputs_have_casts; ++node_iter) {
         Node* consumer = *node_iter;
-        if (consumer && consumer->OpType() == "Cast") {
+        if (consumer != nullptr &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end() &&
+            consumer->OpType() == "Cast") {
           const NodeAttributes& attributes = consumer->GetAttributes();
           ORT_ENFORCE(attributes.find("to") != attributes.end());
           if (attributes.at("to").i() == static_cast<int64_t> (TensorProto::FLOAT16)) {
@@ -569,7 +582,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
           node_args.insert(input);
         }
       }
-      InsertCastNodes(graph, node_args, true);
+      InsertCastNodes(graph, node_args, true, removed_nodes);
       ChangeTypeToFP16(require_type_change, logger);
       VLOGS(logger, 1) << "PropagateCastsFromOutputsToInputs: Inserted Cast node to " << GatherNames(node_args);
       modified = true;
@@ -646,6 +659,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, &node, removed_nodes, logger);
       }
     }
+
     for (onnxruntime::NodeIndex removed_node : removed_nodes) {
       graph.RemoveNode(removed_node);
     }
