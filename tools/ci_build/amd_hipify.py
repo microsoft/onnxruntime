@@ -151,6 +151,7 @@ provider_excluded_files = [
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
+                'cuda_common.cc',
                 'cuda_common.h',
                 'cuda_execution_provider_info.cc',
                 'cuda_execution_provider_info.h',
