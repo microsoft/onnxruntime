@@ -298,11 +298,11 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
-  int max_partition_iterations;                 // maximum number of iterations allowed in model partitioning for TensorRT.
-  int min_subgraph_size;                        // minimum node size in a subgraph after partitioning.
-  int dump_subgraphs;                           // dump the subgraphs that are transformed into TRT engines in onnx format to the filesystem. Default 0 = false, nonzero = true
-  int engine_cache_enable;                      // enable TensorRT engine caching. Default 0 = false, nonzero = true
-  const char* cache_path;                       // specify path for TensorRT engine and profile files if engine_cache_enable is enabled, or INT8 calibration table file if trt_int8_enable is enabled.
+  int trt_max_partition_iterations;             // maximum number of iterations allowed in model partitioning for TensorRT.
+  int trt_min_subgraph_size;                    // minimum node size in a subgraph after partitioning.
+  int trt_dump_subgraphs;                       // dump the subgraphs that are transformed into TRT engines in onnx format to the filesystem. Default 0 = false, nonzero = true
+  int trt_engine_cache_enable;                  // enable TensorRT engine caching. Default 0 = false, nonzero = true
+  const char* trt_cache_path;                   // specify path for TensorRT engine and profile files if engine_cache_enable is enabled, or INT8 calibration table file if trt_int8_enable is enabled.
 } OrtTensorRTProviderOptions;
 
 /// <summary>
