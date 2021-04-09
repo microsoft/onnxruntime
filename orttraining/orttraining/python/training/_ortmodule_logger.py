@@ -18,7 +18,7 @@ class LogLevel(IntEnum):
 
 
 @contextmanager 
-def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_level=LogLevel.VERBOSE):
+def suppress_os_stream_output(suppress_stdout=False, suppress_stderr=False, log_level=LogLevel.VERBOSE):
     """Supress output from being printed to stdout and stderr if log_level is WARNING or higher.
 
     If there is any output detected, a single warning is issued at of the context
