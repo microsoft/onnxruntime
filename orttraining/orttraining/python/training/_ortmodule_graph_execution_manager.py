@@ -213,6 +213,8 @@ class GraphExecutionManager(ABC):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+        print("ZZZ sample_inputs_copy", sample_inputs_copy)
+        print("ZZZ sample_kwargs_copy", sample_kwargs_copy)
 
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
