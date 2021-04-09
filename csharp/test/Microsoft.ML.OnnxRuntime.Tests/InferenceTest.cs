@@ -227,16 +227,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
-        private void validateProviderOptions()
-        {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
 
 #if USE_TENSORRT
+        [Fact]
+        private void validateTensorRTProviderOptions()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             string calTablPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet_calibration.flatbuffers");
             //Environment.SetEnvironmentVariable("ORT_TENSORRT_ENGINE_CACHE_ENABLE", "1");
 
-            SessionOptions.OrtTensorRTProviderOptions trt_options;
+            SessionOptions.OrtTensorRTProviderOptions trt_options = SessionOptions.GetDefaultTensorRTProviderOptions();
             trt_options.device_id = 0;
             trt_options.trt_int8_calibration_table_name = calTablPath;
             trt_options.has_trt_options = 1;
@@ -257,6 +258,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
             }
 
+
             using (var results = session.Run(container))
             {
                 // Following code is temporarily commented.
@@ -269,9 +271,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(files.Any());
                 */
             }
+    }
 #endif
 
-        }
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
