@@ -2580,6 +2580,70 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         }
       });
 
+  static const char* Bernoulli_ver1_doc = R"DOC(
+      Draws binary random numbers (0 or 1) from a Bernoulli distribution. The input tensor should be
+      a tensor containing probabilities to be used for drawing the binary random number.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Bernoulli)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Bernoulli_ver1_doc)
+      .Attr(
+          "seed",
+          "(Optional) Seed to the random generator, if not specified we will auto generate one.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "dtype",
+          "The data type for the elements of the output tensor. if not specified, we will use "
+          "the data type of the input tensor.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Input(
+          0,
+          "input",
+          "All values in input have to be in the range:[0, 1].",
+          "T1")
+      .Output(
+          0,
+          "output",
+          "The returned output tensor only has values 0 or 1, same shape as input tensor.",
+          "T2")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)"},
+           "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain output types to all numeric tensors and bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          if (ctx.getAttribute("dtype") != nullptr)
+            propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0);
+          else
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasNInputShapes(ctx, 1)) {
+            return;
+          }
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
