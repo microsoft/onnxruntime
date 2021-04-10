@@ -83,7 +83,7 @@ class GraphExecutionManager(ABC):
         self._save_onnx_prefix = ''
 
         # Graph transformer config
-        self._propagate_cast_ops_level = 0
+        self._propagate_cast_ops_level = -1
         self._propagate_cast_ops_allow = []
 
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
