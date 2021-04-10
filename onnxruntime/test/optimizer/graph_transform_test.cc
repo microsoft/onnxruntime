@@ -97,6 +97,24 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
+TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
+  auto model_uri = MODEL_FOLDER "abs-id.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
 TEST_F(GraphTransformationTests, DropoutElimination) {
   auto model_uri = MODEL_FOLDER "dropout.onnx";
   std::shared_ptr<Model> model;
