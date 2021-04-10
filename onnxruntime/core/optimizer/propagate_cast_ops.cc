@@ -9,35 +9,20 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-// fp16_allow_ops do not computationally modify the float/float16 input to produce output, such as transpose.
-// fp16_safe_ops have cuda kernal implementation that first converts the input to float and result back to float.
+// The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that 
+// the code is allowed to propage Cast operations cross. The user may specify a custom list of optypes using level 0.
 // The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
 // list includes Level 1 list also.
 static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
-    /* Level 1 */ {"Transpose", "Reshape", "Split", "Relu"},
+    /* Level 1 */ {"Transpose", "Reshape", "Split", "Relu", "BiasFastGelu", "BiasGelu", "LayerNorm", "Gelu", "FastGelu", "Tanh"},
     /* Level 2 */ {"Gather", "Where", "Dropout"}};
-static std::vector<std::unordered_set<std::string>> fp16_safe_ops = {
-    /* Level 0 */ {},
-    /* Level 1 */ {"BiasFastGelu", "BiasGelu", "LayerNorm", "Gelu", "FastGelu", "Tanh"},
-    /* Level 2 */ {}};
-static std::unordered_set<std::string> allow_list;  // Specified through configuration.
-
 static std::vector<std::string> compute_nodes_changed;  // Names of the fp16_safe_ops changed
-
-// Check whether the given opcode is fp16 safe for the given level of optimization.
-static bool IsFP16Safe(const std::string& op_type, size_t level) {
-  bool fp16_safe = false;
-  for (size_t i = 0; i < level && i < fp16_safe_ops.size() && !fp16_safe; ++i) {
-    fp16_safe = std::find(fp16_safe_ops[i].begin(), fp16_safe_ops[i].end(), op_type) != fp16_safe_ops[i].end();
-  }
-  return fp16_safe;
-}
 
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level) {
-  bool fp16_allow = std::find(allow_list.begin(), allow_list.end(), op_type) != allow_list.end();
-  for (size_t i = 0; i < level && i < fp16_allow_ops.size() && !fp16_allow; ++i) {
+  bool fp16_allow = false;
+  for (size_t i = 0; i <= level && i < fp16_allow_ops.size() && !fp16_allow; ++i) {
     fp16_allow = std::find(fp16_allow_ops[i].begin(), fp16_allow_ops[i].end(), op_type) != fp16_allow_ops[i].end();
   }
   return fp16_allow;
@@ -230,7 +215,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
       require_cast.insert(node_arg);
     } else {
       std::string op_type = node->OpType();
-      if (!IsFP16Allow(op_type, level) && !IsFP16Safe(op_type, level)) {
+      if (!IsFP16Allow(op_type, level)) {
         // Cannot traverse-up beyond this point
         if (node_arg->Exists() && IsType(*node_arg, TensorProto_DataType_FLOAT)) {
           require_cast.insert(node_arg);
@@ -259,7 +244,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
             }
           }
         }
-        if (IsFP16Safe(op_type, level) && modified) {
+        if (IsFP16Allow(op_type, level) && modified) {
           compute_nodes_changed.push_back(node->Name());
         }
       }
@@ -501,7 +486,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
                                                   size_t level,
                                                   const logging::Logger& logger) {
   bool modified = false;
-  if (IsFP16Safe(node->OpType(), level)) {
+  if (IsFP16Allow(node->OpType(), level)) {
     bool has_float_inputs = false;
     bool all_float_inputs_have_casts = true;
     std::vector<Node*> casts;
@@ -550,7 +535,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
                                                   size_t level,
                                                   const logging::Logger& logger) {
   bool modified = false;
-  if (IsFP16Safe(node->OpType(), level)) {
+  if (IsFP16Allow(node->OpType(), level)) {
     bool has_float_outputs = false;
     bool all_float_outputs_have_casts = true;
     std::vector<Node*> casts;  // Cast nodes to propagate.
@@ -685,7 +670,7 @@ PropagateCastOps::PropagateCastOps(size_t level, std::vector<std::string> _allow
                                    GraphTransformer("PropagateCastOps", compatible_execution_providers),
                                    level_(level)
 {
-  std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(allow_list, allow_list.begin()));
+  std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(fp16_allow_ops[0], fp16_allow_ops[0].begin()));
 }
 
 }  // namespace onnxruntime
