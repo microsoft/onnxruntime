@@ -1,0 +1,16 @@
+/.vscode/ipch/
+
+node_modules/
+types/
+dist/
+
+tsconfig.tsbuildinfo
+
+lib/**/*.js
+lib/**/*.js.map
+test/**/*.js
+test/**/*.js.map
+tools/**/*.js
+tools/**/*.js.map
+
+*.d.ts

@@ -108,7 +108,7 @@ module.exports = {
       'jsdoc/newline-after-description': 'error',
     }
   }, {
-    files: ['node/script/**/*.ts', 'node/test/**/*.ts'], rules: {
+    files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {
       '@typescript-eslint/naming-convention': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -123,6 +123,10 @@ module.exports = {
       'no-console': 'off',
       'no-empty': 'off',
       'no-unused-expressions': 'off',
+    }
+  }, {
+    files: ['web/lib/**/*.ts'], rules: {
+      'no-underscore-dangle': 'off'
     }
   }],
   extends: [
