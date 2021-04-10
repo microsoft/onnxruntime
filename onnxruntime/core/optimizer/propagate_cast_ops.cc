@@ -172,7 +172,7 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque
 }
 
 // RemoveBackToBackCasts
-// Remove FLOAT and FLOAT16 casts back-to-back, either FLOAT->FLOAT16 or FLOAT16->FLOAT
+// Remove FLOAT and FLOAT16 casts back-to-back, only if FLOAT16->FLOAT followed by FLOAT -> FLOAT16
 // Condition: The parent cast should have only one output
 static bool RemoveBackToBackCasts(Graph& graph,
                                   std::deque<onnxruntime::NodeIndex>& removed_nodes,
@@ -180,29 +180,26 @@ static bool RemoveBackToBackCasts(Graph& graph,
   ORT_UNUSED_PARAMETER(logger);
   bool modified = false;
   for (Node& node : graph.Nodes()) {
-    if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-      bool is_fp = IsCastTo(node, TensorProto::FLOAT);
-      bool is_fp16 = IsCastTo(node, TensorProto::FLOAT16);
-      if (!is_fp && !is_fp16) {
-        continue;
-      }
-      if (node.MutableOutputDefs().size() == 1) {
-        NodeArg* cast_output = node.MutableOutputDefs()[0];
-        for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
-          if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
-            bool is_child_fp = IsCastTo(*child, TensorProto::FLOAT);
-            bool is_child_fp16 = IsCastTo(*child, TensorProto::FLOAT16);
-            if ((is_fp && is_child_fp16) || (is_fp16 && is_child_fp)) {
-              // The parent and child cancell out
-              VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast nodes  " << node.Name() << " and " << child->Name();
-              RemoveCastNodes(graph, {&node, child}, removed_nodes);
-              modified = true;
-            } else if ((is_fp16 && is_child_fp16) || (is_fp && is_child_fp)) {
-              // Child is a duplicate of parent
-              VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
-              RemoveCastNodes(graph, {child}, removed_nodes);
-              modified = true;
-            }
+    if (!IsCastTo(node, TensorProto::FLOAT)) {
+      continue;
+    }
+    if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) != removed_nodes.end()) {
+      continue;
+    }
+    if (node.GetOutputEdgesCount() == 1) {
+      NodeArg* cast_output = node.MutableOutputDefs()[0];
+      for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
+        if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
+          if (IsCastTo(*child, TensorProto::FLOAT16)) {
+            // The parent and child cancell out
+            std::cout << "RemoveBackToBackCasts: Removed Cast nodes  " << node.Name() << " and " << child->Name();
+            RemoveCastNodes(graph, {&node, child}, removed_nodes);
+            modified = true;
+          } else if (IsCastTo(*child, TensorProto::FLOAT16)) {
+            // Child is a duplicate of parent
+            VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
+            RemoveCastNodes(graph, {child}, removed_nodes);
+            modified = true;
           }
         }
       }
