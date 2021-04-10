@@ -28,9 +28,9 @@ static bool IsFP16Allow(const std::string& op_type, size_t level) {
   return fp16_allow;
 }
 
-static bool IsCastTo(const Node& node, TensorProto_DataType data_type) {
-  if (node.OpType() == "Cast") {
-    const NodeAttributes& attributes = node.GetAttributes();
+static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
+  if (node->OpType() == "Cast") {
+    const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
     return attributes.at("to").i() == static_cast<int64_t>(data_type);
   }
@@ -159,33 +159,27 @@ static Status RemoveCastNodes(Graph& graph, std::vector<Node*> casts, std::deque
 // RemoveBackToBackCasts
 // Remove FLOAT and FLOAT16 casts back-to-back, only if FLOAT16->FLOAT followed by FLOAT -> FLOAT16
 // Condition: The parent cast should have only one output
-static bool RemoveBackToBackCasts(Graph& graph,
+// The inputs is Cast to FLOAT16
+static bool RemoveBackToBackCasts(Graph& graph, Node* node,
                                   std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                   const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
+  ORT_ENFORCE(IsCastTo(node, TensorProto::FLOAT));
   bool modified = false;
-  for (Node& node : graph.Nodes()) {
-    if (!IsCastTo(node, TensorProto::FLOAT)) {
-      continue;
-    }
-    if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) != removed_nodes.end()) {
-      continue;
-    }
-    if (node.GetOutputEdgesCount() == 1) {
-      NodeArg* cast_output = node.MutableOutputDefs()[0];
-      for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
-        if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
-          if (IsCastTo(*child, TensorProto::FLOAT16)) {
-            // The parent and child cancell out
-            std::cout << "RemoveBackToBackCasts: Removed Cast nodes  " << node.Name() << " and " << child->Name();
-            RemoveCastNodes(graph, {&node, child}, removed_nodes);
-            modified = true;
-          } else if (IsCastTo(*child, TensorProto::FLOAT16)) {
-            // Child is a duplicate of parent
-            VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
-            RemoveCastNodes(graph, {child}, removed_nodes);
-            modified = true;
-          }
+  if (node->GetOutputEdgesCount() == 1) {
+    NodeArg* cast_output = node->MutableOutputDefs()[0];
+    for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
+      if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
+        if (IsCastTo(child, TensorProto::FLOAT16)) {
+          // The parent and child cancell out
+          VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast nodes  " << node->Name() << " and " << child->Name();
+          RemoveCastNodes(graph, {node, child}, removed_nodes);
+          modified = true;
+        } else if (IsCastTo(child, TensorProto::FLOAT)) {
+          // Child is a duplicate of parent
+          VLOGS(logger, 1) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
+          RemoveCastNodes(graph, {child}, removed_nodes);
+          modified = true;
         }
       }
     }
@@ -210,7 +204,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
       require_cast.insert(node_arg);
     }
   } else if (std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-    if (IsCastTo(*node, TensorProto_DataType_FLOAT)) {
+    if (IsCastTo(node, TensorProto_DataType_FLOAT)) {
       // This Cast node and the Cast node that will be created later will cancel out
       require_cast.insert(node_arg);
     } else {
@@ -265,7 +259,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
   for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
     if (node) {
       std::string op_type = node->OpType();
-      if (IsCastTo(*node, TensorProto_DataType_FLOAT)) {
+      if (IsCastTo(node, TensorProto_DataType_FLOAT)) {
         // This Cast node and the Cast node that will be created later will cancel out
         require_cast.insert(node_arg);
       } else {
@@ -435,9 +429,9 @@ static bool FuseSiblingCasts(Graph& graph, Node* parent,
           std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
         continue;
       }
-      if (IsCastTo(*node, TensorProto::FLOAT16)) {
+      if (IsCastTo(node, TensorProto::FLOAT16)) {
         cast_fp16_siblings.push_back(node);
-      } else if (IsCastTo(*node, TensorProto::FLOAT)) {
+      } else if (IsCastTo(node, TensorProto::FLOAT)) {
         cast_fp_siblings.push_back(node);
       }
     }
@@ -457,21 +451,19 @@ static bool FuseSiblingCasts(Graph& graph, Node* parent,
 
 // RemoveUnnecessaryCasts
 // Remove a cast if the input elem_type is same the required cast type.
-static bool RemoveUnnecessaryCasts(Graph& graph,
+static bool RemoveUnnecessaryCasts(Graph& graph,Node* node,
                                    std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                    const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
   bool modified = false;
-  for (auto& node : graph.Nodes()) {
-    if (node.InputDefs().size() == 1) {
-      const NodeArg* node_arg = node.InputDefs()[0];
-      auto elem_type = node_arg->TypeAsProto()->tensor_type().elem_type();
-      TensorProto_DataType data_type = static_cast<TensorProto_DataType>(elem_type);
-      if (IsCastTo(node, data_type)) {
-        VLOGS(logger, 1) << "Removed unnecessary cast " << node.Name();
-        RemoveCastNodes(graph, {&node}, removed_nodes);
-        modified = true;
-      }
+  if (node->InputDefs().size() == 1) {
+    const NodeArg* node_arg = node->InputDefs()[0];
+    auto elem_type = node_arg->TypeAsProto()->tensor_type().elem_type();
+    TensorProto_DataType data_type = static_cast<TensorProto_DataType>(elem_type);
+    if (IsCastTo(node, data_type)) {
+      VLOGS(logger, 1) << "Removed unnecessary cast " << node->Name() << std::endl;
+      RemoveCastNodes(graph, {node}, removed_nodes);
+      modified = true;
     }
   }
   return modified;
@@ -497,7 +489,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       }
       has_float_inputs = true;
       Node* producer = graph.GetMutableProducerNode(input->Name());
-      if (producer && IsCastTo(*producer, TensorProto::FLOAT)) {
+      if (producer && IsCastTo(producer, TensorProto::FLOAT)) {
         casts.push_back(producer);
         require_type_change.insert(input);
         continue;
@@ -552,7 +544,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
         Node* consumer = *node_iter;
         if (consumer != nullptr &&
             std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end() &&
-            IsCastTo(*consumer, TensorProto::FLOAT16)) {
+            IsCastTo(consumer, TensorProto::FLOAT16)) {
           casts.push_back(consumer);
           continue;
         }
@@ -588,17 +580,19 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
 // 3. Propagate fp16 casts back
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   // First apply the transformation to the subgraphs.
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  {
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (auto node_index : node_topology_list) {
-    auto* node_ptr = graph.GetNode(node_index);
-    if (nullptr == node_ptr)
-      continue;  // node was removed
+    for (auto node_index : node_topology_list) {
+      auto* node_ptr = graph.GetNode(node_index);
+      if (nullptr == node_ptr)
+        continue;  // node was removed
 
-    auto& node = *node_ptr;
+      auto& node = *node_ptr;
 
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+    }
   }
   int pass = 0;
   bool local_modified = false;
@@ -608,49 +602,78 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 
     if (local_modified) {
       graph.Resolve();
+      local_modified = false;
     }
 
-    local_modified = RemoveUnnecessaryCasts(graph, removed_nodes, logger);
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+    // Remove unnecessary casts
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr || std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
+        continue;
+      }
+      local_modified |= RemoveUnnecessaryCasts(graph, node, removed_nodes, logger);
+    }
 
     // Fuse subgraphs, sibling Cast nodes with same input
-    for (auto& node : graph.Nodes()) {
-      if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-        local_modified |= FuseSiblingCasts(graph, &node, removed_nodes, logger);
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr || std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
+        continue;
       }
+      local_modified |= FuseSiblingCasts(graph, node, removed_nodes, logger);
     }
 
     // Propagate FP32 Casts forward
-    for (Node& node : graph.Nodes()) {
-      if (IsCastTo(node, TensorProto::FLOAT)) {
-        if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-          local_modified |= PropagateForwards(graph, &node, removed_nodes, level_, logger);
-        }
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr ||
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
+          !IsCastTo(node, TensorProto::FLOAT)) {
+        continue;
       }
+      local_modified |= PropagateForwards(graph, node, removed_nodes, level_, logger);
     }
 
-    local_modified |= RemoveBackToBackCasts(graph, removed_nodes, logger);
+    // Remove back to back Casts, with FLOAT->FLOAT16 followed by FLOAT16->FLOAT, but not the other way.
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr ||
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
+          !IsCastTo(node, TensorProto::FLOAT)) {
+        continue;
+      }
+      local_modified |= RemoveBackToBackCasts(graph, node, removed_nodes, logger);
+    }
 
     // Propagate FP16 Casts backward
-    for (Node& node : graph.Nodes()) {
-      if (IsCastTo(node, TensorProto::FLOAT16)) {
-        if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-          local_modified |= PropagateBackwards(graph, &node, removed_nodes, level_, logger);
-        }
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr || std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
+          !IsCastTo(node, TensorProto::FLOAT)) {
+        continue;
       }
+      local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
     }
 
     // Propagate FP16 Casts from outputs to inputs
-    for (Node& node : graph.Nodes()) {
-      if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-        local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, &node, removed_nodes, level_, logger);
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr || std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
+        continue;
       }
+      local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
     }
 
     // Propagate FP32 Casts from inputs to outputs
-    for (Node& node : graph.Nodes()) {
-      if (std::find(removed_nodes.begin(), removed_nodes.end(), node.Index()) == removed_nodes.end()) {
-        local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, &node, removed_nodes, level_, logger);
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (node == nullptr || std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+        continue;
       }
+      local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
     }
 
     for (onnxruntime::NodeIndex removed_node : removed_nodes) {
