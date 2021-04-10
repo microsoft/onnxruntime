@@ -3883,7 +3883,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_2.onnx", 1},
       {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_3.onnx", 1},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_0.onnx", 0},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_1.onnx", 0},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_1.onnx", 2},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_2.onnx", 1},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_3.onnx", 1}
   };
