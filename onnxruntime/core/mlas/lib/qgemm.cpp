@@ -2664,7 +2664,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
 
 void
 MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* ThreadInfo,
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
@@ -2692,8 +2692,8 @@ Return Value:
 
 --*/
 {
-    const ptrdiff_t ThreadIdM = ThreadId / ThreadInfo->ThreadCountN;
-    const ptrdiff_t ThreadIdN = ThreadId % ThreadInfo->ThreadCountN;
+    const ptrdiff_t ThreadIdM = ThreadId / WorkBlock->ThreadCountN;
+    const ptrdiff_t ThreadIdN = ThreadId % WorkBlock->ThreadCountN;
 
     //
     // Partition the operation along the M dimension.
@@ -2704,7 +2704,7 @@ Return Value:
 
     const size_t M = Shape->M;
 
-    MlasPartitionWork(ThreadIdM, ThreadInfo->ThreadCountM, M, &RangeStartM, &RangeCountM);
+    MlasPartitionWork(ThreadIdM, WorkBlock->ThreadCountM, M, &RangeStartM, &RangeCountM);
 
     //
     // Partition the operation along the N dimension.
@@ -2715,10 +2715,11 @@ Return Value:
 
     const size_t N = Shape->N;
 
-    const size_t BlockedN =
-        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) / MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+        MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 
-    MlasPartitionWork(ThreadIdN, ThreadInfo->ThreadCountN, BlockedN, &RangeStartN, &RangeCountN);
+    MlasPartitionWork(ThreadIdN, WorkBlock->ThreadCountN, BlockedN,
+        &RangeStartN, &RangeCountN);
 
     RangeStartN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
     RangeCountN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
@@ -2728,6 +2729,7 @@ Return Value:
     //
     // Dispatch the partitioned operation.
     //
+
     const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
@@ -2788,6 +2790,7 @@ MlasGemmBatch(
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
     //
+
     const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
 
     ptrdiff_t TargetThreadCount;
@@ -2808,7 +2811,6 @@ MlasGemmBatch(
     if (ThreadsPerGemm < 1) {
         ThreadsPerGemm = 1;
     }
-    TargetThreadCount = ThreadsPerGemm * BatchN;
 
     //
     // Segment the operation across multiple threads.
@@ -2842,13 +2844,10 @@ MlasGemmBatch(
     }
     TargetThreadCount = ThreadsPerGemm * BatchN;
 
-    const double cost = double(M) * double(N) * double(K) / ThreadsPerGemm;
-    MlasTryParallel(ThreadPool, TargetThreadCount, cost, [&](ptrdiff_t begin, ptrdiff_t end) {
-        for (auto idx = begin; idx < end; idx++) {
-            const auto gemm_i = idx / ThreadsPerGemm;
-            const auto blk_i = idx % ThreadsPerGemm;
-            MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
-        }
+    MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
 

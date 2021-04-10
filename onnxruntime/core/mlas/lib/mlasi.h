@@ -770,19 +770,17 @@ MlasExecuteThreaded(
     );
 
 /**
- * @brief Distribute multiple iteration of work over a thread pool if supported
+ * @brief Distribute multiple iterations of work over a thread pool if supported
  * 
  * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
  * @param Iterations [IN]          Total number of iterations
- * @param CostOfCyclePerIter [IN]  Estimated cost of cycles per iteration
  * @param Work [IN]                Logic for computing a range of iterations [begin, end)
  */
 void
-MlasTryParallel(
+MlasTrySimpleParallel(
     MLAS_THREADPOOL* ThreadPool,
     const std::ptrdiff_t Iterations,
-    const double CostOfCyclePerIter,
-    const std::function<void(std::ptrdiff_t begin, std::ptrdiff_t end)>& Work);
+    const std::function<void(std::ptrdiff_t tid)>& Work);
 
 inline
 ptrdiff_t
