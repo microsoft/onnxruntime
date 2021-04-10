@@ -76,6 +76,30 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cuda_options)
+        {
+            CheckCudaExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+
+            OrtCUDAProviderOptionsNative cuda_options_native;
+            cuda_options_native.device_id = cuda_options.device_id;
+            cuda_options_native.cudnn_conv_algo_search = cuda_options.cudnn_conv_algo_search;
+            cuda_options_native.gpu_mem_limit = cuda_options.gpu_mem_limit;
+            cuda_options_native.arena_extend_strategy = cuda_options.arena_extend_strategy;
+            cuda_options_native.do_copy_in_default_stream = cuda_options.do_copy_in_default_stream;
+            cuda_options_native.has_user_compute_stream = 0;
+            cuda_options_native.user_compute_stream = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options_native));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for Nuphar execution.
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -324,6 +348,31 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
             }
+        }
+
+        public static UIntPtr MaxValue { get; }
+
+        /// <summary>
+        /// Get CUDA provider options with default setting.
+        /// </summary>
+        /// <returns> CUDA provider options instance.  </returns>
+        public static OrtCUDAProviderOptions GetDefaultCUDAProviderOptions()
+        {
+            OrtCUDAProviderOptions cuda_options;
+            cuda_options.device_id = 0;
+            cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch.EXHAUSTIVE;
+            if (IntPtr.Size == 8)
+            {
+                cuda_options.gpu_mem_limit = (UIntPtr)UInt64.MaxValue;
+            }
+            else
+            {
+                cuda_options.gpu_mem_limit = (UIntPtr)UInt32.MaxValue;
+            }
+            cuda_options.arena_extend_strategy = 0;
+            cuda_options.do_copy_in_default_stream = 0;
+
+            return cuda_options;
         }
         #endregion
 
@@ -591,6 +640,15 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
+
+        public struct OrtCUDAProviderOptions
+        {
+            public int device_id;                                   // cuda device with id=0 as default device.
+            public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;   // cudnn conv algo search option
+            public UIntPtr gpu_mem_limit;                           // default cuda memory limitation to maximum finite value of size_t.
+            public int arena_extend_strategy;                       // default area extend strategy to KNextPowerOfTwo.
+            public int do_copy_in_default_stream;
+        }
 
         #endregion
 

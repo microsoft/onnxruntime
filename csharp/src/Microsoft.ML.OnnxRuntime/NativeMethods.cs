@@ -192,6 +192,28 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataGetGraphDescription;
     }
 
+    #region ORT Provider options
+    public enum OrtCudnnConvAlgoSearch
+    {
+        EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+        HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+        DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OrtCUDAProviderOptionsNative
+    {
+        public int device_id;                           // cuda device with id=0 as default device.
+        public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
+        public UIntPtr gpu_mem_limit;                   // default cuda memory limitation to maximum finite value of size_t.
+        public int arena_extend_strategy;               // default area extend strategy to KNextPowerOfTwo.
+        public int do_copy_in_default_stream;
+        public int has_user_compute_stream;
+        public IntPtr user_compute_stream;
+    }
+
+    #endregion
+
     internal static class NativeMethods
     {
         private const string nativeLib = "onnxruntime";
@@ -256,6 +278,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
+            SessionOptionsAppendExecutionProvider_CUDA = (DSessionOptionsAppendExecutionProvider_CUDA)Marshal.GetDelegateForFunctionPointer(
+                                                             api_.SessionOptionsAppendExecutionProvider_CUDA, typeof(DSessionOptionsAppendExecutionProvider_CUDA));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
@@ -560,6 +584,17 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CUDA(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
+
+        /// <summary>
+        /// Append a CUDA EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="cudaProviderOptions">Native OrtCUDAProviderOptions instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_CUDA(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               ref OrtCUDAProviderOptionsNative cudaProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_CUDA SessionOptionsAppendExecutionProvider_CUDA;
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_ROCM(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
