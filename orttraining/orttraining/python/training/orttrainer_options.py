@@ -191,7 +191,7 @@ class ORTTrainerOptions(object):
                         },
                         'propagate_cast_ops_level': {
                             'type': 'integer',
-                            'default': 0
+                            'default': -1
                         },
                         'propagate_cast_ops_allow': {
                             'type': 'list',
@@ -674,7 +674,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'propagate_cast_ops_level': {
                 'type': 'integer',
-                'default': 0
+                'default': -1
             },
             'propagate_cast_ops_allow': {
                 'type': 'list',

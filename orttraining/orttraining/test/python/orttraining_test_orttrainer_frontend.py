@@ -78,7 +78,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'gelu_recompute': False,
             'transformer_layer_recompute': False,
             'number_recompute_layers': 0,
-            'propagate_cast_ops_level': 0,
+            'propagate_cast_ops_level': -1,
             'propagate_cast_ops_allow': []
         },
         'utils': {
