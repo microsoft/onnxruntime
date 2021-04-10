@@ -426,19 +426,26 @@ static bool PropagateBackwards(Graph& graph, Node* node,
 static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
                                     std::deque<onnxruntime::NodeIndex>& removed_nodes)
 {
-  std::vector<NodeArg*> outputs;
-  for (Node* node : nodes) {
-    std::vector<NodeArg*> node_outputs = node->MutableOutputDefs();
-    outputs.insert(outputs.end(), node_outputs.begin(), node_outputs.end());
-  }
+  ORT_ENFORCE(nodes.size() > 0);
   Node* node = nodes[0];
-  (void) graph.AddNode(graph.GenerateNodeName(node->Name() + "_replace"),
+  NodeArg* node_arg = node->MutableOutputDefs()[0];
+  NodeArg& new_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), node_arg->TypeAsProto());
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName(node->Name() + "_replace"),
                        node->OpType(),
                        "Created to replace a node",
                        {input},
-                       outputs,
+                       {&new_output},
                        &node->GetAttributes(),
                        node->Domain());
+  for (Node* cast : nodes) {
+    for (NodeArg* output : cast->MutableOutputDefs()) {
+       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
+        int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *output);
+        graph.RemoveEdge(cast->Index(), consumer->Index(), 0, input_index);
+        graph.AddEdge(new_cast.Index(), consumer->Index(), 0, input_index);
+       }
+    }
+  }
   for (Node* n : nodes) {
     removed_nodes.push_back(n->Index());
     graph_utils::RemoveNodeOutputEdges(graph, *n);
