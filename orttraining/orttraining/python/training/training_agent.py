@@ -44,28 +44,31 @@ class TrainingAgent(object):
         self._training_agent = None
         self._inference_session = None
 
-        self.create_training_agent(path_or_bytes, session_options, providers, provider_options)
+        self.create_training_agent(
+            path_or_bytes, session_options, providers, provider_options)
 
-
-    def create_training_agent(self, path_or_bytes, session_options, providers, provider_options):
+    def create_training_agent(self, path_or_bytes, session_options, providers, provider_options,
+                              fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names,
+                              bw_outputs_device_info):
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
                                                                providers, provider_options)
-        self._training_agent = C_TrainingAgent(self._inference_session._sess)
+        self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_fetches_names,
+                                               fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info)
 
     def io_binding(self):
         "Return an onnxruntime.IOBinding object`."
         return IOBinding(self._inference_session)
 
-    def run_forward(self, run_options, iobinding):
+    def run_forward(self, run_options, feeds, fetches, state):
         """
          Compute the forward subgraph for given feeds and fetches.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
         """
-        return self._training_agent.run_forward(run_options, iobinding._iobinding)
+        return self._training_agent.run_forward(run_options, feeds, fetches, state)
 
-    def run_backward(self, run_options, iobinding, ort_values):
+    def run_backward(self, run_options, feeds, fetches, state):
         """
          Compute the backward subgraph for given feeds and fetches.
          :param backward_output_grads: Output gradients for backward.
         """
-        self._training_agent.run_backward(run_options, iobinding._iobinding, ort_values)
+        self._training_agent.run_backward(run_options, feeds, fetches, state)

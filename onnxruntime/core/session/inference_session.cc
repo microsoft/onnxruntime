@@ -1647,10 +1647,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
-Status InferenceSession::Run(const RunOptions& run_options,
-                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
-                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
-                             const std::vector<OrtDevice>* p_fetches_device_info, std::vector<OrtValue>* ort_values) {
+Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                             PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1675,19 +1673,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart();
-
-    FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
-    FeedsFetchesManager feeds_fetches_manager{std::move(info)};
-
-    if (p_fetches_device_info) {
-      // populate the target device info. ignored if pre-allocated fetches are provided
-      const auto& fetch_device_info = *p_fetches_device_info;
-      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
-
-      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
-        fetch_info[i].target_device = fetch_device_info[i];
-      }
-    }
 
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
@@ -1722,10 +1707,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
     // execute the graph
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches, run_options.program_counter_start,
-                                                 run_options.program_counter_end, ort_values));
+                                                 run_options.program_counter_end, state));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

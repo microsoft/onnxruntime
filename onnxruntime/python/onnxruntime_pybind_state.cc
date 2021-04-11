@@ -1363,6 +1363,12 @@ void addObjectMethods(py::module& m, Environment& env) {
 #endif
       ;
 
+  py::class_<PartialGraphExecutionState> partial_graph_execution_state(m, "PartialGraphExecutionState");
+  partial_graph_execution_state
+      .def(py::init([]() {
+        return onnxruntime::make_unique<PartialGraphExecutionState>();
+      }));
+
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
       .def(py::init([](PyInferenceSession* sess) {

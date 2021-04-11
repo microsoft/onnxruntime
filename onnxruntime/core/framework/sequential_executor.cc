@@ -68,10 +68,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << tensor.DataType()->Size()
-                         << "\n";
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
 #endif
       total_output_sizes += tensor_size;
     }
@@ -139,7 +139,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, program_counter_start_ != 0, ort_values_};
+  if (state_->GetExecutionFrame() == nullptr) {
+    state_->GetExecutionFrame() = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
+  }
+
+  ExecutionFrame& frame = *(state_->GetExecutionFrame());
+
   const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -449,10 +454,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
   VLOGS(logger, 1) << "Done with execution.";
 
-if(program_counter_start_ == 0) {
-  *reinterpret_cast<std::vector<OrtValue>**>(ort_values_) = frame.GetAllOrtValues()->Get();
-}
-
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
                                               MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
@@ -490,10 +491,6 @@ if(program_counter_start_ == 0) {
   for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
-  }
-  
-  if(program_counter_start_ != 0) {
-    delete frame.GetAllOrtValues();
   }
 
   return Status::OK();

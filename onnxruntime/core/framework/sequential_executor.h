@@ -18,9 +18,9 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(size_t program_counter_start, size_t program_counter_end, std::vector<OrtValue>* ort_values,
+  SequentialExecutor(size_t program_counter_start, size_t program_counter_end, PartialGraphExecutionState& state,
                      const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
-      : program_counter_start_{program_counter_start}, program_counter_end_{program_counter_end}, ort_values_{ort_values}, 
+      : program_counter_start_{program_counter_start}, program_counter_end_{program_counter_end}, state_{&state}, 
       terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
 
   SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
@@ -34,7 +34,7 @@ class SequentialExecutor : public IExecutor {
 
   size_t program_counter_start_;
   size_t program_counter_end_;
-  std::vector<OrtValue>* ort_values_;
+  PartialGraphExecutionState* state_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);

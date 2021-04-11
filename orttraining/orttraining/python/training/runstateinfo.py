@@ -4,9 +4,7 @@
 # --------------------------------------------------------------------------
 
 class RunStateInfo(object):
-   def __init__(self, run_options, forward_io_binding, backward_io_binding, output_info, ort_values):
+   def __init__(self, run_options, state, output_info):
       self.run_options = run_options
-      self.forward_io_binding = forward_io_binding
-      self.backward_io_binding = backward_io_binding
+      self.state = state
       self.output_info = output_info
-      self.ort_values = ort_values

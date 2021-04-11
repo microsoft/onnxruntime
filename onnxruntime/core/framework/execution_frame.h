@@ -16,7 +16,6 @@
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph_viewer.h"
-#include "core/session/IOBinding.h"
 
 namespace onnxruntime {
 
@@ -25,29 +24,6 @@ class OrtValueNameIdxMap;
 class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
-
-class PointerWrapper {
- public:
-  PointerWrapper(std::vector<OrtValue>* ptr, size_t size) : ptr_{ptr}, size_{size} {};
-
-  ~PointerWrapper() {
-    delete ptr_;
-  }
-
-  OrtValue& operator[](size_t index) {
-    ORT_ENFORCE(index < size_);
-
-    return (*ptr_)[index];
-  }
-
-  std::vector<OrtValue>* Get() {
-    return ptr_;
-  }
-
- private:
-  std::vector<OrtValue>* ptr_;
-  size_t size_;
-};
 
 class IExecutionFrame {
  protected:
@@ -60,10 +36,6 @@ class IExecutionFrame {
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
             const std::vector<OrtValue>& fetches);
-
-  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-            const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches, bool take_ort_values, std::vector<OrtValue>* ort_values);
 
  public:
   virtual ~IExecutionFrame();
@@ -102,8 +74,6 @@ class IExecutionFrame {
 
   Status ReleaseMLValue(int ort_value_idx);
 
-  PointerWrapper* GetAllOrtValues() { return all_values_; }
-
  protected:
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
@@ -120,7 +90,7 @@ class IExecutionFrame {
 
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
-    return (*all_values_)[ort_value_index];
+    return all_values_[ort_value_index];
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
@@ -138,9 +108,9 @@ class IExecutionFrame {
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
-  PointerWrapper* all_values_;
+  std::vector<OrtValue> all_values_;
 
-  // perf optimization to avoid calling (*all_values_).size() repeatedly as the size is fixed once constructed
+  // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
   const std::vector<int> fetch_mlvalue_idxs_;
@@ -153,12 +123,6 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
-
-  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                 // optional custom allocators. key is index in fetches
-                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 const SessionState& session_state, bool take_ort_values, std::vector<OrtValue>* ort_values);
 
   ~ExecutionFrame() override;
 
