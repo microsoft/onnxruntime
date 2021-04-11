@@ -554,7 +554,9 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       VLOGS(logger, 1) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
                 << ConcatNames<std::vector<Node*>>(casts)
                 << " feeding the same compute node " << node->Name();
-      RemoveCastNodes(graph, casts, removed_nodes);
+      for (Node* cast : casts) {
+        RemoveCastNodes(graph, {cast}, removed_nodes);
+      }
       std::unordered_set<NodeArg*> node_args;
       for (NodeArg* input : node->MutableInputDefs()) {
         if (IsType(*input, TensorProto::FLOAT)) {
