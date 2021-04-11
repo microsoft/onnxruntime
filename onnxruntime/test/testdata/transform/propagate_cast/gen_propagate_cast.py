@@ -87,15 +87,25 @@ def gen_fuse_sibling_casts(model_path):
             helper.make_node(
                 "Cast",
                 ["product"],
-                ["output_0"],
+                ["cast_0_output"],
                 "Cast_0",
                 to = type1),
             helper.make_node(
+                "Identity",
+                ["cast_0_output"],
+                ["output_0"],
+                "Identity_0"),
+            helper.make_node(
                 "Cast",
                 ["product"],
-                ["output_1"],
+                ["cast_1_output"],
                 "Cast_1",
-                to = type2)
+                to = type2),
+            helper.make_node(
+                "Identity",
+                ["cast_1_output"],
+                ["output_1"],
+                "Identity_1")
         ]
 
         inputs = [
