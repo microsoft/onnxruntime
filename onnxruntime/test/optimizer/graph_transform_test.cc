@@ -3872,12 +3872,17 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
 // The following test is disabled because the cast propagation does not consider MatMul fp16_safe
 // Re-enable this test when it does.
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
-  // Any change in the order of the test models will effect the assertions.
-  // The expected casts also need to be changed
-  const std::unordered_map<PathString, int> model_uris = {
-      // {MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx", 2},
-      // {MODEL_FOLDER "propagate_cast/propagate_cast_float_0.onnx", 0},
-      // {MODEL_FOLDER "propagate_cast/propagate_cast_float_1.onnx", 1},
+  typedef struct {
+    PathString model_uri;
+    int casts_count;                     // Expected number of casts after the transformation
+    vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
+    int level = 0;                       // Level of optimization
+  } PropagateCastOpsTestSpecs;
+
+  const std::vector<PropagateCastOpsTestSpecs> test_cases = {
+      {MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx", 2, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/propagate_cast_float_0.onnx", 0, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/propagate_cast_float_1.onnx", 1, {"MatMul"}},
       {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_0.onnx", 1},
       {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_1.onnx", 1},
       {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_2.onnx", 1},
@@ -3885,24 +3890,19 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_0.onnx", 0},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_1.onnx", 2},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_2.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_3.onnx", 1}
-  };
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_3.onnx", 1}};
   const std::vector<int> expected_casts = {2, 0, 1};
-  int i=0;
-  for (std::pair<PathString, int> element : model_uris) {
-    std::cout << element.first << std::endl;
+  for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
-    ASSERT_STATUS_OK(Model::Load(element.first, p_model, nullptr, *logger_));
+    ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
     ASSERT_STATUS_OK(graph.Resolve());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-        onnxruntime::make_unique<PropagateCastOps>(1), TransformerLevel::Level1));
+        onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    Model::Save(*p_model, "propagate_casts" + to_string(i) + ".onnx");
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    ASSERT_TRUE(op_to_count["Cast"] == element.second);
-    ++i;
+    ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
   }
 }
 

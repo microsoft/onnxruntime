@@ -15,7 +15,7 @@ Propagate FP16 Cast operations up the graph and FP32 Cast operations down the gr
 */
 class PropagateCastOps : public GraphTransformer {
 public:
-  PropagateCastOps(size_t level, std::vector<std::string> allow_list = {},
+  PropagateCastOps(size_t level, const std::vector<std::string>& allow_list = {},
                    const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept;
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
