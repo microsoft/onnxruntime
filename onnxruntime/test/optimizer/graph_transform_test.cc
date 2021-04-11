@@ -3850,12 +3850,12 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
 // The following test is disabled because the cast propagation does not consider MatMul fp16_safe
 // Re-enable this test when it does.
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
-  typedef struct {
+  struct PropagateCastOpsTestSpecs {
     PathString model_uri;
     int casts_count;                     // Expected number of casts after the transformation
     vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
     int level = 0;                       // Level of optimization
-  } PropagateCastOpsTestSpecs;
+  };
 
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
       {MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx", 2, {"MatMul"}},
