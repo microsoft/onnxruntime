@@ -17,7 +17,7 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
     /* Level 1 */ {"Transpose", "Reshape", "Split", "Relu", "BiasFastGelu", "BiasGelu", "LayerNorm", "Gelu", "FastGelu", "Tanh"},
     /* Level 2 */ {"Gather", "Where", "Dropout"}};
-static std::vector<std::string> compute_nodes_changed;  // Names of the fp16_safe_ops changed
+static std::vector<std::string> inserted_node_names;  // Names of the nodes inserted
 
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level) {
@@ -82,6 +82,7 @@ static Status InsertCastNodes(Graph& graph,
                                cast_inputs,
                                cast_outputs,
                                &attributes);
+    inserted_node_names.push_back(cast.Name());
     Node* producer = graph.GetMutableProducerNode(node_arg->Name());
     std::vector<Node*> consumers = graph.GetMutableConsumerNodes(node_arg->Name());
     int output_index = (producer != nullptr) ? optimizer_utils::IndexOfNodeOutput(*producer, *node_arg) : -1;
@@ -225,20 +226,15 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
             }
           }
         }
-        bool modified = false;
         for (NodeArg* node_input : node->MutableInputDefs()) {
           if (IsType(*node_input, TensorProto_DataType_FLOAT) &&
               require_cast.find(node_input) != require_cast.end() &&
               require_type_change.find(node_input) != require_type_change.end()) {
-            modified = true;
             SearchUpstream(graph, node_input, require_cast, require_type_change, removed_nodes, level);
             if (require_cast.find(node_input) != require_cast.end()) {
               require_type_change.insert(node_input);
             }
           }
-        }
-        if (IsFP16Allow(op_type, level) && modified) {
-          compute_nodes_changed.push_back(node->Name());
         }
       }
     }
@@ -318,7 +314,7 @@ static void ChangeTypeToFP16(std::unordered_set<NodeArg*>& require_type_change, 
 
 // PropagateForwards
 // Propagate FP32 Cast operations forwards (downstream)
-// Using SearchDownStream recurrsively search the graph for Cast FP16 safe/allowed operations to expand
+// Using SearchDownStream search the graph for Cast FP16 safe/allowed operations to expand
 // the float16 computation region.
 // The required_cast vector is the collection of nodes that require float cast.
 // All nodeargs on a path down to any of the
@@ -349,7 +345,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
 
 // PropagateBackwards
 // Propagate FP16 Cast operations backwards (upstream)
-// Using SearchUpstream recurrsively search the graph for Cast FP16 safe/allowed operations and expand
+// Using SearchUpstream search the graph for Cast FP16 safe/allowed operations and expand
 // float16 computation regsion and
 // find the frontiers of the float16 computation region.
 // The required_cast vector is the collection of
@@ -399,6 +395,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
                                  {&new_output},
                                  &node->GetAttributes(),
                                  node->Domain());
+  inserted_node_names.push_back(new_cast.Name());
   for (Node* cast : nodes) {
     for (NodeArg* output : cast->MutableOutputDefs()) {
       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
@@ -595,6 +592,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     }
   }
+  std::vector<std::string> removed_node_names;
   int pass = 0;
   bool local_modified = false;
   do {
@@ -684,20 +682,24 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
     }
 
     for (onnxruntime::NodeIndex removed_node : removed_nodes) {
+      removed_node_names.push_back(graph.GetNode(removed_node)->Name());
       graph.RemoveNode(removed_node);
     }
     modified |= local_modified;
     pass++;
   } while (local_modified);
-
-  VLOGS(logger, 1) << "Propagate Cast operations summary:";
-  std::for_each(compute_nodes_changed.begin(), compute_nodes_changed.end(), [logger](std::string name) { LOGS(logger, VERBOSE) << name; });
-
+  if (modified) {
+    VLOGS(logger, 1) << "Propagate Cast operations summary:";
+    VLOGS(logger, 1) << "Nodes Inserted:";
+    std::for_each(inserted_node_names.begin(), inserted_node_names.end(), [logger](std::string name) { VLOGS(logger, 1) << name; });
+    VLOGS(logger, 1) << "Nodes Removed:";
+    std::for_each(removed_node_names.begin(), removed_node_names.end(), [logger](std::string name) { VLOGS(logger, 1) << name; });
+  }
   return Status::OK();
 }
 PropagateCastOps::PropagateCastOps(size_t level, const std::vector<std::string>& _allow_list,
-                                   const std::unordered_set<std::string>& compatible_execution_providers) noexcept :
-                                   GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level) {
+                                   const std::unordered_set<std::string>& compatible_execution_providers) noexcept
+                                   : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level) {
   fp16_allow_ops[0].clear();  // Remove previously added op types if any.
   std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(fp16_allow_ops[0], fp16_allow_ops[0].begin()));
 }
