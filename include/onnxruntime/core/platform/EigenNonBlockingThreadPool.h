@@ -145,7 +145,7 @@ std::unique_ptr<char[]> GetEnv(const char*);
 
 bool IsEnvVarDefined(const char*);
 
-static bool USE_STICKY_WORKER_ASSIGNMENT = false;
+static bool USE_STICKY_WORKER_ASSIGNMENT = true;
 static bool USE_STICKY_INDEX_ASSIGNMENT = false;
 static bool WORKER_ASSIGNMENT_STATS = false;
 
