@@ -217,7 +217,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
     graph.AddNode("add", "Add", "Add two inputs.", {&parent_constant_arg, &local_constant_arg}, {&add_out});
 
     auto& subgraph_out = graph.GetOrCreateNodeArg("subgraph_out", &float_tensor_type);
-    graph.AddNode("Identity", "Identity", "So Add isn't providing graph output.", {&add_out}, {&subgraph_out});
+    graph.AddNode("identity", "Identity", "So Add isn't providing graph output.", {&add_out}, {&subgraph_out});
 
     ASSERT_STATUS_OK(graph.Resolve());
     graph_proto = graph.ToGraphProto();
