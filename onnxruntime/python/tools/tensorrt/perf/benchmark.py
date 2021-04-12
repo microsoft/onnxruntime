@@ -1024,12 +1024,13 @@ def run_onnxruntime(args, models):
                     # get standalone TensorRT perf
                     try: 
                         ep = standalone_trt_fp16 if fp16 else standalone_trt
+                        
                         if args.track_memory: 
-                                p = start_memory_tracking()            
-                                result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                                mem_usage = end_memory_tracking(p, True)
-                                if result and mem_usage: 
-                                    result["memory"] = mem_usage
+                            p = start_memory_tracking()            
+                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                            mem_usage = end_memory_tracking(p, True)
+                            if result and mem_usage: 
+                                result["memory"] = mem_usage
 
                         else: 
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)

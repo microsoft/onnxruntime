@@ -18,35 +18,11 @@ Abstract:
 --*/
 
 #include "asmmacro.h"
+#include "TransKernelCommon.h"
 
         .intel_syntax noprefix
 
         .text
-
-//
-// Structure layout for the tanh constants block.
-//
-
-        .equ    TanhConstants_LowerRange, 0
-        .equ    TanhConstants_UpperRange, 4
-        .equ    TanhConstants_alpha_13, 8
-        .equ    TanhConstants_alpha_11, 12
-        .equ    TanhConstants_alpha_9, 16
-        .equ    TanhConstants_alpha_7, 20
-        .equ    TanhConstants_alpha_5, 24
-        .equ    TanhConstants_alpha_3, 28
-        .equ    TanhConstants_alpha_1, 32
-        .equ    TanhConstants_beta_6, 36
-        .equ    TanhConstants_beta_4, 40
-        .equ    TanhConstants_beta_2, 44
-        .equ    TanhConstants_beta_0, 48
-
-//
-// Stack frame layout for the tanh kernel.
-//
-
-        .equ    TanhKernelFrame_CountN, -8
-        .equ    TanhKernelFrame_ReturnAddress, 0
 
 /*++
 
@@ -69,22 +45,21 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasTanhKernelFma3)
-C_UNDERSCORE(MlasTanhKernelFma3):
+        FUNCTION_ENTRY MlasComputeTanhF32KernelFma3
 
         lea     rax,C_UNDERSCORE(MlasTanhConstants)[rip]
-        vbroadcastss ymm4,TanhConstants_LowerRange[rax]
-        vbroadcastss ymm5,TanhConstants_UpperRange[rax]
-        vbroadcastss ymm6,TanhConstants_alpha_13[rax]
-        vbroadcastss ymm7,TanhConstants_alpha_11[rax]
-        vbroadcastss ymm8,TanhConstants_alpha_9[rax]
-        vbroadcastss ymm9,TanhConstants_alpha_7[rax]
-        vbroadcastss ymm10,TanhConstants_alpha_5[rax]
-        vbroadcastss ymm11,TanhConstants_alpha_3[rax]
-        vbroadcastss ymm12,TanhConstants_alpha_1[rax]
-        vbroadcastss ymm13,TanhConstants_beta_6[rax]
-        vbroadcastss ymm14,TanhConstants_beta_2[rax]
-        vbroadcastss ymm15,TanhConstants_beta_0[rax]
+        vbroadcastss ymm4,.LTanhConstants_LowerRange[rax]
+        vbroadcastss ymm5,.LTanhConstants_UpperRange[rax]
+        vbroadcastss ymm6,.LTanhConstants_alpha_13[rax]
+        vbroadcastss ymm7,.LTanhConstants_alpha_11[rax]
+        vbroadcastss ymm8,.LTanhConstants_alpha_9[rax]
+        vbroadcastss ymm9,.LTanhConstants_alpha_7[rax]
+        vbroadcastss ymm10,.LTanhConstants_alpha_5[rax]
+        vbroadcastss ymm11,.LTanhConstants_alpha_3[rax]
+        vbroadcastss ymm12,.LTanhConstants_alpha_1[rax]
+        vbroadcastss ymm13,.LTanhConstants_beta_6[rax]
+        vbroadcastss ymm14,.LTanhConstants_beta_2[rax]
+        vbroadcastss ymm15,.LTanhConstants_beta_0[rax]
 
         sub     rdx,8
         jb      .LProcessRemainingCount
@@ -94,7 +69,7 @@ C_UNDERSCORE(MlasTanhKernelFma3):
         vmovaps ymm2,ymm7
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound
         vmulps  ymm1,ymm0,ymm0                  # x2
-        vbroadcastss ymm3,TanhConstants_beta_4[rax]
+        vbroadcastss ymm3,.LTanhConstants_beta_4[rax]
         vfmadd231ps ymm2,ymm1,ymm6              # p = x2 * alpha_13 + alpha_11
         vfmadd213ps ymm2,ymm1,ymm8              # p = x2 * p + alpha_9
         vfmadd213ps ymm2,ymm1,ymm9              # p = x2 * p + alpha_7
@@ -115,14 +90,14 @@ C_UNDERSCORE(MlasTanhKernelFma3):
 .LProcessRemainingCount:
         add     rdx,8                           # correct for over-subtract above
         jz      .LExitKernel
-        mov     DWORD PTR TanhKernelFrame_CountN[rsp],edx
-        vbroadcastss ymm2,DWORD PTR TanhKernelFrame_CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        neg     rdx
+        lea     r10,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
+        vmovups ymm2,YMMWORD PTR [r10+rdx*4]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rdi]
         vmaxps  ymm0,ymm4,ymm0                  # clamp lower bound
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound
         vmulps  ymm1,ymm0,ymm0                  # x2
-        vbroadcastss ymm3,TanhConstants_beta_4[rax]
+        vbroadcastss ymm3,.LTanhConstants_beta_4[rax]
         vfmadd231ps ymm7,ymm1,ymm6              # p = x2 * alpha_13 + alpha_11
         vfmadd213ps ymm7,ymm1,ymm8              # p = x2 * p + alpha_9
         vfmadd213ps ymm7,ymm1,ymm9              # p = x2 * p + alpha_7

@@ -64,6 +64,8 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
     return QLinearOpType::QLinearAdd;
   else if (op_type == "QLinearSigmoid")
     return QLinearOpType::QLinearSigmoid;
+  else if (op_type == "QLinearAveragePool")
+    return QLinearOpType::QLinearAveragePool;
 
   return QLinearOpType::Unknown;
 }
@@ -98,6 +100,21 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
   return qlinear_op_type == QLinearOpType::QLinearConv ||
          qlinear_op_type == QLinearOpType::QLinearMatMul ||
          qlinear_op_type == QLinearOpType::QLinearAdd;
+}
+
+bool HasValidUnaryOpQuantizedInputs(const Node& node) {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 bool HasValidBinaryOpQuantizedInputs(const Node& node) {
@@ -308,19 +325,6 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
   return Status::OK();
 }
-
-#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                  \
-  const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
-    return tensor.DATA().empty()                                                        \
-               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())        \
-               : tensor.DATA().data();                                                  \
-  }
-
-GET_TENSOR_DATA(FloatData, float, float_data)
-GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
-GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
-
-#undef GET_TENSOR_DATA
 
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();

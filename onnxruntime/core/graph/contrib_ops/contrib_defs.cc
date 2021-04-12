@@ -275,7 +275,6 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
-
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -441,7 +440,7 @@ and present state are optional. Present state could appear in output even when p
         AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
-      static const char* Longformer_Attention_doc = R"DOC(
+  static const char* Longformer_Attention_doc = R"DOC(
 Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
 attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
 attend globally to all other tokens.
@@ -2291,6 +2290,83 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         }
       });
 
+  static const char* TorchEmbedding_ver1_doc = R"DOC(
+      Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
+       for a dictionary of fixed size.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchEmbedding)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(TorchEmbedding_ver1_doc)
+      .Input(
+          0,
+          "weight",
+          "The embedding matrix of size N x M. 'N' is equal to the maximum possible index + 1, and 'M' is "
+          "equal to the embedding size",
+          "T")
+      .Input(
+          1,
+          "indices",
+          "Long tensor containing the indices to extract from embedding matrix.",
+          "tensor(int64)")
+      .Input(
+          2,
+          "padding_idx",
+          "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
+          "therefore, the embedding vector at `padding_idx` is not updated during training, "
+          "i.e. it remains as a fixed pad.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "scale_grad_by_freq",
+          "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
+          "the indices (words) in the mini-batch. Default  is ``False``",
+          "tensor(bool)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type as the input tensor. Shape of the output is * x M, where '*' is the shape of "
+          "input indices, and 'M' is the embedding size.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)"},
+          "Constrain input and output types to all numeric tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        TensorShapeProto outputs_shape;
+        Dim input_dim_i;
+
+        if (hasInputShape(ctx, 1)) {
+          auto& input_shape = getInputShape(ctx, 1);
+          for (int32_t i = 0; i < input_shape.dim_size(); i++) {
+            input_dim_i = input_shape.dim(i);
+            *outputs_shape.add_dim() = input_dim_i;
+          }
+        }
+
+        Dim embedding_dim;
+        unifyInputDim(ctx, 0, 1, embedding_dim);
+        *outputs_shape.add_dim() = embedding_dim;
+        updateOutputShape(ctx, 0, outputs_shape);
+      });
+
   static const char* Trilu_ver1_doc = R"DOC(
       Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
       the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
@@ -2376,6 +2452,56 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "output, dropout_mask = Dropout(data + bias, ratio) + residual, "
+          "Intended to specialize the dropout pattern commonly found in transformer models.")
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
+      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
+      .Input(3, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T1",
+             OpSchema::Optional)
+      .Input(4, "training_mode",
+             "If set to true then it indicates dropout is being used for "
+             "training. It is an optional value hence unless specified explicitly, it is false. "
+             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
+             "will be dropped from the input data and if mask is requested as output it will contain "
+             "all ones.",
+             "T2",
+             OpSchema::Optional)
+      .Output(0, "output", "The output.", "T")
+      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "Constrain output 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        if (ctx.getNumOutputs() == 2) {
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
 
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {

@@ -10,7 +10,7 @@ using onnxruntime::UpsampleMode;
 
 __device__ int NearestPixel_SIMPLE(float x_original, bool is_down_sampling) {
   if (is_down_sampling) {
-    return static_cast<int>(ceil(x_original));
+    return static_cast<int>(_Ceil(x_original));
   } else {
     return static_cast<int>(x_original);
   }
@@ -18,21 +18,21 @@ __device__ int NearestPixel_SIMPLE(float x_original, bool is_down_sampling) {
 
 __device__ int NearestPixel_ROUND_PREFER_FLOOR(float x_original, bool) {
   if (x_original == static_cast<int>(x_original) + 0.5f) {
-    return static_cast<int>(floor(x_original));
+    return static_cast<int>(_Floor(x_original));
   }
-  return static_cast<int>(round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_ROUND_PREFER_CEIL(float x_original, bool) {
-  return static_cast<int>(round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_FLOOR(float x_original, bool) {
-  return static_cast<int>(floor(x_original));
+  return static_cast<int>(_Floor(x_original));
 }
 
 __device__ int NearestPixel_CEIL(float x_original, bool) {
-  return static_cast<int>(ceil(x_original));
+  return static_cast<int>(_Ceil(x_original));
 }
 
 using CudaFunctionNearestPixel = int (*)(float, bool);
@@ -535,7 +535,7 @@ __global__ void _ResizeCubicCoordinateMapping(
       static_cast<float>(max_input_coord),
       (is_y_axis ? roi_height_start : roi_width_start),
       (is_y_axis ? roi_height_end : roi_width_end));
-  int coord_int = static_cast<int>(floor(input_coordinat));
+  int coord_int = static_cast<int>(_Floor(input_coordinat));
   float s_coord = abs(input_coordinat - coord_int);
   float coeff_sum = 1.0f;
   float coeff_0 = static_cast<float>(((cubic_coeff_a * (s_coord + 1) - 5 * cubic_coeff_a) * (s_coord + 1) + 8 * cubic_coeff_a) * (s_coord + 1) - 4 * cubic_coeff_a);

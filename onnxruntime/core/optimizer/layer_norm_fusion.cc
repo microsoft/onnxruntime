@@ -55,6 +55,13 @@ X --> ReduceMean --> Sub --> Cast --> Pow --> ReduceMean --> Add --> Sqrt --> Di
                       |                                                        ^
                       |                                                        |
                       +--------------------------------------------------------+
++---------------------+       Cast
+|                     |        |
+|                     v        v
+X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+                      |                                                ^
+                      |                                                |
+                      +------------------------------------------------+
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -194,24 +201,25 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(pow_node);
 
-    // check if Cast node exists between sub and pow
+    // check if Cast node exists: either between sub and pow, or as second input to pow
     const Node* p_cast_node = graph_utils::FirstParentByType(pow_node, "Cast");
     if (p_cast_node != nullptr) {
-      Node& cast_node = *graph.GetNode(pow_node.InputNodesBegin()->Index());
+      Node& cast_node = *graph.GetNode(p_cast_node->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) ||
-          cast_node.GetExecutionProviderType() != cast_node.GetExecutionProviderType() ||
-          !optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
-          !IsSupportedDataType(cast_node)) {
+          cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
+          !optimizer_utils::CheckOutputEdges(graph, cast_node, 1)) {
         continue;
       }
       nodes_to_remove.push_back(cast_node);
-    }
 
-    // Traceback from the last node in vector to find sub --> pow  or  sub --> cast
-    const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
-    if (p_sub2_node == nullptr ||
-        (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup)) {
-      continue;
+      // Traceback from the last node in vector to find sub --> pow  or  sub --> cast
+      const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
+      if (p_sub2_node != nullptr) {
+        // Cast is between Sub and Pow
+        if (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup || !IsSupportedDataType(cast_node)) {
+          continue;
+        }
+      }
     }
 
     // div --> mul

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/math/quantize_linear_matmul.h"
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -191,6 +193,99 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
+
+/**
+ * @brief Extend QLinearMatMul for verifying prepacking behavior 
+*/
+struct PrePackTestOp {
+  // TODO!! use template and macro to extract a common utility out of this
+  //   for grey box kernel testing by extending kernel classes.
+  static constexpr const char* OpName = "QLinearMatMulPrePack";
+  static constexpr const char* OpDomain = "testing";
+
+  static ONNX_NAMESPACE::OpSchema OpSchema() {
+    // Mock our own schema, using the existing QLinearMatMul schema as template
+    auto p_original = ONNX_NAMESPACE::OpSchemaRegistry::Schema("QLinearMatMul", 10, "");
+    ONNX_NAMESPACE::OpSchema modified;
+
+    modified.SetDoc("Return success, error, or throw based on the input.")
+        .SetName(OpName)
+        .SetDomain(OpDomain)
+        .SinceVersion(10);
+
+    const auto& inputs = p_original->inputs();
+    for (int i = 0; i < static_cast<int>(inputs.size()); i++) {
+      const auto& in = inputs[i];
+      modified.Input(i, in.GetName(), in.GetDescription(), in.GetTypeStr(),
+                     in.GetOption(), in.GetIsHomogeneous(), in.GetMinArity(), in.GetDifferentiationCategory());
+    }
+
+    const auto& outputs = p_original->outputs();
+    for (int oi = 0; oi < static_cast<int>(outputs.size()); oi++) {
+      const auto& out = outputs[oi];
+      modified.Output(oi, out.GetName(), out.GetDescription(), out.GetTypeStr(),
+                      out.GetOption(), out.GetIsHomogeneous(), out.GetMinArity(), out.GetDifferentiationCategory());
+    }
+
+    for (const auto& ty : p_original->typeConstraintParams()) {
+      modified.TypeConstraint(ty.type_param_str, ty.allowed_type_strs, ty.description);
+    }
+    return modified;
+  }
+
+  class QLinearMatMulPrePackT : public QLinearMatMul {
+   public:
+    QLinearMatMulPrePackT(const OpKernelInfo& info) : QLinearMatMul(info) {
+    }
+
+    Status Compute(OpKernelContext* context) const override {
+      if (!(bool(packed_b_) || (b_shape_ == context->Input<Tensor>(IN_B)->Shape()))) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected prepacking did not happen.");
+      }
+      return QLinearMatMul::Compute(context);
+    }
+  };
+
+  static KernelDefBuilder KernelDef() {
+    // TODO extract this out of existing OP's kernel def instead of copying code!
+    KernelDefBuilder def;
+    def.SetName(OpName)
+        .SetDomain(OpDomain)
+        .SinceVersion(10)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .Provider(onnxruntime::kCpuExecutionProvider);
+
+    return def;
+  }
+};
+
+#ifndef ENABLE_TRAINING
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
+  auto registry = std::make_shared<CustomRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
+  Status status;
+  ASSERT_TRUE((status = registry->RegisterOpSet(schemas, PrePackTestOp::OpDomain, 10, 11)).IsOK()) << status;
+  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename PrePackTestOp::QLinearMatMulPrePackT(info); };
+  auto kernel_def = PrePackTestOp::KernelDef();
+  ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
+
+  OpTester test_non_empty(PrePackTestOp::OpName, 10, PrePackTestOp::OpDomain);
+  test_non_empty.AddCustomOpRegistry(registry);
+
+  test_non_empty.AddInput<uint8_t>("T1", {2, 4}, {208, 236, 0, 238, 3, 214, 255, 29});
+  test_non_empty.AddInput<float>("a_scale", {1}, {0.0066f}, true);
+  test_non_empty.AddInput<uint8_t>("a_zero_point", {1}, {113}, true);
+  test_non_empty.AddInput<uint8_t>("T2", {4, 3}, {152, 51, 244, 60, 26, 255, 0, 127, 246, 127, 254, 247}, true);
+  test_non_empty.AddInput<float>("b_scale", {1}, {0.00705f}, true);
+  test_non_empty.AddInput<uint8_t>("b_zero_point", {1}, {114}, true);
+  test_non_empty.AddInput<float>("y_scale", {1}, {0.0107f}, true);
+  test_non_empty.AddInput<uint8_t>("y_zero_point", {1}, {118}, true);
+  test_non_empty.AddOutput<uint8_t>("T3", {2, 3}, {168, 115, 255, 1, 66, 151});
+  test_non_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

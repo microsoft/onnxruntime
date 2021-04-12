@@ -689,7 +689,7 @@ class SymbolicShapeInference:
                                           get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_Expand(self, node):
-        expand_to_shape = self._try_get_value(node, 1)
+        expand_to_shape = as_list(self._try_get_value(node, 1), keep_none=True)
         if expand_to_shape is not None:
             # new_shape's dim can come from shape value
             self._update_computed_dims(expand_to_shape)
@@ -746,7 +746,7 @@ class SymbolicShapeInference:
         subgraphs = [get_attribute(node, 'then_branch'), get_attribute(node, 'else_branch')]
         cond = self._try_get_value(node, 0)
         if cond is not None:
-            if cond > 0:
+            if as_scalar(cond) > 0:
                 subgraphs[1].CopyFrom(subgraphs[0])
             else:
                 subgraphs[0].CopyFrom(subgraphs[1])

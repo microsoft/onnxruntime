@@ -248,7 +248,6 @@ We could take steps to handle this scenario in a full build, but for consistency
 on any ORT format model.
 */
 TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
-  // we have tests that use a pre-created minst.onnx.ort, so make the naming for the unit test generated file clearer
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
@@ -375,7 +374,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
 // test loading ORT format model with sparse initializers
 TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sparse_initializer_handling.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
   so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");

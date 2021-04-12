@@ -158,7 +158,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
     }
 #endif  //ENABLE_TRAINING
 
-    if (node->OpType() == "Conv") {
+    if (node->OpType() == "Conv" || node->OpType() == "MatMul") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
 #ifdef ENABLE_TRAINING
@@ -398,7 +398,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
   std::unordered_set<std::string> input_initializers;
 
   // Create ng_required_initializers attribute of NGraphCustomOp
-  auto initializers = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto initializers = ONNX_NAMESPACE::AttributeProto::Create();
   initializers->set_name("initializers");
   initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
 
@@ -438,7 +438,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
     }
   }
 
-  auto ap = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto ap = ONNX_NAMESPACE::AttributeProto::Create();
   ap->set_s(subgraph_id);
   ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes()["subgraph_id"] = *ap;

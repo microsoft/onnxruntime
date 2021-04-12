@@ -18,7 +18,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --android \
     --android_sdk_path /android_home \
-    --android_ndk_path /android_home/ndk-bundle \
+    --android_ndk_path /ndk_home \
     --android_abi=arm64-v8a \
     --android_api=29 \
     --minimal_build \

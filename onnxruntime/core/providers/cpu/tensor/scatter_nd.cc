@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/scatter_nd.h"
 
+#include "core/framework/element_type_lists.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
@@ -11,9 +12,9 @@
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 }
 
 using ScatterNDDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(

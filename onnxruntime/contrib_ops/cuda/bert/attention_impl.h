@@ -38,39 +38,21 @@ bool LaunchAttentionKernel(
     void* present                                 // Present state output
 );
 
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const float alpha,
-    const float* A, int lda, long long int strideA, const float* B, int ldb, long long int strideB,
-    const float beta, float* C, int ldc, long long int strideC, int batchCount) {
-  return cublasSgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
-
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const half alpha,
-    const half* A, int lda, long long int strideA, const half* B, int ldb, long long int strideB,
-    const half beta, half* C, int ldc, long long int strideC, int batchCount) {
-  return cublasHgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
+bool LaunchTransCtx(cudaStream_t stream,
+                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                    const int max_threads_per_block, const float* input, float* output);
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
-
-bool LaunchTransCtx(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const half* input, half* output);
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output);
+                    const int max_threads_per_block, const float* input, float* output);
 
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output);
+                    const int max_threads_per_block, const half* input, half* output);
 
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
@@ -78,6 +60,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const float* past,
                                const float* k_v,
                                float* present);
@@ -88,6 +71,7 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int batch_size,
                                const int head_size,
                                const int num_heads,
+                               const int max_threads_per_block,
                                const half* past,
                                const half* k_v,
                                half* present);

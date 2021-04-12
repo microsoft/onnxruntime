@@ -268,7 +268,7 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t cuda_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
   int has_user_compute_stream;
@@ -281,7 +281,7 @@ typedef struct OrtCUDAProviderOptions {
 typedef struct OrtROCMProviderOptions {
   int device_id;                                    // hip device with id=0 as default device.
   int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
-  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
 } OrtROCMProviderOptions;
 
@@ -289,9 +289,15 @@ typedef struct OrtROCMProviderOptions {
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
-  int has_user_compute_stream;
-  void* user_compute_stream;
+  int device_id;                                  // cuda device id.
+  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                      // user specified CUDA compute stream.
+  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -299,12 +305,14 @@ typedef struct OrtTensorRTProviderOptions {
 /// </summary>
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{} {}
 #endif
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
   size_t num_of_threads;  // 0 uses default number of threads
+  unsigned char use_compiled_network; // 0 = false, nonzero = true
+  const char* blob_dump_path; // path is set to empty by default
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
