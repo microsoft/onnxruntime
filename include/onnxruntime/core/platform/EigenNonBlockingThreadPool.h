@@ -778,7 +778,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
-
+#ifdef _WIN32
+  using CHAR_TYPE = wchar_t;
+#else
+  using CHAR_TYPE = char;
+#endif
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
