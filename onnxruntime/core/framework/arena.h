@@ -36,7 +36,8 @@ using ArenaPtr = std::shared_ptr<IArenaAllocator>;
 // Runtime statistics collected by an allocator.
 struct AllocatorStats {
   int64_t num_allocs;             // Number of allocations.
-  int64_t num_deallocs;           // Number of de-allocations
+  int64_t num_arena_extensions;   // Number of arena extensions (Relevant only for arena based allocators)
+  int64_t num_arena_shrinkages;   // Number of arena shrinkages (Relevant only for arena based allocators)
   int64_t bytes_in_use;           // Number of bytes in use.
   int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
   int64_t max_bytes_in_use;       // The maximum bytes in use.
@@ -50,7 +51,8 @@ struct AllocatorStats {
 
   void Clear() {
     this->num_allocs = 0;
-    this->num_deallocs = 0;
+    this->num_arena_extensions = 0;
+    this->num_arena_shrinkages = 0;
     this->bytes_in_use = 0;
     this->max_bytes_in_use = 0;
     this->max_alloc_size = 0;
@@ -60,13 +62,14 @@ struct AllocatorStats {
 
   std::string DebugString() const {
     std::ostringstream ss;
-    ss << "Limit:           " << this->bytes_limit << "\n"
-       << "InUse:          " << this->bytes_in_use << "\n"
-       << "TotalAllocated: " << this->total_allocated_bytes << "\n"
-       << "MaxInUse:       " << this->max_bytes_in_use << "\n"
-       << "NumAllocs:      " << this->num_allocs << "\n"
-       << "NumDeAllocs:      " << this->num_deallocs << "\n"
-       << "MaxAllocSize:   " << this->max_alloc_size << "\n";
+    ss << "Limit:                    " << this->bytes_limit << "\n"
+       << "InUse:                    " << this->bytes_in_use << "\n"
+       << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
+       << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
+       << "NumAllocs:                " << this->num_allocs << "\n"
+       << "NumArenaExtensions:       " << this->num_arena_extensions << "\n"
+       << "NumArenaShrinkages:       " << this->num_arena_shrinkages << "\n"
+       << "MaxAllocSize:             " << this->max_alloc_size << "\n";
     return ss.str();
   }
 };

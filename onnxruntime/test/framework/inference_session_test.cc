@@ -22,6 +22,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/bfc_arena.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -617,7 +618,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(size > 1);
   ASSERT_TRUE(lines[0].find("[") != string::npos);
   ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size-1].find("]") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   bool has_kernel_info = false;
@@ -1902,6 +1903,58 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   // execution mode is sequential since we have registered the CUDA EP
   // (which isn't supported by the parallel execution mode)
   ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+}
+
+TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+  OrtArenaCfg arena_cfg;
+  arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
+  arena_cfg.shrink_on_every_run = true;
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  CUDAExecutionProviderInfo epi;
+  epi.arena_cfg = &arena_cfg;
+
+  epi.device_id = 0;
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Fetch the CUDA allocator to analyze its stats
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  auto cuda_alloc = session_object.GetAllocator(mem_info);
+
+  AllocatorStats alloc_stats;
+  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+  // The arena would have made an extension to accommodate the sole initializer on CUDA
+  ASSERT_EQ(alloc_stats.num_allocs, 1);
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
+
+  // no shrinkages should have occurred during this time (sanity check)
+  ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+
+  auto allocated_memory_before_run = alloc_stats.total_allocated_bytes;
+
+  RunOptions run_options;
+  RunModel(session_object, run_options);
+
+  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+  // The arena would have made 2 more extensions as part of servicing memory requests within Run()
+  // 1) - To take the solitary feed to cuda memory
+  // 2) - Allocate output of the solitary node
+  // So we should have seen 3 total extensions by now
+  ASSERT_EQ(alloc_stats.num_allocs, 3);
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+
+  // The arena would have shrunk both extensions it made as part of Run() - because these allocations
+  // would have been left unused after Run() itself
+  ASSERT_EQ(alloc_stats.num_arena_shrinkages, 2);
+
+  auto allocated_memory_after_run = alloc_stats.total_allocated_bytes;
+
+  // Assert that allocated memory before and after Run() are the same
+  // Because any memory allocated during Run would have been de-allocated as pat of the shrinkage
+  ASSERT_EQ(allocated_memory_before_run, allocated_memory_after_run);
 }
 
 #endif

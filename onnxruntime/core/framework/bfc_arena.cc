@@ -173,6 +173,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
+  stats_.num_arena_extensions += 1;
   LOGS_DEFAULT(INFO) << "Total allocated bytes: "
                      << stats_.total_allocated_bytes;
 
@@ -458,7 +459,7 @@ Status BFCArena::Shrink() {
 
     if (deallocate_region) {
       auto shrink_size = region_sizes[i];
-      stats_.num_deallocs += 1;
+      stats_.num_arena_shrinkages += 1;
       stats_.total_allocated_bytes -= shrink_size;
 
       LOGS_DEFAULT(VERBOSE) << device_allocator_->Info().name << " BFC Arena shrunk by "
