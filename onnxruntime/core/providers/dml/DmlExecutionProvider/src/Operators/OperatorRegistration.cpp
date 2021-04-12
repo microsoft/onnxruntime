@@ -620,6 +620,12 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         desc.typeConstraints = typeConstraints.data();
         desc.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
 
+#if _DEBUG
+        // If some version of the operator is supported for fusion, check that each registered version is also supported.
+        // This ensures that table of operators and versions supporting fusion does not become stale as operator sets are added.
+        FusionHelpers::AssertFusableOperatorSupportsVersionIfExists(desc.name, desc.domain, desc.minimumOperatorSetVersion);
+#endif
+
         // edgeDescs will accumulate the edge descriptions across all type constraints.  
         // The values of allowedTypeCount will indicate how many elements of edgeDescs
         // belong to each type constraint.
