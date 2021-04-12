@@ -30,6 +30,9 @@ namespace Microsoft.ML.OnnxRuntime
         public int do_copy_in_default_stream;                   //!< Whether to do copies in the default stream or use separate streams.
     }
 
+    /// <summary>
+    /// Holds provider options configuration for creating an InferenceSession.
+    /// </summary>
     public class ProviderOptions : SafeHandle
     {
         internal IntPtr Handle
