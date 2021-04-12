@@ -201,9 +201,9 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
         public UIntPtr gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
         public int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
-        public int do_copy_in_default_stream;
-        public int has_user_compute_stream;
-        public IntPtr user_compute_stream;
+        public int do_copy_in_default_stream;                  // Whether to do copies in the default stream or use separate streams.
+        public int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+        public IntPtr user_compute_stream;                     // user specified CUDA compute stream.
     }
 
     #endregion

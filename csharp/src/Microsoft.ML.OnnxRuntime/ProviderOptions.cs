@@ -72,7 +72,7 @@ namespace Microsoft.ML.OnnxRuntime
                 cuda_options.gpu_mem_limit = (UIntPtr)UInt32.MaxValue;
             }
             cuda_options.arena_extend_strategy = 0;
-            cuda_options.do_copy_in_default_stream = 0;
+            cuda_options.do_copy_in_default_stream = 1;
 
             return cuda_options;
         }
