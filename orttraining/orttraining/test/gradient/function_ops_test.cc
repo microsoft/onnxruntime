@@ -4,6 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
+#include <cstdlib>
 
 #include "gtest/gtest.h"
 #include "core/framework/data_types.h"
@@ -112,6 +113,24 @@ static void AssertEqual(const std::vector<OrtValue>& results1, const std::vector
   }
 }
 
+template <typename T>
+std::vector<T> random(std::vector<int64_t> shape) {
+  RandomValueGenerator generator{};
+  return generator.Uniform<T>(shape, 0.0f, 1.0f);
+}
+
+template <>
+std::vector<bool> random<bool>(std::vector<int64_t> shape) {
+    int64_t size = 1;
+    for (auto dim : shape)
+      size *= dim;
+
+    std::vector<bool> data(size);
+    for (int64_t i = 0; i < size; i++)
+      data[i] = bool(rand() % 2);
+    return data;
+}
+
 struct FunctionTestCase {
   const char* opname;
 
@@ -144,8 +163,7 @@ struct FunctionTestCase {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
 
-    RandomValueGenerator random{};
-    std::vector<T> data = random.Uniform<T>(shape, 0.0f, 1.0f);
+    std::vector<T> data = random<T>(shape);
 
     OrtValue ort_value;
     CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
@@ -153,24 +171,24 @@ struct FunctionTestCase {
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
 
-  template <>
-  void AddInput<bool>(std::string input_name, std::vector<int64_t> shape) {
-    auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, shape);
-    input_args.emplace_back(input_name, &arg_type);
+  // template <>
+  // void AddInput<bool>(std::string input_name, std::vector<int64_t> shape) {
+  //   auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, shape);
+  //   input_args.emplace_back(input_name, &arg_type);
 
-    int64_t size = 1;
-    for (auto dim : shape)
-      size *= dim;
+  //   int64_t size = 1;
+  //   for (auto dim : shape)
+  //     size *= dim;
 
-    std::vector<bool> data(size);
-    for (int64_t i = 0; i < size; i++)
-      data[i] = bool(i % 2);
+  //   std::vector<bool> data(size);
+  //   for (int64_t i = 0; i < size; i++)
+  //     data[i] = bool(i % 2);
 
-    OrtValue ort_value;
-    CreateMLValue<bool>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
-    input_values.push_back(std::make_pair(input_name, ort_value));
-    input_value_map.insert(std::make_pair(input_name, ort_value));
-  }
+  //   OrtValue ort_value;
+  //   CreateMLValue<bool>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+  //   input_values.push_back(std::make_pair(input_name, ort_value));
+  //   input_value_map.insert(std::make_pair(input_name, ort_value));
+  // }
 
   void AddOutput(std::string output_name) {
     output_names.emplace_back(output_name);
@@ -346,7 +364,6 @@ TEST(DropoutGradExpansionTest, WithRatioDouble) {
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
-
 
 TEST(GeluGradExpansionTest, 2D) {
   FunctionTestCase testCase("GeluGrad");
