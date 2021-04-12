@@ -100,7 +100,7 @@ module.exports = {
     files: ['node/**/*.ts'],
     env: { 'es6': true, 'node': true }
   }, {
-    files: ['node/lib/**/*.ts'],
+    files: ['common/lib/**/*.ts', 'node/lib/**/*.ts'],
     rules: {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
