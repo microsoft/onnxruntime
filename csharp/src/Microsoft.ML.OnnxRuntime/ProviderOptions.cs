@@ -36,6 +36,9 @@ namespace Microsoft.ML.OnnxRuntime
         public String trt_cache_path;                          //!< specify path for TensorRT engine and profile files if engine_cache_enable is enabled, or INT8 calibration table file if trt_int8_enable is enabled.
     }
 
+    /// <summary>
+    /// Holds provider options configuration for creating an InferenceSession.
+    /// </summary>
     public class ProviderOptions : SafeHandle
     {
         internal IntPtr Handle
