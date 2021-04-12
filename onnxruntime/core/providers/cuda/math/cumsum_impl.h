@@ -11,14 +11,14 @@ namespace cuda {
 
 template <typename T>
 void CumSumImpl(
+    cudaStream_t stream,
     const T* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     T* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 }  // namespace cuda
 }  // namespace onnxruntime

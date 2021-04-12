@@ -98,22 +98,22 @@ class AttentionCPUBase : public AttentionBase {
                              T* present,                                   // present state
                              ThreadPool* tp) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
-    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // S' x H
-    const size_t input_chunk_length = static_cast<size_t>(sequence_length * head_size);      // S x H
+    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // S' x H
+    const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
     const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
 
     {
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
       } else {  // no any mask
-        memset(attention_probs, 0, batch_size * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
+        memset(attention_probs, 0, static_cast<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
       }
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
 
       // The cost of Gemm
-      const double cost = static_cast<double>(head_size * sequence_length * all_sequence_length);
+      const double cost = static_cast<double>(head_size) * sequence_length * all_sequence_length;
 
       ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {

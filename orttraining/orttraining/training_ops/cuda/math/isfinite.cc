@@ -26,6 +26,7 @@ Status IsFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
   Tensor& output = *context->Output(0, input.Shape());
   IsFinite(
+      Stream(),
       reinterpret_cast<const CudaTSrc*>(input.Data<TSrc>()),
       output.MutableData<bool>(), input.Shape().Size());
 
@@ -59,7 +60,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // to false if any value in any tensor is non-finite.
   Tensor& output = *context->Output(0, {});
   auto* output_data = reinterpret_cast<ToCudaType<bool>::MappedType*>(output.template MutableData<bool>());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_data, int(true), sizeof(bool)));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_data, int(true), sizeof(bool), Stream()));
 
   std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
   std::vector<int> tensor_sizes(total_tensor_count);
@@ -76,7 +77,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // Check if all values are finite and write true to output.
   // Otherwise, false will be written.
   launch_multi_tensor_functor<1, TFunctor>(
-      2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, output_data);
+      Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, output_data);
 
   return Status::OK();
 }

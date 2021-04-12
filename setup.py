@@ -157,20 +157,18 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
   libs.extend(['libonnxruntime_providers_openvino.so'])
-  # OpenVINO libs
-  libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.2.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   # DNNL & TensorRT EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.dylib'])
   libs.extend(['libonnxruntime_providers_dnnl.dylib'])
@@ -229,14 +227,19 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
+    'onnxruntime.transformers.longformer',
 ]
+
+requirements_file = "requirements.txt"
 
 if '--enable_training' in sys.argv:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
+    requirements_file = "requirements-training.txt"
 
 package_data = {}
 data_files = []
@@ -310,12 +313,12 @@ if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-requirements_path = path.join(getcwd(), "requirements.txt")
+requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
-    requirements_path = path.join(this, "requirements.txt")
+    requirements_path = path.join(this, requirements_file)
 if not path.exists(requirements_path):
-    raise FileNotFoundError("Unable to find 'requirements.txt'")
+    raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
@@ -323,17 +326,20 @@ with open(requirements_path) as f:
 setup(
     name=package_name,
     version=version_number,
-    description='ONNX Runtime Python bindings',
+    description='ONNX Runtime is a runtime accelerator for Machine Learning models',
     long_description=long_description,
     author='Microsoft Corporation',
-    author_email='onnx@microsoft.com',
+    author_email='onnxruntime@microsoft.com',
     cmdclass=cmd_classes,
     license="MIT License",
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,
+    url="https://onnxruntime.ai",
+    download_url='https://github.com/microsoft/onnxruntime/tags',
     data_files=data_files,
     install_requires=install_requires,
+    keywords='onnx machine learning',
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
@@ -341,15 +347,21 @@ setup(
     },
     classifiers=[
         'Development Status :: 5 - Production/Stable',
-        'Environment :: Console',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: MacOS',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7'],
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9'],
     )

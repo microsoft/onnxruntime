@@ -23,6 +23,7 @@ import torch
 import numpy
 import json
 from pathlib import Path
+from packaging import version
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_tester import Gpt2Tester
@@ -104,6 +105,10 @@ def parse_arguments():
 
 
 def main():
+    from transformers import __version__ as transformers_version
+    if version.parse(transformers_version) < version.parse("3.1.0"): # past_key_values name does not exist in 3.0.2 or older
+        raise RuntimeError("This tool requires transformers 3.1.0 or later.")
+
     args = parse_arguments()
     setup_logger(args.verbose)
 

@@ -187,9 +187,9 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
     IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
     auto temp_Y = GetScratchBuffer<float>(output_count);
-    Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
+    Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
     CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
-    Impl_Cast<float, CudaT>(temp_Y.get(), y_data, output_count);
+    Impl_Cast<float, CudaT>(Stream(), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
@@ -239,6 +239,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->template MutableData<int64_t>();
     MaxPoolWithIndex<CudaT>(
+        this->Stream(),
         x_shape,
         TensorShape(y_dims),
         kernel_shape,

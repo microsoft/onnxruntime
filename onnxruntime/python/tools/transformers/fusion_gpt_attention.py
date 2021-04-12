@@ -19,6 +19,7 @@ class FusionGptAttention(Fusion):
     """
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, "Attention", "LayerNormalization", "with past")
+        # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32

@@ -12,7 +12,7 @@ namespace cuda {
 namespace detail {
 size_t compute_reduce_matrix_columns_intermediate_buffer_size(
     int element_size, int num_rows, int num_cols);
-}
+}  // namespace detail
 
 /**
  * Computes the size in bytes of the intermediate buffer needed by reduce_matrix_columns().
@@ -43,19 +43,19 @@ size_t compute_reduction_buffer_size(int size) {
 
 /** Computes the sum of the given elements. */
 template <typename TIn, typename TOut>
-Status reduce_sum(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
+Status reduce_sum(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
 
 /** Computes the sum of the squares of the given elements. */
 template <typename TIn, typename TOut>
-Status reduce_square_sum(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
+Status reduce_square_sum(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
 
 /** Computes the L2 norm of the given elements. */
 template <typename TIn, typename TOut>
-Status reduce_l2_norm(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
+Status reduce_l2_norm(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
 
 /** Computes the mean of the given elements. */
 template <typename TIn, typename TOut>
-Status reduce_mean(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
+Status reduce_mean(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size);
 
 enum class ApplicableMatrixReduction {
   // can use reduce_matrix_rows()
@@ -89,7 +89,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
  * @param reset_initial_output Whether to reset (i.e., zero) the output values first.
  */
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
+Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
 
 /**
  * Reduces the columns in a row-major matrix to a single column containing the sum of each row.
@@ -101,7 +101,7 @@ Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool res
  * @param buffer_size The size of the intermediate buffer in bytes.
  */
 template <typename TIn, typename TOut>
-Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
 
 }  // namespace cuda
 }  // namespace onnxruntime

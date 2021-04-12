@@ -49,10 +49,10 @@ Status IsMatchingTypeAndShape(
     const int32_t element_type,
     const std::vector<int64_t>& expected_shape);
 
-  /**
+/**
    * The configuration for optimizer builder.
    */
-struct OptimizerBuilderConfig{
+struct OptimizerBuilderConfig {
   //The ArgDefs of the weights to optimize.
   std::vector<ArgDef> weight_argdefs;
 
@@ -70,11 +70,11 @@ struct OptimizerBuilderConfig{
   // The per weight optimizer configuration.
   std::vector<OptimizerNodeConfig> opt_configs;
 
-  // (Optional) The flag to force gradient clipping. If planning	
-  // to use the default behavior of each sub-class, should not be set.	
+  // (Optional) The flag to force gradient clipping. If planning
+  // to use the default behavior of each sub-class, should not be set.
   optional<bool> enable_grad_clipping;
 
-  // The initial state for optimizer params	
+  // The initial state for optimizer params
   // shared by all weights.
   NameMLValMap shared_optimizer_states{};
 };

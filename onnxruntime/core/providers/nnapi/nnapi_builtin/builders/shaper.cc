@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 #include "helper.h"
 #include "shaper.h"
@@ -243,7 +242,7 @@ Status Shaper::ReshapeImpl(const std::string& input_name,
                            const std::vector<int32_t>& shape,
                            const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
-  int64_t input_size = Product(input_dimen);
+  uint32_t input_size = Product(input_dimen);
   std::vector<uint32_t> output_dimen(shape.size());
 
   int64_t capacity = 1;

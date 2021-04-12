@@ -8,6 +8,7 @@
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
@@ -29,7 +30,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Send);
-
 
 void Send::SendData(
     OpKernelContext* ctx,
@@ -61,12 +61,16 @@ void Send::SendData(
 
   for (int i = 0; i < num_tensors; ++i) {
     const Tensor* tensor = ctx->Input<Tensor>(i + 2);
+#ifndef NDEBUG
+    CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
+#endif
+
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice));
+    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
 #else
-    CUDA_CALL(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
 #endif
   }
 
@@ -91,6 +95,10 @@ void Send::SendData(
                        static_cast<int>(tag_)};
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#ifndef NDEBUG
+  CheckIfMemoryOnCurrentGpuDevice(info_data.buffer);
+#endif
+
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitSendAndWait(info_data.buffer, info_data.size, info_data.rank);
 #elif defined(USE_MPI)

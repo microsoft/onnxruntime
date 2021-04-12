@@ -11,10 +11,7 @@
 namespace onnxruntime {
 namespace python {
 
-using namespace onnxruntime;
-using namespace onnxruntime::logging;
-
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 struct CustomOpLibrary {
   CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so);
 
@@ -32,7 +29,7 @@ struct CustomOpLibrary {
 
 // Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
 struct PySessionOptions : public SessionOptions {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // `PySessionOptions` has a vector of shared_ptrs to CustomOpLibrary, because so that it can be re-used for all
   // `PyInferenceSession`s using the same `PySessionOptions` and that each `PyInferenceSession` need not construct
   // duplicate CustomOpLibrary instances.
@@ -61,7 +58,9 @@ struct PyInferenceSession {
       sess_ = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
     }
   }
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void AddCustomOpLibraries(const std::vector<std::shared_ptr<CustomOpLibrary>>& custom_op_libraries) {
     if (!custom_op_libraries.empty()) {
       custom_op_libraries_.reserve(custom_op_libraries.size());
@@ -82,7 +81,7 @@ struct PyInferenceSession {
   }
 
  private:
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
   // NOTE: Define this above `sess_` so that this is destructed AFTER the InferenceSession instance -
   // this is so that the custom ops held by the InferenceSession gets destroyed prior to the library getting unloaded
@@ -130,7 +129,8 @@ Environment& GetEnv();
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
                        const std::vector<std::string>& provider_types = {},
-                       const ProviderOptionsVector& provider_options = {});
+                       const ProviderOptionsVector& provider_options = {},
+                       const std::unordered_set<std::string>& disabled_optimizer_names = {});
 
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();

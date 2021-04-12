@@ -96,6 +96,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
+#if USE_ROCM
+                opt.AppendExecutionProvider_ROCM(0);
+#endif
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
@@ -180,11 +183,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] providers = ortEnvInstance.GetAvailableProviders();
 
             Assert.True(providers.Length > 0);
-            Assert.Equal("CPUExecutionProvider", providers[0]);
+            Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
 
 # if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
 #endif
+# if USE_ROCM
+            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"););
+#endif
+
         }
 
         [Fact]
@@ -719,6 +726,71 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
+                { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
+                { "test_max_float64", "node test error"},
+                { "test_min_uint8", "node test error"},
+                { "test_mod_mixed_sign_float64", "node test error"},
+                { "test_einsum_transpose", "node test error"},
+                { "test_momentum", "node test error"},
+                { "test_max_uint16", "node test error"},
+                { "test_resize_downsample_scales_linear_align_corners", "node test error"},
+                { "test_strnormalizer_nostopwords_nochangecase", "node test error"},
+                { "test_cast_STRING_to_FLOAT", "node test error"},
+                { "test_cumsum_2d_negative_axis", "node test error"},
+                { "test_cast_FLOAT16_to_DOUBLE", "node test error"},
+                { "test_adagrad_multiple", "node test error"},
+                { "test_einsum_inner_prod", "node test error"},
+                { "test_clip_default_int8_min", "node test error"},
+                { "test_max_int8", "node test error"},
+                { "test_sequence_insert_at_back", "node test error"},
+                { "test_mod_mixed_sign_int8", "node test error"},
+                { "test_maxunpool_export_with_output_shape", "node test error"},
+                { "test_strnormalizer_export_monday_empty_output", "node test error"},
+                { "test_strnormalizer_export_monday_insensintive_upper_twodim", "ElementType not currently supported"},
+                { "test_clip_default_int8_max", "node test error"},
+                { "test_einsum_sum", "node test error"},
+                { "test_min_int16", "node test error"},
+                { "test_cast_FLOAT_to_DOUBLE", "node test error"},
+                { "test_adagrad", "node test error"},
+                { "test_min_float64", "node test error"},
+                { "test_max_int16", "node test error"},
+                { "test_einsum_batch_diagonal", "node test error"},
+                { "test_sequence_insert_at_front", "node test error"},
+                { "test_cumsum_1d_exclusive", "node test error"},
+                { "test_training_dropout_default", "node test error"},
+                { "test_cast_BFLOAT16_to_FLOAT", "node test error"},
+                { "test_training_dropout", "node test error"},
+                { "test_adam", "node test error"},
+                { "test_training_dropout_mask", "node test error"},
+                { "test_clip_default_int8_inbounds", "node test error"},
+                { "test_eyelike_with_dtype", "node test error"},
+                { "test_cumsum_1d", "node test error"},
+                { "test_conv_with_autopad_same", "node test error"},
+                { "test_cumsum_1d_reverse_exclusive", "node test error"},
+                { "test_cast_FLOAT_to_BFLOAT16", "node test error"},
+                { "test_bitshift_right_uint16", "node test error"},
+                { "test_bitshift_left_uint16", "node test error"},
+                { "test_pow_types_float32_uint64", "node test error"},
+                { "test_cumsum_2d_axis_0", "node test error"},
+                { "test_max_uint8", "node test error"},
+                { "test_strnormalizer_export_monday_casesensintive_nochangecase", "ElementType not currently supported"},
+                { "test_momentum_multiple", "node test error"},
+                { "test_cumsum_1d_reverse", "node test error"},
+                { "test_pow_types_float32_uint32", "node test error"},
+                { "test_if_seq", "node test error"},
+                { "test_resize_downsample_scales_cubic_align_corners", "node test error"},
+                { "test_einsum_batch_matmul", "node test error"},
+                { "test_nesterov_momentum", "node test error"},
+                { "test_cumsum_2d_axis_1", "node test error"},
+                { "test_strnormalizer_export_monday_casesensintive_upper", "node test error"},
+                { "test_min_uint16", "node test error"},
+                { "test_adam_multiple", "node test error"},
+                { "test_loop13_seq", "node test error"},
+                { "test_convtranspose_autopad_same", "node test error"},
+                { "test_training_dropout_default_mask", "node test error"},
+                { "test_min_int8", "node test error"},
+                { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_identity_sequence", "data type not supported"}
             };
 
             // The following models fails on nocontribops win CI
@@ -758,6 +830,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
                 skipModels["GPT2_LM_HEAD"] = "System out of memory";
                 skipModels["GPT2"] = "System out of memory";
+                skipModels["test_GPT2"] = "System out of memory";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";
@@ -950,7 +1023,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             catch (Exception ex)
             {
                 var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                throw new Exception(msg + "\n" + ex.StackTrace);
+                if(ex.Message.Contains("ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions"))
+                {
+                    // If the exception is thrown because the opset version of the test model is
+                    // not supported by ONNXRuntime yet, then ignore the test and proceed.
+                    // ORT allows commits from ONNX master and in such cases we do come across new opsets which are
+                    // not supported in ORT yet. In order to force these tests to run set env var ALLOW_RELEASED_ONNX_OPSET_ONLY=0
+                    output.WriteLine("Skipping the model test as the latest ONNX opset is not supported yet. Error Message: " + msg);
+                }
+                else
+                {
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
             }
         }
 
@@ -1954,6 +2038,34 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+#if USE_ROCM
+        void TestROCMAllocatorInternal(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorROCM, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            {
+                Assert.Equal("Rocm", info_rocm.Name);
+                Assert.Equal(device_id, info_rocm.Id);
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_rocm.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_rocm.GetMemoryType());
+
+                using (var allocator = new OrtAllocator(session, info_rocm))
+                {
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_rocm.Equals(alloc_info));
+
+                    uint size = 1024;
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.Equals(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+#endif
+
+
         [Fact]
         private void TestAllocator()
         {
@@ -1964,12 +2076,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 options.AppendExecutionProvider_CUDA(0);
 #endif
+
+#if USE_ROCM
+                options.AppendExecutionProvider_ROCM(0);
+#endif
+
                 using (var session = new InferenceSession(modelPath, options))
                 {
                     TestCPUAllocatorInternal(session);
 #if USE_CUDA
                     TestCUDAAllocatorInternal(session);
 #endif
+#if USE_ROCM
+                    TestROCMAllocatorInternal(session);
+#endif
+
                 }
             }
         }
@@ -2228,6 +2349,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_ROCM
+            ,"OrtSessionOptionsAppendExecutionProvider_ROCM"
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
@@ -2495,6 +2619,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
+                new SessionOptions())
+            {
+                if(!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+#elif USE_ROCM
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithRocmProvider(deviceId.Value) :
                 new SessionOptions())
             {
                 if(!deviceId.HasValue)

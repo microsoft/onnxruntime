@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 ONNX_CPU_OPERATOR_KERNEL(
     Dropout,
     7,

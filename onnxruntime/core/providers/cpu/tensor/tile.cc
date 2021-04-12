@@ -99,6 +99,43 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
   return Status::OK();
 }
 
+namespace TileOp {
+// Find the first non-1 repeat and check the input shape to the left of that dimension:
+// 1) If the dim values to the left are all 1s (or don't exist), then the tiling logic is essentially copying the input buffer
+// multiple times. The number of times can be computed as the product of the repeat values. (OR)
+// 2) Allow at-most one non-1 dim value to the left (for the batch dimension), in this case, the sub-tensor at each batch index
+// is copied multiple times. This is still faster because it avoids other Tile operator's machinery.
+bool IsTileMemcpy(const TensorShape& input_shape,
+                  const int64_t* repeats,
+                  size_t rank,
+                  /*out*/ bool& is_batched_memcpy,
+                  /*out*/ size_t& num_of_elements_per_batch,
+                  /*out*/ size_t& num_of_copies_per_batch,
+                  /*out*/ size_t& num_of_batch_copies) {
+  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
+    if (repeats[i] != 1) {
+      if (input_shape.SizeToDimension(i) == 1) {
+        num_of_copies_per_batch = 1;
+        for (int64_t j = 0; j <= i; ++j) {
+          num_of_copies_per_batch *= repeats[j];
+        }
+        is_batched_memcpy = false;
+        return true;
+      } else if (i == 1) {  // else check if the previous dim is just the batch dim
+        num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
+        num_of_copies_per_batch = repeats[i];
+        num_of_batch_copies = repeats[0];
+        is_batched_memcpy = true;
+        return true;
+      } else {
+        break;
+      }
+    }
+  }
+  return false;
+}
+}  // namespace TileOp
+
 Status Tile::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
@@ -116,19 +153,84 @@ Status Tile::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
-  auto* repeats = repeats_tensor.template Data<int64_t>();
+  const auto* repeats = repeats_tensor.template Data<int64_t>();
   std::vector<int64_t> output_dims = input_shape.GetDims();
   for (size_t axis = 0; axis < input_rank; axis++) {
     output_dims[axis] *= repeats[axis];
   }
 
-  TensorShape outputShape(output_dims);
-  auto& output_tensor = *ctx->Output(0, outputShape);
+  TensorShape output_shape(output_dims);
+  auto& output_tensor = *ctx->Output(0, output_shape);
 
   // Repeat tensor input can have 0 as a valid value
-  // check if the computed outputshape size is 0 and
+  // check if the computed output_shape size is 0 and
   // return an empty tensor if so.
-  if (outputShape.Size() == 0) {
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  // Repeat tensor has all 1s in it
+  if (output_shape == input_shape) {
+    // TODO: Handle string copies when the kernel eventually supports string type.
+    // For now, it shouldn't throw in the enforce as the kernel doesn't claim string support
+    ORT_ENFORCE(!input_tensor.IsDataType<std::string>(), "Tile doesn't support string type yet");
+    memcpy(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes());
+    return Status::OK();
+  }
+
+  bool is_batched_memcpy = false;
+  size_t num_of_elements_per_batch = 1;
+  size_t num_of_copies_per_batch = 1;
+  size_t num_of_batch_copies = 1;
+  if (TileOp::IsTileMemcpy(input_shape,
+                           repeats,
+                           input_rank,
+                           is_batched_memcpy,
+                           num_of_elements_per_batch,
+                           num_of_copies_per_batch,
+                           num_of_batch_copies)) {
+    // TODO: Handle string copies when the kernel eventually supports string type.
+    // For now, it shouldn't throw in the enforce as the kernel doesn't claim string support
+    ORT_ENFORCE(!input_tensor.IsDataType<std::string>(), "Tile doesn't support string type yet");
+
+    int8_t* output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
+    const int8_t* input_data_casted = reinterpret_cast<const int8_t*>(input_tensor.DataRaw());
+    const void* input_data_raw = input_tensor.DataRaw();
+
+    if (!is_batched_memcpy) {
+      size_t copy_bytes = input_tensor.SizeInBytes();
+      // TODO: Add multi-threading logic if num_of_copies_per_batch is large enough
+      for (size_t i = 0; i < num_of_copies_per_batch; ++i) {
+        memcpy(static_cast<void*>(output_data_casted), input_data_raw, copy_bytes);
+        output_data_casted += copy_bytes;
+      }
+    } else {
+      size_t copy_bytes = num_of_elements_per_batch * input_tensor.DataType()->Size();
+      size_t batch_count = static_cast<size_t>(input_tensor.Shape()[0]);  // The tensor is atleast 1-D- this is safe
+
+      // TODO: Multi-thread if needed
+      for (size_t batch = 0; batch < batch_count; ++batch) {
+        for (size_t i = 0; i < num_of_copies_per_batch; ++i) {
+          memcpy(static_cast<void*>(output_data_casted), static_cast<const void*>(input_data_casted), copy_bytes);
+          output_data_casted += copy_bytes;
+        }
+        input_data_casted += copy_bytes;
+      }
+
+      // Now account for batch dim repeat
+      if (num_of_batch_copies > 1) {
+        // reset some values
+        output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
+        copy_bytes *= num_of_copies_per_batch * batch_count;
+        int8_t* copy_ptr = output_data_casted + copy_bytes;
+
+        for (size_t i = 1; i < num_of_batch_copies; ++i) {
+          memcpy(static_cast<void*>(copy_ptr), static_cast<const void*>(output_data_casted), copy_bytes);
+          copy_ptr += copy_bytes;
+        }
+      }
+    }
+
     return Status::OK();
   }
 

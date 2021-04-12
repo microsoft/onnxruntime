@@ -44,7 +44,7 @@ class CudaKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+    AllocatorPtr allocator = provider_->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
     if (!allocator)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
@@ -59,7 +59,9 @@ class CudaKernel : public OpKernel {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
 
-  const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); };
+  const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
+
+  inline cudaStream_t Stream() const { return static_cast<cudaStream_t>(provider_->GetComputeStream()); }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -94,7 +96,7 @@ class CudaKernel : public OpKernel {
     Status CopyToGpu() {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, op_kernel_->Stream()));
         op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
       }
       return Status::OK();

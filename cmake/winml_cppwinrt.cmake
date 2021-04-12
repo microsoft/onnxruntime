@@ -81,6 +81,7 @@ function(target_cppwinrt
     folder_name          # folder this target will be placed
     midl_options         # defines for the midl compiler
     set_ns_prefix        # set ns_prefix option
+    add_ref              # set additional cppwinrt ref path
 )
     if (MSVC)
         # get sdk include paths for midl
@@ -107,7 +108,9 @@ function(target_cppwinrt
         # Get directory
         get_filename_component(idl_source_directory ${file} DIRECTORY)
 
-        convert_forward_slashes_to_back(${CMAKE_CURRENT_BINARY_DIR} cmake_current_binary_dir_back_slash)
+        if (NOT "${add_ref}" STREQUAL "")
+            convert_forward_slashes_to_back(${add_ref} add_ref)
+        endif()
 
         set(target_outputs ${CMAKE_CURRENT_BINARY_DIR}/${target_name})
         convert_forward_slashes_to_back(${target_outputs}/comp output_dir_back_slash)
@@ -152,7 +155,7 @@ function(target_cppwinrt
                 ${midl_options}
                 ${renamed_idl_fullpath_back_slash}
             COMMAND
-                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
+                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} ${add_ref} -out ${generated_dir_back_slash} -verbose
             COMMAND
                     # copy the generated component files into a temporary directory where headers exclusions will be applied
                     xcopy ${output_dir_back_slash} ${temp_dir_back_slash}\\ /Y /D

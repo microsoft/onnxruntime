@@ -146,11 +146,6 @@
           Pack="true"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\docs\CSharp_API.md"
-          PackagePath="\README.md"
-          Pack="true"
-          Visible="false"
-    />
     <None Include="$(PackageId).targets" 
           PackagePath="\build\$(TargetFramework)"
           Pack="true"

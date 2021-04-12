@@ -33,15 +33,13 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
   PrepareContext pc;
-  auto ret = PrepareCompute(ctx, pc);
-  ORT_RETURN_IF_NOT(ret.IsOK(), ret.ErrorMessage());
+  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, pc));
 
   int64_t max_output_boxes_per_class = 0;
   float iou_threshold = .0f;
   float score_threshold = .0f;
 
-  ret = GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold);
-  ORT_RETURN_IF_NOT(ret.IsOK(), ret.ErrorMessage());
+  ORT_RETURN_IF_ERROR(GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold));
 
   if (0 == pc.num_boxes_ || 0 == max_output_boxes_per_class) {
     ctx->Output(0, {0, 3});
@@ -66,6 +64,7 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
       auto* h_number_selected = static_cast<int*>(h_number_selected_ptr.get());
 
       ORT_RETURN_IF_ERROR(NonMaxSuppressionImpl(
+          Stream(),
           [this](size_t bytes) { return GetScratchBuffer<void>(bytes); },
           pc,
           GetCenterPointBox(),
@@ -120,7 +119,8 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
     concat_sizes_range_gpu.CopyToGpu();
     input_ptr.CopyToGpu();
 
-    ORT_RETURN_IF_ERROR(ConcatImpl(sizeof(int64_t),
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+                                   sizeof(int64_t),
                                    num_elements,
                                    last_dim,
                                    concat_sizes_gpu.GpuPtr(),

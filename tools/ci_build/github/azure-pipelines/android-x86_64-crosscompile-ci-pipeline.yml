@@ -1,31 +1,71 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'macOS-10.15'
-  timeoutInMinutes: 120
+    vmImage: 'macOS-10.14'
+  timeoutInMinutes: 150
   steps:
-    # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
-    # pythonVersion can be updated in Azure pipeline settings
-    # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
-    - task: UsePythonVersion@0
-      displayName: Use Python $(pythonVersion)
-      inputs:
-        versionSpec: $(pythonVersion)
-    - script: brew install coreutils ninja
-      displayName: Install coreutils and ninja
-    - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
-      displayName: CPU EP, Build and Test on Android Emulator
-    - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
-      displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish code coverage report'
-      inputs:
-        artifactName: "coverage_rpt.txt"
-        targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
-        publishLocation: 'pipeline'
-    - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
-      # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
-      displayName: Build Minimal ORT with NNAPI and run tests
+  # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
+  # pythonVersion can be updated in Azure pipeline settings
+  # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
+  - task: UsePythonVersion@0
+    displayName: Use Python $(pythonVersion)
+    inputs:
+      versionSpec: $(pythonVersion)
+
+  - script: brew install coreutils ninja
+    displayName: Install coreutils and ninja
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      python3 tools/ci_build/build.py \
+        --android \
+        --build_dir build \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=x86_64 \
+        --android_api=29 \
+        --skip_submodule_sync \
+        --parallel \
+        --cmake_generator=Ninja \
+        --build_java
+    displayName: CPU EP, Build and Test on Android Emulator
+
+  - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
+    displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish code coverage report'
+    inputs:
+      artifactName: "coverage_rpt.txt"
+      targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+      publishLocation: 'pipeline'
+
+  - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+    # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+    displayName: Build Minimal ORT with NNAPI and run tests
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
 
 - job: Update_Dashboard
   workspace:
@@ -35,26 +75,29 @@ jobs:
   dependsOn: Android_CI
   condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   steps:
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download code coverage report'
-      inputs:
-        artifactName: 'coverage_rpt.txt'
-        targetPath: '$(Build.BinariesDirectory)'
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.x'
-    - task: CmdLine@2
-      inputs:
-        script: |
-          python3 -m pip install mysql-connector-python
-    - task: PythonScript@0
-      displayName: Post Android Code Coverage To DashBoard
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
-        arguments: >
-          --commit_hash=$(Build.SourceVersion)
-          --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-          --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-          --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
-      env:
-        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download code coverage report'
+    inputs:
+      artifactName: 'coverage_rpt.txt'
+      targetPath: '$(Build.BinariesDirectory)'
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        python3 -m pip install mysql-connector-python
+
+  - task: PythonScript@0
+    displayName: Post Android Code Coverage To DashBoard
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
+      arguments: >
+        --commit_hash=$(Build.SourceVersion)
+        --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+        --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
+        --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
+    env:
+      DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)

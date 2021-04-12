@@ -7,7 +7,7 @@ parameters:
   NuPackScript: ''
   ArtifactName: 'drop-osx'
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
-  AllowReleasedOpsetOnly: '1' 
+  AllowReleasedOpsetOnly: '1'
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -23,23 +23,29 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
+    - task: UsePythonVersion@0
+      # Use python 3.8 to avoid build some of the required packages
+      displayName: Use Python 3.8
+      inputs:
+        versionSpec: 3.8
     - task: NodeTool@0
       inputs:
         versionSpec: '12.x'
     - script: |
         set -e
         pushd .
+        brew install libomp ninja
+        export CMAKE_GENERATOR=Ninja
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
         cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
-        make -j$(getconf _NPROCESSORS_ONLN)
-        make install
+        ninja -j $(getconf _NPROCESSORS_ONLN)
+        ninja install
         popd
         export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        brew install libomp
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - task: PublishTestResults@2

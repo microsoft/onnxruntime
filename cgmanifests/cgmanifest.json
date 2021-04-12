@@ -49,15 +49,6 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "e02b83cc5e3c4d30f93dba945162e3aa58d962d6",
-               "repositoryUrl": "https://github.com/jemalloc/jemalloc.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
                "commitHash": "7de7e5d02bf687f971e7668963649728356e0c20",
                "repositoryUrl": "https://github.com/intel/mkl-dnn.git"
             }
@@ -467,6 +458,16 @@
                "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
             },
             "comments": "gtest-ios-framework"
+         }
+      },
+      {
+         "component": {
+           "type": "git",
+           "git": {
+             "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+             "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+           },
+           "comments": "dlpack"
          }
       }
    ],

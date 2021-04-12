@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-#include "../mlasi.h"
+#include "mlasi.h"
 
 void
 MLASCALL

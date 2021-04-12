@@ -15,6 +15,9 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 using namespace onnxruntime::common;
 
@@ -41,6 +44,23 @@ const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
 OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
   return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
 }
+
+#ifdef ENABLE_TRAINING
+Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
+  }
+
+  if (!IsAllocatedExternally(ort_value_idx)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetOutputMLValue() is not allowed for OrtValue index ", ort_value_idx,
+                           " as its allocation kind is not kAllocatedExternally.");
+  }
+
+  all_values_[ort_value_idx] = ort_value;
+  return Status::OK();
+}
+#endif
 
 // TO DO: make it thread safe
 // This method is not thread safe!
@@ -210,6 +230,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_(nullptr),
       planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::IncreaseIteration();
+#endif
 
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
@@ -290,7 +313,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
-
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+            //Record activation memory pattern
+            MemoryInfo::ClearMemoryInfoPerExecution();
+            if (mem_patterns_ && buffer != nullptr) {
+              MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
+              MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
+            }
+#endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
             // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
           }
@@ -403,6 +434,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::SetDynamicAllocation(ort_value_index);
+#endif
   }
 
   return Status::OK();
@@ -421,7 +455,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   if (buffer_num_elements != required_num_elements) {
     // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
     // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
-    auto message = onnxruntime::MakeStringLite(
+    auto message = onnxruntime::MakeString(
         "Shape mismatch attempting to re-use buffer. ",
         reuse_tensor->Shape(), " != ", shape,
         ". Validate usage of dim_value (values should be > 0) and "
@@ -566,6 +600,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+#endif
+
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
@@ -599,6 +637,11 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
   return alloc_plan[ort_value_idx];
+}
+
+bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
+  const auto& allocation_plan = GetAllocationPlan(ort_value_idx);
+  return allocation_plan.alloc_kind == AllocKind::kAllocatedExternally;
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {

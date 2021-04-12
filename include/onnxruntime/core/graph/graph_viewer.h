@@ -42,6 +42,9 @@ class GraphViewer {
   /** Gets the Graph description. */
   const std::string& Description() const noexcept;
 
+  /** Gets the path of the owning model if any **/
+  const Path& ModelPath() const noexcept { return graph_->ModelPath(); }
+
   /**
   Gets a tensor created from an initializer.
   @param tensor_name The tensor name

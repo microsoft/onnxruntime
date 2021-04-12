@@ -22,11 +22,11 @@ __global__ void _FillFromDataPtrKernel(T* output_data, const T* input_data, CUDA
 }
 
 template <typename T>
-void FillFromDataPtr(T* output_data, const T* input_data, int64_t count) {
+void FillFromDataPtr(cudaStream_t stream, T* output_data, const T* input_data, int64_t count) {
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _FillFromDataPtrKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_data, input_data, N);
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output_data, input_data, N);
 }
 
 template <typename T>
@@ -89,10 +89,11 @@ __global__ void ExpandKernel(
   }
 }
 
-Status ExpandByFill(const size_t element_size, const int N, const void* input_data, void* output_data) {
+Status ExpandByFill(cudaStream_t stream, const size_t element_size, const int N, const void* input_data, void* output_data) {
 #define EXPAND_FILL_ON(TYPE)                                   \
   case sizeof(TYPE):                                           \
-    FillFromDataPtr(reinterpret_cast<TYPE*>(output_data),      \
+    FillFromDataPtr(stream,                                    \
+                    reinterpret_cast<TYPE*>(output_data),      \
                     reinterpret_cast<const TYPE*>(input_data), \
                     static_cast<int64_t>(N));                  \
     break
@@ -109,6 +110,7 @@ Status ExpandByFill(const size_t element_size, const int N, const void* input_da
 }
 
 Status Expand2D(
+    cudaStream_t stream,
     const size_t element_size,
     const int N,
     const void* input_data,
@@ -118,7 +120,7 @@ Status Expand2D(
     const int input_view_stride1) {
 #define EXPAND2D_ON(TYPE)                                                                   \
   case sizeof(TYPE):                                                                        \
-    ExpandKernel2D<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                      \
+    ExpandKernel2D<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                      \
         N, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
         fdm_output_stride0, input_view_stride0, input_view_stride1);                        \
     break
@@ -136,6 +138,7 @@ Status Expand2D(
 }
 
 Status ExpandImpl(
+    cudaStream_t stream,
     const size_t element_size,
     const int N_output,
     const int N_input,
@@ -146,12 +149,12 @@ Status ExpandImpl(
   const int rank = static_cast<int>(output_strides.Size());
   if (rank == 1) {
     if (N_input == N_output) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, N_output * element_size, cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, N_output * element_size, cudaMemcpyDeviceToDevice, stream));
     } else {  // N_input == 1
-      return ExpandByFill(element_size, N_output, input_data, output_data);
+      return ExpandByFill(stream, element_size, N_output, input_data, output_data);
     }
   } else if (rank == 2) {
-    return Expand2D(element_size, N_output, input_data, output_data,
+    return Expand2D(stream, element_size, N_output, input_data, output_data,
                     output_strides[0],
                     static_cast<int>(input_strides[0]),
                     static_cast<int>(input_strides[1]));
@@ -162,7 +165,7 @@ Status ExpandImpl(
 #define EXPAND_ON(TYPE)                                                                                      \
   case sizeof(TYPE):                                                                                         \
     ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                           \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                                 \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                                                 \
             rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
             output_strides, input_strides);                                                                  \
     break

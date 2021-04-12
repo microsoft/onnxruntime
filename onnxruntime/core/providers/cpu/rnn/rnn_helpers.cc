@@ -286,39 +286,23 @@ void ComputeGemm(const int M,
       C, ldc, scale_multiplier.data(), nullptr,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  if (weights.is_prepacked_) {
-    MlasGemm(static_cast<size_t>(M),
-             static_cast<size_t>(N),
-             static_cast<size_t>(K),
-             a_data_quant,
-             static_cast<size_t>(K),
-             a_zero_point,
-             weights.buffer_,
-             b_zero_point,
-             b_is_signed,
-             C_buffer,
-             ld_C_buffer,
-             thread_pool,
-             &output_processor);
-    return;
-  }
-#endif
 
-  QGemm(static_cast<size_t>(M),
-        static_cast<size_t>(N),
-        static_cast<size_t>(K),
-        a_data_quant,
-        static_cast<size_t>(K),
-        a_zero_point,
-        static_cast<const uint8_t*>(weights.buffer_),
-        static_cast<size_t>(N),
-        b_zero_point,
-        b_is_signed,
-        C_buffer,
-        ld_C_buffer,
-        thread_pool,
-        &output_processor);
+  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
+  gemm_params.M = static_cast<size_t>(M);
+  gemm_params.N = static_cast<size_t>(N);
+  gemm_params.K = static_cast<size_t>(K);
+  gemm_params.A = a_data_quant;
+  gemm_params.lda = static_cast<size_t>(K);
+  gemm_params.ZeroPointA = a_zero_point;
+  gemm_params.B = weights.buffer_;
+  gemm_params.ldb = static_cast<size_t>(N);
+  gemm_params.ZeroPointB = &b_zero_point;
+  gemm_params.BIsPacked = weights.is_prepacked_;
+  gemm_params.BIsSigned = b_is_signed;
+  gemm_params.C = C_buffer;
+  gemm_params.ldc = ld_C_buffer;
+  gemm_params.OutputProcessor = &output_processor;
+  MlasGemm(&gemm_params, thread_pool);
 }
 
 namespace deepcpu {

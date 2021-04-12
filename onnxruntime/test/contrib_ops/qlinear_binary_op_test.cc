@@ -41,6 +41,7 @@ void RunQLinearMathTestFromFloat(
     const std::vector<float>& a, const std::vector<int64_t>& a_shape_origin, float A_scale, T A_zero_point,
     const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin, float B_scale, T B_zero_point,
     float C_scale, T C_zero_point,
+    bool input_b_is_initializer = false,
     bool all_initializer_scale_zero_point = false) {
   size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
   std::vector<int64_t> a_shape = PrefixingDims(a_shape_origin, number_dims);
@@ -77,7 +78,7 @@ void RunQLinearMathTestFromFloat(
   for (size_t i = 0, sz = b.size(); i < sz; ++i) {
     b_quantized[i] = clampi<T>(static_cast<int>(std::nearbyintf(b[i] / B_scale)) + B_zero_point, qmin, qmax);
   }
-  test.template AddInput<T>("B", b_shape_origin, b_quantized);
+  test.template AddInput<T>("B", b_shape_origin, b_quantized, input_b_is_initializer);
   test.AddInput<float>("B_scale", {}, {B_scale}, all_initializer_scale_zero_point);
   test.template AddInput<T>("B_zero_point", {}, {B_zero_point}, all_initializer_scale_zero_point);
 
@@ -148,11 +149,20 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               A, {63}, A_scale, A_zero_point,
                               B, {63}, B_scale, B_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_scale, A_zero_point,
+                              B, {63}, B_scale, B_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
@@ -174,11 +184,20 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               A, {3, 3, 7}, A_scale, A_zero_point,
                               B, {3, 1, 7}, B_scale, B_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 3, 7}, A_scale, A_zero_point,
+                              B, {3, 1, 7}, B_scale, B_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
@@ -197,11 +216,20 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               B, {1}, B_scale, B_zero_point,
                               A, {63}, A_scale, A_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {1}, B_scale, B_zero_point,
+                              A, {63}, A_scale, A_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
@@ -220,11 +248,20 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               B, {3, 1, 1}, B_scale, B_zero_point,
                               A, {3, 7, 3}, A_scale, A_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              B, {3, 1, 1}, B_scale, B_zero_point,
+                              A, {3, 7, 3}, A_scale, A_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
@@ -243,11 +280,20 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               A, {63}, A_scale, A_zero_point,
                               B, {1}, B_scale, B_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {63}, A_scale, A_zero_point,
+                              B, {1}, B_scale, B_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
@@ -266,11 +312,20 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
                               C_scale, C_zero_point);
 
   // NNAPI will require all the scales and zero points be initializers
+  // We also want to test the case input B is an initializer
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
                               A, {3, 7, 3}, A_scale, A_zero_point,
                               B, {1, 1, 3}, B_scale, B_zero_point,
                               C_scale, C_zero_point,
-                              true);
+                              false /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+                              A, {3, 7, 3}, A_scale, A_zero_point,
+                              B, {1, 1, 3}, B_scale, B_zero_point,
+                              C_scale, C_zero_point,
+                              true /* input_b_is_initializer */,
+                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
@@ -386,7 +441,7 @@ TEST(QLinearBinaryOpTest, MulU8VectorVectorFull) {
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
@@ -394,73 +449,72 @@ TEST(QLinearBinaryOpTest, MulU8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
   std::vector<float> B = {
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-   -0.50f, -1.25f,  0.75f,  0.00f,  2.25f
-  };
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 0.00f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 128;
   float C_scale = 64.0f / 256.0f;
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulU8ScalarVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f };
+  std::vector<float> B = {0.25f};
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 8.0f / 256.0f;
   uint8_t C_zero_point = 100;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
+                              B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulU8ScalarVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 8.0f / 256.0f;
   uint8_t C_zero_point = 100;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
+                              B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorScalarFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f };
+  std::vector<float> B = {0.25f};
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 16.0f / 256.0f;
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulU8VectorScalarBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 16.0f / 256.0f;
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
@@ -474,7 +528,7 @@ TEST(QLinearBinaryOpTest, MulS8VectorVectorFull) {
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorVectorBroadcast) {
@@ -482,73 +536,72 @@ TEST(QLinearBinaryOpTest, MulS8VectorVectorBroadcast) {
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
   std::vector<float> B = {
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-   -0.50f, -1.25f,  0.75f,  1.25f,  2.25f
-  };
+      4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
+      -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -4.00f, 5.00f, 5.50f,
+      -0.50f, -1.25f, 0.75f, 1.25f, 2.25f};
   float B_scale = 8.0f / 256.0f;
   int8_t B_zero_point = 0;
   float C_scale = 16.0f / 256.0f;
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8ScalarVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f };
+  std::vector<float> B = {0.25f};
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
+                              B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8ScalarVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
+                              B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorScalarFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f };
+  std::vector<float> B = {0.25f};
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, MulS8VectorScalarBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  std::vector<float> B = {0.25f, -0.25f, -0.00f};
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearMul", mul_function,
-    A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
+                              A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 }  // namespace test

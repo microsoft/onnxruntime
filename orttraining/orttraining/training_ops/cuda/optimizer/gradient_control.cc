@@ -28,6 +28,11 @@ REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, float)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, float)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, BFloat16)
+REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, BFloat16)
+REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, float)
+#endif
 
 template <typename T>
 Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -37,7 +42,7 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
       zero_gradient.template MutableData<T>(),
       0,
-      zero_gradient.Shape().Size() * sizeof(T)));
+      zero_gradient.Shape().Size() * sizeof(T), Stream()));
 
   return Status::OK();
 }
@@ -70,11 +75,13 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(left_addee_buffer, accumulation_output));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(Stream(), left_addee_buffer, accumulation_output));
       return Status::OK();
     }
   }
+
   InPlaceAccumulatorImpl(
+      Stream(),
       reinterpret_cast<const CudaT*>(left_addee_buffer.template Data<T>()),
       reinterpret_cast<const CudaT_GRAD*>(right_addee_buffer.template Data<T_GRAD>()),
       reinterpret_cast<CudaT*>(accumulation_output.template MutableData<T>()),

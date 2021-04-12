@@ -3,22 +3,25 @@
 
 #pragma once
 #include "core/common/optional.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/rocm/rocm_kernel.h"
+#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 
 namespace onnxruntime {
 namespace rocm {
 
-enum miopenReduceTensorOp_t {
-  MIOPEN_REDUCE_TENSOR_MAX,
-  MIOPEN_REDUCE_TENSOR_MIN,
-  MIOPEN_REDUCE_TENSOR_NORM1,
-  MIOPEN_REDUCE_TENSOR_NORM2,
-  MIOPEN_REDUCE_TENSOR_AVG,
-  MIOPEN_REDUCE_TENSOR_MUL,
-  MIOPEN_REDUCE_TENSOR_ADD
-};
+namespace ReductionOps {
+
+// Implementation that holds the core logic of reduction op processing
+// `input_shape_override` is the input shape for compute purposes (if provided)
+
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
+Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+                     const Tensor& input, const std::vector<int64_t>& axes,
+                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                     bool fast_reduction, const TensorShape* input_shape_override = nullptr);
+
+}  // namespace ReductionOps
 
 // Holds some metadata that will be used during actual reduction op compute time
 struct PrepareReduceMetadata {
@@ -30,23 +33,7 @@ struct PrepareReduceMetadata {
   std::vector<int64_t> squeezed_output_dims;
   std::vector<int64_t> input_dims_miopen;
   std::vector<int64_t> output_dims_miopen;
-  int64_t rank;
-  int64_t stride;
-  bool contiguous_axes;
 };
-
-Status PrepareForReduce(const Tensor* X,
-                        bool keepdims,
-                        const std::vector<int64_t>& axes,
-                        PrepareReduceMetadata& prepare_reduce_metadata,
-                        const TensorShape* input_shape_override = nullptr);
-
-template <typename T>
-Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
-                         /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
-                         const std::vector<int64_t>& axes,
-                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
-                         const TensorShape* input_shape_override = nullptr);
 
 template <bool allow_multi_axes>
 class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes> {
@@ -59,23 +46,29 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
         calculate_log_(false),
         calculate_sqt_(false),
         log_sum_exp_(false),
-        fast_reduction_(false) {}
+        fast_reduction_(false) {
+    // We need to cast away the const as PerThreadMiopenHandle() is currently a non-const method
+    // TODO: Clean up the ROCMExecutionProvider interface to avoid this
+    rocm_ep_ = const_cast<ROCMExecutionProvider*>(static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider()));
+  }
 
-  template <typename T>
+  // Only Max Min need to set ReduceTensorIndices MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES as per miopen library manual
+  // Only Max Min will have indices output, need to set the indices to nullptr for other ops
+  template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImpl(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
   // Used by ReduceSumTraining which will have axes as input
-  template <typename T>
+  template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
-  template <typename T, typename OutT>
+  template <typename T, typename OutT, miopenReduceTensorIndices_t ReduceTensorIndices>
   Status ReduceKernelShared(
       const T* X,
       const TensorShape& input_shape,
       OutT* Y,
       const TensorShape& output_shape,
       miopenReduceTensorOp_t miopen_reduce_op,
-      std::vector<int64_t> output_dims) const;
+      std::vector<int64_t>& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
@@ -85,8 +78,11 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
   bool calculate_sqt_;
   bool log_sum_exp_;
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
-  // Those effecient kernels are defined/implemented in reduction_functions.h/.cu.
+  // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
   bool fast_reduction_;
+
+  // We need to access to the ROCM EP instance to get the miopen handle
+  ROCMExecutionProvider* rocm_ep_;
 };
 
 template <typename T>
@@ -95,7 +91,7 @@ class ArgMax final : public ReduceKernel<false> {
   ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -105,7 +101,7 @@ class ArgMin final : public ReduceKernel<false> {
   ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
   }
 };
 
@@ -115,7 +111,8 @@ class ReduceL1 final : public ReduceKernel<true> {
   ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM1);
+    //return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM1);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOpen does not yet support reduce norm1.");
   }
 };
 
@@ -125,7 +122,8 @@ class ReduceL2 final : public ReduceKernel<true> {
   ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM2);
+    //return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM2);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOpen does not yet support reduce norm2.");
   }
 };
 
@@ -215,6 +213,58 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_ADD);
   }
+};
+
+Status PrepareForReduce(const Tensor* X,
+                        bool keepdims,
+                        const std::vector<int64_t>& axes,
+                        PrepareReduceMetadata& prepare_reduce_metadata,
+                        const TensorShape* input_shape_override = nullptr);
+
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
+Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+                         /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
+                         const std::vector<int64_t>& axes,
+                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         const TensorShape* input_shape_override = nullptr);
+
+// ROCM's reduction descriptor miopenReduceTensorDescriptor_t is a pointer so
+// it's safer to wrap it with automatically memory deleter as MiopenReduceDescriptor.
+// An implicit caster from MiopenReduceDescriptor to miopenReduceTensorDescriptor_t
+// is implemented below, so ROCM can seamlessly work.
+class MiopenReduceDescriptor final {
+ public:
+  MiopenReduceDescriptor() : desc_(nullptr) {
+  }
+
+  ~MiopenReduceDescriptor() {
+    if (desc_ != nullptr) {
+      miopenDestroyReduceTensorDescriptor(desc_);
+      desc_ = nullptr;
+    }
+  }
+
+  MiopenReduceDescriptor(const MiopenReduceDescriptor&) = delete;
+  MiopenReduceDescriptor& operator=(const MiopenReduceDescriptor&) = delete;
+
+  Status Set(miopenReduceTensorOp_t op, miopenDataType_t type, miopenReduceTensorIndices_t indices) {
+    if (!desc_)
+      MIOPEN_RETURN_IF_ERROR(miopenCreateReduceTensorDescriptor(&desc_));
+
+    MIOPEN_RETURN_IF_ERROR(miopenSetReduceTensorDescriptor(
+        desc_,
+        op,
+        type,
+        MIOPEN_PROPAGATE_NAN,
+        indices,
+        MIOPEN_32BIT_INDICES));  // currently only the 32-bit (unsigned int) type is supported.
+    return Status::OK();
+  }
+
+  operator miopenReduceTensorDescriptor_t() const { return desc_; }
+
+ private:
+  miopenReduceTensorDescriptor_t desc_;
 };
 
 }  // namespace rocm

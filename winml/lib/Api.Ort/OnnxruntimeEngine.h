@@ -111,10 +111,13 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
+  (_In_  _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t* num_threads) override;
+
+  STDMETHOD(GetNamedDimensionOverrides)
+  (wfc::IMapView<winrt::hstring, uint32_t>& overrides) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
@@ -136,8 +139,10 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) override;
   STDMETHOD(CreateModel)
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
+  STDMETHOD(CreateEmptyModel)
+  (_In_ int64_t opset, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEngineBuilder)
-  (IEngineBuilder** engine_builder) override;
+  (_Outptr_ IEngineBuilder** engine_builder) override;
   STDMETHOD(EnableDebugOutput)
   (bool is_enabled) override;
   STDMETHOD(CreateCustomRegistry)
@@ -148,7 +153,16 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   HRESULT EnsureEnvironment();
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ort_env);
 
- private:
+  STDMETHOD(CreateTensorDescriptorInfo)
+  (_In_ winml::TensorKind kind, _In_ int64_t* dims, _In_ size_t num_dims, _Out_ IDescriptorInfo** info) override;
+
+  STDMETHOD(CreateSequenceDescriptorInfo)
+  (_Out_ IDescriptorInfo** info) override;
+
+  STDMETHOD(CreateMapDescriptorInfo)
+  (_Out_ IDescriptorInfo** info) override;
+
+private:
   const OrtApi* ort_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
   std::shared_ptr<OnnxruntimeEnvironment> environment_;

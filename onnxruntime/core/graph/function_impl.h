@@ -16,10 +16,17 @@ namespace onnxruntime {
 // Function representation class.
 class FunctionImpl final : public Function {
  public:
+  // This constructor is used during subgraph fusion in
+  // graph partitioning phase. This constructor takes the nodes
+  // which need to be fused and creates a function body for the fused node.
   FunctionImpl(const onnxruntime::Graph& graph,
                const IndexedSubGraph& nodes_to_fuse,
                const logging::Logger& logger);
 
+  // This constructor is used during function body initialization for
+  // a Function Op. This takes in a FunctionProto and constructs function body
+  // from it. The function body initialization happens during model load in graph resolve
+  // phase.
   FunctionImpl(const onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,

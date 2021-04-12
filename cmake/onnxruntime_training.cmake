@@ -13,7 +13,9 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
-)
+    "${ORTTRAINING_SOURCE_DIR}/core/agent/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
+    )
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -57,7 +59,8 @@ add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES
 
 onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 
-target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/external/json PUBLIC ${onnxruntime_graph_header})
+target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+target_link_libraries(onnxruntime_training_runner PRIVATE nlohmann_json::nlohmann_json)
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
@@ -88,7 +91,7 @@ file(GLOB_RECURSE training_mnist_src
     "${ORTTRAINING_SOURCE_DIR}/models/mnist/mnist_data_provider.cc"
     "${ORTTRAINING_SOURCE_DIR}/models/mnist/main.cc"
 )
-add_executable(onnxruntime_training_mnist ${training_mnist_src})
+onnxruntime_add_executable(onnxruntime_training_mnist ${training_mnist_src})
 onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
@@ -128,7 +131,7 @@ file(GLOB_RECURSE training_squeezene_src
     "${ORTTRAINING_SOURCE_DIR}/models/squeezenet/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/squeezenet/*.cc"
 )
-add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
+onnxruntime_add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
 onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 if(UNIX AND NOT APPLE)
@@ -143,7 +146,7 @@ file(GLOB_RECURSE training_bert_src
     "${ORTTRAINING_SOURCE_DIR}/models/bert/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/bert/*.cc"
 )
-add_executable(onnxruntime_training_bert ${training_bert_src})
+onnxruntime_add_executable(onnxruntime_training_bert ${training_bert_src})
 
 if(UNIX AND NOT APPLE)
   if (HAS_NO_MAYBE_UNINITIALIZED)
@@ -162,7 +165,7 @@ file(GLOB_RECURSE training_pipeline_poc_src
     "${ORTTRAINING_SOURCE_DIR}/models/pipeline_poc/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/pipeline_poc/*.cc"
 )
-add_executable(onnxruntime_training_pipeline_poc ${training_pipeline_poc_src})
+onnxruntime_add_executable(onnxruntime_training_pipeline_poc ${training_pipeline_poc_src})
 
 if(UNIX AND NOT APPLE)
   if (HAS_NO_MAYBE_UNINITIALIZED)
@@ -181,7 +184,7 @@ file(GLOB_RECURSE training_gpt2_src
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.cc"
 )
-add_executable(onnxruntime_training_gpt2 ${training_gpt2_src})
+onnxruntime_add_executable(onnxruntime_training_gpt2 ${training_gpt2_src})
 if(UNIX AND NOT APPLE)
   if (HAS_NO_MAYBE_UNINITIALIZED)
     target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")

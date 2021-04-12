@@ -11,10 +11,10 @@
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/pipeline.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
-#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -120,8 +120,8 @@ class TrainingRunner {
     VectorString histogram_names;
     VectorString norm_names;
 
-    //Default value is -1.0f. When cuda_mem_limit_in_gb < 0, ORT can use all cuda memory available.
-    float cuda_mem_limit_in_gb = -1.0f;
+    //Default value is -1.0f. When gpu_mem_limit_in_gb < 0, ORT can use all cuda memory available.
+    float gpu_mem_limit_in_gb = -1.0f;
 
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0;

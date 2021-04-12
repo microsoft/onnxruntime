@@ -14,7 +14,7 @@ parameters:
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
-  AgentPool: 'Win-CPU-2019'
+  AgentPool: 'Win-CPU-2021'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
@@ -93,6 +93,7 @@ jobs:
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
        python setup.py bdist_wheel
+       python -m pip uninstall -y onnx -qq
        Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
@@ -127,7 +128,6 @@ jobs:
          @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
         displayName: 'Set Configuration variable'
 
-    - template: set-test-data-variables-step.yml
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: NuGetToolInstaller@0
@@ -265,9 +265,10 @@ jobs:
         displayName: 'Unzip package to test'
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
+        parameters :
+          msbuildPlatform: ${{ parameters.sln_platform }}
 
     - template: component-governance-component-detection-steps.yml
       parameters :

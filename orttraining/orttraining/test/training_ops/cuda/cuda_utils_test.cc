@@ -31,7 +31,7 @@ void TestFillCorrectness(size_t num_elements, TElement value) {
   std::unique_ptr<TElement, CudaDeviceMemoryDeleter> buffer{
       reinterpret_cast<TElement*>(raw_buffer)};
 
-  Fill<TElement>(buffer.get(), value, num_elements);
+  Fill<TElement>(nullptr, buffer.get(), value, num_elements);
 
   auto cpu_buffer = onnxruntime::make_unique<TElement[]>(num_elements);
   CUDA_CALL_THROW(cudaMemcpy(cpu_buffer.get(), buffer.get(), num_elements * sizeof(TElement), cudaMemcpyKind::cudaMemcpyDeviceToHost));

@@ -25,7 +25,10 @@ limitations under the License.
 #include <thrust/execution_policy.h>
 
 #include <cub/cub.cuh>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
@@ -225,7 +228,8 @@ __global__ void NormalizeOutput(const int num_elements, const int* original, int
   }
 }
 
-Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
+Status NmsGpu(cudaStream_t stream,
+              std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
               const int64_t center_point_box,
               const float* d_sorted_boxes_float_ptr,
               const int num_boxes,
@@ -246,7 +250,7 @@ Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
   auto* d_nms_mask = static_cast<int*>(d_nms_mask_ptr.get());
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(max_nms_mask_size) / GridDim::maxThreadsPerBlock));
-  SetZero<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(max_nms_mask_size, d_nms_mask);
+  SetZero<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(max_nms_mask_size, d_nms_mask);
 
   int* d_delete_mask = d_nms_mask;
   int* h_selected_count = h_nkeep;
@@ -261,7 +265,7 @@ Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
   thread_block.x = kNmsBlockDim;
   thread_block.y = kNmsBlockDim;
   thread_block.z = 1;
-  NMSKernel<<<block_dim, thread_block>>>(center_point_box,
+  NMSKernel<<<block_dim, thread_block, 0, stream>>>(center_point_box,
                                          d_sorted_boxes,
                                          num_boxes,
                                          iou_threshold,
@@ -274,9 +278,9 @@ Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
   auto* d_indices = static_cast<int*>(d_indices_ptr.get());
 
   blocksPerGrid = (int)(ceil(static_cast<float>(num_boxes) / GridDim::maxThreadsPerBlock));
-  Iota<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_boxes, 0, d_indices);
+  Iota<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_boxes, 0, d_indices);
 
-  NMSReduce<<<1, 1024, bit_mask_len * sizeof(int)>>>(d_delete_mask, bit_mask_len, num_boxes, max_boxes, d_selected_boxes);
+  NMSReduce<<<1, 1024, bit_mask_len * sizeof(int), stream>>>(d_delete_mask, bit_mask_len, num_boxes, max_boxes, d_selected_boxes);
 
   size_t flagged_buffer_size = 0;
   CUDA_RETURN_IF_ERROR(cub::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
@@ -285,7 +289,8 @@ Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
                                                   static_cast<char*>(nullptr),  // selection flag
                                                   static_cast<int*>(nullptr),   // selected items
                                                   static_cast<int*>(nullptr),   // num_selected
-                                                  num_boxes));
+                                                  num_boxes,
+                                                  stream));
 
   IAllocatorUniquePtr<void> d_cub_scratch_buffer_ptr{allocator(flagged_buffer_size)};
   auto* d_cub_scratch_buffer = static_cast<uint8_t*>(d_cub_scratch_buffer_ptr.get());
@@ -298,8 +303,10 @@ Status NmsGpu(std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
       d_indices,           // input
       d_selected_boxes,    // selection flag
       d_selected_indices,  // selected items
-      d_num_selected, num_boxes));
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(h_selected_count, d_num_selected, sizeof(int), cudaMemcpyDeviceToHost));
+      d_num_selected, num_boxes, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(h_selected_count, d_num_selected, sizeof(int), cudaMemcpyDeviceToHost, stream));
+  // cudaStreamSynchronize is needed since the value of h_selected_count will be used by host after this function.
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
   return Status::OK();
 }
@@ -317,6 +324,7 @@ struct DeviceGreaterThan {
 }  // namespace
 
 Status NonMaxSuppressionImpl(
+    cudaStream_t stream,
     std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
     const PrepareContext& pc,
     const int64_t center_point_box,
@@ -343,8 +351,8 @@ Status NonMaxSuppressionImpl(
       static_cast<int*>(nullptr),    // input indices
       static_cast<int*>(nullptr),    // sorted indices
       num_boxes,                     // num items
-      0, 8 * sizeof(float)           // sort all bits
-      ));
+      0, 8 * sizeof(float),           // sort all bits
+      stream));
 
   // allocate temporary memory
   IAllocatorUniquePtr<void> d_cub_sort_buffer_ptr{allocator(cub_sort_temp_storage_bytes)};
@@ -362,7 +370,7 @@ Status NonMaxSuppressionImpl(
 
   // create sequense of indices
   int blocksPerGrid = (int)(ceil(static_cast<float>(num_boxes) / GridDim::maxThreadsPerBlock));
-  Iota<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_boxes, 0, d_indices);
+  Iota<int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_boxes, 0, d_indices);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   // sort scores
@@ -375,23 +383,25 @@ Status NonMaxSuppressionImpl(
       d_sorted_indices,
       num_boxes,
       0,
-      8 * sizeof(float)  // sort all bits
-      ));
+      8 * sizeof(float),  // sort all bits
+      stream));
 
   // pick sorted scores
   const Box* original_boxes = reinterpret_cast<const Box*>(boxes_data);
   Box* sorted_boxes = reinterpret_cast<Box*>(d_sorted_boxes);
-  IndexMultiSelect<int, Box><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_boxes, d_sorted_indices, original_boxes, sorted_boxes);
+  IndexMultiSelect<int, Box><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_boxes, d_sorted_indices, original_boxes, sorted_boxes);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   // STEP 2. filter boxes by scores
   int limited_num_boxes = num_boxes;
   if (pc.score_threshold_ != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     thrust::device_ptr<float> sorted_scores_device_ptr(d_sorted_scores);
     limited_num_boxes = thrust::count_if(
         sorted_scores_device_ptr,
         sorted_scores_device_ptr + num_boxes,
         DeviceGreaterThan(score_threshold));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(0));
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (limited_num_boxes == 0) {
@@ -401,7 +411,8 @@ Status NonMaxSuppressionImpl(
   }
 
   // STEP 3. launch NMS kernels
-  ORT_RETURN_IF_ERROR(NmsGpu(allocator,
+  ORT_RETURN_IF_ERROR(NmsGpu(stream,
+                             allocator,
                              center_point_box,
                              d_sorted_boxes,
                              limited_num_boxes,
@@ -420,9 +431,9 @@ Status NonMaxSuppressionImpl(
     IAllocatorUniquePtr<void> d_normalized_output_indices_ptr{allocator(num_to_keep * 3 * sizeof(int64_t))};
     auto* d_normalized_output_indices = static_cast<int64_t*>(d_normalized_output_indices_ptr.get());
 
-    int blocksPerGrid = (int)(ceil(static_cast<float>(num_to_keep) / GridDim::maxThreadsPerBlock));
-    IndexMultiSelect<int, int><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_to_keep, d_selected_indices, d_sorted_indices, d_output_indices);
-    NormalizeOutput<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_to_keep, d_output_indices, d_normalized_output_indices, batch_index, class_index);
+    blocksPerGrid = (int)(ceil(static_cast<float>(num_to_keep) / GridDim::maxThreadsPerBlock));
+    IndexMultiSelect<int, int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_to_keep, d_selected_indices, d_sorted_indices, d_output_indices);
+    NormalizeOutput<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_to_keep, d_output_indices, d_normalized_output_indices, batch_index, class_index);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     selected_indices = std::move(d_normalized_output_indices_ptr);

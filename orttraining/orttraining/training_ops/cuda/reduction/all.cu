@@ -6,7 +6,9 @@
 #include <thrust/logical.h>
 #include <thrust/functional.h>
 #include <thrust/execution_policy.h>
-
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
@@ -19,13 +21,13 @@ __global__ void assign_false(bool* ptr) {
 }
 
 template<>
-void LaunchAllKernel(const bool* data, const int size, bool* output) {
+void LaunchAllKernel(cudaStream_t stream, const bool* data, const int size, bool* output) {
   if(thrust::all_of(thrust::device, data, data + size, thrust::identity<bool>())) {
-    assign_true<<<1, 1, 0>>>(output);
+    assign_true<<<1, 1, 0, stream>>>(output);
   }
   else
   {
-    assign_false<<<1, 1, 0>>>(output);
+    assign_false<<<1, 1, 0, stream>>>(output);
   }
 }
 

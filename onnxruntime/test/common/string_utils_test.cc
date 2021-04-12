@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
+#include "core/common/parse_string.h"
 
 #include "gtest/gtest.h"
 
@@ -12,29 +13,26 @@ namespace {
 template <typename T>
 void TestSuccessfulParse(const std::string& input, const T& expected_value) {
   T value;
-  ASSERT_TRUE(TryParse(input, value));
+  ASSERT_TRUE(TryParseStringWithClassicLocale(input, value));
   EXPECT_EQ(value, expected_value);
 }
 
 template <typename T>
 void TestFailedParse(const std::string& input) {
   T value;
-  EXPECT_FALSE(TryParse(input, value));
+  EXPECT_FALSE(TryParseStringWithClassicLocale(input, value));
 }
 }  // namespace
 
-TEST(StringUtilsTest, TryParse) {
+TEST(StringUtilsTest, TryParseStringWithClassicLocale) {
   TestSuccessfulParse("-1", -1);
   TestSuccessfulParse("42", 42u);
   TestSuccessfulParse("2.5", 2.5f);
-  TestSuccessfulParse("1", true);
-  TestSuccessfulParse("0", false);
 
   // out of range
   TestFailedParse<int16_t>("32768");
   TestFailedParse<uint32_t>("-1");
   TestFailedParse<float>("1e100");
-  TestFailedParse<bool>("2");
   // invalid representation
   TestFailedParse<int32_t>("1.2");
   TestFailedParse<int32_t>("one");
@@ -43,10 +41,19 @@ TEST(StringUtilsTest, TryParse) {
   TestFailedParse<int32_t>("1 ");
 }
 
-TEST(StringUtilsTest, TryParseString) {
+TEST(StringUtilsTest, TryParseStringAsString) {
   // when parsing a string as a string, allow leading and trailing whitespace
   const std::string s = "  this is a string! ";
   TestSuccessfulParse(s, s);
+}
+
+TEST(StringUtilsTest, TryParseStringAsBool) {
+  TestSuccessfulParse("True", true);
+  TestSuccessfulParse("1", true);
+  TestSuccessfulParse("False", false);
+  TestSuccessfulParse("0", false);
+
+  TestFailedParse<bool>("2");
 }
 
 namespace {
@@ -73,12 +80,12 @@ std::istream& operator>>(std::istream& is, S& s) {
 }
 }  // namespace
 
-TEST(StringUtilsTest, MakeStringAndTryParseCustomType) {
+TEST(StringUtilsTest, MakeStringAndTryParseStringWithCustomType) {
   S s;
   s.i = 42;
-  const auto str = MakeString(s);
+  const auto str = MakeStringWithClassicLocale(s);
   S parsed_s;
-  ASSERT_TRUE(TryParse(str, parsed_s));
+  ASSERT_TRUE(TryParseStringWithClassicLocale(str, parsed_s));
   ASSERT_EQ(parsed_s, s);
 }
 

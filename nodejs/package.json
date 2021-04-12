@@ -1,35 +1,4 @@
 {
-  "name": "onnxruntime",
-  "description": "Node.js binding of ONNXRuntime",
-  "version": "1.6.0",
-  "main": "./lib/index.js",
-  "types": "./types/lib/index.d.ts",
-  "scripts": {
-    "install": "prebuild-install -r napi || (tsc && node ./script/build)",
-    "build": "tsc && node ./script/build",
-    "buildd": "tsc && node ./script/build --config=Debug",
-    "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
-    "rebuild": "tsc && node ./script/build --rebuild",
-    "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
-    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo",
-    "test": "mocha ./test/test-main",
-    "lint": "eslint . --ext .ts",
-    "prepack": "node ./script/pack-prebuild",
-    "format": "clang-format --glob=\"{{lib,test,script}/**/*.ts,src/**/*.{cc,h}}\" --style=file -i"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Microsoft/onnxruntime.git"
-  },
-  "keywords": [
-    "ONNX",
-    "ONNX Runtime"
-  ],
-  "os": [
-    "win32",
-    "darwin",
-    "linux"
-  ],
   "binary": {
     "module_path": "./bin",
     "host": "https://onnxruntimetestdata.blob.core.windows.net/onnxruntime-node-prebuild/",
@@ -37,36 +6,67 @@
       3
     ]
   },
-  "author": "fs-eire",
   "license": "MIT",
+  "name": "onnxruntime",
+  "repository": {
+    "url": "https://github.com/Microsoft/onnxruntime.git",
+    "type": "git"
+  },
+  "author": "fs-eire",
+  "version": "1.7.0",
+  "dependencies": {
+    "prebuild-install": "^6.0.0"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts",
+    "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
+    "format": "clang-format --glob=\"{{lib,test,script}/**/*.ts,src/**/*.{cc,h}}\" --style=file -i",
+    "rebuild": "tsc && node ./script/build --rebuild",
+    "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
+    "buildd": "tsc && node ./script/build --config=Debug",
+    "build": "tsc && node ./script/build",
+    "install": "prebuild-install -r napi || (tsc && node ./script/build)",
+    "test": "mocha ./test/test-main",
+    "prepack": "node ./script/pack-prebuild",
+    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
+  },
+  "keywords": [
+    "ONNX",
+    "ONNX Runtime"
+  ],
   "devDependencies": {
-    "@types/fs-extra": "^8.1.0",
+    "@types/fs-extra": "^9.0.6",
     "@types/klaw-sync": "^6.0.0",
-    "@types/minimist": "1.2.0",
-    "@types/mocha": "^7.0.2",
-    "@types/tar-stream": "^2.1.0",
-    "@typescript-eslint/eslint-plugin": "^2.29.0",
-    "@typescript-eslint/parser": "^2.29.0",
-    "clang-format": "^1.4.0",
+    "@types/minimist": "1.2.1",
+    "@types/mocha": "^8.2.0",
+    "@types/tar-stream": "^2.2.0",
+    "@typescript-eslint/eslint-plugin": "^4.14.2",
+    "@typescript-eslint/parser": "^4.14.2",
+    "clang-format": "^1.5.0",
     "cmake-js": "^6.1.0",
-    "eslint": "^6.8.0",
-    "eslint-plugin-import": "^2.20.2",
-    "eslint-plugin-jsdoc": "^24.0.0",
-    "eslint-plugin-prefer-arrow": "^1.2.0",
-    "fs-extra": "^9.0.0",
-    "globby": "^11.0.0",
+    "eslint": "^7.19.0",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-jsdoc": "^31.6.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "fs-extra": "^9.1.0",
+    "globby": "^11.0.2",
     "jsonc": "^2.0.0",
     "klaw-sync": "^6.0.0",
     "minimist": "^1.2.5",
-    "mocha": "^7.1.1",
-    "node-addon-api": "^3.0.0",
+    "mocha": "^8.2.1",
+    "node-addon-api": "^3.1.0",
     "node-pre-gyp-github": "^1.4.3",
     "onnx-proto": "^4.0.4",
-    "tar-stream": "^2.1.4",
-    "typedoc": "^0.17.3",
-    "typescript": "^3.8.3"
+    "tar-stream": "^2.2.0",
+    "typedoc": "^0.20.25",
+    "typescript": "^4.1.3"
   },
-  "dependencies": {
-    "prebuild-install": "^5.3.5"
-  }
+  "main": "./lib/index.js",
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "types": "./types/lib/index.d.ts",
+  "description": "Node.js binding of ONNXRuntime"
 }

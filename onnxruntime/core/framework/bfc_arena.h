@@ -20,14 +20,16 @@ limitations under the License.
 #include <mutex>
 #include <sstream>
 
+#include "onnxruntime_config.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/safeint.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
 #include "core/framework/arena_extend_strategy.h"
-#include "core/common/safeint.h"
-#include "onnxruntime_config.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>

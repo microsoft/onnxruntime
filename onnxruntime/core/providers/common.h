@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 
@@ -88,6 +91,9 @@ inline Status ComputePad(const int64_t in_dim,
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                       "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
 
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
+      // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
+      // is retained as is
       int64_t legacy_target_size = (in_dim + stride - 1) / stride;
       int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
       // make sure padding is symmetric
@@ -127,6 +133,17 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
       ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
   out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
+}
+
+template <class Map, class Key>
+inline bool Contains(const Map& map, const Key& key) {
+  return map.find(key) != map.end();
+}
+
+// Note: This helper function will not have overflow protection
+template <template <typename...> class Container, typename T>
+T Product(const Container<T>& c) {
+  return accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

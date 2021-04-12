@@ -132,7 +132,7 @@ class PosixThread : public EnvThread {
                        new Param{name_prefix, index, start_address, param, thread_options});
     if (s != 0)
       ORT_THROW("pthread_create failed");
-#if !defined(__APPLE__) && !defined(__ANDROID__)
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
     if (!thread_options.affinity.empty()) {
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
@@ -255,9 +255,9 @@ class PosixEnv : public Env {
 
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(length <= buffer.size());
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+    ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {
@@ -300,8 +300,8 @@ class PosixEnv : public Env {
 
   Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                            MappedMemoryPtr& mapped_memory) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {
@@ -377,8 +377,7 @@ class PosixEnv : public Env {
   common::Status DeleteFolder(const PathString& path) const override {
     const auto result = nftw(
         path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
-    ORT_RETURN_IF_NOT(
-        result == 0, "DeleteFolder(): nftw() failed with error: ", result);
+    ORT_RETURN_IF_NOT(result == 0, "DeleteFolder(): nftw() failed with error: ", result);
     return Status::OK();
   }
 

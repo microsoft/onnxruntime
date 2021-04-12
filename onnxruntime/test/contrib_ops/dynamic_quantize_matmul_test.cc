@@ -81,7 +81,6 @@ TEST(DynamicQuantizeMatMul, Int8_test) {
 }
 
 TEST(DynamicQuantizeMatMul, Int8_test_bias) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
@@ -99,7 +98,6 @@ TEST(DynamicQuantizeMatMul, Int8_test_bias) {
                                     true /*is_matrix_b_constant*/,
                                     false, /*has_zp*/
                                     true /*has_bias*/);
-#endif
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test) {

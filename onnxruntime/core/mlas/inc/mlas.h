@@ -17,6 +17,7 @@ Abstract:
 
 #pragma once
 
+#include <cstddef>
 #include <cstdlib>
 #include <cstdint>
 
@@ -34,7 +35,7 @@ Abstract:
 // Define the target architecture.
 //
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
 #if defined(_M_IX86) || defined(__i386__)
@@ -46,11 +47,19 @@ Abstract:
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(__arm__)
+#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
+#endif
+#if defined(__wasm__)
+#define MLAS_TARGET_WASM
+#if defined(__wasm_simd128__)
+#define MLAS_TARGET_WASM_SIMD
+#else
+#define MLAS_TARGET_WASM_SCALAR
+#endif
 #endif
 
 //
@@ -59,14 +68,6 @@ Abstract:
 
 #if defined(MLAS_TARGET_AMD64)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
-#endif
-
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-#define MLAS_SUPPORTS_GEMM_U8X8
-#endif
-
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
 #endif
 
 //
@@ -277,41 +278,29 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
-    );
+struct MLAS_GEMM_U8X8_PARAMETERS {
+    size_t M = 0;
+    size_t N = 0;
+    size_t K = 0;
+    const uint8_t* A = nullptr;
+    size_t lda = 0;
+    uint8_t ZeroPointA = 0;
+    const void* B = 0;
+    size_t ldb = 0;
+    const uint8_t* ZeroPointB = nullptr;
+    bool BIsPacked = false;
+    bool BIsSigned = false;
+    bool PerColumnZeroPoints = false;
+    int32_t* C = nullptr;
+    size_t ldc = 0;
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
+};
 
 void
 MLASCALL
 MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const void* PackedB,
-    uint8_t offb,
-    bool BIsSigned,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -363,6 +352,9 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+#if defined(MLAS_TARGET_WASM)
+    MlasConvAlgorithmDepthwise,
+#endif
 };
 
 struct MLAS_CONV_PARAMETERS {
@@ -382,7 +374,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t OutputSize;
     size_t K;
     MLAS_CONV_ALGORITHM Algorithm;
-    int32_t ThreadCount;
+    ptrdiff_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -426,14 +418,14 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename FilterType>
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* Input,
+    const uint8_t* const* Input,
     uint8_t InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
     size_t OutputCount,
@@ -464,6 +456,16 @@ MlasPool(
     const float* Input,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasMaximumPool(
+    const uint8_t* const* Input,
+    uint8_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
     );
 
 //
@@ -544,6 +546,15 @@ MLASCALL
 MlasTranspose(
     const uint32_t* Input,
     uint32_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const float* Input,
+    float* Output,
     size_t M,
     size_t N
     );

@@ -90,7 +90,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames
     size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numInputs,stringClazz,NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numInputs),stringClazz,NULL);
     for (uint32_t i = 0; i < numInputs; i++) {
         // Read out the input name and convert it to a java.lang.String
         char* inputName;
@@ -136,7 +136,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames
     size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,stringClazz,NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numOutputs),stringClazz, NULL);
     for (uint32_t i = 0; i < numOutputs; i++) {
         // Read out the output name and convert it to a java.lang.String
         char* outputName;
@@ -169,8 +169,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo
     size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numInputs,nodeInfoClazz,NULL);
-    for (uint32_t i = 0; i < numInputs; i++) {
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numInputs),nodeInfoClazz, NULL);
+    for (size_t i = 0; i < numInputs; i++) {
         // Read out the input name and convert it to a java.lang.String
         char* inputName;
         checkOrtStatus(jniEnv,api,api->SessionGetInputName((OrtSession*)sessionHandle, i, allocator, &inputName));
@@ -185,7 +185,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo
 
         // Create a NodeInfo and assign into the array
         jobject nodeInfo = (*jniEnv)->NewObject(jniEnv, nodeInfoClazz, nodeInfoConstructor, name, valueInfoJava);
-        (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, nodeInfo);
+        (*jniEnv)->SetObjectArrayElement(jniEnv, array,safecast_size_t_to_jsize(i),nodeInfo);
     }
 
     return array;
@@ -210,7 +210,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo
     size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,nodeInfoClazz,NULL);
+    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(numOutputs),nodeInfoClazz,NULL);
     for (uint32_t i = 0; i < numOutputs; i++) {
         // Read out the output name and convert it to a java.lang.String
         char* outputName;
@@ -284,7 +284,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     // Construct the output array of ONNXValues
     char *onnxValueClassName = "ai/onnxruntime/OnnxValue";
     jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, onnxValueClassName);
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,onnxValueClass,NULL);
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_int64_to_jsize(numOutputs), onnxValueClass, NULL);
 
     // Convert the output tensors into ONNXValues and release the output strings.
     for (int i = 0; i < numOutputs; i++) {
@@ -302,8 +302,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     }
 
     // Release the buffers
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, inputNames));
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, outputNames));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputNames));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)outputNames));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaInputStrings));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaOutputStrings));
 
@@ -413,7 +413,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   checkOrtStatus(jniEnv,api,api->ModelMetadataGetCustomMetadataMapKeys(metadata, allocator, &keys, &numKeys));
   jobjectArray customArray = NULL;
   if (numKeys > 0) {
-    customArray = (*jniEnv)->NewObjectArray(jniEnv,numKeys*2,stringClazz,NULL);
+    customArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_int64_to_jsize(numKeys * 2),stringClazz, NULL);
 
     // Iterate key array to extract the values
     for (int64_t i = 0; i < numKeys; i++) {
@@ -426,8 +426,8 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
       checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
 
       // Write the key and value into the array
-      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, i*2, keyJava);
-      (*jniEnv)->SetObjectArrayElement(jniEnv, customArray, (i*2)+1, valueJava);
+      (*jniEnv)->SetObjectArrayElement(jniEnv,customArray,safecast_int64_to_jsize(i*2),keyJava);
+      (*jniEnv)->SetObjectArrayElement(jniEnv,customArray,safecast_int64_to_jsize((i * 2) + 1),valueJava);
     }
 
     // Release key array

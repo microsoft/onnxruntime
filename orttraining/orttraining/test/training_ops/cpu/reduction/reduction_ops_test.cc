@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
@@ -103,7 +103,7 @@ TEST_P(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   test.SetDeterminism(GetParam());
@@ -246,6 +246,23 @@ TEST(ReductionOpTest, ReduceSumTraining_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSumTraining_fast_matrix_reduction) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 1}, {78.0f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -328,7 +345,7 @@ TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);

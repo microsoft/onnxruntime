@@ -6,6 +6,7 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
+
 class TrtTable(object):
     __slots__ = ['_tab']
 
@@ -45,7 +46,18 @@ class TrtTable(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
-def TrtTableStart(builder): builder.StartObject(1)
-def TrtTableAddDict(builder, dict): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0)
-def TrtTableStartDictVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def TrtTableEnd(builder): return builder.EndObject()
+
+def TrtTableStart(builder):
+    builder.StartObject(1)
+
+
+def TrtTableAddDict(builder, dict):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0)
+
+
+def TrtTableStartDictVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+
+def TrtTableEnd(builder):
+    return builder.EndObject()

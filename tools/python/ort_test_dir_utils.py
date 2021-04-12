@@ -21,7 +21,7 @@ def _get_numpy_type(model_info, name):
     raise ValueError("{} was not found in the model info.".format(name))
 
 
-def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map):
+def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map, initializer_set):
     """
     Update name_input_map with random input for any missing values in the model inputs.
 
@@ -32,7 +32,10 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
     for input in model_inputs:
         if input.name in name_input_map and name_input_map[input.name] is not None:
             continue
-
+        # skip if the input has already exists in initializer
+        # models whose ir_version < 4 can have input same as initializer; no need to create input data
+        if input.name in initializer_set:
+            continue
         input_type = input.type.WhichOneof('value')
         if input_type != 'tensor_type':
             raise ValueError('Unsupported model. Need to handle input type of {}'.format(input_type))
@@ -126,9 +129,10 @@ def create_test_dir(model_path, root_path, test_name,
 
     if not symbolic_dim_values_map:
         symbolic_dim_values_map = {}
-
-    _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map)
-
+    initializer_set = set()
+    for initializer in onnx.load(model_path).graph.initializer:
+        initializer_set.add(initializer.name)
+    _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map, initializer_set)
     save_data("input", name_input_map, model_inputs)
 
     # save expected output data if provided. run model to create if not.
@@ -214,7 +218,7 @@ def run_test_dir(model_or_dir):
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
             if len(output_names) == 1 and output_names[0] == '':
                 output_names = [o.name for o in sess.get_outputs()]
-                assert(len(output_names) == 1)
+                assert len(output_names) == 1, 'There should be single output_name.'
                 expected_outputs[output_names[0]] = expected_outputs['']
                 expected_outputs.pop('')
 

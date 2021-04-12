@@ -13,6 +13,7 @@ namespace rocm {
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxGradComputeHelper(
+    hipStream_t stream,
     const T* dY,
     const TensorShape& input_shape,
     const T* Y,
@@ -33,7 +34,7 @@ Status SoftMaxGradComputeHelper(
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
     dispatch_softmax_backward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(
-        dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+        stream, dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }
 
@@ -90,9 +91,9 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* dX_data = dX->template MutableData<T>();
 
   if (log_softmax_) {
-    return SoftMaxGradComputeHelper<T, true>(dY_data, input_shape, Y_data, dX_data, MiopenHandle(), axis_);
+    return SoftMaxGradComputeHelper<T, true>(Stream(), dY_data, input_shape, Y_data, dX_data, MiopenHandle(), axis_);
   } else {
-    return SoftMaxGradComputeHelper<T, false>(dY_data, input_shape, Y_data, dX_data, MiopenHandle(), axis_);
+    return SoftMaxGradComputeHelper<T, false>(Stream(), dY_data, input_shape, Y_data, dX_data, MiopenHandle(), axis_);
   }
 }
 

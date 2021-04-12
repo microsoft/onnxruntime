@@ -13,9 +13,6 @@
 [submodule "cmake/external/date"]
 	path = cmake/external/date
 	url = https://github.com/HowardHinnant/date.git
-[submodule "cmake/external/gemmlowp"]
-	path = cmake/external/gemmlowp
-	url = https://github.com/google/gemmlowp.git
 [submodule "cmake/external/nsync"]
 	path = cmake/external/nsync
 	url = https://github.com/google/nsync
@@ -59,9 +56,22 @@
 [submodule "cmake/external/SafeInt/safeint"]
 	path = cmake/external/SafeInt/safeint
 	url = https://github.com/dcleblanc/SafeInt.git
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/optional-lite"]
 	path = cmake/external/optional-lite
 	url = https://github.com/martinmoene/optional-lite.git
+[submodule "cmake/external/mp11"]
+	path = cmake/external/mp11
+	url = https://github.com/boostorg/mp11.git
+[submodule "cmake/external/coremltools"]
+	path = cmake/external/coremltools
+	url = https://github.com/apple/coremltools.git
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/dlpack"]
+	path = cmake/external/dlpack
+	url = https://github.com/dmlc/dlpack.git
+[submodule "cmake/external/emsdk"]
+	path = cmake/external/emsdk
+	url = https://github.com/emscripten-core/emsdk.git
+	branch = 2.0.13

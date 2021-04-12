@@ -15,11 +15,17 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif
 #ifdef USE_RKNPU
 #include "core/providers/rknpu/rknpu_execution_provider.h"
+#endif
+#ifdef USE_COREML
+#include "core/providers/coreml/coreml_execution_provider.h"
 #endif
 
 namespace onnxruntime {
@@ -32,6 +38,10 @@ IExecutionProvider* TestCPUExecutionProvider();
 #ifdef USE_CUDA
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCudaExecutionProvider();
+#endif
+
+#ifdef USE_ROCM
+IExecutionProvider* TestRocmExecutionProvider();
 #endif
 
 #ifdef USE_TENSORRT
@@ -49,6 +59,10 @@ IExecutionProvider* TestNnapiExecutionProvider();
 
 #ifdef USE_RKNPU
 IExecutionProvider* TestRknpuExecutionProvider();
+#endif
+
+#ifdef USE_COREML
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags);
 #endif
 
 template <typename T>

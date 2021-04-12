@@ -4,6 +4,7 @@
 #include <core/common/logging/logging.h>
 
 #include "model.h"
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
@@ -129,7 +130,7 @@ Model::NNMemory::~NNMemory() {
     munmap(data_ptr_, byte_size_);
   }
 
-  if (fd_ > 0) close(fd_);
+  if (fd_ >= 0) close(fd_);
 }
 #else
 Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {

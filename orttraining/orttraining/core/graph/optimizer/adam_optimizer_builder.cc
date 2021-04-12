@@ -28,7 +28,6 @@ Status AdamOptimizerBuilder::Build(
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
-    weight_to_opt_mapping[weight_name] = {};
 
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
@@ -38,6 +37,7 @@ Status AdamOptimizerBuilder::Build(
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
+      weight_to_opt_mapping[weight_name] = {};
       // The type proto initializer for Update Count
       const std::string update_count_string = ADAM_UC_PREFIX + "_" + weight_name;  // per weight optimizer requires a per weight update count
       TensorProto uc_tensor_proto;
@@ -71,18 +71,15 @@ Status AdamOptimizerBuilder::Build(
 
       // Get shape of weight tensor.
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
       // Add first- and second-order momentums to input list.
       for (const auto& moments_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;

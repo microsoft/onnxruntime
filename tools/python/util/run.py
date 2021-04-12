@@ -9,13 +9,15 @@ import subprocess
 _log = logging.getLogger("util.run")
 
 
-def run(*args, cwd=None, capture_stdout=False, capture_stderr=False,
+def run(*args, cwd=None,
+        input=None, capture_stdout=False, capture_stderr=False,
         shell=False, env=None, check=True, quiet=False):
     """Runs a subprocess.
 
     Args:
         *args: The subprocess arguments.
         cwd: The working directory. If None, specifies the current directory.
+        input: The optional input byte sequence.
         capture_stdout: Whether to capture stdout.
         capture_stderr: Whether to capture stderr.
         shell: Whether to run using the shell.
@@ -37,7 +39,7 @@ def run(*args, cwd=None, capture_stdout=False, capture_stderr=False,
             (subprocess.DEVNULL if quiet else None)
 
     completed_process = subprocess.run(
-        cmd, cwd=cwd, check=check,
+        cmd, cwd=cwd, check=check, input=input,
         stdout=output(capture_stdout), stderr=output(capture_stderr),
         env=env, shell=shell)
 

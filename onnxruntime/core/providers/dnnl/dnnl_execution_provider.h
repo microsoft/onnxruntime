@@ -18,6 +18,11 @@ struct memory;
 
 namespace onnxruntime {
 
+// Forward class declaration for DnnlKernel
+namespace ort_dnnl {
+class DnnlKernel;
+}
+
 // Information needed to construct DNNL execution providers.
 struct DNNLExecutionProviderInfo {
   bool create_arena{true};
@@ -80,7 +85,32 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+#ifdef ENABLE_TRAINING
+  // Add the DnnlKernel to a map using the NodeIndex key.
+  // Note if the a DnnlKernel already exists this will replace the existing kernel with the
+  // new kernel. This was done so the latest kernel is always placed in the map.
+  void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    fwd_kernel_map_[key] = kernel;
+  }
 
+  // Fetch the kernel using the NodeIndex
+  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernel(onnxruntime::NodeIndex key) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    return fwd_kernel_map_.at(key);
+  }
+
+  void SetForwardConvKernel(std::string key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    fwd_conv_kernel_map_[key] = kernel;
+  }
+
+  // Fetch the kernel using the NodeIndex
+  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardConvKernel(std::string key) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    return fwd_conv_kernel_map_.at(key);
+  }
+#endif  // ENABLE_TRAINING
  private:
   // dnnl weights(filer data) memory blocks from first iteration
   // saved by weights name
@@ -94,6 +124,20 @@ class DNNLExecutionProvider : public IExecutionProvider {
   std::vector<IAllocatorUniquePtr<void>> biass_buffers_;
   OrtMutex mutex_;
 
+#ifdef ENABLE_TRAINING
+  // map used to hold and lookup forward DnnlKernels. This should only be needed in when
+  // running in training mode.The backward Kernels need access the forward kernels; typically
+  // to obtain the forward primitive description but it may be need for other items like
+  // accessing workspace memory.
+  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernel_map_;
+
+  // map used to hold and lookup forward DnnlKernels for the Convolution/Convolution Grad
+  // operators. Convolution does not have an edge directly connecting an output from
+  // the forward operator to an input of the backward gradient node. so the fwd_kernel_map_
+  // can not be used, the name of the weight that is an input to both Conv and
+  // ConvGrad is use instead.
+  std::map<std::string, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_kernel_map_;
+#endif  // ENABLE_TRAINING
   // SUBGRAPH
  private:
   static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -134,12 +178,21 @@ class DNNLExecutionProvider : public IExecutionProvider {
     }
     if (node->OpType().find("Pool") != std::string::npos) {
       auto node_inputs = node->InputDefs();
+#ifdef ENABLE_TRAINING
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
+#else
       if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
+#endif  // ENABLE_TRAINING
         supported = false;
       }
 
+#ifdef ENABLE_TRAINING
+      if (node->OutputDefs().size() > 2)
+        supported = false;
+#else
       if (node->OutputDefs().size() > 1)
         supported = false;
+#endif  // ENABLE_TRAINING
     }
     return supported;
   }
@@ -165,9 +218,14 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  // supported Dnnl Operators
+// supported Dnnl Operators
+#ifdef ENABLE_TRAINING
+  std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
+#else
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN", "MatMul"};
+#endif  // ENABLE_TRAINING
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };

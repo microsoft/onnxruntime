@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 
 #pragma once
 #include <condition_variable>
@@ -14,6 +14,7 @@
 #include <thread>
 
 #include <nccl.h>
+
 #include <mpi.h>
 
 namespace onnxruntime {

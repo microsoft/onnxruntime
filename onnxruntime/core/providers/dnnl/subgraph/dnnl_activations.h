@@ -60,7 +60,7 @@ class DnnlRelu : public DnnlKernel {
 
       x_shape = TensorShape(xshape, xdim);
 
-      if (x_shape.NumDimensions() == 0) {
+      if (x_shape.Size() == 0) {
         primitive_created_status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Shape of size zero " + x_shape.ToString());
         return;
       }
@@ -181,13 +181,22 @@ class DnnlRelu : public DnnlKernel {
 
     return Status::OK();
   }
+#ifdef ENABLE_TRAINING
+  std::shared_ptr <dnnl::eltwise_forward::primitive_desc> GetPrimitiveDesc() {
+    return relu_fwd_pd_;
+  }
+#endif // ENABLE_TRAINING
 
  private:
   std::shared_ptr<dnnl::memory> src_mem_;
   std::shared_ptr<dnnl::memory> src_mem_gpu_;
 
   std::unique_ptr<dnnl::eltwise_forward::desc> fwd_desc_;
+#ifndef ENABLE_TRAINING
   std::unique_ptr<dnnl::eltwise_forward::primitive_desc> relu_fwd_pd_;
+#else
+  std::shared_ptr<dnnl::eltwise_forward::primitive_desc> relu_fwd_pd_;
+#endif // ENABLE_TRAINING
   std::unique_ptr<dnnl::primitive> relu_fwd_;
 
   std::unique_ptr<dnnl::memory::desc> src_md_;

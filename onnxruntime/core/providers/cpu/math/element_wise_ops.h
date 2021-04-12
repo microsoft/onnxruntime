@@ -375,6 +375,24 @@ class Greater final : public OpKernel {
 };
 
 template <typename T>
+class LessOrEqual final : public OpKernel {
+ public:
+  LessOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class GreaterOrEqual final : public OpKernel {
+ public:
+  GreaterOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
 class Mean_6 final : public OpKernel {
  public:
   Mean_6(const OpKernelInfo& info) : OpKernel(info) {
@@ -432,12 +450,12 @@ class Erf final : public OpKernel {
 
 template <typename T>
 auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> {
-  return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size());
+  return EigenVectorArrayMap<T>(t.template MutableData<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 template <typename T>
 auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> {
-  return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size());
+  return ConstEigenVectorArrayMap<T>(t.template Data<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 struct BroadcastIterator {
@@ -470,12 +488,12 @@ struct BroadcastIterator {
     return index;
   }
 
-  void Reserve(int64_t max_dims) {
+  void Reserve(ptrdiff_t max_dims) {
     deltas_.reserve(static_cast<size_t>(max_dims));
     counts_.reserve(static_cast<size_t>(max_dims));
   }
 
-  void Init(int64_t axis, int64_t largest) {
+  void Init(ptrdiff_t axis, ptrdiff_t largest) {
     ORT_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
 
     deltas_.push_back(axis > 1);
@@ -483,7 +501,7 @@ struct BroadcastIterator {
     count_ *= axis;
   }
 
-  void Append(int64_t axis, int64_t largest) {
+  void Append(ptrdiff_t axis, ptrdiff_t largest) {
     ORT_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
 
     // If we're greater than 1, it doesn't matter what the other tensor does
@@ -509,9 +527,9 @@ struct BroadcastIterator {
     counts_.push_back(1);
   }
 
-  std::vector<int64_t> counters_;
+  std::vector<ptrdiff_t> counters_;
   std::vector<ptrdiff_t> deltas_;
-  std::vector<int64_t> counts_;
+  std::vector<ptrdiff_t> counts_;
   ptrdiff_t count_{1};  // Running total count of entries in tensor, used while building up the entries
 
  private:
@@ -540,13 +558,13 @@ struct Broadcaster {
           iterator1_.Init(1, 1);
           iterator2_.Init(1, 1);
         } else {
-          auto axis = *--iter2;
+          ptrdiff_t axis = static_cast<ptrdiff_t>(*--iter2);
           iterator1_.Init(1, axis);
           iterator2_.Init(axis, axis);
           *--output_shape = axis;
         }
       } else {  // Shape2 is a scalar
-        auto axis = *--iter1;
+        ptrdiff_t axis = static_cast<ptrdiff_t>(*--iter1);
         iterator1_.Init(axis, axis);
         iterator2_.Init(1, axis);
         *--output_shape = axis;
@@ -554,12 +572,12 @@ struct Broadcaster {
       index++;  // Manually increment since we processed one axis
     } else {
       for (; index < dimension_count_min; index++) {
-        auto axis1 = *--iter1;
-        auto axis2 = *--iter2;
+        ptrdiff_t axis1 = static_cast<ptrdiff_t>(*--iter1);
+        ptrdiff_t axis2 = static_cast<ptrdiff_t>(*--iter2);
 
-        auto largest = std::max(axis1, axis2);
-        auto smallest = std::min(axis1, axis2);
-        auto dim_to_use = largest;
+        ptrdiff_t largest = std::max<ptrdiff_t>(axis1, axis2);
+        ptrdiff_t smallest = std::min<ptrdiff_t>(axis1, axis2);
+        ptrdiff_t dim_to_use = largest;
 
         if (smallest == 0) {
           ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
@@ -580,12 +598,12 @@ struct Broadcaster {
     }
 
     for (; index < dimension_count_min; index++) {
-      auto axis1 = *--iter1;
-      auto axis2 = *--iter2;
+      ptrdiff_t axis1 = static_cast<ptrdiff_t>(*--iter1);
+      ptrdiff_t axis2 = static_cast<ptrdiff_t>(*--iter2);
 
-      auto largest = std::max(axis1, axis2);
-      auto smallest = std::min(axis1, axis2);
-      auto dim_to_use = largest;
+      ptrdiff_t largest = std::max(axis1, axis2);
+      ptrdiff_t smallest = std::min(axis1, axis2);
+      ptrdiff_t dim_to_use = largest;
 
       if (smallest == 0) {
         ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
@@ -604,12 +622,12 @@ struct Broadcaster {
     // If one shape is bigger than another we need to broadcast the smaller onto the bigger from this point on
     for (; index < dimension_count_max; index++) {
       if (dimension_count_max == shape2.size()) {
-        auto axis = *--iter2;
+        ptrdiff_t axis = static_cast<ptrdiff_t>(*--iter2);
         iterator1_.Append(1, axis);
         iterator2_.Append(axis, axis);
         *--output_shape = axis;
       } else {
-        auto axis = *--iter1;
+        ptrdiff_t axis = static_cast<ptrdiff_t>(*--iter1);
         iterator1_.Append(axis, axis);
         iterator2_.Append(1, axis);
         *--output_shape = axis;
@@ -710,11 +728,11 @@ struct InputBroadcaster {
 };
 
 struct OutputBroadcaster {
-  OutputBroadcaster(size_t span_size, Tensor& tensor, int64_t start_offset = 0, int64_t end_offset = 0)
+  OutputBroadcaster(size_t span_size, Tensor& tensor, ptrdiff_t start_offset = 0, ptrdiff_t end_offset = 0)
       : element_size_(tensor.DataType()->Size()),
         span_size_(span_size) {
-    int64_t len = tensor.Shape().Size();
-    int64_t real_end = (end_offset <= 0) ? len : end_offset;
+    ptrdiff_t len = gsl::narrow<ptrdiff_t>(tensor.Shape().Size());
+    ptrdiff_t real_end = (end_offset <= 0) ? len : end_offset;
     if (start_offset != 0 || end_offset != 0) {  // Keep original semantic
       ORT_ENFORCE(start_offset >= 0 && real_end >= 0 && start_offset <= real_end && real_end <= len,
                   "Invalid start/ending offset [", start_offset, ",", real_end, ") for tensor of length:", len);

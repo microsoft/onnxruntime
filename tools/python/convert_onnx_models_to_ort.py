@@ -1,90 +1,116 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
 import argparse
-import glob
 import os
-import re
-import sys
-import tempfile
+import pathlib
+import typing
 
 import onnxruntime as ort
 
 
-def create_config_file(optimized_model_path, config_file_path):
-    script_path = os.path.dirname(os.path.realpath(__file__))
-    ci_build_py_path = os.path.abspath(os.path.join(script_path, '..', 'ci_build'))
-    sys.path.append(ci_build_py_path)
-
-    # create config file from all the optimized models
-    print("Creating configuration file for operators required by optimized models in {}".format(config_file_path))
-    from exclude_unused_ops import exclude_unused_ops  # tools/ci_build/exclude_unused_ops.py
-    exclude_unused_ops(optimized_model_path, config_path=None, ort_root=None, output_config_path=config_file_path)
+def _path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix: str):
+    if not isinstance(path, str):
+        path = str(path)
+    return path.casefold().endswith(suffix.casefold())
 
 
-def convert(model_path: str, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool):
-    models = glob.glob(os.path.join(model_path, '**', '*.onnx'), recursive=True)
+def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path):
+    assert onnx_model_path.is_file() and _path_match_suffix_ignore_case(onnx_model_path, ".onnx")
+    return onnx_model_path.with_suffix(".ort")
+
+
+def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, enable_type_reduction: bool):
+    if onnx_model_path_or_dir.is_dir():
+        # model directory
+        model_path_or_dir = onnx_model_path_or_dir
+        config_path = None  # default path in model directory
+    else:
+        # single model
+        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir)
+        config_suffix = ".{}".format(
+            'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config')
+        config_path = model_path_or_dir.with_suffix(config_suffix)
+
+    from util.ort_format_model import create_config_from_models
+    create_config_from_models(model_path_or_dir=str(model_path_or_dir),
+                              output_file=str(config_path) if config_path is not None else None,
+                              enable_type_reduction=enable_type_reduction)
+
+
+def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
+                            output_model_path: pathlib.Path,
+                            custom_op_library: pathlib.Path):
+    so = ort.SessionOptions()
+    so.optimized_model_filepath = str(output_model_path)
+    so.graph_optimization_level = optimization_level
+
+    if custom_op_library:
+        so.register_custom_ops_library(str(custom_op_library))
+
+    return so
+
+
+def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool,
+             custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
+    models = []
+    if model_path_or_dir.is_file() and _path_match_suffix_ignore_case(model_path_or_dir, ".onnx"):
+        models.append(model_path_or_dir)
+    elif model_path_or_dir.is_dir():
+        for root, _, files in os.walk(model_path_or_dir):
+            for file in files:
+                if _path_match_suffix_ignore_case(file, ".onnx"):
+                    models.append(pathlib.Path(root, file))
 
     if len(models) == 0:
-        raise ValueError("No .onnx files were found in " + model_path)
+        raise ValueError("No .onnx files were found in '{}'".format(model_path_or_dir))
 
-    # create temp directory to create optimized onnx format models in. currently we need this to create the
-    # config file with required operators. long term we could potentially do this from the ORT format model,
-    # however that requires a lot of infrastructure to be able to parse the flatbuffers schema for those files
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        for model in models:
-            model_filename = os.path.basename(model)
-            # create .optimized.onnx file in temp dir
-            onnx_target_path = os.path.join(tmpdirname, re.sub('.onnx$', '.optimized.onnx', model_filename))
-            # create .ort file in same dir as original onnx model
-            ort_target_path = re.sub('.onnx$', '.ort', model)
+    providers = ['CPUExecutionProvider']
+    if use_nnapi:
+        # providers are priority based, so register NNAPI first
+        providers.insert(0, 'NnapiExecutionProvider')
 
-            so = ort.SessionOptions()
-            so.optimized_model_filepath = onnx_target_path
-            so.graph_optimization_level = optimization_level
+    # if the optimization level is 'all' we manually exclude the NCHWc transformer. It's not applicable to ARM
+    # devices, and creates a device specific model which won't run on all hardware.
+    # If someone really really really wants to run it they could manually create an optimized onnx model first,
+    # or they could comment out this code.
+    optimizer_filter = None
+    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL:
+        optimizer_filter = ['NchwcTransformer']
 
-            print("Optimizing ONNX model {}".format(model))
-            # creating the session will result in the optimized model being saved. we use just the CPU EP for this step
-            providers = ['CPUExecutionProvider']
-            _ = ort.InferenceSession(model, sess_options=so, providers=providers)
+    for model in models:
+        # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
+        # of this script
+        if _path_match_suffix_ignore_case(model, ".optimized.onnx"):
+            print("Ignoring '{}'".format(model))
+            continue
 
-            # special case if we're enabling a compiling EP like NNAPI. we don't currently have a way to read the
-            # required ops from an ORT format model, so we need an ONNX model that is only optimized to 'basic' level
-            # to ensure all the nodes that NNAPI may take still exist. we can merge the required operators from that
-            # with the required operators from an ONNX model optimized to a higher level (if the user requested that).
-            # we must use this model with creating the ORT format model to maximize the nodes that NNAPI can potentially
-            # take, so replace onnx_target_path with the new path.
-            if use_nnapi and \
-                (optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED or
-                 optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL):
-                onnx_target_path = os.path.join(tmpdirname, re.sub('.onnx$', '.optimized.basic.onnx', model_filename))
-                so.optimized_model_filepath = onnx_target_path
-                so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                _ = ort.InferenceSession(model, sess_options=so, providers=providers)
+        # create .ort file in same dir as original onnx model
+        ort_target_path = _onnx_model_path_to_ort_model_path(model)
 
-            # Second, convert optimized ONNX model to ORT format
-            # we enable the compiling EPs when we generate the ORT format model so that we preserve the nodes it may
-            # take, but allow optimization on any others
-            if use_nnapi:
-                # providers are priority based, so register NNAPI first
-                providers.insert(0, 'NnapiExecutionProvider')
+        if create_optimized_onnx_model:
+            # Create an ONNX file with the same optimizations that will be used for the ORT format file.
+            # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
+            optimized_target_path = model.with_suffix(".optimized.onnx")
+            so = _create_session_options(optimization_level, optimized_target_path, custom_op_library)
 
-            so.optimized_model_filepath = ort_target_path
-            # Use original optimization level so that if NNAPI is enabled we optimize nodes it is not taking
-            so.graph_optimization_level = optimization_level
-            so.add_session_config_entry('session.save_model_format', 'ORT')
+            print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
+            _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
+                                     disabled_optimizers=optimizer_filter)
 
-            print("Converting optimized ONNX model to ORT format model {}".format(ort_target_path))
-            _ = ort.InferenceSession(onnx_target_path, sess_options=so, providers=providers)
+        # Load ONNX model, optimize, and save to ORT format
+        so = _create_session_options(optimization_level, ort_target_path, custom_op_library)
+        so.add_session_config_entry('session.save_model_format', 'ORT')
 
-            # orig_size = os.path.getsize(onnx_target_path)
-            # new_size = os.path.getsize(ort_target_path)
-            # print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
-            #     onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
+        print("Converting optimized ONNX model to ORT format model {}".format(ort_target_path))
+        _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
+                                 disabled_optimizers=optimizer_filter)
 
-        # now that all models are converted create the config file before the temp dir is deleted
-        create_config_file(tmpdirname, os.path.join(model_path, 'required_operators.config'))
+        # orig_size = os.path.getsize(onnx_target_path)
+        # new_size = os.path.getsize(ort_target_path)
+        # print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
+        #     onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
 
 
 def _get_optimization_level(level):
@@ -94,12 +120,9 @@ def _get_optimization_level(level):
         # Constant folding and other optimizations that only use ONNX operators
         return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
     if level == 'extended':
-        # Optimizations using custom operators, excluding NCHWc optimizations
+        # Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     if level == 'all':
-        # all optimizations, including NCHWc (which has hardware specific logic)
-        print('WARNING: Enabling layout optimizations is not recommended unless the ORT format model will be executed '
-              'on the same hardware used to create the model.')
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     raise ValueError('Invalid optimization level of ' + level)
@@ -112,7 +135,9 @@ def parse_args():
         All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the
         same directory. A configuration file will also be created called `required_operators.config`, and will contain
         the list of required operators for all converted models.
-        This configuration file should be used as input to the minimal build'''
+        This configuration file should be used as input to the minimal build via the `--include_ops_by_config`
+        parameter.
+        '''
     )
 
     parser.add_argument('--use_nnapi', action='store_true',
@@ -121,24 +146,48 @@ def parse_args():
                              'NNAPI execution provider takes, in order to preserve those nodes in the ORT format '
                              'model.')
 
-    parser.add_argument('--optimization_level', default='extended',
+    parser.add_argument('--optimization_level', default='all',
                         choices=['disable', 'basic', 'extended', 'all'],
                         help="Level to optimize ONNX model with, prior to converting to ORT format model. "
                              "These map to the onnxruntime.GraphOptimizationLevel values. "
-                             "NOTE: It is NOT recommended to use 'all' unless you are creating the ORT format model on "
-                             "the device you will run it on, as the generated model may not be valid on other hardware."
+                             "If the level is 'all' the NCHWc transformer is manually disabled as it contains device "
+                             "specific logic, so the ORT format model must be generated on the device it will run on. "
+                             "Additionally, the NCHWc optimizations are not applicable to ARM devices."
                         )
 
-    parser.add_argument('model_path', help='Provide path to directory containing ONNX model/s to convert. '
-                                           'Files with .onnx extension will be processed.')
+    parser.add_argument('--enable_type_reduction', action='store_true',
+                        help='Add operator specific type information to the configuration file to potentially reduce '
+                             'the types supported by individual operator implementations.')
+
+    parser.add_argument('--custom_op_library', type=pathlib.Path, default=None,
+                        help='Provide path to shared library containing custom operator kernels to register.')
+
+    parser.add_argument('--save_optimized_onnx_model', action='store_true',
+                        help='Save the optimized version of each ONNX model. '
+                             'This will have the same optimizations applied as the ORT format model.')
+
+    parser.add_argument('model_path_or_dir', type=pathlib.Path,
+                        help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
+                             'All files with a .onnx extension, including in subdirectories, will be processed.')
 
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    model_path_or_dir = args.model_path_or_dir.resolve()
+    custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
+
+    if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
+        raise FileNotFoundError("Model path '{}' is not a file or directory.".format(model_path_or_dir))
+
+    if custom_op_library and not custom_op_library.is_file():
+        raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
+
     optimization_level = _get_optimization_level(args.optimization_level)
-    convert(args.model_path, optimization_level, args.use_nnapi)
+    _convert(model_path_or_dir, optimization_level, args.use_nnapi, custom_op_library, args.save_optimized_onnx_model)
+    _create_config_file_from_ort_models(model_path_or_dir, args.enable_type_reduction)
 
 
 if __name__ == '__main__':

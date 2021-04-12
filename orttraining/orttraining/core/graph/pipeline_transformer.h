@@ -9,11 +9,15 @@
 namespace onnxruntime {
 namespace training {
 
-void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
+void GetPipelineSendOutput(const Graph& graph, std::string& node_arg_name);
+void GetPipelineRecvInput(const Graph& graph, std::string& node_arg_name);
 
 Status TransformGraphForPipeline(
+    const bool keep_original_output_schema,
+    const std::unordered_set<std::string>& weights_to_train,
+    const std::unordered_map<std::string, std::vector<int>>& sliced_schema,
+    const std::vector<std::string>& expected_output_names,
     Graph& graph,
-    const std::unordered_set<std::string>& initializer_names_to_preserve,
     pipeline::PipelineTensorNames& pipeline_tensor_names);
 
 // Partitions the graph into num_stages subgraphs, as defined in op_to_stage map,
@@ -22,10 +26,10 @@ Status TransformGraphForPipeline(
 // TODO(jufranc): when adapting this code to partition training graphs, add
 // a boolean is_training as parameter.
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-    const std::map<const Node*, int>& op_to_stage,
-    const int pipeline_stage_id,
-    const int num_stages,
-    const std::vector<int32_t>& rank_ids);
+                                         const std::map<const Node*, int>& op_to_stage,
+                                         const int pipeline_stage_id,
+                                         const int num_stages,
+                                         const std::vector<int32_t>& rank_ids);
 
 // First of two functions to obtain a mapping between operators and stage ids.
 // Input:
@@ -36,9 +40,9 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 // is the pipeline stage ID of the pointed node.
 //   - num_stages is the total number of stages.
 Status GetDeviceAssignmentMap(const Graph& graph,
-    const std::map<std::string, int>& id_to_stage,
-    std::map<const Node*, int>& op_to_stage,
-    const int num_stages);
+                              const std::map<std::string, int>& id_to_stage,
+                              std::map<const Node*, int>& op_to_stage,
+                              const int num_stages);
 
 // Second of two functions to obtain a mapping between operators and stage ids.
 // This version in particular converts a list of graph cuts (i.e., CutInfo)
@@ -51,9 +55,33 @@ Status GetDeviceAssignmentMap(const Graph& graph,
 // is the pipeline stage ID of the pointed node.
 //   - num_stages is the total number of stages.
 Status GetDeviceAssignmentMap(const Graph& graph,
-    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
-    std::map<const Node*, int>& op_to_stage,
-    const int num_stages);
+                              const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
+                              std::map<const Node*, int>& op_to_stage,
+                              const int num_stages);
+
+// This function creates data-dependency from "dependent_node_args"
+// to "node". That is, it makes sure "node" is executed after
+// the generation of "dependent_node_args."
+// Assume that we have two independent sub-graphs
+//
+//  X -> ReLU1 -> Y
+//  S -> ReLU2 -> T
+//
+// If we want to execute ReLU2 after ReLU1, we can do
+//
+//  X -> ReLU1 -> Y ------.
+//                        |
+//                        v
+//                S -> PassThrough -> Y'
+//                        |
+//                        `---------> S' -> ReLU2 -> T
+//
+// In this case, "dependent_node_args" is "Y" and
+// "node" is "ReLU1".
+void SetDataDependency(
+    Graph& graph,
+    Node& postponed_node,
+    const std::vector<NodeArg*>& dependent_node_args);
 
 }  // namespace training
 }  // namespace onnxruntime

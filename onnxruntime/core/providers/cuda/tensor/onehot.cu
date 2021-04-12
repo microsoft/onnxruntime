@@ -56,6 +56,7 @@ __global__ void _OneHotWithZeroOffValueImpl(
 
 template <typename in_type, typename out_type>
 void OneHotImpl(
+    cudaStream_t stream,
     const in_type* indices_data,
     const fast_divmod fdm_depth_suffix,
     const fast_divmod fdm_suffix,
@@ -66,7 +67,7 @@ void OneHotImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _OneHotImpl<in_type, out_type><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _OneHotImpl<in_type, out_type><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
     indices_data,
     fdm_depth_suffix,
     fdm_suffix,
@@ -79,6 +80,7 @@ void OneHotImpl(
 
 template <typename in_type, typename out_type>
 void OneHotWithZeroOffValueImpl(
+    cudaStream_t stream,
     const in_type* indices_data,
     const fast_divmod fdm_suffix,
     const int64_t depth_val,
@@ -87,7 +89,7 @@ void OneHotWithZeroOffValueImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _OneHotWithZeroOffValueImpl<in_type, out_type><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _OneHotWithZeroOffValueImpl<in_type, out_type><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
     indices_data,
     fdm_suffix,
     depth_val,
@@ -98,6 +100,7 @@ void OneHotWithZeroOffValueImpl(
 
 #define SPECIALIZED_OneHotImpl(in_type, out_type) \
   template void OneHotImpl(                       \
+    cudaStream_t stream,                          \
     const in_type* indices_data,                  \
     const fast_divmod fdm_depth_suffix,           \
     const fast_divmod fdm_suffix,                 \
@@ -115,6 +118,7 @@ SPECIALIZED_OneHotImpl(int32_t, half)
 
 #define SPECIALIZED_OneHotWithZeroOffValueImpl(in_type, out_type) \
   template void OneHotWithZeroOffValueImpl(                       \
+    cudaStream_t stream,                                          \
     const in_type* indices_data,                                  \
     const fast_divmod fdm_suffix,                                 \
     const int64_t depth_val,                                      \

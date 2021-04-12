@@ -1,0 +1,13 @@
+autopep8
+matplotlib
+scikit-learn
+skl2onnx
+sphinx
+sphinx-gallery
+sphinxcontrib.imagesvg
+sphinx_rtd_theme
+pyquickhelper
+tensorflow
+tf2onnx
+pandas
+pydot

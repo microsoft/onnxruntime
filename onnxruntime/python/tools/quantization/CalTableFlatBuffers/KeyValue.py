@@ -6,6 +6,7 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
+
 class KeyValue(object):
     __slots__ = ['_tab']
 
@@ -34,7 +35,18 @@ class KeyValue(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def KeyValueStart(builder): builder.StartObject(2)
-def KeyValueAddKey(builder, key): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
-def KeyValueAddValue(builder, value): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
-def KeyValueEnd(builder): return builder.EndObject()
+
+def KeyValueStart(builder):
+    builder.StartObject(2)
+
+
+def KeyValueAddKey(builder, key):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
+
+
+def KeyValueAddValue(builder, value):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
+
+
+def KeyValueEnd(builder):
+    return builder.EndObject()

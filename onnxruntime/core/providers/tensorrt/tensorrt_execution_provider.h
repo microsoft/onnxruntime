@@ -22,6 +22,8 @@ static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE"
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
+static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
+static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -67,6 +69,14 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
+  bool has_user_compute_stream{false};
+  void* user_compute_stream{nullptr};
+  bool has_trt_options{false};
+  size_t max_workspace_size{1 << 30};
+  bool fp16_enable{false};
+  bool int8_enable{false}; 
+  std::string int8_calibration_table_name{""};
+  bool int8_use_native_calibration_table{false};
 };
 
 // Information to construct kernel function state.
@@ -90,8 +100,12 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+
+  nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
+  bool engine_decryption_enable;
+  int (*engine_decryption)(const char*, char*, size_t*);
 };
 
 // Logical device representation.
@@ -114,7 +128,17 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+
+  Status OnRunEnd() override;
+
+  Status SetComputeStream(void* stream) override;
+
+  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+
  private:
+  bool external_stream_ = false;
+  cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
@@ -126,10 +150,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
+  nvinfer1::IOptimizationProfile* trt_profile_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  mutable int subgraph_id_ = 0;
+  mutable char model_path_[4096]; // Reserved for max path length
+  bool engine_decryption_enable_ = false;
+  int (*engine_decryption_)(const char*, char*, size_t*);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

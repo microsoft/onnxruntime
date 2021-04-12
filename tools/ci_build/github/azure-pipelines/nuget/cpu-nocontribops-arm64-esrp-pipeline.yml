@@ -1,17 +1,37 @@
-schedules:
-- cron: "0 14 * * *"
-  displayName: Daily Build
-  branches:
-    include:
-    - master
-  always: true
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: DoCompliance
+  displayName: Run Compliance Tasks?
+  type: boolean
+  default: true
+
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
 
 variables:
   DisableContribOps: 'ON'
   DisableMlOps: 'ON'
 
 jobs:
-- template: templates/cpu-nocontribops-arm64.yml
+- template: ../templates/c-api-cpu-no-java.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
-    DoEsrp: 'true'
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    AdditionalBuildFlags: '--disable_contrib_ops --disable_ml_ops'
+    AdditionalWinBuildFlags: '--enable_msvc_static_runtime'
+    BuildVariant: 'default'
+    PublishingNuget: false

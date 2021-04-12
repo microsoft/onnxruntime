@@ -134,7 +134,7 @@ void Check<double>(const OpTester::Data& expected_data,
   }
 
   double threshold = 0.001;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005;
 #endif
 
@@ -186,7 +186,7 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.0001f;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005f;
 #endif
 
@@ -247,13 +247,15 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(f_expected[i]))  // Test infinity for equality
-      EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
-    else {
+    if (std::isnan(f_expected[i])) {
+      EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+    } else {
       // the default for existing tests
       EXPECT_NEAR(f_expected[i], f_output[i], threshold)
           << "i:" << i << ", provider_type: " << provider_type;
@@ -284,9 +286,11 @@ void Check<BFloat16>(const OpTester::Data& expected_data,
   /// XXX: May need to adjust threshold as BFloat is coarse
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(f_expected[i]))  // Test infinity for equality
-      EXPECT_EQ(f_expected[i], f_output[i]);
-    else {
+    if (std::isnan(f_expected[i])) {
+      EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+    } else {
       // the default for existing tests
       const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
       if (max_value != 0) {  // max_value = 0 means output and expected are 0s.
@@ -368,7 +372,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
       << " provider_type: " << provider_type;
 
   // now check the contents of the tensors
-  auto null_deleter = [](void*) {};
+  auto null_deleter = +[](void*) {};
 
   for (size_t i = 0; i < output_num_tensors; ++i) {
     OrtValue temp_value;
@@ -794,7 +798,9 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider};
+        kRocmExecutionProvider,
+        kCoreMLExecutionProvider,
+    };
 
     bool has_run = false;
 
@@ -861,6 +867,8 @@ void OpTester::Run(
           execution_provider = DefaultArmNNExecutionProvider();
         else if (provider_type == onnxruntime::kRocmExecutionProvider)
           execution_provider = DefaultRocmExecutionProvider();
+        else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
+          execution_provider = DefaultCoreMLExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -877,7 +885,8 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
-              provider_type == onnxruntime::kNnapiExecutionProvider)
+              provider_type == onnxruntime::kNnapiExecutionProvider ||
+              provider_type == onnxruntime::kCoreMLExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {

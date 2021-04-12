@@ -51,8 +51,9 @@ class DnnlKernel {
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
-  Status GetIntsAttr(const Provider_AttributeProto& proto, std::vector<int64_t>& values) {
-    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+  Status GetIntsAttr(const ONNX_NAMESPACE::AttributeProto& proto, std::vector<int64_t>& values) {
+    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS,
+                      "proto.type() != AttributeProto_AttributeType_INTS");
     values.reserve(proto.ints_size());
     for (int i = 0; i < proto.ints_size(); i++) {
       values.push_back(proto.ints(i));
@@ -60,19 +61,22 @@ class DnnlKernel {
     return Status::OK();
   }
 
-  Status GetIntAttr(const Provider_AttributeProto& proto, int64_t& value) {
-    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  Status GetIntAttr(const ONNX_NAMESPACE::AttributeProto& proto, int64_t& value) {
+    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT,
+                      "proto.type() != AttributeProto_AttributeType_INT");
     value = proto.i();
     return Status::OK();
   }
 
-  Status GetFloatAttr(const Provider_AttributeProto& proto, float& value) {
-    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
+  Status GetFloatAttr(const ONNX_NAMESPACE::AttributeProto& proto, float& value) {
+    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT,
+                      "proto.type() != AttributeProto_AttributeType_FLOAT");
     value = proto.f();
     return Status::OK();
   }
-  Status GetStringAttr(const Provider_AttributeProto& proto, std::string& value) {
-    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  Status GetStringAttr(const ONNX_NAMESPACE::AttributeProto& proto, std::string& value) {
+    ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING,
+                      "proto.type() != AttributeProto_AttributeType_STRING");
     value = proto.s();
     return Status::OK();
   }

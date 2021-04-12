@@ -9,8 +9,10 @@
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/agent/training_agent.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -24,6 +26,7 @@ struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
+
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
 
   // optimizer
@@ -32,6 +35,9 @@ struct TrainingParameters {
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
   onnxruntime::training::TrainingSession::OptimizerState optimizer_initial_state;
+  std::unordered_map<std::string, std::vector<int>> sliced_schema;
+  std::unordered_map<std::string, int> sliced_axes;
+  std::vector<std::string> sliced_tensor_names;
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
@@ -45,10 +51,13 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   int pipeline_parallel_size = 1;
+  int num_pipeline_micro_batches = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+
+  std::string pipeline_cut_info_string = {};
 
   // recompute
   bool attn_dropout_recompute = false;
@@ -56,6 +65,11 @@ struct TrainingParameters {
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
   bool enable_adasum = false;
+
+  // graph dumping
+  std::string model_after_graph_transforms_path;
+  std::string model_with_gradient_graph_path;
+  std::string model_with_training_graph_path;
 };
 
 struct TrainingConfigurationResult {
@@ -64,31 +78,29 @@ struct TrainingConfigurationResult {
 
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
-    training::TrainingSession* sess, TrainingParameters& parameters) {
+    training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
-  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
-  ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+  ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
+  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
+  ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
 
-  if (parameters.world_size % parameters.data_parallel_size != 0) {
-    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
+  // When DxHxP != the total number of ranks, we try adjusting D so that DxHxP == the total number of ranks.
+  if (parameters.world_size != parameters.data_parallel_size * parameters.horizontal_parallel_size * parameters.pipeline_parallel_size) {
+    ORT_ENFORCE(parameters.world_size % parameters.horizontal_parallel_size * parameters.pipeline_parallel_size == 0,
+                "D, H, P sizes are incorrect. To enable automatic correction, total number of ranks must be a divisible by HxP.");
+
+    const auto new_data_parallel_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
+    parameters.data_parallel_size = new_data_parallel_size;
+
+    const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +
+                            ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size) + ", so D is automatically changed to " + std::to_string(new_data_parallel_size);
+    LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
-  if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
-    throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-  }
-
-  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
-  if (data_group_size != parameters.data_parallel_size) {
-    LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
-                                        << data_group_size;
-    parameters.data_parallel_size = data_group_size;
-  }
-
-  training::TrainingSession::TrainingConfiguration config{};
+  training::PipelineTrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
-
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
   config.distributed_config.world_rank = parameters.world_rank;
@@ -97,18 +109,75 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.distributed_config.local_size = parameters.local_size;
   config.distributed_config.data_parallel_size = parameters.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+  config.distributed_config.pipeline_parallel_size = parameters.pipeline_parallel_size;
+  config.distributed_config.num_pipeline_micro_batches = parameters.num_pipeline_micro_batches;
+  config.distributed_config.sliced_schema = parameters.sliced_schema;
+  config.distributed_config.sliced_axes = parameters.sliced_axes;
+  config.distributed_config.sliced_tensor_names = parameters.sliced_tensor_names;
 
   if (parameters.use_mixed_precision) {
-    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    training::PipelineTrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_mixed_precision_initializers = true;
 
     config.mixed_precision_config = mp;
   }
 
+  if (config.distributed_config.pipeline_parallel_size > 1) {
+    training::PipelineTrainingSession::TrainingConfiguration::PipelineConfiguration pipeline_config;
+
+    // Currently don't support auto-partition. User needs to pass in cut information for pipeline
+    pipeline_config.do_partition = true;
+    assert(!parameters.pipeline_cut_info_string.empty());
+
+    auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+      std::vector<std::string> result;
+      size_t pos = 0;
+      while ((pos = input_str.find(delimiter)) != std::string::npos) {
+        std::string token = input_str.substr(0, pos);
+        result.emplace_back(token);
+        input_str.erase(0, pos + delimiter.length());
+      }
+      // push the last split of substring into result.
+      result.emplace_back(input_str);
+      return result;
+    };
+
+    auto process_cut_info = [&](std::string& cut_info_string) {
+      std::vector<PipelineTrainingSession::TrainingConfiguration::CutInfo> cut_list;
+      const std::string group_delimiter = ",";
+      const std::string edge_delimiter = ":";
+      const std::string consumer_delimiter = "/";
+      const std::string producer_consumer_delimiter = "-";
+
+      auto cut_info_groups = process_with_delimiter(cut_info_string, group_delimiter);
+      for (auto& cut_info_group : cut_info_groups) {
+        PipelineTrainingSession::TrainingConfiguration::CutInfo cut_info;
+        auto cut_edges = process_with_delimiter(cut_info_group, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            PipelineTrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            PipelineTrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
+          }
+        }
+        cut_list.emplace_back(cut_info);
+      }
+      return cut_list;
+    };
+
+    pipeline_config.cut_list = process_cut_info(parameters.pipeline_cut_info_string);
+    config.pipeline_config = pipeline_config;
+  }
   config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
-    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    training::PipelineTrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
     opt.name = parameters.training_optimizer_name;
     opt.learning_rate_input_name = parameters.lr_params_feed_name;
     opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
@@ -134,8 +203,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
     opt.deepspeed_zero = onnxruntime::training::ZeROConfig(parameters.deepspeed_zero_stage);
-    // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
-    // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     // TODO reduction types
@@ -162,7 +229,17 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
 
-  training::TrainingSession::TrainingConfigurationResult config_result{};
+  if (!parameters.model_after_graph_transforms_path.empty()) {
+    config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
+  }
+  if (!parameters.model_with_gradient_graph_path.empty()) {
+    config.model_with_gradient_graph_path = ToPathString(parameters.model_with_gradient_graph_path);
+  }
+  if (!parameters.model_with_training_graph_path.empty()) {
+    config.model_with_training_graph_path = ToPathString(parameters.model_with_training_graph_path);
+  }
+
+  training::PipelineTrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 
@@ -199,9 +276,9 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 
 std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
   std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
-  for (const auto& layer1_item: c_tensor_state) {
+  for (const auto& layer1_item : c_tensor_state) {
     py_tensor_state[layer1_item.first] = {};
-    for (const auto& layer2_item: layer1_item.second) {
+    for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
       py::object obj;
       const Tensor& rtensor = layer2_item.second.Get<Tensor>();
@@ -219,16 +296,24 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
       .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
+      .def_readwrite("sliced_tensor_names", &TrainingParameters::sliced_tensor_names)
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
       .def_readwrite("optimizer_int_attributes_map", &TrainingParameters::optimizer_int_attributes_map)
+      .def_readwrite("sliced_schema", &TrainingParameters::sliced_schema)
+      .def_readwrite("sliced_axes", &TrainingParameters::sliced_axes)
       .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
       .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
       .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
       .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("pipeline_cut_info_string", &TrainingParameters::pipeline_cut_info_string)
+      .def_readwrite("num_pipeline_micro_batches", &TrainingParameters::num_pipeline_micro_batches)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
@@ -260,6 +345,9 @@ void addObjectMethodsForTraining(py::module& m) {
              }
              parameters.optimizer_initial_state = optim_state;
            })
+      .def_readwrite("model_after_graph_transforms_path", &TrainingParameters::model_after_graph_transforms_path)
+      .def_readwrite("model_with_gradient_graph_path", &TrainingParameters::model_with_gradient_graph_path)
+      .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
 
 #if defined(USE_MPI)
@@ -281,7 +369,7 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(onnxruntime::make_unique<TrainingSession>(so, env)) {
+        : PyInferenceSession(onnxruntime::make_unique<PipelineTrainingSession>(so, env)) {
     }
   };
 
@@ -305,7 +393,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_MPI)
@@ -313,14 +401,13 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
@@ -329,16 +416,15 @@ void addObjectMethodsForTraining(py::module& m) {
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
-        const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
+        const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
 
         return config_result;
       })
       .def("get_state", [](PyTrainingSession* sess) {
         NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
+        ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
         //convert to numpy array
         std::map<std::string, py::object> rmap;
@@ -383,11 +469,86 @@ void addObjectMethodsForTraining(py::module& m) {
           ThrowIfPyErrOccured();
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
+        ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
-        return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
+        return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
+      });
+
+py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
+      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
+      // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
+      .def(py::init([](PyInferenceSession * session) {
+        return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
+      }))
+      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
+        std::vector<OrtValue> module_outputs;
+        int64_t run_id;
+        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+        return py::make_tuple(module_outputs, run_id);
+      })
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
+        Status status = agent->RunBackward(run_id, backward_output_grads);
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      ;
+
+  py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
+      m, "OrtModuleGraphBuilderConfiguration",
+      R"pbdoc(Configuration information for module graph builder.)pbdoc");
+  module_graph_builder_config.def(py::init())
+      .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
+      .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
+      .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
+      .def_readwrite("use_invertible_layernorm_grad",
+                     &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph);
+
+  py::class_<GraphInfo> graph_info(m, "GraphInfo",
+                                      R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  graph_info.def(py::init())
+      .def_readwrite("user_input_names", &GraphInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names", &GraphInfo::initializer_names)
+      .def_readwrite("initializer_names_to_train", &GraphInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &GraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("user_output_names", &GraphInfo::user_output_names)
+      .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
+      .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape);
+
+  py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
+  ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
+      .def("initialize",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
+              const OrtModuleGraphBuilderConfiguration& config) {
+             std::istringstream buffer(serialized_model);
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
+           })
+      .def("build",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build());
+           })
+      .def("build",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder,
+              const std::vector<std::vector<int64_t>>& input_shapes) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
+           })
+      .def("get_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetModel());
+           })
+      .def("get_inference_optimized_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+           })
+      .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+        return ortmodule_graph_builder->GetGraphInfo();
       });
 }
+
 }  // namespace python
 }  // namespace onnxruntime

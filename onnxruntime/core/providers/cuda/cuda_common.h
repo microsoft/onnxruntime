@@ -67,6 +67,18 @@ class ToCudaType<MLFloat16> {
   }
 };
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <>
+class ToCudaType<BFloat16> {
+ public:
+  typedef nv_bfloat16 MappedType;
+  static MappedType FromFloat(float f) {
+    uint16_t h = BFloat16(f).val;
+    return *reinterpret_cast<MappedType*>(&h);
+  }
+};
+#endif
+
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
   if (dims.empty() || p.size() < dims.size())
@@ -84,27 +96,84 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
-    cublasGetMathMode(handle, &mode_);
-#if defined(CUDA_VERSION) && CUDA_VERSION < 11000
-    if (prop.major >= 7 && mode == CUBLAS_TENSOR_OP_MATH) {
-      cublasSetMathMode(handle, mode);
-    }
+#if defined(CUDA_VERSION) && CUDA_VERSION < 11000    
+    enable_ = (mode == CUBLAS_TENSOR_OP_MATH ? prop.major >= 7 : true );
+#else
+    enable_ = (mode == CUBLAS_TF32_TENSOR_OP_MATH ? prop.major >= 8 : true);
 #endif
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    if (prop.major >= 8 && mode == CUBLAS_TF32_TENSOR_OP_MATH) {
-      cublasSetMathMode(handle, mode);
+    
+    if (enable_) {
+      cublasGetMathMode(handle, &mode_);
+      enable_ = (mode_ != mode);
+      if (enable_) {
+        cublasSetMathMode(handle, mode);
+      }
     }
-#endif
   }
 
   ~CublasMathModeSetter() {
-    cublasSetMathMode(handle_, mode_);
+    if (enable_) {
+      cublasSetMathMode(handle_, mode_);
+    }
   }
 
  private:
   const cudaDeviceProp& prop_;
   cublasHandle_t handle_;
   cublasMath_t mode_;
+  bool enable_;
+};
+
+// Cublas Gemm options for half data type
+class HalfGemmOptions {
+ public:
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  cublasMath_t GetMathMode() const {
+    if (pedantic_) {
+      return CUBLAS_PEDANTIC_MATH;
+    }
+    return disallow_reduced_precision_reduction_ && !compute_16f_ ? CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION : CUBLAS_DEFAULT_MATH;
+  }
+
+  cublasComputeType_t GetComputeType() const {
+    if (compute_16f_) {
+      return pedantic_ ? CUBLAS_COMPUTE_16F_PEDANTIC : CUBLAS_COMPUTE_16F;
+    } else {
+      return pedantic_ ? CUBLAS_COMPUTE_32F_PEDANTIC : CUBLAS_COMPUTE_32F;
+    }
+  }
+#else
+  cublasMath_t GetMathMode() const {
+    // CublasMathModeSetter will check whether device has tensor cores later.
+    return CUBLAS_TENSOR_OP_MATH;
+  }
+
+  cudaDataType GetComputeType() const {
+    return compute_16f_ ? CUDA_R_16F : CUDA_R_32F;
+  }
+#endif
+
+  static const HalfGemmOptions* GetInstance();
+
+  bool IsCompute16F() const { return compute_16f_; }
+
+  void Initialize(int value);
+
+ private:
+  // Default is FP32. Aggregate in FP16 might be faster but the cost is loss in precision.
+  bool compute_16f_{false};
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  // Avoid intermediate overflows in accumulation. When compute type is FP32, it will not use FP16 in reduction.
+  bool disallow_reduced_precision_reduction_{false};
+
+  // For numerical robustness studies only. It is much slower.
+  bool pedantic_{false};
+#endif
+
+  bool initialized_{false};
+
+  static HalfGemmOptions instance;
 };
 
 }  // namespace cuda

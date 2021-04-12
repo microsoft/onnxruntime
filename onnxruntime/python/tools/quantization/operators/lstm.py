@@ -21,8 +21,8 @@ class LSTMQuant(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "LSTM")
 
-        if (not self.quantizer.is_valid_quantize_weight(node.input[1]) or
-            not self.quantizer.is_valid_quantize_weight(node.input[2])):
+        if (not self.quantizer.is_valid_quantize_weight(node.input[1])
+                or not self.quantizer.is_valid_quantize_weight(node.input[2])):
             super().quantize()
             return
 
@@ -43,8 +43,10 @@ class LSTMQuant(QuantOperatorBase):
             W.dims[0] = W_num_dir * W_4_hidden_size
             R.dims[0] = R_num_dir * R_4_hidden_size
 
-        quant_input_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8, 0)
-        quant_recurrent_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[2], onnx_proto.TensorProto.INT8, 0)
+        quant_input_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1],
+                                                                              onnx_proto.TensorProto.INT8, 0)
+        quant_recurrent_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[2],
+                                                                                  onnx_proto.TensorProto.INT8, 0)
 
         W_quant_weight = model.get_initializer(quant_input_weight_tuple[0])
         R_quant_weight = model.get_initializer(quant_recurrent_weight_tuple[0])
@@ -80,12 +82,15 @@ class LSTMQuant(QuantOperatorBase):
         input_len = len(node.input)
         inputs.extend([node.input[0]])
         inputs.extend([quant_input_weight_tuple[0], quant_recurrent_weight_tuple[0]])
-        inputs.extend([node.input[3]if input_len > 3 else ""])
-        inputs.extend([node.input[4]if input_len > 4 else ""])
-        inputs.extend([node.input[5]if input_len > 5 else ""])
-        inputs.extend([node.input[6]if input_len > 6 else ""])
-        inputs.extend([node.input[7]if input_len > 7 else ""])
-        inputs.extend([quant_input_weight_tuple[2], quant_input_weight_tuple[1], quant_recurrent_weight_tuple[2], quant_recurrent_weight_tuple[1]])
+        inputs.extend([node.input[3] if input_len > 3 else ""])
+        inputs.extend([node.input[4] if input_len > 4 else ""])
+        inputs.extend([node.input[5] if input_len > 5 else ""])
+        inputs.extend([node.input[6] if input_len > 6 else ""])
+        inputs.extend([node.input[7] if input_len > 7 else ""])
+        inputs.extend([
+            quant_input_weight_tuple[2], quant_input_weight_tuple[1], quant_recurrent_weight_tuple[2],
+            quant_recurrent_weight_tuple[1]
+        ])
 
         kwargs = {}
         for attribute in node.attribute:
@@ -94,5 +99,8 @@ class LSTMQuant(QuantOperatorBase):
 
         quant_lstm_name = "" if node.name == "" else node.name + "_quant"
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
+        self.quantizer.new_nodes.append(quant_lstm_node)
 
-        self.quantizer.new_nodes += [quant_lstm_node]
+        dequantize_node = self.quantizer._dequantize_value(node.input[0])
+        if dequantize_node is not None:
+            self.quantizer.new_nodes.append(dequantize_node)

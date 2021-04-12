@@ -28,7 +28,7 @@ MPIContext::~MPIContext() {
   std::this_thread::sleep_for(std::chrono::seconds(MPIContext::MPI_TIMEOUT_IN_SECONDS));
   if (!perform_graceful_exit) {
     LOGS(logger_, INFO) << "MPI is not able to gracefully shut down. Aborting MPI.";
-    // Request to cancel the thread since it's hanging.
+    // Request to cancel the thread since it's not responsive.
     pthread_t native_handle = release_func_executor_thread.native_handle();
     pthread_cancel(native_handle);
   }

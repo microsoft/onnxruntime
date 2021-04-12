@@ -222,19 +222,29 @@ TEST(CseTests, Subgraph) {
     }
   }
 
-  output_names = GetSortedNames(if_true_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+  // Assert that we were able to obtain subgraphs pertaining to the then/else attributes in the 'If' node
+  ASSERT_NE(if_true_graph, nullptr);
+  ASSERT_NE(if_false_graph, nullptr);
 
-  auto op_count = CountOpsInGraph(*if_true_graph);
-  ASSERT_EQ(op_count["Mul"], 1);
-  ASSERT_EQ(op_count["Sum"], 3);
+  // Keep VC++ static analyzer happy
+  if (if_true_graph) {
+    output_names = GetSortedNames(if_true_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
-  output_names = GetSortedNames(if_false_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+    auto op_count = CountOpsInGraph(*if_true_graph);
+    ASSERT_EQ(op_count["Mul"], 1);
+    ASSERT_EQ(op_count["Sum"], 3);
+  }
 
-  op_count = CountOpsInGraph(*if_false_graph);
-  ASSERT_EQ(op_count["Mul"], 3);
-  ASSERT_EQ(op_count["Sum"], 1);
+  // Keep VC++ static analyzer happy
+  if (if_false_graph) {
+    output_names = GetSortedNames(if_false_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+
+    auto op_count = CountOpsInGraph(*if_false_graph);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Sum"], 1);
+  }
 }
 
 TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {
@@ -273,7 +283,7 @@ TEST(CseTests, MergeConstants) {
   ASSERT_TRUE(
       graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 

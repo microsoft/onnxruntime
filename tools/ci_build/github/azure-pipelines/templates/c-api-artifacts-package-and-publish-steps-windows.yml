@@ -1,9 +1,30 @@
 # sets up common build tools for the windows build machines before build
 
 parameters:
-  buildConfig: 'RelWithDebInfo'
-  artifactName: 'onnxruntime-win-x64'
-  comitId: ''
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: true
+
+- name: buildConfig
+  displayName: buildConfig
+  type: string
+  default: 'RelWithDebInfo'
+  
+- name: artifactName
+  displayName: artifactName，like 'onnxruntime-win-x64-1.6.0'
+  type: string
+  default: ''
+  
+- name: artifactNameNoVersionString
+  type: string
+  default: 'onnxruntime-win-x64'
+
+- name: commitId
+  displayName: commitId
+  type: string
+  default: ''
+
 steps:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
@@ -22,8 +43,7 @@ steps:
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
           REM copy the README, licence and TPN
-          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
-          copy $(Build.SourcesDirectory)\docs\C_API.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\C_API.md
+          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md          
           copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
           copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
           copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
@@ -37,7 +57,7 @@ steps:
       parameters:
         FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
         DisplayName: 'ESRP - Sign Native dlls'
-        DoEsrp: true
+        DoEsrp: ${{parameters.DoEsrp}}
         Pattern: '*.dll,*.exe'
 
     - task: ArchiveFiles@2
@@ -48,7 +68,7 @@ steps:
         archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
         replaceExistingArchive: true 
 
-    - task: PublishBuildArtifacts@1
+    - task: PublishPipelineArtifact@1
       inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
-        artifactName: 'drop-${{parameters.artifactName}}' 
+        targetPath: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        artifactName: '${{parameters.artifactNameNoVersionString}}'

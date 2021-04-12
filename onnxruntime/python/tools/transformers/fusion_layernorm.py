@@ -158,7 +158,7 @@ class FusionLayerNormalizationTF(Fusion):
         cast_node_3 = None
         if len(parent_nodes) == 11:
             cast_node_3 = parent_nodes[6]
-            assert(cast_node_3.op_type == 'Cast')
+            assert (cast_node_3.op_type == 'Cast')
 
         mul_node_3 = self.model.match_parent(node, 'Mul', 0, output_name_to_node)
         if mul_node_3 is None:
@@ -166,7 +166,8 @@ class FusionLayerNormalizationTF(Fusion):
             return
 
         node_before_reduce = self.model.get_parent(reduce_mean_node_1, 0, output_name_to_node)
-        root_node = node_before_reduce if cast_node_3 is None else self.model.get_parent(node_before_reduce, 0, output_name_to_node)
+        root_node = node_before_reduce if cast_node_3 is None else self.model.get_parent(
+            node_before_reduce, 0, output_name_to_node)
         if root_node is None:
             logger.debug("root node is none")
             return
@@ -176,11 +177,13 @@ class FusionLayerNormalizationTF(Fusion):
             logger.debug("epsilon is not matched")
             return
 
-        if cast_node_3 is None and (reduce_mean_node_1.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input):
+        if cast_node_3 is None and (reduce_mean_node_1.input[0] not in mul_node_3.input
+                                    or reduce_mean_node_1.input[0] not in sub_node_1.input):
             logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
             return
 
-        if cast_node_3 is not None and (node_before_reduce.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input):
+        if cast_node_3 is not None and (node_before_reduce.input[0] not in mul_node_3.input
+                                        or reduce_mean_node_1.input[0] not in sub_node_1.input):
             logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
             return
 
@@ -216,4 +219,3 @@ class FusionLayerNormalizationTF(Fusion):
                                       outputs=[node.output[0]])
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(fused_node)
-

@@ -13,10 +13,10 @@ variables:
 name: $(Date:yyyyMMdd)$(Rev:.r)
 jobs:
 - job: Linux_py_GPU_Build_Test_Release_Dockerfile
-  timeoutInMinutes: 90
+  timeoutInMinutes: 110
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  pool: Onnxruntime-Linux-GPU
   steps:
   - task: CmdLine@2
     displayName: Build builder stage of docker file

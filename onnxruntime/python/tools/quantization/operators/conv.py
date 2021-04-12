@@ -1,6 +1,7 @@
 import onnx
 from .base_operator import QuantOperatorBase
-from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType, attribute_to_kwarg
+from .qdq_base_operator import QDQOperatorBase
+from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType, attribute_to_kwarg, BiasToQuantize
 from onnx import onnx_pb as onnx_proto
 
 
@@ -19,7 +20,8 @@ class ConvInteger(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
-            quantized_bias_name = self.quantizer.quantize_bias(node, nodes)
+            quantized_bias_name = self.quantizer.quantize_bias_dynamic(node.input[2], node.input[0], node.input[1],
+                                                                       nodes)
             bias_present = True
 
         conv_integer_output = node.output[0] + "_output_quantized"
@@ -77,7 +79,8 @@ class QLinearConv(QuantOperatorBase):
         if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
             (quantized_input_names, zero_point_names, scale_names, nodes) = \
                 self.quantizer.quantize_inputs(node, [0])
-            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8, 0)
+            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8,
+                                                                            0)
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])
             scale_names.append(quant_weight_tuple[2])
@@ -88,7 +91,7 @@ class QLinearConv(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
-            quantized_bias_name = self.quantizer.quantize_bias(node, nodes)
+            quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
@@ -130,3 +133,21 @@ class QLinearConv(QuantOperatorBase):
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         self.quantizer.new_nodes += nodes
+
+
+class QDQConv(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+        assert (node.op_type == "Conv")
+
+        self.quantizer.quantize_tensor(node.input[0])
+        if self.quantizer.is_per_channel():
+            self.quantizer.quantize_tensor_per_channel(node.input[1], 0)
+        else:
+            self.quantizer.quantize_tensor(node.input[1])
+
+        if len(node.input) == 3:
+            self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])

@@ -24,12 +24,6 @@
 // Move to std::optional when we switch to c++ 17
 #include "core/common/optional.h"
 
-template <typename T>
-T Product(const std::vector<T>& v) {
-  return static_cast<T>(
-      accumulate(v.begin(), v.end(), 1, std::multiplies<T>()));
-}
-
 namespace android {
 namespace nn {
 namespace wrapper {

@@ -16,11 +16,11 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
   Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
 
   if (!retval.IsOK()) {
-    LOGS(ctx->Logger(), ERROR) << MakeStringLite(retval.ErrorMessage(),
-                                                 " Copying ", Node().InputDefs()[0]->Name(),
-                                                 " to ", Node().OutputDefs()[0]->Name(),
-                                                 " Input shape:", X->Shape(), " Output shape:", Y->Shape(),
-                                                 " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
+    LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
+                                             " Copying ", Node().InputDefs()[0]->Name(),
+                                             " to ", Node().OutputDefs()[0]->Name(),
+                                             " Input shape:", X->Shape(), " Output shape:", Y->Shape(),
+                                             " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
   }
 
   return retval;

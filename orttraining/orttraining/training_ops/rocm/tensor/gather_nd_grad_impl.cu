@@ -24,18 +24,19 @@ __global__ void _GatherNDGradKernel(
 
 template <typename T>
 void GatherNDGradImpl(
+    hipStream_t stream,
     const size_t num_slices,
     const void* update_data,
     void* output_data,
     const size_t slice_size,
     const int64_t* input_slice_offsets_data) {
   const auto blocks_per_grid = CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock);
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherNDGradKernel<T>), dim3(blocks_per_grid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherNDGradKernel<T>), dim3(blocks_per_grid), dim3(GridDim::maxThreadsPerBlock), 0, stream, 
       num_slices, static_cast<const T*>(update_data), static_cast<T*>(output_data), slice_size, input_slice_offsets_data);
 }
 
 #define SPECIALIZED_GRAD_IMPL(T) \
-  template void GatherNDGradImpl<T>(const size_t num_slices, const void* update_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data)
+  template void GatherNDGradImpl<T>(hipStream_t stream, const size_t num_slices, const void* update_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data)
 
 SPECIALIZED_GRAD_IMPL(float);
 SPECIALIZED_GRAD_IMPL(half);

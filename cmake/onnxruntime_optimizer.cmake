@@ -13,6 +13,8 @@ else()
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.cc"
   )
 endif()
 
@@ -30,9 +32,6 @@ add_library(onnxruntime_optimizer ${onnxruntime_optimizer_srcs})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/optimizer  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
-if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-   target_compile_options(onnxruntime_optimizer PRIVATE "/wd4244")
-endif()
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})

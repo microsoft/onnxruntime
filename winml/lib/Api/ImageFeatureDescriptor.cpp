@@ -18,7 +18,7 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
     wgi::BitmapAlphaMode alpha_mode,
     uint32_t width,
     uint32_t height,
-    ImageNominalPixelRange nominal_pixel_range,
+    winml::LearningModelPixelRange pixel_range,
     ImageColorSpaceGamma color_space_gamma) : name_(_winml::Strings::HStringFromUTF8(name)),
                                               description_(_winml::Strings::HStringFromUTF8(description)),
                                               tensor_kind_(tensor_kind),
@@ -28,7 +28,7 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
                                               alpha_mode_(alpha_mode),
                                               width_(width),
                                               height_(height),
-                                              nominal_pixel_range_(nominal_pixel_range),
+                                              pixel_range_(pixel_range),
                                               color_space_gamma_(color_space_gamma) {
 }
 
@@ -111,13 +111,23 @@ ImageFeatureDescriptor::GetDescription(
   return S_OK;
 }
 
-ImageNominalPixelRange
-ImageFeatureDescriptor::GetNominalPixelRange() {
-  return nominal_pixel_range_;
+winml::LearningModelPixelRange
+ImageFeatureDescriptor::PixelRange() {
+  return pixel_range_;
 }
 
 ImageColorSpaceGamma
 ImageFeatureDescriptor::GetColorSpaceGamma() {
   return color_space_gamma_;
 }
+
+HRESULT
+ImageFeatureDescriptor::GetDescriptorInfo(
+    _winml::IEngineFactory* engine_factory,
+    _winml::IDescriptorInfo** info) {
+    // TODO: Need to add denotations here
+  engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
+  return S_OK;
+}
+
 }  // namespace WINMLP

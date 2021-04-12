@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.gradle.spotless' version '3.26.0'
+	id 'com.diffplug.spotless' version '5.9.0'
 }
 
 allprojects {
@@ -76,7 +76,25 @@ spotless {
 }
 
 compileJava {
+	dependsOn spotlessJava
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
+	if (!JavaVersion.current().isJava8()) {
+		// Ensures only methods present in Java 8 are used
+		options.compilerArgs.addAll(['--release', '8'])
+		// Gradle versions before 6.6 require that these flags are unset when using "-release"
+		java.sourceCompatibility = null
+		java.targetCompatibility = null
+	}
+}
+
+compileTestJava {
+	if (!JavaVersion.current().isJava8()) {
+		// Ensures only methods present in Java 8 are used
+		options.compilerArgs.addAll(['--release', '8'])
+		// Gradle versions before 6.6 require that these flags are unset when using "-release"
+		java.sourceCompatibility = null
+		java.targetCompatibility = null
+	}
 }
 
 sourceSets.test {
@@ -132,16 +150,22 @@ if (cmakeBuildDir != null) {
 		into cmakeBuildOutputDir
 	}
 	cmakeCheck.dependsOn check
-
 }
 
 dependencies {
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 	testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
 }
 
+processTestResources {
+	duplicatesStrategy(DuplicatesStrategy.INCLUDE) // allows duplicates in the test resources
+}
+
 test {
+	java {
+		dependsOn spotlessJava
+	}
 	useJUnitPlatform()
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir

@@ -16,7 +16,37 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
+
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint32_t* Input,
+    size_t InputStride,
+    uint32_t* Output,
+    size_t OutputStride
+    )
+{
+    __m128i a0 = _mm_loadu_si128((const __m128i*)&Input[InputStride * 0]);
+    __m128i a1 = _mm_loadu_si128((const __m128i*)&Input[InputStride * 1]);
+    __m128i a2 = _mm_loadu_si128((const __m128i*)&Input[InputStride * 2]);
+    __m128i a3 = _mm_loadu_si128((const __m128i*)&Input[InputStride * 3]);
+
+    __m128i b0 = _mm_unpacklo_epi32(a0, a2);
+    __m128i b1 = _mm_unpackhi_epi32(a0, a2);
+    __m128i b2 = _mm_unpacklo_epi32(a1, a3);
+    __m128i b3 = _mm_unpackhi_epi32(a1, a3);
+
+    __m128i c0 = _mm_unpacklo_epi32(b0, b2);
+    __m128i c1 = _mm_unpackhi_epi32(b0, b2);
+    __m128i c2 = _mm_unpacklo_epi32(b1, b3);
+    __m128i c3 = _mm_unpackhi_epi32(b1, b3);
+
+    _mm_storeu_si128((__m128i*)&Output[OutputStride * 0], c0);
+    _mm_storeu_si128((__m128i*)&Output[OutputStride * 1], c1);
+    _mm_storeu_si128((__m128i*)&Output[OutputStride * 2], c2);
+    _mm_storeu_si128((__m128i*)&Output[OutputStride * 3], c3);
+}
 
 MLAS_FORCEINLINE
 void
@@ -26,34 +56,7 @@ MlasTranspose8x8Block(
     uint8_t* Output,
     size_t OutputStride
     )
-/*++
-
-Routine Description:
-
-    This routine transposes an eight by eight element block from the input
-    matrix to the output matrix.
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    InputStride - Supplies the number of elements between rows of the input
-        matrix.
-
-    Output - Supplies the output buffer.
-
-    OutputStride - Supplies the number of elements between rows of the output
-        matrix.
-
-Return Value:
-
-    None.
-
---*/
 {
-
-#if defined(MLAS_SSE2_INTRINSICS)
-
     __m128i a0 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 0]);
     __m128i a1 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 1]);
     __m128i b0 = _mm_unpacklo_epi8(a0, a1);
@@ -90,9 +93,45 @@ Return Value:
     __m128 d3 = _mm_castsi128_ps(_mm_unpackhi_epi32(c1, c3));
     _mm_storel_pi((__m64*)&Output[OutputStride * 6], d3);
     _mm_storeh_pi((__m64*)&Output[OutputStride * 7], d3);
+}
 
 #elif defined(MLAS_NEON_INTRINSICS)
 
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint32_t* Input,
+    size_t InputStride,
+    uint32_t* Output,
+    size_t OutputStride
+    )
+{
+    uint32x4_t a0 = vld1q_u32(&Input[InputStride * 0]);
+    uint32x4_t a1 = vld1q_u32(&Input[InputStride * 1]);
+    uint32x4_t a2 = vld1q_u32(&Input[InputStride * 2]);
+    uint32x4_t a3 = vld1q_u32(&Input[InputStride * 3]);
+
+    uint32x4x2_t b0 = vzipq_u32(a0, a2);
+    uint32x4x2_t b1 = vzipq_u32(a1, a3);
+
+    uint32x4x2_t c0 = vzipq_u32(b0.val[0], b1.val[0]);
+    uint32x4x2_t c1 = vzipq_u32(b0.val[1], b1.val[1]);
+
+    vst1q_u32(&Output[OutputStride * 0], c0.val[0]);
+    vst1q_u32(&Output[OutputStride * 1], c0.val[1]);
+    vst1q_u32(&Output[OutputStride * 2], c1.val[0]);
+    vst1q_u32(&Output[OutputStride * 3], c1.val[1]);
+}
+
+MLAS_FORCEINLINE
+void
+MlasTranspose8x8Block(
+    const uint8_t* Input,
+    size_t InputStride,
+    uint8_t* Output,
+    size_t OutputStride
+    )
+{
     uint8x8_t a0 = vld1_u8(&Input[InputStride * 0]);
     uint8x8_t a1 = vld1_u8(&Input[InputStride * 1]);
     uint8x8x2_t b0 = vzip_u8(a0, a1);
@@ -127,39 +166,71 @@ Return Value:
     vst1_u8(&Output[OutputStride * 5], vreinterpret_u8_u32(d2.val[1]));
     vst1_u8(&Output[OutputStride * 6], vreinterpret_u8_u32(d3.val[0]));
     vst1_u8(&Output[OutputStride * 7], vreinterpret_u8_u32(d3.val[1]));
-
-#endif
-
 }
 
 #endif
 
+template<typename ElementType>
+MLAS_FORCEINLINE
+void
+MlasTranspose4xNVector(
+    const ElementType* Input,
+    size_t InputStride,
+    ElementType* Output,
+    size_t OutputStride
+    )
+{
+    ElementType a0 = Input[InputStride * 0];
+    ElementType a1 = Input[InputStride * 1];
+    ElementType a2 = Input[InputStride * 2];
+    ElementType a3 = Input[InputStride * 3];
+
+    Output[OutputStride * 0] = a0;
+    Output[OutputStride * 1] = a1;
+    Output[OutputStride * 2] = a2;
+    Output[OutputStride * 3] = a3;
+}
+
+template<typename ElementType>
 MLAS_FORCEINLINE
 void
 MlasTranspose8xNVector(
-    const uint8_t* Input,
+    const ElementType* Input,
     size_t InputStride,
-    uint8_t* Output,
+    ElementType* Output,
     size_t OutputStride
+    )
+{
+    MlasTranspose4xNVector(&Input[InputStride * 0], InputStride, &Output[OutputStride * 0], OutputStride);
+    MlasTranspose4xNVector(&Input[InputStride * 4], InputStride, &Output[OutputStride * 4], OutputStride);
+}
+
+void
+MLASCALL
+MlasTranspose(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N
     )
 /*++
 
 Routine Description:
 
-    This routine transposes an eight element vector from the input matrix
-    to the output matrix.
+    This routine transposes the input matrix (M rows by N columns) to the
+    output matrix (N rows by M columns).
 
 Arguments:
 
     Input - Supplies the input buffer.
 
-    InputStride - Supplies the number of elements between rows of the input
-        matrix.
-
     Output - Supplies the output buffer.
 
-    OutputStride - Supplies the number of elements between rows of the output
-        matrix.
+    M - Supplies the number of rows for the input matrix and the number of
+        columns for the output matrix.
+
+    N - Supplies the number of columns for the input matrix and the number of
+        rows for the output matrix.
 
 Return Value:
 
@@ -167,25 +238,95 @@ Return Value:
 
 --*/
 {
-    uint8_t a0 = Input[InputStride * 0];
-    uint8_t a1 = Input[InputStride * 1];
-    uint8_t a2 = Input[InputStride * 2];
-    uint8_t a3 = Input[InputStride * 3];
+    size_t n = N;
 
-    Output[OutputStride * 0] = a0;
-    Output[OutputStride * 1] = a1;
-    Output[OutputStride * 2] = a2;
-    Output[OutputStride * 3] = a3;
+    //
+    // Transpose elements from the input matrix to the output matrix 4 columns
+    // at a time.
+    //
 
-    uint8_t a4 = Input[InputStride * 4];
-    uint8_t a5 = Input[InputStride * 5];
-    uint8_t a6 = Input[InputStride * 6];
-    uint8_t a7 = Input[InputStride * 7];
+    while (n >= 4) {
 
-    Output[OutputStride * 4] = a4;
-    Output[OutputStride * 5] = a5;
-    Output[OutputStride * 6] = a6;
-    Output[OutputStride * 7] = a7;
+        const uint32_t* s = Input;
+        uint32_t* d = Output;
+        size_t m = M;
+
+#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)
+
+        while (m >= 4) {
+
+            MlasTranspose4x4Block(s, N, d, M);
+
+            s += N * 4;
+            d += 4;
+            m -= 4;
+        }
+
+#endif
+
+        while (m > 0) {
+
+            MlasTranspose4xNVector(s, 1, d, M);
+
+            s += N;
+            d += 1;
+            m -= 1;
+        }
+
+        Input += 4;
+        Output += M * 4;
+        n -= 4;
+    }
+
+    //
+    // Transpose elements from the input matrix to the output matrix for the
+    // remaining columns.
+    //
+
+    while (n > 0) {
+
+        const uint32_t* s = Input;
+        uint32_t* d = Output;
+        size_t m = M;
+
+        while (m >= 4) {
+
+            MlasTranspose4xNVector(s, N, d, 1);
+
+            s += N * 4;
+            d += 4;
+            m -= 4;
+        }
+
+        while (m > 0) {
+
+            d[0] = s[0];
+
+            s += N;
+            d += 1;
+            m -= 1;
+        }
+
+        Input += 1;
+        Output += M;
+        n -= 1;
+    }
+}
+
+void
+MLASCALL
+MlasTranspose(
+    const float* Input,
+    float* Output,
+    size_t M,
+    size_t N
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint32_t*>(Input),
+        reinterpret_cast<uint32_t*>(Output),
+        M,
+        N);
 }
 
 void

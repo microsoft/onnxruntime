@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/common/type_utils.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -52,13 +53,26 @@ class RandomValueGenerator {
   // Random values generated are in the range [min, max).
   template <typename TInt>
   typename std::enable_if<
-      std::is_integral<TInt>::value,
+      std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
       std::vector<TInt>>::type
   Uniform(const std::vector<int64_t>& dims, TInt min, TInt max) {
     std::vector<TInt> val(detail::SizeFromDims(dims));
     std::uniform_int_distribution<TInt> distribution(min, max - 1);
     for (size_t i = 0; i < val.size(); ++i) {
       val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  template <typename TByte>
+  typename std::enable_if<
+      utils::IsByteType<TByte>::value,
+      std::vector<TByte>>::type
+  Uniform(const std::vector<int64_t>& dims, TByte min, TByte max) {
+    std::vector<TByte> val(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<int32_t> distribution(min, max - 1);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = static_cast<TByte>(distribution(generator_));
     }
     return val;
   }
@@ -126,7 +140,7 @@ class RandomValueGenerator {
 
 template <class T>
 inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
-  std::vector<T> val(detail::SizeFromDims(dims), T(0));
+  std::vector<T> val(detail::SizeFromDims(dims), T{});
   return val;
 }
 

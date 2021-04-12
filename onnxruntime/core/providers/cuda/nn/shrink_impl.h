@@ -8,6 +8,7 @@ namespace cuda {
 
 template <typename T>
 void ShrinkImpl(
+    cudaStream_t stream,
     const T* input_data,
     const float bias,
     const float lambda,

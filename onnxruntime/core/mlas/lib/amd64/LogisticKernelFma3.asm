@@ -19,60 +19,11 @@
 
         .xlist
 INCLUDE mlasi.inc
+INCLUDE TransKernelCommon.inc
         .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
+        EXTERN  MlasMaskMoveTableAvx:NEAR
         EXTERN  MlasLogisticConstants:NEAR
-
-;
-; Structure layout for the logistic constants block.
-;
-
-LogisticConstants STRUCT
-
-        LowerRange DWORD ?
-        UpperRange DWORD ?
-        alpha_9 DWORD ?
-        alpha_7 DWORD ?
-        alpha_5 DWORD ?
-        alpha_3 DWORD ?
-        alpha_1 DWORD ?
-        beta_10 DWORD ?
-        beta_8 DWORD ?
-        beta_6 DWORD ?
-        beta_4 DWORD ?
-        beta_2 DWORD ?
-        beta_0 DWORD ?
-        one_half DWORD ?
-
-LogisticConstants ENDS
-
-;
-; Stack frame layout for the logistic kernel.
-;
-
-LogisticKernelFrame STRUCT
-
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
-        Padding0 QWORD ?
-        Padding1 QWORD ?
-        CountN QWORD ?
-        ReturnAddress QWORD ?
-        PreviousP1Home QWORD ?
-        PreviousP2Home QWORD ?
-        PreviousP3Home QWORD ?
-        PreviousP4Home QWORD ?
-
-LogisticKernelFrame ENDS
 
 ;++
 ;
@@ -94,20 +45,20 @@ LogisticKernelFrame ENDS
 ;
 ;--
 
-        NESTED_ENTRY MlasLogisticKernelFma3, _TEXT
+        NESTED_ENTRY MlasComputeLogisticF32KernelFma3, _TEXT
 
-        alloc_stack (LogisticKernelFrame.ReturnAddress)
+        alloc_stack (TransKernelFrame.ReturnAddress)
 
-        save_xmm128 xmm6,LogisticKernelFrame.SavedXmm6
-        save_xmm128 xmm7,LogisticKernelFrame.SavedXmm7
-        save_xmm128 xmm8,LogisticKernelFrame.SavedXmm8
-        save_xmm128 xmm9,LogisticKernelFrame.SavedXmm9
-        save_xmm128 xmm10,LogisticKernelFrame.SavedXmm10
-        save_xmm128 xmm11,LogisticKernelFrame.SavedXmm11
-        save_xmm128 xmm12,LogisticKernelFrame.SavedXmm12
-        save_xmm128 xmm13,LogisticKernelFrame.SavedXmm13
-        save_xmm128 xmm14,LogisticKernelFrame.SavedXmm14
-        save_xmm128 xmm15,LogisticKernelFrame.SavedXmm15
+        save_xmm128 xmm6,TransKernelFrame.SavedXmm6
+        save_xmm128 xmm7,TransKernelFrame.SavedXmm7
+        save_xmm128 xmm8,TransKernelFrame.SavedXmm8
+        save_xmm128 xmm9,TransKernelFrame.SavedXmm9
+        save_xmm128 xmm10,TransKernelFrame.SavedXmm10
+        save_xmm128 xmm11,TransKernelFrame.SavedXmm11
+        save_xmm128 xmm12,TransKernelFrame.SavedXmm12
+        save_xmm128 xmm13,TransKernelFrame.SavedXmm13
+        save_xmm128 xmm14,TransKernelFrame.SavedXmm14
+        save_xmm128 xmm15,TransKernelFrame.SavedXmm15
 
         END_PROLOGUE
 
@@ -158,9 +109,9 @@ ComputeLogisticBy8Loop:
 ProcessRemainingCount:
         add     r8,8                            ; correct for over-subtract above
         jz      ExitKernel
-        mov     DWORD PTR LogisticKernelFrame.CountN[rsp],r8d
-        vbroadcastss ymm2,DWORD PTR LogisticKernelFrame.CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR [MlasMaskMoveAvx]
+        neg     r8
+        lea     r10,MlasMaskMoveTableAvx+8*4
+        vmovups ymm2,YMMWORD PTR [r10+r8*4]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rcx]
         vmaxps  ymm0,ymm4,ymm0                  ; clamp lower bound
         vminps  ymm0,ymm5,ymm0                  ; clamp upper bound
@@ -185,22 +136,22 @@ ProcessRemainingCount:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,LogisticKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,LogisticKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,LogisticKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,LogisticKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,LogisticKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,LogisticKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,LogisticKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,LogisticKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,LogisticKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,LogisticKernelFrame.SavedXmm15[rsp]
-        add     rsp,(LogisticKernelFrame.ReturnAddress)
+        movaps  xmm6,TransKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,TransKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,TransKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,TransKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,TransKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,TransKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,TransKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,TransKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,TransKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,TransKernelFrame.SavedXmm15[rsp]
+        add     rsp,(TransKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE
 
         ret
 
-        NESTED_END MlasLogisticKernelFma3, _TEXT
+        NESTED_END MlasComputeLogisticF32KernelFma3, _TEXT
 
         END

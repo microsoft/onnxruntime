@@ -5,10 +5,10 @@ psutil
 py-cpuinfo
 py3nvml
 packaging
-# Gpt2 and Albert models need a change in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
-# The change does not exist in 2.9.0 so we install from source instead.
-git+https://github.com/huggingface/transformers.git
+transformers
 onnxruntime
+onnxconverter_common
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.5.0+cpu
-torchvision==0.6.0+cpu
+torch==1.7.1+cpu
+torchvision==0.8.2+cpu
+torchaudio===0.7.2

@@ -11,6 +11,9 @@ namespace cuda {
 
 const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<MLFloat16>(),
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    DataTypeImpl::GetTensorType<BFloat16>(),
+#endif
     DataTypeImpl::GetTensorType<float>(),
     DataTypeImpl::GetTensorType<double>(),
     DataTypeImpl::GetTensorType<int8_t>(),
@@ -68,6 +71,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   case TP_TYPE:                                                                                      \
     if (count > 0) {                                                                                 \
       Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
+          Stream(),                                                                                  \
           x_data,                                                                                    \
           reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
           count);                                                                                    \
@@ -76,6 +80,9 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
 
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    CASE(TensorProto_DataType_BFLOAT16, BFloat16)
+#endif
     CASE(TensorProto_DataType_FLOAT, float)
     CASE(TensorProto_DataType_DOUBLE, double)
     CASE(TensorProto_DataType_INT8, int8_t)
@@ -113,6 +120,9 @@ SPECIALIZE_IMPL(uint16_t)
 SPECIALIZE_IMPL(uint32_t)
 SPECIALIZE_IMPL(uint64_t)
 SPECIALIZE_IMPL(bool)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+SPECIALIZE_IMPL(BFloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

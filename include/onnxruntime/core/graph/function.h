@@ -21,8 +21,10 @@ class Function {
  public:
   virtual ~Function() = default;
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Gets the OpSchema for the Function. */
   virtual const ONNX_NAMESPACE::OpSchema& OpSchema() const = 0;
+#endif
 
   /** Gets the Graph instance for the Function body subgraph. */
   virtual const onnxruntime::Graph& Body() const = 0;

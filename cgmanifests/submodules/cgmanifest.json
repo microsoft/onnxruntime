@@ -122,6 +122,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "523d5e03d86c26267ee6bdf17dd20f6ce6bdadd7",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "git submodule at cmake/external/coremltools"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -172,16 +182,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-          "repositoryUrl": "https://github.com/google/gemmlowp.git"
-        },
-        "comments": "git submodule at cmake/external/gemmlowp"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
@@ -222,6 +222,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "21cace4e574180ba64d9307a5e4ea9e5e94d3e8d",
+          "repositoryUrl": "https://github.com/boostorg/mp11.git"
+        },
+        "comments": "git submodule at cmake/external/mp11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
           "repositoryUrl": "https://github.com/google/nsync"
         },
@@ -232,7 +242,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "994c6181247d7b419b28889fc57d5817e2089419",
+          "commitHash": "fe2433d3dd677ed5c582e194a49a632e707d0543",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -262,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a3a4e38b2dfa7a62b6dcae33c0d1678b3bb5ef2a",
+          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -436,6 +446,16 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        },
+        "comments": "git submodule at cmake/external/dlpack"
       }
     }
   ]

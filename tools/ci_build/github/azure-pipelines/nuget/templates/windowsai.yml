@@ -4,7 +4,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -16,7 +16,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -28,7 +28,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -40,7 +40,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -52,7 +52,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -65,7 +65,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -78,7 +78,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -91,7 +91,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -104,7 +104,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -117,7 +117,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -130,7 +130,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -143,7 +143,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2019'
+    name: 'Win-CPU-2021'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -154,7 +154,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-gpu-winbuild'
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
@@ -322,30 +322,30 @@ jobs:
         $arm_static_runtime_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm_static_runtime_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_static_runtime_nuget_package, $arm_static_runtime_nupkg_unzipped_directory)
 
-        $x64_store_runtime_path_old = [System.IO.Path]::Combine($x64_store_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'uap')
-        $x64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'uap')
-        $x64_static_runtime_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'native')
-        $x64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'native', 'static')
-        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $x86_store_runtime_path_old = [System.IO.Path]::Combine($x86_store_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'uap')
-        $x86_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'uap')
-        $x86_static_runtime_path_old = [System.IO.Path]::Combine($x86_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $x86_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native', 'static')
-        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm64_store_runtime_path_old = [System.IO.Path]::Combine($arm64_store_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
-        $arm64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'uap')
-        $arm64_static_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native', 'static')
-        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
-        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
-        $arm_store_runtime_path_old = [System.IO.Path]::Combine($arm_store_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'uap')
-        $arm_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'uap')
-        $arm_static_runtime_path_old = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
-        $arm_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native', 'static')
-        $uap_build_path_old = [System.IO.Path]::Combine($x64_store_nupkg_unzipped_directory, 'build', 'uap')
-        $uap_build_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'build', 'uap')
+        $x64_store_runtime_path_old = [System.IO.Path]::Combine($x64_store_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'lib\\uap10.0')
+        $x64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'lib\\uap10.0')
+        $x64_static_runtime_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native')
+        $x64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native', 'static')
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
+        $x86_store_runtime_path_old = [System.IO.Path]::Combine($x86_store_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'lib\\uap10.0')
+        $x86_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'lib\\uap10.0')
+        $x86_static_runtime_path_old = [System.IO.Path]::Combine($x86_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
+        $x86_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native', 'static')
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
+        $arm64_store_runtime_path_old = [System.IO.Path]::Combine($arm64_store_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'lib\\uap10.0')
+        $arm64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'lib\\uap10.0')
+        $arm64_static_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
+        $arm64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native', 'static')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
+        $arm_store_runtime_path_old = [System.IO.Path]::Combine($arm_store_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'lib\\uap10.0')
+        $arm_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'lib\\uap10.0')
+        $arm_static_runtime_path_old = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
+        $arm_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native', 'static')
+        $uap_build_path_old = [System.IO.Path]::Combine($x64_store_nupkg_unzipped_directory, 'build', 'uap10.0')
+        $uap_build_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'build', 'uap10.0')
 
         New-Item -Path $x64_store_runtime_path_new -ItemType Directory
         New-Item -Path $x64_static_runtime_path_new -ItemType Directory
@@ -469,12 +469,12 @@ jobs:
         $arm_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory_root, 'symbols', [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_nupkg_unzipped_directory)
 
-        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
-        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'native')
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
 
         New-Item -Path $x86_runtime_path_new -ItemType Directory
         New-Item -Path $arm64_runtime_path_new -ItemType Directory

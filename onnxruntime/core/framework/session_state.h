@@ -31,6 +31,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -52,6 +55,9 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+class MemoryInfo;
+#endif
 
 /**
  * SessionState should be modified by the inference session class only.
@@ -119,8 +125,8 @@ class SessionState {
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
   /**
-  Get the allocator for the given OrtMemoryInfo location
-  */
+    Get the allocator for the given OrtMemoryInfo location
+    */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
@@ -129,44 +135,44 @@ class SessionState {
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**
-   * Adds an initialized tensor (weight) so that it can be used by the
-   * execution frame to setup the appropriate OrtValue vectors.
-   * This function will take a shallow copy of d if d is not NULL.
-   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
-   */
+     * Adds an initialized tensor (weight) so that it can be used by the
+     * execution frame to setup the appropriate OrtValue vectors.
+     * This function will take a shallow copy of d if d is not NULL.
+     * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+     */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
 
   /**
-   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
-   * execution frame to setup the appropriate OrtValue vectors.
-   * The lifetime of returned OrtValues are limited by this SessionState object.
-   */
+     * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
+     * execution frame to setup the appropriate OrtValue vectors.
+     * The lifetime of returned OrtValues are limited by this SessionState object.
+     */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
-   * and cannot be overridden at runtime.
-   * The lifetime of returned OrtValues are limited by this SessionState object.
-   */
+     * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+     * and cannot be overridden at runtime.
+     * The lifetime of returned OrtValues are limited by this SessionState object.
+     */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #ifdef ENABLE_TRAINING
   /**
-  Get some initialized tensors (weights).
-  @param interested_weights The names of the weights to retrieve.
-  @param allow_missing_weights Whether to allow names in interested_weights
-         with no corresponding weight.
-  @param[out] retrieved_weights The retrieved weights.
-  @return The status of the operation.
-  */
+    Get some initialized tensors (weights).
+    @param interested_weights The names of the weights to retrieve.
+    @param allow_missing_weights Whether to allow names in interested_weights
+           with no corresponding weight.
+    @param[out] retrieved_weights The retrieved weights.
+    @return The status of the operation.
+    */
   Status GetInitializedTensors(
       const std::unordered_set<std::string>& interested_weights,
       bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
 
   /**
-  Get some initialized tensors (weights).
-  Any names in interested_weights with no corresponding weight are ignored.
-  */
+    Get some initialized tensors (weights).
+    Any names in interested_weights with no corresponding weight are ignored.
+    */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 #endif
 

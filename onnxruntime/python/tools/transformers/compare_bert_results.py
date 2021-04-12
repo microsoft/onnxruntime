@@ -21,19 +21,17 @@ from datetime import datetime
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 from bert_test_data import get_bert_inputs, generate_test_data, output_test_data
-from bert_perf_test import create_session, onnxruntime_inference, setup_openmp_environ
+from bert_perf_test import create_session, onnxruntime_inference
 
 
-def run_model(model_path, all_inputs, use_gpu, use_openmp, disable_optimization):
-    # Import onnxruntime shall be after OpenMP environment variable setting.
-    # So we put import here to delay importing.
+def run_model(model_path, all_inputs, use_gpu, disable_optimization):
     import onnxruntime
 
     graph_optimization_level = None
     if disable_optimization:
         graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-    intra_op_num_threads = 1 if use_openmp else psutil.cpu_count(logical=False)
+    intra_op_num_threads = psutil.cpu_count(logical=False)
 
     session = create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level)
 
@@ -78,7 +76,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
 
 
 def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_length, use_gpu, test_cases, seed,
-             use_openmp, verbose, rtol, atol, input_ids_name, segment_ids_name, input_mask_name):
+             verbose, rtol, atol, input_ids_name, segment_ids_name, input_mask_name):
 
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(optimized_model, input_ids_name, segment_ids_name,
@@ -95,16 +93,9 @@ def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_l
                                     input_mask,
                                     random_mask_length=True)
 
-    # OpenMP environment variables must be set before the very first "import onnxruntime"
-    if use_openmp:
-        setup_openmp_environ(omp_num_threads=psutil.cpu_count(logical=False), omp_wait_policy='ACTIVE')
-    else:
-        setup_openmp_environ(omp_num_threads=1, omp_wait_policy='ACTIVE')
-
     baseline_results, baseline_latency, output_names = run_model(baseline_model,
                                                                  all_inputs,
                                                                  use_gpu,
-                                                                 use_openmp,
                                                                  disable_optimization=True)
     if verbose:
         print("baseline average latency (all optimizations disabled): {} ms".format(
@@ -117,7 +108,6 @@ def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_l
     treatment_results, treatment_latency, treatment_output_names = run_model(optimized_model,
                                                                              all_inputs,
                                                                              use_gpu,
-                                                                             use_openmp,
                                                                              disable_optimization=False)
     if verbose:
         print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
@@ -157,9 +147,6 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--openmp', required=False, action='store_true', help="use openmp")
-    parser.set_defaults(openmp=False)
-
     parser.add_argument('--verbose', required=False, action='store_true', help="print verbose information")
     parser.set_defaults(verbose=False)
 
@@ -180,7 +167,7 @@ def main():
         path.mkdir(parents=True, exist_ok=True)
 
     run_test(args.baseline_model, args.optimized_model, args.output_dir, args.batch_size, args.sequence_length,
-             args.use_gpu, args.samples, args.seed, args.openmp, args.verbose, args.rtol, args.atol, args.input_ids,
+             args.use_gpu, args.samples, args.seed, args.verbose, args.rtol, args.atol, args.input_ids,
              args.segment_ids, args.input_mask)
 
 

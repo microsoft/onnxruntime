@@ -803,5 +803,50 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3, 3},  // kernel_shape
+      {},                     // output_padding
+      {},                     // output_shape
+      {},                     // pads
+      vector<int64_t>{2, 2},  // strides
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      "SAME_LOWER"            // auto_pad
+  };
+
+  vector<float> X = {0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+
+  vector<float> W = {1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 2, 3, 3};
+
+  auto expected_vals = {0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        3.0f, 3.0f, 8.0f, 5.0f, 12.0f, 7.0f,
+                        3.0f, 3.0f, 7.0f, 4.0f, 9.0f, 5.0f,
+                        9.0f, 9.0f, 20.0f, 11.0f, 24.0f, 13.0f,
+                        6.0f, 6.0f, 13.0f, 7.0f, 15.0f, 8.0f,
+
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        3.0f, 3.0f, 8.0f, 5.0f, 12.0f, 7.0f,
+                        3.0f, 3.0f, 7.0f, 4.0f, 9.0f, 5.0f,
+                        9.0f, 9.0f, 20.0f, 11.0f, 24.0f, 13.0f,
+                        6.0f, 6.0f, 13.0f, 7.0f, 15.0f, 8.0f};
+  vector<int64_t> Y_shape = {1, 2, 6, 6};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

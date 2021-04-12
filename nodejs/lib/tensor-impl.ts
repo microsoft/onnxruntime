@@ -87,20 +87,20 @@ export class Tensor implements TensorInterface {
         data = arg1;
       } else {
         // numeric tensor
-        const constructor = NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.get(arg0);
-        if (constructor === undefined) {
+        const typedArrayConstructor = NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.get(arg0);
+        if (typedArrayConstructor === undefined) {
           throw new TypeError(`Unknown tensor type: ${arg0}.`);
         }
         if (Array.isArray(arg1)) {
           // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
           // incorrect results.
-          // 'constructor' should be one of the typed array prototype objects.
+          // 'typedArrayConstructor' should be one of the typed array prototype objects.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data = (constructor as any).from(arg1);
-        } else if (arg1 instanceof constructor) {
+          data = (typedArrayConstructor as any).from(arg1);
+        } else if (arg1 instanceof typedArrayConstructor) {
           data = arg1;
         } else {
-          throw new TypeError(`A ${type} tensor's data must be type of ${constructor}`);
+          throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
         }
       }
     } else {

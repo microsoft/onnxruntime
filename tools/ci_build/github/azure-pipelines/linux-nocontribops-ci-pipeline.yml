@@ -3,7 +3,7 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-CPU-2019
   steps:
   - checkout: self
     clean: true
@@ -11,10 +11,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecentoscpubuild
+      Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
     inputs:
@@ -29,8 +29,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
-            python3 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
               --skip_submodule_sync \
@@ -38,7 +38,8 @@ jobs:
               --parallel \
               --build_wheel \
               --enable_onnx_tests \
-              --disable_contrib_ops  --disable_ml_ops
+              --disable_contrib_ops  --disable_ml_ops \
+              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/providers/compare_provider_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include <algorithm>
@@ -11,6 +12,12 @@
 
 namespace onnxruntime {
 namespace test {
+
+#if USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#else
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#endif
 
 // followed example of fastgelu_op_test.cc
 // in retrospect would have been better to compare BiasSoftmax to Add + Softmax graph
@@ -130,7 +137,8 @@ class BiasSoftmaxTester {
   void RunComparison() {
     // BiasSoftmax only implemented for cuda architecture
     int min_cuda_architecture = use_float16_ ? 530 : 0;
-    if (HasCudaEnvironment(min_cuda_architecture)) {
+    if (HasCudaEnvironment(min_cuda_architecture) ||
+        kGpuExecutionProvider == kRocmExecutionProvider) {
       OpTester tester("BiasSoftmax", 1, onnxruntime::kMSDomain);
       tester.AddAttribute<int64_t>("softmax_axis", softmax_axis_);
       tester.AddAttribute<int64_t>("broadcast_axis", broadcast_axis_);
@@ -146,7 +154,12 @@ class BiasSoftmaxTester {
       }
 
       std::vector<std::unique_ptr<IExecutionProvider>> ep;
-      ep.push_back(DefaultCudaExecutionProvider());
+      #ifdef USE_CUDA
+        ep.push_back(DefaultCudaExecutionProvider());
+      #elif USE_ROCM
+        ep.push_back(DefaultRocmExecutionProvider());
+      #endif
+      
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep);
     }
   }
