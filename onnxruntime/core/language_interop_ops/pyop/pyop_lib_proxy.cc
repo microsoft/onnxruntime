@@ -164,7 +164,9 @@ PyOpLibProxy& PyOpLibProxy::GetInstance() {
 
 PyOpLibProxy::PyOpLibProxy() {
   Scope scope;
-  Py_Initialize();
+  // in theory we shouldn't initialize it any more,
+  // so comment it out currently.
+  // Py_Initialize();
   if (_import_array() < 0) {
     return;
   }

@@ -35,6 +35,7 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   ORT_ENFORCE(nullptr != context);
   auto inputs_count = (size_t)ctx_internal->InputCount();
+  //auto outputs_count = (size_t)ctx_internal->OutputCount();
   std::vector<OrtValue*> inputs;
   std::vector<void*> outputs;
 
@@ -43,7 +44,8 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   }
 
   auto log_func = [&](const char* msg) {
-    LOGS_DEFAULT(WARNING) << msg << std::endl;
+    std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
+    //LOGS_DEFAULT(WARNING) << msg << std::endl;
   };
 
   std::vector<void*> const_args;

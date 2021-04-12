@@ -182,7 +182,18 @@ class ORTModule(torch.nn.Module):
                         self._device, "Input argument to forward", *inputs)
 
                     # Use IO binding
-                    _create_forward_iobinding(self._training_foward_io_binding, inputs, self._onnx_training, self._device, self._onnx_graphs_info.user_output_names)
+                    # it is found for megatron training, the training input is non-contiguous.
+                    contiguous_inputs = []
+                    for idx, _input in enumerate(inputs):    
+                        if _input is None:
+                            raise ValueError("find some of input is None")
+                        elif not _input.is_contiguous():
+                            _contiguous_input = _input.contiguous()
+                        else:
+                            _contiguous_input = _input
+                        contiguous_inputs.append(_contiguous_input)
+
+                    _create_forward_iobinding(self._training_foward_io_binding, contiguous_inputs, self._onnx_training, self._device, self._onnx_graphs_info.user_output_names)
 
                     # Run and return module outputs.
                     run_id = self._training_session.run_forward(self._training_foward_io_binding, self._run_options)
@@ -521,11 +532,18 @@ class ORTModule(torch.nn.Module):
 
         my_model = onnx.load_model_from_string(f.getvalue())
         my_model.opset_import[1].domain = 'com.microsoft'
+        index = 0
         for node in my_model.graph.node:
             if node.domain == 'prim':
                 node.domain = 'com.microsoft'
                 output_names = list(node.output)
                 del node.output[:]
-                node.output.append(node.name + '_ctx')
+                node.output.append(output_names[0] + '_ctx')
                 node.output.extend(output_names)
+            if not node.name:
+                # give a name for debugging
+                node.name = node.op_type + "_id_" + str(index)
+                index += 1
+
+        onnx.save(my_model, 'my_model_new.onnx')
         return my_model
