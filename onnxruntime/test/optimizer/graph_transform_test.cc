@@ -3919,7 +3919,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts.onnx", 1, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}}};
-  const std::vector<int> expected_casts = {2, 0, 1};
+
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
