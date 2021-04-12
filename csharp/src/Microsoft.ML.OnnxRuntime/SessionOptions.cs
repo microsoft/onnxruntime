@@ -104,36 +104,7 @@ namespace Microsoft.ML.OnnxRuntime
             SessionOptions options = new SessionOptions();
 
             OrtTensorRTProviderOptionsNative trt_options_native;
-            trt_options_native.device_id = trt_options.device_id;
-            trt_options_native.has_user_compute_stream = 0;
-            trt_options_native.user_compute_stream = IntPtr.Zero;
-            trt_options_native.has_trt_options = trt_options.has_trt_options;
-            if ((ulong)trt_options.trt_max_workspace_size > (1 << 30))
-            {
-                trt_options_native.trt_max_workspace_size = (UIntPtr)(1 << 30);
-            }
-            else
-            {
-                trt_options_native.trt_max_workspace_size = trt_options.trt_max_workspace_size;
-            }
-            trt_options_native.trt_fp16_enable = trt_options.trt_fp16_enable;
-            trt_options_native.trt_int8_enable = trt_options.trt_int8_enable;
-            var tableNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(trt_options.trt_int8_calibration_table_name), GCHandleType.Pinned);
-            using (var pinnedSettingsName = new PinnedGCHandle(tableNamePinned))
-            {
-                trt_options_native.trt_int8_calibration_table_name = pinnedSettingsName.Pointer;
-            }
-            trt_options_native.trt_int8_use_native_calibration_table = trt_options.trt_int8_use_native_calibration_table;
-            trt_options_native.trt_max_partition_iterations = trt_options.trt_max_partition_iterations;
-            trt_options_native.trt_min_subgraph_size = trt_options.trt_min_subgraph_size;
-            trt_options_native.trt_dump_subgraphs = trt_options.trt_dump_subgraphs;
-            trt_options_native.trt_engine_cache_enable = trt_options.trt_engine_cache_enable;
-            var cachePathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(trt_options.trt_cache_path), GCHandleType.Pinned);
-            using (var pinnedSettingsName2 = new PinnedGCHandle(cachePathPinned))
-            {
-                trt_options_native.trt_cache_path = pinnedSettingsName2.Pointer;
-            }
-
+            trt_options_native = PrepareNativeTensorRTProviderOptions(trt_options);
 
             NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(options.Handle, ref trt_options_native));
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, trt_options.device_id));
@@ -244,6 +215,18 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_Tensorrt(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="trt_options">Provider Options for TensorRT EP.</param>
+        public void AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions trt_options)
+        {
+            OrtTensorRTProviderOptionsNative trt_options_native;
+            trt_options_native = PrepareNativeTensorRTProviderOptions(trt_options);
+
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(handle, ref trt_options_native));
         }
 
         /// <summary>
@@ -392,28 +375,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        /// <summary>
-        /// Get TensorRT provider options with default setting.
-        /// </summary>
-        /// <returns> TRT provider options instance.  </returns>
-        public static OrtTensorRTProviderOptions GetDefaultTensorRTProviderOptions()
-        {
-            OrtTensorRTProviderOptions trt_options;
-            trt_options.device_id = 0;
-            trt_options.has_trt_options = 0;
-            trt_options.trt_max_workspace_size = (UIntPtr)(1 << 30);
-            trt_options.trt_fp16_enable = 0;
-            trt_options.trt_int8_enable = 0;
-            trt_options.trt_int8_calibration_table_name = "";
-            trt_options.trt_int8_use_native_calibration_table = 0;
-            trt_options.trt_max_partition_iterations = 1000;
-            trt_options.trt_min_subgraph_size = 1;
-            trt_options.trt_dump_subgraphs = 0;
-            trt_options.trt_engine_cache_enable = 0;
-            trt_options.trt_cache_path = "";
-
-            return trt_options;
-        }
         #endregion
 
         internal IntPtr Handle
@@ -681,35 +642,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-
-        /// <summary>
-        /// Provider options for TensorRT.
-        /// </summary>
-        //  Example for setting:
-        //    SessionOptions.OrtTensorRTProviderOptions trt_options;
-        //    trt_options.device_id = 0;
-        //    trt_options.has_trt_options = 1;
-        //    trt_options.trt_max_workspace_size = (UIntPtr) (1<<30);
-        //    trt_options.trt_fp16_enable = 1;
-        //    trt_options.trt_int8_enable = 1;
-        //    trt_options.trt_int8_calibration_table_name = "calibration.flatbuffers";
-        //    trt_options.trt_int8_use_native_calibration_table = 0;
-        public struct OrtTensorRTProviderOptions
-        {
-            public int device_id;                                  //!< cuda device id. Default is 0. </typeparam>
-            public int has_trt_options;                            //!< override environment variables with following TensorRT settings at runtime. Default 0 = false, nonzero = true.
-            public UIntPtr trt_max_workspace_size;                 //!< maximum workspace size for TensorRT. ORT C++ DLL has this field to be the type of size_t, hence using UIntPtr for conversion.
-            public int trt_fp16_enable;                            //!< enable TensorRT FP16 precision. Default 0 = false, nonzero = true.
-            public int trt_int8_enable;                            //!< enable TensorRT INT8 precision. Default 0 = false, nonzero = true.
-            public String trt_int8_calibration_table_name;         //!< TensorRT INT8 calibration table name.
-            public int trt_int8_use_native_calibration_table;      //!< use native TensorRT generated calibration table. Default 0 = false, nonzero = true
-            public int trt_max_partition_iterations;               //!< maximum number of iterations allowed in model partitioning for TensorRT.
-            public int trt_min_subgraph_size;                      //!< minimum node size in a subgraph after partitioning.
-            public int trt_dump_subgraphs;                         //!< dump the subgraphs that are transformed into TRT engines in onnx format to the filesystem. Default 0 = false, nonzero = true
-            public int trt_engine_cache_enable;                    //!< enable TensorRT engine caching. Default 0 = false, nonzero = true
-            public String trt_cache_path;                          //!< specify path for TensorRT engine and profile files if engine_cache_enable is enabled, or INT8 calibration table file if trt_int8_enable is enabled.
-        }
-
         #endregion
 
         #region Private Methods
@@ -761,6 +693,42 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
             return true;
+        }
+
+        private static OrtTensorRTProviderOptionsNative PrepareNativeTensorRTProviderOptions(OrtTensorRTProviderOptions trt_options)
+        {
+            OrtTensorRTProviderOptionsNative trt_options_native;
+            trt_options_native.device_id = trt_options.device_id;
+            trt_options_native.has_user_compute_stream = 0;
+            trt_options_native.user_compute_stream = IntPtr.Zero;
+            trt_options_native.has_trt_options = trt_options.has_trt_options;
+            if ((ulong)trt_options.trt_max_workspace_size > (1 << 30))
+            {
+                trt_options_native.trt_max_workspace_size = (UIntPtr)(1 << 30);
+            }
+            else
+            {
+                trt_options_native.trt_max_workspace_size = trt_options.trt_max_workspace_size;
+            }
+            trt_options_native.trt_fp16_enable = trt_options.trt_fp16_enable;
+            trt_options_native.trt_int8_enable = trt_options.trt_int8_enable;
+            var tableNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(trt_options.trt_int8_calibration_table_name), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(tableNamePinned))
+            {
+                trt_options_native.trt_int8_calibration_table_name = pinnedSettingsName.Pointer;
+            }
+            trt_options_native.trt_int8_use_native_calibration_table = trt_options.trt_int8_use_native_calibration_table;
+            trt_options_native.trt_max_partition_iterations = trt_options.trt_max_partition_iterations;
+            trt_options_native.trt_min_subgraph_size = trt_options.trt_min_subgraph_size;
+            trt_options_native.trt_dump_subgraphs = trt_options.trt_dump_subgraphs;
+            trt_options_native.trt_engine_cache_enable = trt_options.trt_engine_cache_enable;
+            var cachePathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(trt_options.trt_cache_path), GCHandleType.Pinned);
+            using (var pinnedSettingsName2 = new PinnedGCHandle(cachePathPinned))
+            {
+                trt_options_native.trt_cache_path = pinnedSettingsName2.Pointer;
+            }
+
+            return trt_options_native;
         }
 
 
