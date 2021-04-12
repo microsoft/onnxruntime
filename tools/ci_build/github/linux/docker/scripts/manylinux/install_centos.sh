@@ -19,11 +19,7 @@ if [ "$os_major_version" == "7" ]; then
     yum install -y dotnet-sdk-2.1
 fi
 
-if [ $USE_JDK11 == "1" ]; then
-    yum install -y java-11-openjdk-devel
-else
-    yum install -y java-1.8.0-openjdk-devel
-fi
+yum install -y java-11-openjdk-devel
 
 #If the /opt/python folder exists, we assume this is the manylinux docker image
 if [ ! -d "/opt/python/cp37-cp37m" ]; then
