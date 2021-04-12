@@ -128,6 +128,10 @@ module.exports = {
     files: ['web/lib/**/*.ts'], rules: {
       'no-underscore-dangle': 'off'
     }
+  }, {
+    files: ['web/lib/wasm/binding/**/*.ts'], rules: {
+      '@typescript-eslint/naming-convention': 'off'
+    }
   }],
   extends: [
     'eslint:recommended',

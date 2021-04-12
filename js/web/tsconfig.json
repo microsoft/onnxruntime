@@ -4,5 +4,5 @@
     "declarationDir": "./types",
     "lib": ["DOM"]
   },
-  "include": ["lib/"]
+  "include": ["lib/", "script"]
 }

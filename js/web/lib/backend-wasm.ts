@@ -1,6 +1,5 @@
 import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
-import {init} from './wasm/binding';
-import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import {init, OnnxruntimeWebAssemblySessionHandler} from './wasm';
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {

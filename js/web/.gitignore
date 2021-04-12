@@ -10,7 +10,7 @@ lib/**/*.js
 lib/**/*.js.map
 test/**/*.js
 test/**/*.js.map
-tools/**/*.js
-tools/**/*.js.map
+script/**/*.js
+script/**/*.js.map
 
-*.d.ts
+!lib/wasm/binding/**/*.d.ts
