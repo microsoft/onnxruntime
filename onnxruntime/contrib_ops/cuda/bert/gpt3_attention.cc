@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gpt3_attention.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/bert/gpt3_attention.h"
+#include "contrib_ops/cuda/bert/gpt3_attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -32,21 +33,25 @@ Gpt3Attention<T>::Gpt3Attention(const OpKernelInfo& info) : CudaKernel(info) {}
 
 template <typename T>
 Status Gpt3Attention<T>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* hidden_state = context->Input<Tensor>(1);
-  Tensor* output = context->Output(0, input->Shape());
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
+  Tensor* output = context->Output(0, query->Shape());
 
-  auto input_data = (input->template Data<T>());
-  auto hidden_state_data = (hidden_state->template Data<T>());
-  auto output_data = (output->template MutableData<T>());
+  size_t element_size = sizeof(T);
+  size_t element_count = query->Shape().Size();
 
-  size_t size = input->Shape().NumDimensions();
-
-  for (size_t i = 0; i < size; i++) {
-    *output_data++ = *input_data++;
+  if (!LaunchGpt3AttentionKernel(
+        Stream(),
+        output->template MutableData<T>(),
+        query->template Data<T>(),
+        key->template Data<T>(),
+        value->template Data<T>(),
+        static_cast<int>(element_count),
+        element_size)) {
+    CUDA_CALL(cudaGetLastError());
+    return Status(common::ONNXRUNTIME, common::FAIL);
   }
-
-  ORT_UNUSED_PARAMETER(hidden_state_data);
   return Status::OK();
 }
 

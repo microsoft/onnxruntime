@@ -367,8 +367,9 @@ and present state are optional. Present state could appear in output even when p
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(Attention_ver1_doc)
-      .Input(0, "input", "input", "T")
-      .Input(1, "hidden_state", "hidden_state", "T", OpSchema::Optional)
+      .Input(0, "query", "query", "T")
+      .Input(1, "key", "key", "T")
+      .Input(2, "value", "value", "T")
       .Output(0, "output", "same shape with input", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

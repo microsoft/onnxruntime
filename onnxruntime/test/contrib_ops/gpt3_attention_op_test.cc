@@ -11,8 +11,9 @@ namespace test {
 
 //dummy test
 static void RunDummyGPT3AttentionTest(
-    const std::vector<float>& input_data,
-    const std::vector<float>& hidden_state_data,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
     const std::vector<float>& output_data,
     int batch_size,
     int sequence_length,
@@ -26,16 +27,17 @@ static void RunDummyGPT3AttentionTest(
     OpTester tester("Gpt3Attention", 1, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-    std::vector<int64_t> hidden_state_dims = {batch_size, sequence_length, hidden_size};
     std::vector<int64_t> output_dims = input_dims;
 
     if (use_float16) {
-      tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-      tester.AddInput<MLFloat16>("hidden_state", hidden_state_dims, ToFloat16(hidden_state_data));
+      tester.AddInput<MLFloat16>("query", input_dims, ToFloat16(query_data));
+      tester.AddInput<MLFloat16>("key", input_dims, ToFloat16(key_data));
+      tester.AddInput<MLFloat16>("value", input_dims, ToFloat16(value_data));
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
-      tester.AddInput<float>("input", input_dims, input_data);
-      tester.AddInput<float>("hidden_state", hidden_state_dims, hidden_state_data);
+      tester.AddInput<float>("query", input_dims, query_data);
+      tester.AddInput<float>("query", input_dims, key_data);
+      tester.AddInput<float>("query", input_dims, value_data);
       tester.AddOutput<float>("output", output_dims, output_data);
     }
 
@@ -54,19 +56,21 @@ static void RunDummyGPT3AttentionTest(
 }
 
 TEST(Gpt3AttentionTest, Dummy_FP32) {
-  std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  std::vector<float> hidden_state_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  std::vector<float> output_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> query_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> key_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> value_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> output_data = {0.0f, 3.0f, 6.0f, 9.0f, 12.0f, 15.0f};
 
-  RunDummyGPT3AttentionTest(input_data, hidden_state_data, output_data, 1, 2, 3, false);
+  RunDummyGPT3AttentionTest(query_data, key_data, value_data, output_data, 1, 2, 3, false);
 }
 
 TEST(Gpt3AttentionTest, Dummy_FP16) {
-  std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  std::vector<float> hidden_state_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  std::vector<float> output_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> query_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> key_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> value_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<float> output_data = {0.0f, 3.0f, 6.0f, 9.0f, 12.0f, 15.0f};
 
-  RunDummyGPT3AttentionTest(input_data, hidden_state_data, output_data, 1, 2, 3, true);
+  RunDummyGPT3AttentionTest(query_data, key_data, value_data, output_data, 1, 2, 3, true);
 }
 
 }  // namespace test
