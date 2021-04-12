@@ -8,8 +8,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename TSrc>
-__global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, bool isinf_only, bool isnan_only) {
+template <typename TSrc, bool isinf_only, bool isnan_only>
+__global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
   const int block_idx = blockIdx.x;
   const int tensor_idx = chunks.block_index_to_tensor_group_index[block_idx];
   const int tensor_size = chunks.tensor_sizes[tensor_idx];
@@ -24,7 +24,13 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, b
   bool result = true;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-    result &= IsFiniteScalar(chunk_ptr[i], isinf_only, isnan_only);
+    if (isinf_only) {
+      result &= !IsInfScalar(chunk_ptr[i]);
+    } else if (isnan_only) {
+      result &= !IsNaNScalar(chunk_ptr[i]);
+    } else {
+      result &= IsFiniteScalar(chunk_ptr[i]);
+    }
   }
 
   if (!result) {
@@ -33,14 +39,28 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output, b
 }
 
 template <typename T>
-void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only) {
+void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream,
+                                       ChunkGroup<1> chunks,
+                                       bool* output,
+                                       const bool isinf_only,
+                                       const bool isnan_only) {
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
-  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0, stream>>>(chunks, output, isinf_only, isnan_only);
+  if (isinf_only) {
+    IsAllFiniteMultiTensorImpl<T, true, false><<<block_count, thread_count, 0, stream>>>(chunks, output);
+  } else if (isnan_only) {
+    IsAllFiniteMultiTensorImpl<T, false, true><<<block_count, thread_count, 0, stream>>>(chunks, output);
+  } else {
+    IsAllFiniteMultiTensorImpl<T, false, false><<<block_count, thread_count, 0, stream>>>(chunks, output);
+  }
 }
 
-#define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
-  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output, const bool isinf_only, const bool isnan_only);
+#define INSTANTIATE_ISALLFINITE_FUNCTOR(T)                               \
+  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream,   \
+                                                  ChunkGroup<1> chunks,  \
+                                                  bool* output,          \
+                                                  const bool isinf_only, \
+                                                  const bool isnan_only);
 
 INSTANTIATE_ISALLFINITE_FUNCTOR(half)
 INSTANTIATE_ISALLFINITE_FUNCTOR(float)

@@ -5,6 +5,10 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/math/isfinite.h"
 
+#if CUDA_VERSION >= 11000
+#include "cuda_bf16.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -14,14 +18,13 @@ __device__ __forceinline__ bool IsFiniteScalar(const T value) {
 }
 
 template <typename T>
-__device__ __forceinline__ bool IsFiniteScalar(const T value, const bool isinf_only, const bool isnan_only) {
-  if (isinf_only) {
-    return !isinf(value);
-  } else if (isnan_only) {
-    return !isnan(value);
-  } else {
-    return isfinite(value);
-  }
+__device__ __forceinline__ bool IsInfScalar(const T value) {
+  return isinf(value);
+}
+
+template <typename T>
+__device__ __forceinline__ bool IsNaNScalar(const T value) {
+  return isnan(value);
 }
 
 template <>
@@ -34,41 +37,37 @@ __device__ __forceinline__ bool IsFiniteScalar(const half value) {
 }
 
 template <>
-__device__ __forceinline__ bool IsFiniteScalar(const half value, const bool isinf_only, const bool isnan_only) {
+__device__ __forceinline__ bool IsInfScalar(const half value) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  if (isinf_only) {
-    return !__hisinf(value);
-  } else if (isnan_only) {
-    return !__hisnan(value);
-  } else {
-    return !__hisinf(value) && !__hisnan(value);
-  }
+  return __hisinf(value);
 #else
-  if (isinf_only) {
-    return !isinf(float(value));
-  } else if (isnan_only) {
-    return !isnan(float(value));
-  } else {
-    return isfinite(float(value));
-  }
+  return isinf(float(value));
+#endif
+}
+
+template <>
+__device__ __forceinline__ bool IsNaNScalar(const half value) {
+#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+  return __hisnan(value);
+#else
+  return isnan(float(value));
 #endif
 }
 
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 template <>
 __device__ __forceinline__ bool IsFiniteScalar(const nv_bfloat16 value) {
-  return isfinite(float(value));
+  return !__hisinf(value) && !__hisnan(value);
 }
 
 template <>
-__device__ __forceinline__ bool IsFiniteScalar(const nv_bfloat16 value, const bool isinf_only, const bool isnan_only) {
-  if (isinf_only) {
-    return !isinf(float(value));
-  } else if (isnan_only) {
-    return !isnan(float(value));
-  } else {
-    return isfinite(float(value));
-  }
+__device__ __forceinline__ bool IsInfScalar(const nv_bfloat16 value) {
+  return __hisinf(value);
+}
+
+template <>
+__device__ __forceinline__ bool IsNaNScalar(const nv_bfloat16 value) {
+  return __hisnan(value);
 }
 #endif
 
