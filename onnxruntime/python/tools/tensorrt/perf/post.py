@@ -39,8 +39,8 @@ def insert_latency(commit_hash, report_url, latency):
                         )
 
         cursor.execute(delete_query)
-        
         if not latency.empty:
+            print('posting latency over time results to dashboard')
             to_drop = ['TrtGain-CudaFp32', 'EpGain-TrtFp32', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
             over_time = latency.drop(to_drop, axis='columns')
             over_time = over_time.melt(id_vars=['Model', 'Group'], var_name='Ep', value_name='Latency')
@@ -177,7 +177,7 @@ def main():
         print('writing latency to database')
         write_table(engine, status, 'ep_models_status')
         print('writing status to database')
-        #insert_latency(args.commit_hash, args.report_url, latency)
+        insert_latency(args.commit_hash, args.report_url, latency)
         print('writing latency over time to database')
 
     except BaseException as e: 
