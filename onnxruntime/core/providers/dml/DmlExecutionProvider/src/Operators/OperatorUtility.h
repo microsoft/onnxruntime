@@ -47,6 +47,13 @@ namespace Dml
         // produce the attribute for Activation in a fused Conv+Activation kernel.
         std::string GetFusedAttributeName(std::string_view name);
 
+#if _DEBUG
+        void AssertFusableOperatorSupportsVersionIfExists(
+            std::string_view type,
+            std::string_view domain,
+            int sinceVersion);
+#endif
+
     } // namespace FusionHelpers
 
     // Given an axis in ONNX axis numbering, return the axis adjusted for DML based on how the sizes have been coerced.
