@@ -7,19 +7,19 @@ jobs:
   timeoutInMinutes: 4000 
   steps:
   
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
-      displayName: 'Build latest ORT Images'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
+    #   displayName: 'Build latest ORT Images'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d ort-$(branch) -o "onnx-zoo-models"'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d ort-$(branch) -o "onnx-zoo-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
       displayName: 'Onnx Zoo Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "many-models"'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "many-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
       displayName: 'Many Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "partner-models"'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "partner-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
       displayName: 'Partner Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
