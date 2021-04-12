@@ -15,7 +15,7 @@ namespace training {
 /**
  * The training configuration options.
  */
-struct ModuleGradientGraphBuilderConfiguration {
+struct OrtModuleGraphBuilderConfiguration {
   // The names of the weights.
   std::vector<std::string> initializer_names{};
   // The names of the weights to train.
@@ -23,16 +23,17 @@ struct ModuleGradientGraphBuilderConfiguration {
   // The names of inputs that require gradient.
   std::vector<std::string> input_names_require_grad{};
 
-  // Gradient graph configuration.
+  // Graph configuration.
   bool use_invertible_layernorm_grad = false;
+  bool build_gradient_graph = true;
 
   // TODO: add GraphTransformerConfiguration
 };
 
 /**
- * The information of training graphs for frontend.
+ * The information of graphs for frontend.
  */
-struct TrainingGraphInfo {
+struct GraphInfo {
   // The user inputs.
   std::vector<std::string> user_input_names{};
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
@@ -52,7 +53,7 @@ struct TrainingGraphInfo {
   std::vector<size_t> output_grad_indices_require_full_shape{};
 };
 
-class ModuleGradientGraphBuilder {
+class OrtModuleGraphBuilder {
  public:
   /**
    * Initialize the builder. It saves the initial model and the configuration.
@@ -61,20 +62,20 @@ class ModuleGradientGraphBuilder {
    * @param config The configuration to control the builder.
    * @return The status of the initialization.
    */
-  Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
+  Status Initialize(std::istream& model_istream, const OrtModuleGraphBuilderConfiguration& config);
 
   /**
-   * Build the gradient graph.
+   * Optimize the inference graph and build the gradient graph.
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
-   * @return The status of the gradient graph building.
+   * @return The status of the optimizing and building the gradient graph.
    */
   Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
   /**
-   * Get gradient model.
-   * @return The gradient model serialized to string.
+   * Get inference/gradient model.
+   * @return The optimized inference/gradient model serialized to string.
    */
-  std::string GetGradientModel() const;
+  std::string GetModel() const;
 
   /**
    * Get inference optimized model.
@@ -83,17 +84,20 @@ class ModuleGradientGraphBuilder {
   std::string GetInferenceOptimizedModel() const;
 
   /**
-   * Get the training graphs information.
-   * @return The training graphs information.
+   * Get the graphs information.
+   * @return The graphs information.
    */
-  TrainingGraphInfo GetTrainingGraphInfo() const { return training_graph_info_; }
+  GraphInfo GetGraphInfo() const { return graph_info_; }
 
  private:
   // Set concrete shapes for graph inputs.
   void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
+  // Apply graph transformers
+  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names);
+
   // Build gradient graph.
-  Status BuildGradientGraph();
+  Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);
 
   // Handle user outputs and output grads.
   void HandleOutputsAndGrads();
@@ -104,9 +108,9 @@ class ModuleGradientGraphBuilder {
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> inference_optimized_model_;
   std::shared_ptr<onnxruntime::Model> gradient_model_;
-  TrainingGraphInfo training_graph_info_;
+  GraphInfo graph_info_;
 
-  ModuleGradientGraphBuilderConfiguration config_;
+  OrtModuleGraphBuilderConfiguration config_;
   const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger();  // use default logger for now.
 };
 

@@ -18,8 +18,8 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
   if (N <= 0) throw std::invalid_argument("N must greater than 0!");
   if (K <= 0) throw std::invalid_argument("K must greater than 0!");
 
-  auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0, 1.0);
-  auto B = RandomVectorUniform(static_cast<size_t>(N * K), -1.0, 1.0);
+  auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
+  auto B = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
 
   if (pack_b) {
