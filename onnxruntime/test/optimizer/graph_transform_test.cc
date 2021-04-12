@@ -5,7 +5,7 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include <strig>
+#include <string>
 #include <random>
 #include "core/graph/onnx_protobuf.h"
 
