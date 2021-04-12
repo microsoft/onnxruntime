@@ -702,14 +702,6 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                               new_shape))
 
-    def _infer_Transpose(self, node):
-        if node.input[0] in self.sympy_data_:
-            data_shape = self._get_shape(node, 0)
-            perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
-            input_data = self.sympy_data_[node.input[0]]
-            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape),
-                                                            axes=tuple(perm)).flatten().tolist()
-
     def _infer_Gather(self, node):
         data_shape = self._get_shape(node, 0)
         axis = handle_negative_axis(get_attribute(node, 'axis', 0), len(data_shape))
@@ -871,7 +863,7 @@ class SymbolicShapeInference:
 
         # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
         for i in [1, 2, 3, 4]:
-            if i < len(node.output):
+            if i < len(node.output) and node.output[i] != "":
                 # all of these parameters have the same shape as the 1st input
                 self._propagate_shape_and_type(node, input_index=1, output_index=i)
 
@@ -1194,6 +1186,14 @@ class SymbolicShapeInference:
         for i_o in range(len(node.output)):
             vi = self.known_vi_[node.output[i_o]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[i_o], vi.type.tensor_type.elem_type, new_shape))
+
+    def _infer_Transpose(self, node):
+        if node.input[0] in self.sympy_data_:
+            data_shape = self._get_shape(node, 0)
+            perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
+            input_data = self.sympy_data_[node.input[0]]
+            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape),
+                                                            axes=tuple(perm)).flatten().tolist()
 
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)
