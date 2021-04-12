@@ -1,13 +1,15 @@
 #!/bin/bash
 
 # This script will run build_aar_package.py to build Android AAR and copy all the artifacts
-# to a given folder for publish to Maven Central
+# to a given folder for publishing to Maven Central
+# This script is intended to be used in CI build only
 
 set -e
 set -x
 export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
-# build the AAR package
+# build the AAR package, using the build settings specified in
+# <repro root>/tools/ci_build/github/android/default_mobile_aar_build_settings.json
 python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
     --build_dir /build \
     --config $BUILD_CONFIG \
