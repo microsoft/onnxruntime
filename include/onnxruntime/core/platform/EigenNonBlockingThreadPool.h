@@ -26,6 +26,7 @@
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 4505)
 #pragma warning(disable : 4805)
 #endif
 
@@ -146,6 +147,11 @@ static bool USE_STICKY_WORKER_ASSIGNMENT = false;
 // allocation feature.  This access to environment variables should be
 // removed if merging the feature.
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4505)
+#endif
+
 static std::unique_ptr<char[]> GetEnv(const char* var) {
   char* val = nullptr;
 #if _MSC_VER
@@ -180,7 +186,11 @@ static bool IsEnvVarDefined(const char* var) {
   auto val = GetEnv(var);
   return val != nullptr;
 }
-  
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 enum class StealAttemptKind {
   TRY_ONE,
   TRY_ALL,
