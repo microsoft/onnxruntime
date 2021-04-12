@@ -193,20 +193,14 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     #region ORT Provider options
-    public enum OrtCudnnConvAlgoSearch
-    {
-        EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-        HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-        DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtCUDAProviderOptionsNative
     {
-        public int device_id;                           // cuda device with id=0 as default device.
+        public int device_id;                                  // cuda device with id=0 as default device.
         public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-        public UIntPtr gpu_mem_limit;                   // default cuda memory limitation to maximum finite value of size_t.
-        public int arena_extend_strategy;               // default area extend strategy to KNextPowerOfTwo.
+        public UIntPtr gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+        public int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
         public int do_copy_in_default_stream;
         public int has_user_compute_stream;
         public IntPtr user_compute_stream;

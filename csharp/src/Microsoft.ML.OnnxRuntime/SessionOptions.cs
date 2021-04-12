@@ -79,8 +79,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// A helper method to construct a SessionOptions object for CUDA execution.
         /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="deviceId"></param>
-        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        /// <param name="cuda_options">CUDA EP provider options to configure the CUDA EP instance</param>>
+        /// <returns>A SessionsOptions() object configured for execution with CUDA provider options.</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cuda_options)
         {
             CheckCudaExecutionProviderDLLs();
@@ -170,6 +170,24 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_CUDA(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
+        }
+
+        /// <summary>
+        /// Append a CUDA EP instance (based on specified configuration) to the SessionOptions instance
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cuda_options">CUDA EP provider options to configure the CUDA EP instance</param>
+        public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cuda_options)
+        {
+            OrtCUDAProviderOptionsNative cuda_options_native;
+            cuda_options_native.device_id = cuda_options.device_id;
+            cuda_options_native.cudnn_conv_algo_search = cuda_options.cudnn_conv_algo_search;
+            cuda_options_native.gpu_mem_limit = cuda_options.gpu_mem_limit;
+            cuda_options_native.arena_extend_strategy = cuda_options.arena_extend_strategy;
+            cuda_options_native.do_copy_in_default_stream = cuda_options.do_copy_in_default_stream;
+            cuda_options_native.has_user_compute_stream = 0;
+            cuda_options_native.user_compute_stream = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(handle, ref cuda_options_native));
         }
 
         /// <summary>
@@ -350,30 +368,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public static UIntPtr MaxValue { get; }
-
-        /// <summary>
-        /// Get CUDA provider options with default setting.
-        /// </summary>
-        /// <returns> CUDA provider options instance.  </returns>
-        public static OrtCUDAProviderOptions GetDefaultCUDAProviderOptions()
-        {
-            OrtCUDAProviderOptions cuda_options;
-            cuda_options.device_id = 0;
-            cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch.EXHAUSTIVE;
-            if (IntPtr.Size == 8)
-            {
-                cuda_options.gpu_mem_limit = (UIntPtr)UInt64.MaxValue;
-            }
-            else
-            {
-                cuda_options.gpu_mem_limit = (UIntPtr)UInt32.MaxValue;
-            }
-            cuda_options.arena_extend_strategy = 0;
-            cuda_options.do_copy_in_default_stream = 0;
-
-            return cuda_options;
-        }
         #endregion
 
         internal IntPtr Handle
@@ -640,15 +634,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
-
-        public struct OrtCUDAProviderOptions
-        {
-            public int device_id;                                   // cuda device with id=0 as default device.
-            public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;   // cudnn conv algo search option
-            public UIntPtr gpu_mem_limit;                           // default cuda memory limitation to maximum finite value of size_t.
-            public int arena_extend_strategy;                       // default area extend strategy to KNextPowerOfTwo.
-            public int do_copy_in_default_stream;
-        }
 
         #endregion
 
