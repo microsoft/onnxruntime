@@ -136,6 +136,12 @@ namespace concurrency {
 
 static bool USE_STICKY_WORKER_ASSIGNMENT = false;
 
+#ifdef _WIN32
+ using CHAR_TYPE = wchar_t;
+#else
+ using CHAR_TYPE = char;
+#endif
+
 // Temp experimental control over the "sticky" worker thread
 // allocation feature.  This access to environment variables should be
 // removed if merging the feature.
@@ -778,11 +784,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
-#ifdef _WIN32
-  using CHAR_TYPE = wchar_t;
-#else
-  using CHAR_TYPE = char;
-#endif
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
@@ -1027,7 +1028,9 @@ void EndParallelSectionInternal(PerThread &pt,
   profiler_.LogEnd(ThreadPoolProfiler::WAIT_REVOKE);
 
   // Wait for workers to exit ParLoopWorker
+#ifdef EXTRA_DEBUG
   num_tasks_revoked+=tasks_revoked;
+#endif
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
