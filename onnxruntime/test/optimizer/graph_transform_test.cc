@@ -3907,13 +3907,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
         onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    PathString transformed_model_uri = "transformed_" + GetLastComponent(test_case.model_uri);
-    Model::Save(*p_model, transformed_model_uri);
-    // Load the transformed model to validate
-    ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
-    Graph& transformed_graph = p_model->MainGraph();
-    ASSERT_STATUS_OK(transformed_graph.Resolve());
-    std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
   }
 }
