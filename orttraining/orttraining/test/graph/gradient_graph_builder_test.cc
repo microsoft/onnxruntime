@@ -16,8 +16,11 @@
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#endif
 #endif
 
 using namespace onnxruntime::logging;
@@ -299,7 +302,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   ASSERT_TRUE(count > 1);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
@@ -316,8 +319,13 @@ static void RunBertTrainingWithChecks(
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
+#ifdef USE_CUDA
+  CUDAExecutionProviderInfo xp_info;
   ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-
+#elif USE_ROCM
+  ROCMExecutionProviderInfo xp_info;
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(xp_info)));
+#endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
   RunOptions run_options;
@@ -493,7 +501,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   SessionOptions so;
   RunBertTrainingWithChecks(so, backprop_model_file);
 #endif
@@ -1888,3 +1896,4 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
 }  // namespace test
 }  // namespace onnxruntime
+

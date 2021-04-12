@@ -66,7 +66,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
-  float cuda_mem_limit_in_gb = -1;
+  float gpu_mem_limit_in_gb = -1;
   bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
@@ -183,7 +183,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<int64_t>()->default_value("0"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
-      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
+      ("gpu_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
@@ -240,7 +240,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.cuda_mem_limit_in_gb = flags["cuda_mem_limit_in_gb"].as<float>();
+    params.gpu_mem_limit_in_gb = flags["gpu_mem_limit_in_gb"].as<float>();
 
     float ratio_phase2 = flags["warmup_ratio_phase2"].as<float>();
     if (ratio_phase2 > 1.f || ratio_phase2 < 0.f) {
@@ -611,7 +611,7 @@ void setup_training_params(BertParameters& params) {
         nullptr};
 
     if (params.cuda_mem_limit_in_gb > 0) {
-      info.cuda_mem_limit = gsl::narrow<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 
@@ -884,3 +884,4 @@ int main(int argc, char* argv[]) {
 #endif
   return 0;
 }
+

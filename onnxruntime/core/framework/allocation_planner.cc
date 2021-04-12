@@ -40,6 +40,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
+    case AllocKind::kAllocatedExternally:
+      out << "AllocatedExternally";
+      break;
     case AllocKind::kNotSet:
       out << "NotSet";
       break;
@@ -427,6 +430,15 @@ class PlannerImpl {
     plan_.allocation_plan.resize(num_ml_values);
   }
 
+  bool HasExternalOutputs(const Node& node) const {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (ci.kernel_def == nullptr) {
+      return false;
+    }
+
+    return ci.kernel_def->HasExternalOutputs();
+  }
+
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     std::unordered_set<std::string> graph_inputs;
@@ -511,12 +523,14 @@ class PlannerImpl {
 
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
+      bool has_external_outputs = HasExternalOutputs(*pnode);
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
-        ++UseCount(index);
+        // Ensures external outputs will not be reused.
+        UseCount(index) += (has_external_outputs ? 2 : 1);
         auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
         ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
@@ -647,6 +661,8 @@ class PlannerImpl {
       const auto* pnode = graph_viewer_.GetNode(step.node_index);
       // node outputs.
       const auto& output_defs = pnode->OutputDefs();
+      // External outputs flag.
+      bool has_external_outputs = HasExternalOutputs(*pnode);
       // output_arg_def_index is the index of ArgDefs in pnode's output list.
       // At the i-th iteration, we build the allocation plan for the i-th
       // NodeArg in pnode's output list. Allocation plan remains untouched for
@@ -702,6 +718,12 @@ class PlannerImpl {
               }
             }
           }
+        } else if (has_external_outputs) {
+          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
+          AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          AllocPlan(current).life_interval.second = execution_plan.size();
+#endif
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;

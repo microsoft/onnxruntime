@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(IsFiniteTest, Float) {
   OpTester test("IsFinite", 1, kMSDomain);
 

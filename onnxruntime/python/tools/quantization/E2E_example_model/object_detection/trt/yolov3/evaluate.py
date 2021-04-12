@@ -161,15 +161,6 @@ class YoloV3Evaluator:
         # calling coco api
         from pycocotools.coco import COCO
         from pycocotools.cocoeval import COCOeval
-        import numpy as np
-        import skimage.io as io
-        import pylab
-        pylab.rcParams['figure.figsize'] = (10.0, 8.0)
-
-        annType = ['segm', 'bbox', 'keypoints']
-        annType = annType[1]  #specify type here
-        prefix = 'person_keypoints' if annType == 'keypoints' else 'instances'
-        print('Running evaluation for *%s* results.' % (annType))
 
         annFile = annotations
         cocoGt = COCO(annFile)
@@ -178,11 +169,9 @@ class YoloV3Evaluator:
         cocoDt = cocoGt.loadRes(resFile)
 
         imgIds = sorted(cocoGt.getImgIds())
-        imgIds = imgIds[0:100]
-        imgId = imgIds[np.random.randint(100)]
 
         # running evaluation
-        cocoEval = COCOeval(cocoGt, cocoDt, annType)
+        cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
         cocoEval.params.imgIds = imgIds
         cocoEval.evaluate()
         cocoEval.accumulate()
@@ -490,36 +479,6 @@ class YoloV3Variant3Evaluator(YoloV3Evaluator):
 
         YoloV3Evaluator.__init__(self, model_path, data_reader, width, height, providers,
                                  ground_truth_object_class_file, onnx_object_class_file)
-
-
-    def set_bbox_prediction(self, bboxes, scores, image_height, image_width, image_id):
-
-        for i in range(bboxes.shape[0]):
-            bbox = bboxes[i]
-            bbox[0] *= self.width  #x
-            bbox[1] *= self.height  #y
-            bbox[2] *= self.width  #w
-            bbox[3] *= self.height  #h
-
-            img0_shape = (image_height, image_width)
-            img1_shape = (self.height, self.width)
-            bbox = self.xywh2xyxy(bbox)
-            bbox = self.scale_coords(img1_shape, bbox, img0_shape)
-
-            class_name = 'person'
-            if class_name in self.identical_class_map:
-                class_name = self.identical_class_map[class_name]
-            id = self.class_to_id[class_name]
-
-            bbox[2] = bbox[2] - bbox[0]
-            bbox[3] = bbox[3] - bbox[1]
-
-            self.prediction_result_list.append({
-                "image_id": int(image_id),
-                "category_id": int(id),
-                "bbox": list(bbox),
-                "score": scores[i][0]
-            })
 
     def predict(self):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)

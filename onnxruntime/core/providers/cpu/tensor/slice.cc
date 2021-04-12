@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/slice.h"
-#include "core/providers/cpu/tensor/utils.h"
+
+#include <limits>
+#include <unordered_map>
+
+#include "core/framework/element_type_lists.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
-#include <unordered_map>
-#include <limits>
 
 using namespace ::onnxruntime::common;
 using namespace std;
@@ -15,16 +18,16 @@ using namespace std;
 namespace onnxruntime {
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0, int32_t, int64_t);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Slice, Input, 1, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 1, int64_t);
+    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 1, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 namespace {

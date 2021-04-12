@@ -3,9 +3,11 @@
 
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -326,16 +328,27 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 }
 
 // SplitToSequence
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0,
+    float, double, int32_t, int64_t, std::string);
+}  // namespace op_kernel_type_control
+
+namespace {
+using SplitToSequenceDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0);
+using EnabledSplitToSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0);
+}  // namespace
+
 ONNX_CPU_OPERATOR_KERNEL(
     SplitToSequence,
     11,
-    KernelDefBuilder().TypeConstraint("T",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<double>(),
-                                          DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()})
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<SplitToSequenceDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledSplitToSequenceDataTypes>())
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
@@ -364,7 +377,7 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input, p_split_input);
   else
-    ORT_THROW("SplitToSequence operator does not support ", input.DataType(), " yet");
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SplitToSequence operator does not support ", input.DataType(), " yet");
 
   return status;
 }
@@ -455,6 +468,10 @@ static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split
 template <typename T>
 Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input,
                                     const Tensor* p_split_input) const {
+  if (!utils::HasType<EnabledSplitToSequenceDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   auto& input_shape = input.Shape();
   int64_t num_outputs = 0;
   int64_t axis = axis_;

@@ -23,7 +23,7 @@ Abstract:
 
 struct MLAS_NCHWC_WORK_BLOCK
 {
-    int32_t tids;
+    ptrdiff_t tids;
     size_t BatchCount;
     size_t InputChannels;
     size_t InputShape[2];
@@ -350,7 +350,7 @@ template<typename AlgorithmType>
 void
 MlasNchwcThreaded(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     )
 {
     AlgorithmType((decltype(AlgorithmType::WorkBlock))Context).Execute(Index);
@@ -542,7 +542,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         FilterCount = std::min(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
     }
 
-    void PrepareWork(int32_t Index)
+    void PrepareWork(ptrdiff_t Index)
     {
         const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputHeight;
 
@@ -652,7 +652,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -762,7 +762,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -862,7 +862,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -970,7 +970,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         const size_t GroupBlockCount = ((GroupCount + BlockSize - 1) / BlockSize);
 
@@ -1105,7 +1105,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         const size_t TotalWork =
             ((BatchCount * InputChannels + BlockSize - 1) / BlockSize) * OutputHeight;

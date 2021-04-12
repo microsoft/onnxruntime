@@ -11,6 +11,22 @@
 
 namespace onnxruntime {
 
+#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                                    \
+  const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) {                   \
+    bool has_external_data = tensor.has_data_location() &&                                                \
+                             tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL; \
+    ORT_ENFORCE(!has_external_data, "tensor: ", tensor.name(), " has external data");                     \
+    return tensor.DATA().empty()                                                                          \
+               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())                          \
+               : tensor.DATA().data();                                                                    \
+  }
+
+GET_TENSOR_DATA(FloatData, float, float_data)
+GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
+GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
+
+#undef GET_TENSOR_DATA
+
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
 

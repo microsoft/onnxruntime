@@ -20,6 +20,7 @@ Abstract:
 #include <limits>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <mlas.h>
 
 #if defined(_WIN32)
@@ -84,7 +85,7 @@ public:
 #endif
 
             if (_BaseBuffer == nullptr) {
-                ORT_THROW_EX(std::bad_alloc);
+                abort();
             }
 
             //
@@ -98,7 +99,7 @@ public:
             }
 #else
             if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-                ORT_THROW_EX(std::bad_alloc);
+                abort();
             }
 #endif
 
@@ -1348,6 +1349,10 @@ public:
             Test(1, 1, 16, i, i, 32, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
             Test(1, 1, 16, i, i, 32, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
             Test(1, 1, 16, i, i, 32, 1, i, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 16, 1, i, i, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 16, 1, i, i, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+            Test(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 2, 2);
         }
     }
 
@@ -1367,6 +1372,31 @@ public:
 
         for (unsigned b = 1; b < 64; b++) {
             Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+        }
+
+        for (unsigned gc = 0; gc < _countof(cs); gc++) {
+            for (unsigned ih = 0; ih < _countof(is); ih++) {
+                for (unsigned iw = 0; iw < _countof(is); iw++) {
+                    fprintf(stderr, "Handling depthwise %ux%ux%u\n", cs[gc], is[ih], is[iw]);
+                    for (unsigned p0 = 0; p0 < 2; p0++) {
+                        for (unsigned p1 = 0; p1 < 2; p1++) {
+                            for (unsigned p2 = 0; p2 < 2; p2++) {
+                                for (unsigned p3 = 0; p3 < 2; p3++) {
+                                    for (unsigned dh = 1; dh <= 2; dh++) {
+                                        for (unsigned dw = 1; dw <= 2; dw++) {
+                                            for (unsigned sh = 1; sh <= 2; sh++) {
+                                                for (unsigned sw = 1; sw <= 2; sw++) {
+                                                    Test(1, cs[gc], 1, is[ih], is[iw], 1, 3, 3, p0, p1, p2, p3, dh, dw, sh, sw);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         for (unsigned ic = 0; ic < _countof(cs); ic++) {
@@ -2827,7 +2857,8 @@ public:
     }
 };
 
-class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
+class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase
+{
 private:
     MatrixGuardBuffer<uint8_t> BufferInput;
     MatrixGuardBuffer<uint8_t> BufferOutput;
@@ -2840,7 +2871,7 @@ private:
         uint8_t* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale
         )
     {
-        int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
+        int32_t bias = -x_zero_point * static_cast<int32_t>(hw);
         int64_t stride_image = channel_last ? channel : 1;
         int64_t stride_channel = channel_last ? 1 : hw;
 
@@ -3214,6 +3245,61 @@ public:
     }
 };
 
+template<typename ElementType>
+class MlasTransposeTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<ElementType> BufferInput;
+    MatrixGuardBuffer<ElementType> BufferOutput;
+    MatrixGuardBuffer<ElementType> BufferOutputReference;
+
+    void
+    Test(
+        size_t M,
+        size_t N
+        )
+    {
+        ElementType* Input = BufferInput.GetBuffer(M * N);
+        ElementType* Output = BufferOutput.GetBuffer(M * N);
+        ElementType* OutputReference = BufferOutputReference.GetBuffer(M * N);
+
+        MlasTranspose(Input, Output, M, N);
+        ReferenceTranspose(Input, OutputReference, M, N);
+
+        if (memcmp(Output, OutputReference, M * N * sizeof(ElementType)) != 0) {
+            printf("mismatch: %zd,%zd (element size %zd)\n", M, N, sizeof(ElementType));
+        }
+    }
+
+    void
+    ReferenceTranspose(
+        const ElementType* Input,
+        ElementType* Output,
+        size_t M,
+        size_t N
+        )
+    {
+        for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+                Output[n * M + m] = Input[m * N + n];
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t m = 1; m <= 32; m++) {
+            for (size_t n = 1; n <= 32; n++) {
+                Test(m, n);
+            }
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -3333,6 +3419,10 @@ main(
     printf("MlasQuantizeLinear tests.\n");
     onnxruntime::make_unique<MlasQuantizeLinearTest<int8_t>>()->ExecuteShort();
     onnxruntime::make_unique<MlasQuantizeLinearTest<uint8_t>>()->ExecuteShort();
+
+    printf("Transpose tests.\n");
+    onnxruntime::make_unique<MlasTransposeTest<uint8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasTransposeTest<uint32_t>>()->ExecuteShort();
 
     printf("Done.\n");
 

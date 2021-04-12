@@ -26,6 +26,10 @@
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 
+#ifdef ENABLE_TRAINING
+#include "python/dlpack/dlpack_converter.h"
+#endif
+
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_CUDA
@@ -146,10 +150,17 @@ OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTI
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
+
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_allocator.h"
+onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
-size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -454,7 +465,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, cuda_mem_limit, arena_extend_strategy, external_allocator_info)});
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
   return id_to_allocator_map[id];
@@ -471,6 +482,54 @@ static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
       {OrtDevice::GPU, CudaToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
+
+#ifdef USE_ROCM
+
+static bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+static AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+static void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
+}
+
+static void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
+}
+
+static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
 
   return &map;
 }
@@ -509,7 +568,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
             }
-          } else if (option.first == "trt_fp16_enable") {	
+          } else if (option.first == "trt_fp16_enable") {
             if (option.second == "True" || option.second == "true") {
               params.trt_fp16_enable = true;
             } else if (option.second == "False" || option.second == "false") {
@@ -560,7 +619,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   CUDAExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
@@ -568,7 +627,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -584,11 +643,16 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   ROCMExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.hip_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }();
 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external CUDA allocator.
+      external_allocator_info = info.external_allocator_info;
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 #endif
@@ -601,6 +665,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_OPENVINO
       OrtOpenVINOProviderOptions params;
       params.device_type = openvino_device_type.c_str();
+      std::string blob_dump_path;
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
@@ -617,10 +682,22 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
             }
 
+          } else if (option.first == "use_compiled_network") {
+            if (option.second == "True") {
+              params.use_compiled_network = true;
+            } else if (option.second == "False") {
+              params.use_compiled_network = false;
+            } else {
+              ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
+            }
+
           } else if (option.first == "device_id") {
             params.device_id = option.second.c_str();
           } else if (option.first == "num_of_threads") {
             params.num_of_threads = std::stoi(option.second);
+          } else if (option.first == "blob_dump_path") {
+            blob_dump_path = option.second;
+            params.blob_dump_path = blob_dump_path.c_str();
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -688,7 +765,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
  *
  * @param providers vector of excution providers. [ep1, ep2, ...]
  * @param provider_options_vector vector of excution provider options. [option1, option2 ...]
- * @param provider_options_map an unordered map for mapping excution provider to excution provider options. 
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options.
  *        {'ep1' -> option1, 'ep2' -> option2 ...}
  *
  */
@@ -728,7 +805,8 @@ static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const 
 #endif
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                       const ProviderOptionsVector& provider_options) {
+                       const ProviderOptionsVector& provider_options,
+                       const std::unordered_set<std::string>& disabled_optimizer_names) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
@@ -738,6 +816,15 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (!disabled_optimizer_names.empty()) {
+    OrtPybindThrowIfError(sess->FilterEnabledOptimizers(disabled_optimizer_names));
+  }
+#else
+  ORT_UNUSED_PARAMETER(disabled_optimizer_names);
+#endif
+
   OrtPybindThrowIfError(sess->Initialize());
 }
 
@@ -870,7 +957,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                 [&]() {
                   CUDAExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
@@ -883,8 +970,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
                 [&]() {
                   ROCMExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.hip_mem_limit = cuda_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }()),
 #endif
@@ -892,7 +980,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, ""),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
@@ -972,11 +1060,11 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
   });
   // TODO remove deprecated global config
-  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+  m.def("set_gpu_mem_limit", [](const int64_t limit) {
     LogDeprecationWarning(
-        "set_cuda_mem_limit",
-        "CUDA execution provider option \"cuda_mem_limit\", ROCM execution provider option \"hip_mem_limit\"");
-    cuda_mem_limit = gsl::narrow<size_t>(limit);
+        "set_gpu_mem_limit",
+        "CUDA execution provider option \"gpu_mem_limit\", ROCM execution provider option \"gpu_mem_limit\"");
+    gpu_mem_limit = gsl::narrow<size_t>(limit);
   });
   // TODO remove deprecated global config
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
@@ -1105,6 +1193,20 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
+#ifdef ENABLE_TRAINING
+void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
+  if (dlmanged_tensor) {
+    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+  } else {
+    // the dlmanged_tensor has been consumed,
+    // PyCapsule_GetPointer has set an error indicator.
+    PyErr_Clear();
+  }
+}
+#endif
+
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -1199,6 +1301,15 @@ void addObjectMethods(py::module& m, Environment& env) {
           // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
           // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
           CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+#elif USE_ROCM
+          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+          CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
 
 #else
       throw std::runtime_error(
@@ -1314,11 +1425,28 @@ void addObjectMethods(py::module& m, Environment& env) {
 
 #ifdef USE_CUDA
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+#elif USE_ROCM
+        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
 #else
     GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
-      });
+      })
+#ifdef ENABLE_TRAINING
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
+        DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
+        return py::reinterpret_steal<py::object>(
+            PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
+      })
+      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
+        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
+        OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+        // Make sure this capsule will never be used again.
+        PyCapsule_SetName(data.ptr(), "used_dltensor");
+        return ort_value;
+      })
+#endif
+      ;
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
@@ -1476,7 +1604,7 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(The prefix of the profile file. The current time will be appended to the file name.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(
-File path to serialize optimized model to. 
+File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
 Serialized model format will default to ONNX unless:
  - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
@@ -1752,8 +1880,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           "initialize_session",
           [](PyInferenceSession* sess,
              const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {}) {
-            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+             const ProviderOptionsVector& provider_options = {},
+             const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+            InitializeSession(sess->GetSessionHandle(), provider_types, provider_options, disabled_optimizer_names);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",

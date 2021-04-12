@@ -9,7 +9,8 @@ using VarianceFunc = std::function<bool(const Node*, const InitializedTensorSet&
 enum versionNum {
   V_2020_4,
   V_2021_1,
-  V_2021_2
+  V_2021_2,
+  V_2021_3
 };
 
 using VersionNum = enum versionNum;

@@ -34,6 +34,11 @@ struct OrtValue {
     type_ = type;
   }
 
+  void Init(void* pData, onnxruntime::MLDataType type, const std::function<void(void*)>& deleter) {
+    data_.reset(pData, deleter);
+    type_ = type;
+  }
+
   bool IsAllocated() const {
     return data_ && type_;
   }

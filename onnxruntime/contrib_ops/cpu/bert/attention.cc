@@ -243,7 +243,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
+  const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights_shape,
                                   bias->Shape(),

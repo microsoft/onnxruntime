@@ -158,7 +158,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
     }
 #endif  //ENABLE_TRAINING
 
-    if (node->OpType() == "Conv") {
+    if (node->OpType() == "Conv" || node->OpType() == "MatMul") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
 #ifdef ENABLE_TRAINING

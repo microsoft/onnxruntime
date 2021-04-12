@@ -21,6 +21,7 @@ class CudnnConvolutionDescriptor final {
              const std::vector<int64_t>& pads,
              const std::vector<int64_t>& strides,
              const std::vector<int64_t>& dilations,
+             int groups,
              cudnnConvolutionMode_t mode,
              cudnnDataType_t data_type);
 

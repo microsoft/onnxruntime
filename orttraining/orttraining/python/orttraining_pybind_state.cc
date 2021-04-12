@@ -9,8 +9,10 @@
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/agent/training_agent.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -472,6 +474,81 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
+
+py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
+      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
+      // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
+      .def(py::init([](PyInferenceSession * session) {
+        return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
+      }))
+      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
+        std::vector<OrtValue> module_outputs;
+        int64_t run_id;
+        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+        return py::make_tuple(module_outputs, run_id);
+      })
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
+        Status status = agent->RunBackward(run_id, backward_output_grads);
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      ;
+
+  py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
+      m, "OrtModuleGraphBuilderConfiguration",
+      R"pbdoc(Configuration information for module graph builder.)pbdoc");
+  module_graph_builder_config.def(py::init())
+      .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
+      .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
+      .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
+      .def_readwrite("use_invertible_layernorm_grad",
+                     &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph);
+
+  py::class_<GraphInfo> graph_info(m, "GraphInfo",
+                                      R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  graph_info.def(py::init())
+      .def_readwrite("user_input_names", &GraphInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names", &GraphInfo::initializer_names)
+      .def_readwrite("initializer_names_to_train", &GraphInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &GraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("user_output_names", &GraphInfo::user_output_names)
+      .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
+      .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape);
+
+  py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
+  ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
+      .def("initialize",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
+              const OrtModuleGraphBuilderConfiguration& config) {
+             std::istringstream buffer(serialized_model);
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
+           })
+      .def("build",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build());
+           })
+      .def("build",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder,
+              const std::vector<std::vector<int64_t>>& input_shapes) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
+           })
+      .def("get_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetModel());
+           })
+      .def("get_inference_optimized_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+           })
+      .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+        return ortmodule_graph_builder->GetGraphInfo();
+      });
 }
+
 }  // namespace python
 }  // namespace onnxruntime

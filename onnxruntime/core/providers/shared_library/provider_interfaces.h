@@ -4,10 +4,6 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
-#ifdef USE_TENSORRT
-#include <cuda_runtime.h>
-#endif
-
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -378,7 +374,6 @@ struct ProviderHost {
   // IDataTransfer
   virtual Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) = 0;
   virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) = 0;
-  //  virtual void IDataTransfer__operator_delete(IDataTransfer* p) = 0;
 
   // IndexedSubGraph_MetaDef
   virtual std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() = 0;

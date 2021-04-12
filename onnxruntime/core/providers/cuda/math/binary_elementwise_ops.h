@@ -257,5 +257,22 @@ class Less final : public CompareFunction<T, typename ToCudaType<T>::MappedType>
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
+
+template <typename T>
+class GreaterOrEqual final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  GreaterOrEqual(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class LessOrEqual final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  LessOrEqual(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

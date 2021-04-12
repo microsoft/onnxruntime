@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
@@ -99,7 +99,7 @@ TEST_P(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   test.SetDeterminism(GetParam());
@@ -341,7 +341,7 @@ TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);

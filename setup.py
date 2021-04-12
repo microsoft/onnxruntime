@@ -157,7 +157,7 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
@@ -168,7 +168,7 @@ if platform.system() == 'Linux':
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.2.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   # DNNL & TensorRT EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.dylib'])
   libs.extend(['libonnxruntime_providers_dnnl.dylib'])
@@ -227,15 +227,19 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
     'onnxruntime.transformers.longformer',
 ]
+
+requirements_file = "requirements.txt"
 
 if '--enable_training' in sys.argv:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
+    requirements_file = "requirements-training.txt"
 
 package_data = {}
 data_files = []
@@ -309,12 +313,12 @@ if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-requirements_path = path.join(getcwd(), "requirements.txt")
+requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
-    requirements_path = path.join(this, "requirements.txt")
+    requirements_path = path.join(this, requirements_file)
 if not path.exists(requirements_path):
-    raise FileNotFoundError("Unable to find 'requirements.txt'")
+    raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 

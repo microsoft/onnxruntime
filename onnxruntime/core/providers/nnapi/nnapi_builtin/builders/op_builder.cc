@@ -668,12 +668,7 @@ static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_b
   model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
 }
 
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
-                                          const Node& node,
-                                          const std::string& input_name,
-                                          float& scale,
-                                          int32_t& zero_point) ORT_MUST_USE_RESULT;
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                           const Node& node,
                                           const std::string& input_name,
                                           float& scale,
@@ -685,7 +680,8 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
 
   size_t scale_idx, zero_point_idx;
   if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
-      qlinear_op_type == QLinearOpType::QLinearSigmoid) {
+      qlinear_op_type == QLinearOpType::QLinearSigmoid ||
+      qlinear_op_type == QLinearOpType::QLinearAveragePool) {
     scale_idx = 1;
     zero_point_idx = 2;
   } else if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -704,10 +700,10 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
-  scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, scale_idx);
+  scale = GetQuantizationScale(initializers, node, scale_idx);
   zero_point = 0;
-  if (node.InputDefs().size() > 2) {
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, zero_point_idx, zero_point));
+  if (node.InputDefs().size() > zero_point_idx) {
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
   }
 
   return Status::OK();
@@ -1180,11 +1176,28 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& op = node.OpType();
+  if (op != "QLinearAveragePool")
+    return;
+
+  const auto input_defs = node.InputDefs();
+
+  // skip input/output scales and zeropoints
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
+  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
+
+  if (input_defs.size() == 5)                                   // has Y_zero_point input
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+}
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -1195,6 +1208,7 @@ class PoolOpBuilder : public BaseOpBuilder {
           "GlobalMaxPool",
           "AveragePool",
           "MaxPool",
+          "QLinearAveragePool",
       });
 }
 
@@ -1222,7 +1236,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node.OpType();
 
   int32_t op_code;
-  bool is_average_pool = op_type == "AveragePool";
+  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
+  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1259,6 +1274,24 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+
+  // Get output scale and zero point if this is QLinearAveragePool
+  float y_scale = 0.0f;
+  int32_t y_zero_point = 0;
+  if (is_qlinear_average_pool) {
+    const auto& initializers = model_builder.GetInitializerTensors();
+    float x_scale = GetQuantizationScale(initializers, node, 1 /* idx */);
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2 /* idx */, x_zero_point));
+
+    // Verify if the scale and zero point values from onnx input and nnapi input match
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+
+    y_scale = GetQuantizationScale(initializers, node, 3 /* idx */);
+    if (node.InputDefs().size() > 4)
+      ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 4 /* idx */, y_zero_point));
+  }
+
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
@@ -1285,8 +1318,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                   onnx_pads, onnx_strides, kernel_shape,
                                   use_nchw,
                                   output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -2309,6 +2341,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // We don't really use ROI here, so add them to skipped list
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
+
   // We will still add scales to the skipped list even sizes are present
   // since there is no use of it, we will not process it later
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
@@ -2535,6 +2570,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAveragePool", PoolOpBuilder);
   }
 
   {
