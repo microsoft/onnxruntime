@@ -28,11 +28,6 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -1002,8 +997,8 @@ static Status UpdateWeightsBeforeSaving(
   return Status::OK();
 }
 
-Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri, 
-                                                     const std::string& external_file_name, 
+Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri,
+                                                     const std::string& external_file_name,
                                                      size_t initializer_size_threshold) {
   // Delete the old files before saving.
   std::remove(ToMBString(model_uri).c_str());

@@ -4,10 +4,12 @@
 #pragma once
 
 #include <cmath>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/common.h"
+#endif
 
 namespace onnxruntime {
 
@@ -17,7 +19,7 @@ struct PoolAttributes {
     return op_name == "GlobalAveragePool" || op_name == "GlobalMaxPool" || op_name == "GlobalLpPool";
   }
 
-  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
+  PoolAttributes(const OpKernelInfo& info,
                  const std::string& op_name, int start_version)
       : global_pooling(IsGlobalPooling(op_name)) {
     if (global_pooling) {

@@ -1,7 +1,7 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/if.h"
 
 #include "core/providers/cuda/cuda_fwd.h"
@@ -16,8 +16,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   1, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
@@ -28,8 +28,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
@@ -41,11 +41,14 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
+
+If::If(const OpKernelInfo& info) : OpKernel(info), if_cpu_{CreateOpKernel_CPU_If(info)} {
+}
 
 Status If::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
@@ -53,10 +56,9 @@ Status If::Compute(OpKernelContext* ctx) const {
   // the logic to run the subgraph must be on CPU either way.
   // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
-  auto status = onnxruntime::If::Compute(ctx);
+  auto status = if_cpu_->Compute(ctx);
   return status;
 }
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

@@ -586,9 +586,9 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                          const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                                           const TensorShape* input_shape_override) {
   std::vector<int64_t> axes;
   auto reduced_dims = input.Shape().GetDims();
   std::vector<int64_t> output_shape;
@@ -597,10 +597,10 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   SetupForReduce(&input, reduce_axes, axes, new_input_shape, output_shape, empty_reduce, input_shape_override);
 
   if (empty_reduce) {
-    Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+    auto output = make_unique<Tensor>(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
     if (new_input_shape.Size() == 1) {
       const T* from_data = input.template Data<T>();
-      T* to_data = output.template MutableData<T>();
+      T* to_data = output->template MutableData<T>();
       *to_data = *from_data;
     } else {
       ORT_ENFORCE(keep_dims,
@@ -613,15 +613,15 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
 
   if (keep_dims) {
     ResultsNoTransposePrepareForReduce last_results;
-    Tensor output(input.DataType(), output_shape, allocator);
-    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    auto output = make_unique<Tensor>(input.DataType(), output_shape, allocator);
+    NoTransposeReduce<T, ReduceAggregatorSum<T>>(output.get(), new_input_shape, input, axes, tp, last_results);
     return output;
   } else {
     ResultsNoTransposePrepareForReduce last_results;
     std::vector<int64_t> dropped_axes;
     DropDimensions(output_shape, axes, dropped_axes);
-    Tensor output(input.DataType(), dropped_axes, allocator);
-    NoTransposeReduce<T, ReduceAggregatorSum<T>>(&output, new_input_shape, input, axes, tp, last_results);
+    auto output = make_unique<Tensor>(input.DataType(), dropped_axes, allocator);
+    NoTransposeReduce<T, ReduceAggregatorSum<T>>(output.get(), new_input_shape, input, axes, tp, last_results);
     return output;
   }
 }

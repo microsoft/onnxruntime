@@ -6,7 +6,6 @@
 #include <limits>
 #include <algorithm>
 
-//#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"

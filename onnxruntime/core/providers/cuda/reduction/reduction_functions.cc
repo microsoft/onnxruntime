@@ -11,7 +11,6 @@
 
 #include "core/common/optional.h"
 #include "core/framework/tensor_shape.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

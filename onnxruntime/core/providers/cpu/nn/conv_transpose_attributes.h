@@ -22,7 +22,7 @@
 namespace onnxruntime {
 
 struct ConvTransposeAttributes : public ConvAttributes {
-  explicit ConvTransposeAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info)
+  explicit ConvTransposeAttributes(const OpKernelInfo& info)
       : ConvAttributes(info),
         output_padding(info.GetAttrsOrDefault<int64_t>("output_padding")),
         output_shape(info.GetAttrsOrDefault<int64_t>("output_shape")) {

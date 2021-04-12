@@ -3,6 +3,7 @@
 
 #include "orttraining/test/session/training_session_test_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
+#include "test/util/include/default_providers.h"
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
@@ -180,8 +181,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 

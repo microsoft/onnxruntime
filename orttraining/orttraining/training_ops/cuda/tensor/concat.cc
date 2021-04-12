@@ -3,14 +3,13 @@
 
 #include "orttraining/training_ops/cuda/tensor/concat.h"
 #include "core/providers/cuda/tensor/concat_impl.h"
-
 namespace onnxruntime {
 namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
                         kMSDomain,
                         1,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
+                        (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         ConcatTraining);
 

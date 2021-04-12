@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -214,13 +213,13 @@ const auto k_hfd_datatypes =
 
 // kernel registration
 
-#define REGISTER_KERNEL(name, impl_class, version, datatypes) \
-  ONNX_OPERATOR_KERNEL_EX(                                    \
-      name,                                                   \
-      kOnnxDomain,                                            \
-      version,                                                \
-      kCudaExecutionProvider,                                 \
-      KernelDefBuilder().TypeConstraint("T", datatypes),      \
+#define REGISTER_KERNEL(name, impl_class, version, datatypes)       \
+  ONNX_OPERATOR_KERNEL_EX(                                          \
+      name,                                                         \
+      kOnnxDomain,                                                  \
+      version,                                                      \
+      kCudaExecutionProvider,                                       \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes), \
       impl_class)
 
 #define REGISTER_VERSIONED_KERNEL(name, impl_class, start_version, end_version, datatypes) \
@@ -229,7 +228,7 @@ const auto k_hfd_datatypes =
       kOnnxDomain,                                                                         \
       start_version, end_version,                                                          \
       kCudaExecutionProvider,                                                              \
-      KernelDefBuilder().TypeConstraint("T", datatypes),                                   \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes),                        \
       impl_class)
 
 REGISTER_KERNEL(Sum, SumOp, 13, k_hfd_datatypes)
@@ -249,4 +248,3 @@ REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, k_hfd_datatypes)
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

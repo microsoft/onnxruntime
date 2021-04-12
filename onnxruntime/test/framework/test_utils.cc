@@ -1,7 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#undef USE_CUDA
-
 #include "test_utils.h"
 #include "core/graph/graph.h"
 
@@ -12,34 +10,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
   static CPUExecutionProvider cpu_provider(info);
   return &cpu_provider;
 }
-
-#ifdef USE_CUDA
-IExecutionProvider* TestCudaExecutionProvider() {
-  static CUDAExecutionProviderInfo info;
-  static CUDAExecutionProvider cuda_provider(info);
-  return &cuda_provider;
-}
-#endif
-
-#ifdef USE_TENSORRT
-#if 0  // TODO: TensorRT is shared, can't access these directly anymore
-IExecutionProvider* TestTensorrtExecutionProvider() {
-  static TensorrtExecutionProviderInfo info;
-  static TensorrtExecutionProvider trt_provider(info);
-  return &trt_provider;
-}
-#endif
-#endif
-
-#ifdef USE_OPENVINO
-#if 0  // TODO: OpenVINO is shared, can't access these directly anymore
-IExecutionProvider* TestOpenVINOExecutionProvider() {
-  static OpenVINOExecutionProviderInfo info;
-  static OpenVINOExecutionProvider openvino_provider(info);
-  return &openvino_provider;
-}
-#endif
-#endif
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {

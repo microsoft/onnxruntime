@@ -46,7 +46,7 @@ struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
 } g_info;
 
 struct OpenVINO_Provider : Provider {
-  const void* GetInfo() override { return &g_info; }
+  void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);

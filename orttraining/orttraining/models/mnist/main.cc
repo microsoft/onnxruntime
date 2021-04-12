@@ -6,8 +6,11 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
+#include "core/providers/providers.h"
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+}  // namespace onnxruntime
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -22,11 +25,6 @@
 #include <tuple>
 
 namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 }
 
@@ -167,7 +165,16 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
+      OrtCUDAProviderOptions info{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          0,
+          nullptr};
+
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
     }
 #endif
 

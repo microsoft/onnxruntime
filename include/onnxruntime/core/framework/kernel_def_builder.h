@@ -285,6 +285,13 @@ class KernelDefBuilder {
     return *this;
   }
 
+  KernelDefBuilder& InputMemoryType(OrtMemType type, const std::vector<int>& input_indexes) {
+    for (auto input_index : input_indexes) {
+      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
+    }
+    return *this;
+  }
+
   /**
      Specify that this kernel provides an output arg
      in certain memory type (instead of the default, device memory).

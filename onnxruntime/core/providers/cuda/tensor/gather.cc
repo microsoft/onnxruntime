@@ -4,7 +4,6 @@
 #include "core/providers/cuda/tensor/gather_impl.h"
 #include "core/providers/cuda/tensor/gather.h"
 #include "core/providers/cpu/tensor/utils.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

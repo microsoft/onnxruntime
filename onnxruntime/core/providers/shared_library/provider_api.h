@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <gsl/gsl>
 #include <unordered_map>
 #include <unordered_set>
 #include "onnx/common/stl_backports.h"
@@ -92,12 +93,14 @@ struct AttributeProto;
 struct GraphProto;
 struct ModelProto;
 struct NodeProto;
+struct SparseTensorProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
 struct TypeProto_Tensor;
+struct TypeProto_SparseTensor;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
@@ -113,13 +116,6 @@ enum class DataType {
 
 }  // namespace logging
 
-enum class AutoPadType {
-  NOTSET = 0,
-  VALID = 1,
-  SAME_UPPER = 2,
-  SAME_LOWER = 3,
-};
-
 // OnnxRuntime Types (these are the internal types)
 struct CPUIDInfo;
 namespace logging {
@@ -128,7 +124,6 @@ struct Capture;
 }  // namespace logging
 struct ComputeCapability;
 struct DataTransferManager;
-struct IDataTransfer;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
 struct KernelCreateInfo;
@@ -143,6 +138,7 @@ struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
+class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
@@ -156,16 +152,29 @@ class ScatterNDBase;
 enum class Mode : int;
 class GatherBase;
 class ConcatBase;
+template <int OpSet>
+class Scan;
+struct EinsumComputePreprocessor;
+template <typename T>
+struct EinsumTypedComputeProcessor;
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
+// be used with class MLValue
+using DeleteFunc = void (*)(void*);
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 }  // namespace onnxruntime
 
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
+#include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
 
@@ -201,6 +210,8 @@ constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
+inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
+
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
@@ -213,15 +224,6 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
                                                    const std::vector<NodeIndex>& tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
-
-inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
-
-void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator);
-AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type);
-
-inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) { return g_host->HandleNegativeAxis(axis, tensor_rank); }
-//inline bool IsScalarOr1ElementVector(const Tensor* input) { return g_host->IsScalarOr1ElementVector(input); }
-bool IsScalarOr1ElementVector(const Tensor* input);
 
 namespace logging {
 
@@ -242,8 +244,46 @@ constexpr T roundUpPow2(T a) {
 }
 
 uint16_t floatToHalf(float f);
+float halfToFloat(uint16_t h);
 
 }  // namespace math
+
+namespace utils {
+
+template <typename T>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<bool>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<float>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<double>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<MLFloat16>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<BFloat16>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int8_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint8_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int16_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint16_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int32_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint32_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
+
+}  // namespace utils
+
+}  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
@@ -258,14 +298,3 @@ uint16_t floatToHalf(float f);
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-
-// Use within macro definitions to create a custom vector of constraints.
-// Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
-//  .TypeConstraint("T", BuildKernelDefConstraints<Type, __VA_ARGS_>())
-template <typename T, typename... Types>
-inline std::vector<MLDataType> BuildKernelDefConstraints() {
-  return {DataTypeImpl::GetTensorType<T>(), DataTypeImpl::GetTensorType<Types>()...};
-}
-
-}  // namespace onnxruntime
-

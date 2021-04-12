@@ -13,7 +13,7 @@
 #include "gsl/gsl"
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/providers.h"
 #endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
@@ -31,20 +31,6 @@ class Graph;
 namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
-
-#ifdef USE_CUDA
-// Doesn't work with ExecutionProviders class and KernelRegistryManager
-IExecutionProvider* TestCudaExecutionProvider();
-#endif
-
-#ifdef USE_TENSORRT
-// Doesn't work with ExecutionProviders class and KernelRegistryManager
-IExecutionProvider* TestTensorrtExecutionProvider();
-#endif
-
-#ifdef USE_OPENVINO
-IExecutionProvider* TestOpenVINOExecutionProvider();
-#endif
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider();

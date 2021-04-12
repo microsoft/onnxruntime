@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -9,22 +8,22 @@ namespace cuda {
 
 // Op Set 11 for ConvTranspose only update document to clearify default dilations and strides value.
 // which are already covered by op set 11 cpu version, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      ConvTranspose,                                                            \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      ConvTranspose,                                                            \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      ConvTranspose,                                                                       \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      ConvTranspose<T>);                                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      ConvTranspose,                                                                       \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ConvTranspose<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -208,4 +207,3 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

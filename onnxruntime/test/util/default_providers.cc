@@ -71,10 +71,10 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
   OrtCUDAProviderOptions provider_options{};
-  return CreateExecutionProviderFactory_Cuda(&provider_options)->CreateProvider();
-#else
-  return nullptr;
+  if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
+    return factory->CreateProvider();
 #endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {

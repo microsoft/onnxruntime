@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -17,7 +16,7 @@ namespace cuda {
       6,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       InstanceNorm<T>);
 
@@ -154,4 +153,3 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

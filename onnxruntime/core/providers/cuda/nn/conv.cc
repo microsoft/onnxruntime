@@ -1,8 +1,6 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -13,22 +11,22 @@ namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      Conv,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Conv,                                                                     \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Conv,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Conv,                                                                                \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Conv<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -36,8 +34,7 @@ REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,
-                                     const void* input_data,
-                                     const std::vector<int64_t>& input_dims,
+                                     const void* input_data, const std::vector<int64_t>& input_dims,
                                      void* output_data,
                                      const std::vector<int64_t>& output_dims,
                                      std::vector<int64_t> starts,
@@ -359,4 +356,3 @@ Status CudnnConvolutionDescriptor::Set(
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

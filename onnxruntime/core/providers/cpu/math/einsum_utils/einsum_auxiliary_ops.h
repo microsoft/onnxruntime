@@ -41,10 +41,10 @@ using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data
 
 // ReduceSum op - Reduces along `reduce_axes`
 template <typename T>
-using ReduceSum = std::function<Tensor(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                                       bool keep_dims, AllocatorPtr allocator,
-                                       const TensorShape* input_shape_override,
-                                       concurrency::ThreadPool* tp, void* einsum_cuda_assets)>;
+using ReduceSum = std::function<std::unique_ptr<Tensor>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                                        bool keep_dims, AllocatorPtr allocator,
+                                                        const TensorShape* input_shape_override,
+                                                        concurrency::ThreadPool* tp, void* einsum_cuda_assets)>;
 
 // Diagonal op
 // Diagonal - A specialized implementation somewhat similar to Torch's Diagonal op
@@ -73,10 +73,10 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               void* einsum_cuda_assets);
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                 bool keep_dims, AllocatorPtr allocator,
-                 const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                  bool keep_dims, AllocatorPtr allocator,
+                                  const TensorShape* input_shape_override,
+                                  concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_cuda_assets);
 

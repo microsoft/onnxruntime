@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-//#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/split.h"
 

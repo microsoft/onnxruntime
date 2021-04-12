@@ -4,9 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "rnn.h"
 #include "rnn_impl.h"
-//#include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
-//#include "core/providers/cpu/math/gemm_helper.h"
 
 namespace onnxruntime {
 namespace cuda {

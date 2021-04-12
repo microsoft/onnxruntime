@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -19,7 +18,7 @@ namespace cuda {
       7, 8,                                                       \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -28,7 +27,7 @@ namespace cuda {
       9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
@@ -165,4 +164,3 @@ SPECIALIZED_COMPUTE(MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

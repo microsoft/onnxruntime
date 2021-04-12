@@ -5,7 +5,9 @@
 
 #include "boost/mp11.hpp"
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/data_types.h"
+#endif
 
 namespace onnxruntime {
 namespace utils {

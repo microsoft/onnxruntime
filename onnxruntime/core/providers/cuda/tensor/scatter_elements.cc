@@ -4,7 +4,6 @@
 #include "scatter_elements.h"
 #include "scatter_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

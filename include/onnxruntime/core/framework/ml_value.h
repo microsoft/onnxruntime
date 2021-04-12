@@ -4,11 +4,13 @@
 #pragma once
 
 #include <string>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 class SparseTensor;

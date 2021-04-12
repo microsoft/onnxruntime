@@ -9,9 +9,12 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/bfc_arena.h"
+#include "core/providers/providers.h"
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
 #endif
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -237,7 +240,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -277,7 +280,7 @@ float GetLossValue(const Tensor& loss_tensor) {
 // mapping to define what to be stored in mapped_dimensions
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+    {"input_ids", {"SeqLen", 0}},  // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
 };
 
 // generic properties for storing perf metrics
@@ -342,11 +345,17 @@ void setup_training_params(GPT2Parameters& params) {
 
 #ifdef USE_CUDA
   {
-    CUDAExecutionProviderInfo info{};
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    OrtCUDAProviderOptions info{
+        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
+        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        std::numeric_limits<size_t>::max(),
+        0,
+        true,
+        0,
+        nullptr};
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
-    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 

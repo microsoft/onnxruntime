@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-//#include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -14,11 +14,13 @@ class SessionState;
 namespace cuda {
 
 // Use the CPU implementation for the logic
-class If final : public onnxruntime::If {
+class If final : public OpKernel {
  public:
-  If(const OpKernelInfo& info) : onnxruntime::If(info) {}
+  If(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
+
+  std::unique_ptr<OpKernel> if_cpu_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

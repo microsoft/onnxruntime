@@ -3,12 +3,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
-//#include "core/framework/compute_capability.h"
-//#include "core/framework/fallback_cpu_capability.h"
-//#include "core/framework/kernel_registry.h"
-//#include "core/framework/memcpy.h"
-//#include "core/framework/provider_options_utils.h"
-//#include "core/graph/graph_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fence.h"

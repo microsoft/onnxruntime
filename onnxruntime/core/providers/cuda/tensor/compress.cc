@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "compress.h"
-//#include "core/providers/cpu/tensor/utils.h"
-//#include "core/providers/common.h"
 #include "compress_impl.h"
 
 namespace onnxruntime {

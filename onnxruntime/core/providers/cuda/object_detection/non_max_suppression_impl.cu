@@ -20,8 +20,6 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-//#include "core/framework/tensor.h"
-
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 

@@ -3,8 +3,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "lstm.h"
-//#include "core/providers/cpu/rnn/rnn_helpers.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

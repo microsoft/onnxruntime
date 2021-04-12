@@ -3,9 +3,6 @@
 
 #pragma once
 
-//#include "core/common/status.h"
-//#include "core/framework/data_transfer_manager.h"
-//#include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"

@@ -259,6 +259,13 @@ Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   stream_ = nullptr;
 }
 
+std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
+  auto result = make_unique<Loop>(info);
+  result->SetConcatOutputFunc(concat_output_func);
+  result->SetComputeStream(stream);
+  return result;
+}
+
 // we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
 Loop::~Loop() = default;
 

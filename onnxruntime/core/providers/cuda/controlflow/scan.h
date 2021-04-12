@@ -5,7 +5,6 @@
 #include <functional>
 #include "gsl/gsl"
 
-#include "core/common/common.h"
 #include "core/providers/cpu/controlflow/scan.h"
 
 namespace onnxruntime {
@@ -15,11 +14,14 @@ namespace cuda {
 
 // Use the CPU implementation for the logic
 template <int OpSet>
-class Scan final : public onnxruntime::Scan<OpSet> {
+class Scan final : public OpKernel {
  public:
   Scan(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  std::unique_ptr<onnxruntime::Scan<OpSet>> scan_cpu_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if 0
 #include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
@@ -181,7 +180,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
     void* einsum_cuda_assets);
 
-template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
+template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
@@ -190,4 +189,3 @@ template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
 }  // namespace EinsumOp
 
 }  // namespace onnxruntime
-#endif

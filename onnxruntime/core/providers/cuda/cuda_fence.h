@@ -3,9 +3,6 @@
 
 #pragma once
 
-//#include "core/framework/tensor.h"
-//#include "core/graph/basic_types.h"
-//#include "core/providers/cuda/cuda_common.h"
 #include "core/framework/fence.h"
 
 namespace onnxruntime {

@@ -15,7 +15,7 @@ namespace cuda {
       1,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
+      (*KernelDefBuilder::Create())                                   \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       IsFiniteOp<T>);
@@ -44,7 +44,7 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
       1,                                                             \
       T,                                                             \
       kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
+      (*KernelDefBuilder::Create())                                  \
           .TypeConstraint("V", DataTypeImpl::GetTensorType<T>())     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()), \
       IsAllFiniteOp<T>);

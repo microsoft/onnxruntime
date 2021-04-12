@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "orttraining/training_ops/cuda/loss/softmax_cross_entropy_loss_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {

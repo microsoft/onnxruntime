@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -17,7 +16,7 @@ namespace cuda {
       9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .MayInplace(0, 0)                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Shrink<T>);
@@ -53,4 +52,3 @@ SHRINK_REGISTER_KERNEL(int64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

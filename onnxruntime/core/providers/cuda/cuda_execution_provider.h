@@ -6,7 +6,6 @@
 #include <set>
 #include <vector>
 
-//#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"

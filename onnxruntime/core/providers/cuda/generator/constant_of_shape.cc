@@ -1,10 +1,6 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "constant_of_shape.h"
-#include "core/providers/common.h"
-#include "gsl/gsl"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -16,8 +12,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     9,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
     ConstantOfShape);
@@ -30,11 +26,11 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
   const void* value_ptr = GetValuePtr();
   const auto element_size = output_tensor->DataType()->Size();
 
-#define CASE(TYPE)                                                                                          \
-  case sizeof(TYPE):                                                                                        \
-    if (size > 0) {                                                                                         \
-      cuda::Fill(Stream(), reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size);  \
-    }                                                                                                       \
+#define CASE(TYPE)                                                                                                   \
+  case sizeof(TYPE):                                                                                                 \
+    if (size > 0) {                                                                                                  \
+      cuda::Fill(Stream(), reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size); \
+    }                                                                                                                \
     break;
 
   switch (element_size) {
@@ -52,4 +48,3 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

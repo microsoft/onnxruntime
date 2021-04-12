@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if 0
+#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
 
 #include "core/framework/allocatormgr.h"
 #include "test/framework/test_utils.h"

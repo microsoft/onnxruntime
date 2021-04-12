@@ -14,6 +14,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_util.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace training {
@@ -45,8 +46,7 @@ TEST(TrainingRunnerTest, Basic) {
 
   TrainingRunner runner{params, *env};
 
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(onnxruntime::test::DefaultCudaExecutionProvider()).IsOK());
 
   auto status = runner.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();

@@ -10,7 +10,6 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 #include "gsl/gsl"
-//#include "core/util/math.h"
 
 // Can't include "core/util/math.h" in a provider, so this is the part we need for cuda:
 namespace onnxruntime {

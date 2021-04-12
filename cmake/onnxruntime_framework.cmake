@@ -37,6 +37,10 @@ target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${e
 else()
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 endif()
+# Needed for the provider interface, as it includes training headers when training is enabled
+if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
+endif()
 onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes

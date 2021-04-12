@@ -19,6 +19,7 @@
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "core/providers/providers.h"
 #include "test/util/include/asserts.h"
 
 #include "gmock/gmock.h"

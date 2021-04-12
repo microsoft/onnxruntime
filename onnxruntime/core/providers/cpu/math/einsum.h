@@ -3,10 +3,12 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "einsum_utils/einsum_compute_preprocessor.h"
 #include "einsum_utils/einsum_typed_compute_processor.h"
+#endif
+#include "einsum_utils/einsum_compute_preprocessor.h"
 
 namespace onnxruntime {
 

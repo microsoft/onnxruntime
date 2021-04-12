@@ -1,8 +1,7 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "range.h"
 #include "range_impl.h"
@@ -19,10 +18,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     11,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)  // start
-        .InputMemoryType<OrtMemTypeCPUInput>(1)  // limit
-        .InputMemoryType<OrtMemTypeCPUInput>(2)  // delta
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // start
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // limit
+        .InputMemoryType(OrtMemTypeCPUInput, 2)  // delta
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int16_t>(),
@@ -52,7 +51,7 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
                            delta_tensor_ptr->Shape());
   }
 
-  // Start, Limit and Delta are stored in CPU. 
+  // Start, Limit and Delta are stored in CPU.
   T start = *(start_tensor.template Data<T>());
   T limit = *(limit_tensor.template Data<T>());
 
@@ -105,4 +104,3 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

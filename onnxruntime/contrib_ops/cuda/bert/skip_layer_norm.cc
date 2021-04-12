@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
-//#include "core/framework/tensorprotoutils.h"
-//#include "onnx/defs/tensor_proto_util.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
 

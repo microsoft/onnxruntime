@@ -382,7 +382,7 @@ endif()
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(onnxruntime_USE_CUDA)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_DNNL)
@@ -451,8 +451,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
-    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
+    # CUDA, TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}

@@ -5,9 +5,6 @@
 #include <functional>
 #include "gsl/gsl"
 
-//#include "core/common/common.h"
-//#include "core/framework/feeds_fetches_manager.h"
-//#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/controlflow/utils.h"
 
 namespace onnxruntime {

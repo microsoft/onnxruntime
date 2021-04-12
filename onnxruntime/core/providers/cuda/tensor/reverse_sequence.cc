@@ -5,8 +5,6 @@
 #include "reverse_sequence_impl.h"
 
 #include "core/providers/cpu/tensor/utils.h"
-//#include "core/providers/common.h"
-//#include "core/framework/utils.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -10,27 +10,28 @@ namespace onnxruntime {
 namespace cuda {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                     DataTypeImpl::GetTensorType<double>(),     \
-                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                     DataTypeImpl::GetTensorType<BFloat16>()}
+#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>() }
 #define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
 #else
 #define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
 #define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
 #endif
 
-#define REGISTER_GRADIENT_KERNEL(OpName)                                 \
-  ONNX_OPERATOR_KERNEL_EX(                                               \
-      OpName,                                                            \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)              \
-          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)             \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
-          .InputMemoryType<OrtMemTypeCPUInput>(2),                       \
+#define REGISTER_GRADIENT_KERNEL(OpName)                             \
+  ONNX_OPERATOR_KERNEL_EX(                                           \
+      OpName,                                                        \
+      kMSDomain,                                                     \
+      1,                                                             \
+      kCudaExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)          \
+          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)         \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 2),                   \
       DropoutGrad);
 
 REGISTER_GRADIENT_KERNEL(DropoutGrad)
@@ -90,12 +91,12 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
-        .InputMemoryType<OrtMemTypeCPUInput>(4),
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4),
     BiasDropout);
 
 template <typename T>

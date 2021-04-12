@@ -5,8 +5,11 @@
 #include <functional>
 #include "gsl/gsl"
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
+
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/framework/ort_value_tensor_slicer.h"
@@ -56,7 +59,6 @@ class Scan : public controlflow::IControlFlowKernel {
   struct Info;
   ~Scan();
 
- protected:
   void SetDeviceHelpers(const scan::detail::DeviceHelpers& device_helpers) {
     device_helpers_ = device_helpers;  // copy
   }

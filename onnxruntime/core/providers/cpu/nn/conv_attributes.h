@@ -14,7 +14,7 @@ namespace onnxruntime {
 
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
-  explicit ConvAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info) {
+  explicit ConvAttributes(const OpKernelInfo& info) {
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
     if (status.IsOK()) {

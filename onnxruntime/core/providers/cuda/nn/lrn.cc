@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -7,25 +6,25 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_VERSIONED_TYPED(START_VER, END_VER, T)                  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      LRN,                                                                      \
-      kOnnxDomain,                                                              \
-      START_VER,                                                                \
-      END_VER,                                                                  \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_VERSIONED_TYPED(START_VER, END_VER, T)                             \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LRN,                                                                                 \
+      kOnnxDomain,                                                                         \
+      START_VER,                                                                           \
+      END_VER,                                                                             \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LRN<T>);
 
-#define REGISTER_KERNEL_TYPED(VER, T)                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      LRN,                                                                      \
-      kOnnxDomain,                                                              \
-      VER,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(VER, T)                                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      LRN,                                                                                 \
+      kOnnxDomain,                                                                         \
+      VER,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LRN<T>);
 
 REGISTER_KERNEL_VERSIONED_TYPED(1, 12, float)
@@ -111,4 +110,3 @@ Status CudnnLRNDescriptor::Set(uint32_t N, double alpha, double beta, double K) 
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "topk_impl.h"
-//#include "core/framework/data_types.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "device_atomic_functions.h"
 #include "cub/cub.cuh"

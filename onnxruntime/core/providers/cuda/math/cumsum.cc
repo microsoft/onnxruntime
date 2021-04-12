@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -15,8 +14,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'axis' needs to be on CPU
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'axis' needs to be on CPU
         .TypeConstraint("T", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>(),
@@ -32,8 +31,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     14,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'axis' needs to be on CPU
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'axis' needs to be on CPU
         .TypeConstraint("T", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>(),
@@ -41,7 +40,7 @@ ONNX_OPERATOR_KERNEL_EX(
                                  DataTypeImpl::GetTensorType<uint64_t>(),
                                  DataTypeImpl::GetTensorType<float>(),
                                  DataTypeImpl::GetTensorType<double>(),
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}) // MLFloat16 is added in opset 14
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})  // MLFloat16 is added in opset 14
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     CumSum);
 
@@ -143,4 +142,3 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

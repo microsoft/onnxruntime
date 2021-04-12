@@ -4,8 +4,6 @@
 #include "quantize_linear.h"
 #include "quantize_linear.cuh"
 
-//#include "core/providers/common.h"
-
 namespace onnxruntime {
 namespace cuda {
 

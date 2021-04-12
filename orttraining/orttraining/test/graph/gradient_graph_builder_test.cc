@@ -6,6 +6,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
@@ -17,7 +18,6 @@
 
 #ifdef USE_CUDA
 #include "bert_toy_fetches.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 #endif
 
 using namespace onnxruntime::logging;
@@ -316,8 +316,7 @@ static void RunBertTrainingWithChecks(
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
   ASSERT_STATUS_OK(training_session->Initialize());
 
@@ -1002,21 +1001,21 @@ class PipelineBatchPlanner {
 };
 
 void RetrieveEventOperators(
-  Graph& graph,
-  const int stage_index,
-  const int num_stages,
-  Node** forward_recv_wait,
-  Node** forward_recv_record,
-  Node** forward_compute_wait,
-  Node** forward_compute_record,
-  Node** forward_send_wait,
-  Node** forward_send_record,
-  Node** backward_recv_wait,
-  Node** backward_recv_record,
-  Node** backward_compute_wait,
-  Node** backward_compute_record,
-  Node** backward_send_wait,
-  Node** backward_send_record) {
+    Graph& graph,
+    const int stage_index,
+    const int num_stages,
+    Node** forward_recv_wait,
+    Node** forward_recv_record,
+    Node** forward_compute_wait,
+    Node** forward_compute_record,
+    Node** forward_send_wait,
+    Node** forward_send_record,
+    Node** backward_recv_wait,
+    Node** backward_recv_record,
+    Node** backward_compute_wait,
+    Node** backward_compute_record,
+    Node** backward_send_wait,
+    Node** backward_send_record) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1102,16 +1101,16 @@ void RetrieveEventOperators(
     *backward_send_record = records[2];
   } else {
     ORT_THROW("Wrong number of WaitEvent operators: ",
-        waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
+              waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
   }
 }
 
 void RetrieveSendRecvOperators(
-  Graph& graph,
-  Node** forward_recv,
-  Node** forward_send,
-  Node** backward_recv,
-  Node** backward_send) {
+    Graph& graph,
+    Node** forward_recv,
+    Node** forward_send,
+    Node** backward_recv,
+    Node** backward_send) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1163,32 +1162,30 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
 
 // DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
 // This is for test purpose only. Please don't use it for other scenarios.
-class DistributedRunTestContext : public DistributedRunContext
-{
-public:
-    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
-        : DistributedRunContext(config.distributed_config.world_rank,
-                                config.distributed_config.world_size,
-                                config.distributed_config.local_rank,
-                                config.distributed_config.local_size,
-                                config.distributed_config.data_parallel_size,
-                                config.distributed_config.horizontal_parallel_size,
-                                config.distributed_config.pipeline_parallel_size)
-    {
-    }
+class DistributedRunTestContext : public DistributedRunContext {
+ public:
+  DistributedRunTestContext(const TrainingSession::TrainingConfiguration& config)
+      : DistributedRunContext(config.distributed_config.world_rank,
+                              config.distributed_config.world_size,
+                              config.distributed_config.local_rank,
+                              config.distributed_config.local_size,
+                              config.distributed_config.data_parallel_size,
+                              config.distributed_config.horizontal_parallel_size,
+                              config.distributed_config.pipeline_parallel_size) {
+  }
 
-    // Reset the static DistributedRunContext object with new value.
-    void ResetDistributedRunContext(){
-      DistributedRunContext::GetRunConfig() = params_;
-      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
-      dp_group = groups_[WorkerGroupType::DataParallel];
+  // Reset the static DistributedRunContext object with new value.
+  void ResetDistributedRunContext() {
+    DistributedRunContext::GetRunConfig() = params_;
+    auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+    dp_group = groups_[WorkerGroupType::DataParallel];
 
-      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
-      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+    auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+    hp_group = groups_[WorkerGroupType::HorizontalParallel];
 
-      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
-      mp_group = groups_[WorkerGroupType::PipelineParallel];
-    }
+    auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+    mp_group = groups_[WorkerGroupType::PipelineParallel];
+  }
 };
 
 void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
@@ -1331,7 +1328,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
-  for(auto is_fp32 : test_with_fp32) {
+  for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
@@ -1356,7 +1353,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
       PathString backprop_model_file;
       Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
-      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
 
       // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
       // which takes a const tensor input. Const cast for input in function body won't be saved in the output
@@ -1367,7 +1364,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
         std::shared_ptr<Model> model;
         // Ensure the partitioned model load.
         status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
-        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
       }
     }
   }
@@ -1426,7 +1423,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
- std::string filename_base = "testdata/test_training_model_";
+  std::string filename_base = "testdata/test_training_model_";
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
@@ -1462,21 +1459,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     // Find event nodes.
     RetrieveEventOperators(
-      graph,
-      stageIdx,
-      3,
-      &forward_recv_wait,
-      &forward_recv_record,
-      &forward_compute_wait,
-      &forward_compute_record,
-      &forward_send_wait,
-      &forward_send_record,
-      &backward_recv_wait,
-      &backward_recv_record,
-      &backward_compute_wait,
-      &backward_compute_record,
-      &backward_send_wait,
-      &backward_send_record);
+        graph,
+        stageIdx,
+        3,
+        &forward_recv_wait,
+        &forward_recv_record,
+        &forward_compute_wait,
+        &forward_compute_record,
+        &forward_send_wait,
+        &forward_send_record,
+        &backward_recv_wait,
+        &backward_recv_record,
+        &backward_compute_wait,
+        &backward_compute_record,
+        &backward_send_wait,
+        &backward_send_record);
 
     // Check event nodes.
     if (stageIdx == 2) {
@@ -1538,11 +1535,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     Node* backward_send{nullptr};
 
     RetrieveSendRecvOperators(
-      graph,
-      &forward_recv,
-      &forward_send,
-      &backward_recv,
-      &backward_send);
+        graph,
+        &forward_recv,
+        &forward_send,
+        &backward_recv,
+        &backward_send);
 
     // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
@@ -1607,23 +1604,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{
-            "MeanSquaredError_reduce_mean_Grad/Sized_X",
-            "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
-            "MeanSquaredError_reduce_mean_Grad/Scale",
-            "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
-            "MeanSquaredError_reduce_mean_Grad/Shaped_X",
-            "MeanSquaredError_diff_square_grad",
-            "MeanSquaredError_pow_Grad/Sub_I1",
-            "MeanSquaredError_pow_Grad/Pow_I0",
-            "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
-            "MeanSquaredError_diff_grad",
-            "predictions_grad",
-            "B3_grad",
-            "T7_grad",
-            "W3_grad",
-            "T6_grad"
-        },
+       {{"MeanSquaredError_reduce_mean_Grad/Sized_X",
+         "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Scale",
+         "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Shaped_X",
+         "MeanSquaredError_diff_square_grad",
+         "MeanSquaredError_pow_Grad/Sub_I1",
+         "MeanSquaredError_pow_Grad/Pow_I0",
+         "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
+         "MeanSquaredError_diff_grad",
+         "predictions_grad",
+         "B3_grad",
+         "T7_grad",
+         "W3_grad",
+         "T6_grad"},
         {},
         {"T6_grad"},
         {},

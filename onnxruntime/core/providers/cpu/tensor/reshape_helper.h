@@ -3,10 +3,6 @@
 
 #pragma once
 
-//#include "core/common/common.h"
-//#include "core/framework/tensor.h"
-//#include "gsl/gsl"
-
 namespace onnxruntime {
 
 // Verify and convert unknown dim during reshape

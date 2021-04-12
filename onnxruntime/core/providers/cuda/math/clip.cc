@@ -1,8 +1,6 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/providers/cuda/math/clip.h"
 #include "core/providers/cuda/math/clip_impl.h"
 
@@ -16,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     10,
     float,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Clip_6<float>);
 
@@ -25,9 +23,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 11,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Clip);
 
@@ -36,9 +34,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, int8_t, uint8_t, int64_t, uint64_t>()),
     Clip);
 
@@ -47,12 +45,11 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, int8_t, uint8_t, int64_t, uint64_t>()),
     Clip);
-
 
 template <typename T>
 Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -132,4 +129,3 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

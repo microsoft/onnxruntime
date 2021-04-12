@@ -3,8 +3,6 @@
 
 #include "layer_norm.h"
 #include "layer_norm_impl.h"
-
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -18,7 +16,7 @@ namespace cuda {
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       LayerNorm<T, U, false>);                                    \
@@ -28,7 +26,7 @@ namespace cuda {
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       LayerNorm<T, U, true>);
@@ -59,7 +57,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = (simplified || (nullptr == bias)) ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());

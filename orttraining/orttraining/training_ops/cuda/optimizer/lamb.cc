@@ -53,11 +53,11 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
       1,                                                                                               \
       T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                \
       kCudaExecutionProvider,                                                                          \
-      KernelDefBuilder()                                                                               \
+      (*KernelDefBuilder::Create())                                                                    \
           .Alias(GenerateLambExtraAliasMapping())                                                      \
-          .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep do_update in CPU */                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)   /* Keep iteration_count in CPU */                  \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep iteration_count in CPU */                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 0)   /* Keep do_update in CPU */                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)   /* Keep iteration_count in CPU */                  \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* Keep iteration_count in CPU */                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \

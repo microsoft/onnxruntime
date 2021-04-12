@@ -1,4 +1,3 @@
-#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -15,10 +14,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     10, 10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
-        .InputMemoryType<OrtMemTypeCPUInput>(4),
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4),
     NonMaxSuppression);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -26,10 +25,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     11,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
-        .InputMemoryType<OrtMemTypeCPUInput>(4),
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4),
     NonMaxSuppression);
 
 Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
@@ -137,4 +136,3 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "flatten.h"
-//#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
