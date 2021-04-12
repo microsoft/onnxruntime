@@ -228,10 +228,10 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
         }
         for (NodeArg* node_input : node->MutableInputDefs()) {
           if (IsType(*node_input, TensorProto_DataType_FLOAT) &&
-              require_cast.find(node_input) != require_cast.end() &&
-              require_type_change.find(node_input) != require_type_change.end()) {
+              require_cast.find(node_input) == require_cast.end() &&
+              require_type_change.find(node_input) == require_type_change.end()) {
             SearchUpstream(graph, node_input, require_cast, require_type_change, removed_nodes, level);
-            if (require_cast.find(node_input) != require_cast.end()) {
+            if (require_cast.find(node_input) == require_cast.end()) {
               require_type_change.insert(node_input);
             }
           }
@@ -277,10 +277,10 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
           }
           for (NodeArg* node_output : node->MutableOutputDefs()) {
             if (IsType(*node_output, TensorProto_DataType_FLOAT) &&
-                require_cast.find(node_output) != require_cast.end() &&
-                require_type_change.find(node_output) != require_type_change.end()) {
+                require_cast.find(node_output) == require_cast.end() &&
+                require_type_change.find(node_output) == require_type_change.end()) {
               SearchDownstream(graph, node_output, require_cast, require_type_change, removed_nodes, level);
-              if (require_cast.find(node_output) != require_cast.end()) {
+              if (require_cast.find(node_output) == require_cast.end()) {
                 require_type_change.insert(node_output);
               }
             }
@@ -467,8 +467,8 @@ static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
 
 // PropagateFP32CastsFromInputsToOutputs
 // This non recursive fusion, checks whether the given node is fp16 safe op and
-// whether all non-floatingpoint inputs are cast to fp32
-// and propagates cast op to the non-floatingpoint outputs.
+// whether all floatingpoint inputs are cast to fp32
+// and propagates cast op to the floatingpoint outputs.
 static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
                                                   std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                                   size_t level,
@@ -493,7 +493,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       all_float_inputs_have_casts = false;
       break;
     }
-    if (has_float_inputs && all_float_inputs_have_casts && casts.size() > 0) {
+    if (has_float_inputs && all_float_inputs_have_casts && casts.size() > 1) {
       VLOGS(logger, 1) << "PropagateFP32CastsFromInputsToOutputs: Removed Cast nodes "
                 << ConcatNames<std::vector<Node*>>(casts)
                 << " feeding the same compute node " << node->Name();
@@ -518,8 +518,8 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
 
 // PropagateFP16CastsFromOutputsToInputs
 // This non recursive fusion, checks whether the given node is fp16 safe op and
-// whether all non-floatingpoint outputs are cast to fp16
-// and propagates cast op to the non-floatingpoint inputs.
+// whether all floatingpoint outputs are cast to fp16
+// and propagates cast op to the floatingpoint inputs.
 static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
                                                   std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                                   size_t level,
@@ -550,7 +550,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
       require_type_change.insert(output);
     }
-    if (has_float_outputs && all_float_outputs_have_casts && casts.size() > 0) {
+    if (has_float_outputs && all_float_outputs_have_casts && casts.size() > 1) {
       VLOGS(logger, 1) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
                 << ConcatNames<std::vector<Node*>>(casts)
                 << " feeding the same compute node " << node->Name();

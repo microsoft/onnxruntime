@@ -3869,8 +3869,6 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
-// The following test is disabled because the cast propagation does not consider MatMul fp16_safe
-// Re-enable this test when it does.
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   struct PropagateCastOpsTestSpecs {
     PathString model_uri;
@@ -3880,17 +3878,47 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   };
 
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
-      {MODEL_FOLDER "propagate_cast/propagate_cast_float16.onnx", 2, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/propagate_cast_float_0.onnx", 0, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/propagate_cast_float_1.onnx", 1, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_0.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_1.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_2.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_3.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_0.onnx", 0},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_1.onnx", 2},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_2.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_3.onnx", 1}};
+      // Test fusing back to back casts functionality
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", 2},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float16.onnx", 0},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float.onnx", 1},
+      // Test fusing subgraph functionality
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float.onnx", 1},
+
+      // Test constant propagation with various combinations
+      // 1. Computation is float or float16
+      // 2. The inputs and/or output may be casted
+      // 3. The inputs and/or output may be transposed
+      // These variations help testing the following functions.
+      // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_input_casts.onnx", 2, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_output_cast.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_input_casts.onnx", 2, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_input_casts_output_cast.onnx", 3, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_output_cast.onnx", 1, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_input_casts.onnx", 2, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_output_cast.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_input_casts.onnx", 2, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_output_cast.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_output_cast.onnx", 2, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_input_casts.onnx", 1, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_input_casts_output_cast.onnx", 0, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_output_cast.onnx", 2, {"MatMul"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_input_casts.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts.onnx", 1, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
+      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}}};
   const std::vector<int> expected_casts = {2, 0, 1};
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
@@ -3901,7 +3929,13 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
         onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    PathString transformed_model_uri = ORT_TSTR("transformed_") + GetLastComponent(test_case.model_uri);
+    Model::Save(*p_model, transformed_model_uri);
+    // Load the transformed model to validate
+    ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
+    Graph& transformed_graph = p_model->MainGraph();
+    ASSERT_STATUS_OK(transformed_graph.Resolve());
+    std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
     ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
   }
 }
