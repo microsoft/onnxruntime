@@ -45,20 +45,82 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   }
 
   auto log_func = [&](const char* msg) {
-    std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
-    //LOGS_DEFAULT(WARNING) << msg << std::endl;
+    LOGS_DEFAULT(WARNING) << msg << std::endl;
   };
+
+  std::vector<void*> const_args;
+  std::vector<int64_t> const_arg_positions;
+
+  for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_int_scalar_positions_.at(i));
+    const_args.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
+  }
+  
+  for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_float_scalar_positions_.at(i));
+    const_args.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
+  }
+
+  for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_int_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("L", input_int_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions.emplace_back(input_int_tuple_positions_.at(i));
+    const_args.emplace_back(tuple);
+  }
+
+  for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_float_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("f", input_float_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions.emplace_back(input_float_tuple_positions_.at(i));
+    const_args.emplace_back(tuple);
+  }
+
+  // occupied[i] being true means the i-th input argument
+  // to Python function has been set.
+  std::vector<bool> occupied(inputs.size() + const_args.size(), false);
+
+  // We know all non-tensors were set above, so let's catch up.
+  for (const auto pos : const_arg_positions) {
+    occupied.at(pos) = true;
+  }
+
+  // arg_positions[i] is the position index for the i-th tensor input.
+  std::vector<int64_t> arg_positions(inputs.size());
+  // Search for empty slots for tensors.
+  // The i-th empty slot is assigned the i-th input tensor.
+  for (size_t i = 0; i < occupied.size(); ++i) {
+    if (occupied.at(i)) {
+      continue;
+    }
+    // Find an empty slot whose position index is i.
+    arg_positions.push_back(i);
+  }
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "compute", nullptr, inputs, outputs,
-                                                                   log_func),
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "compute", inputs, arg_positions, outputs,
+                                                                   log_func, const_args, const_arg_positions),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 
   // We had the assumption:
   // The 1st output is context index of auto grad function.
-  // The 2nd output is address of OrtValue we got from Python script run.
   PyObject* ctx_addr = reinterpret_cast<PyObject*>(outputs[0]);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
   int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
@@ -111,35 +173,29 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
   }
 
   auto log_func = [&](const char* msg) {
-    std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
-    //LOGS_DEFAULT(WARNING) << msg << std::endl;
+    LOGS_DEFAULT(WARNING) << msg << std::endl;
   };
 
-  std::cout << "context_address_value_ptr got within PythonOpGrad::Compute:" << reinterpret_cast<void*>(ctx_ptr) << std::endl;
-  //int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+  std::vector<int64_t> arg_positions(inputs.size());
+  for (int64_t i = 0; i < (int64_t)arg_positions.size(); ++i) {
+    arg_positions.at(i) = i + 1;
+  }
+
+  std::vector<void*> const_args{ctx_ptr};
+  std::vector<int64_t> const_arg_positions{0};
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "backward_compute", ctx_ptr, inputs, outputs,
-                                                                   log_func),
+  Py_INCREF(ctx_ptr);
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "backward_compute", inputs, arg_positions, outputs,
+                                                                   log_func, const_args, const_arg_positions),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
   PyOpLibProxy::GetInstance().PutGil(state);
 
-  void* backward_ret_ortvalue_addr = outputs[0];
-  auto* backward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(backward_ret_ortvalue_addr);
-  ORT_ENFORCE(backward_ret_ortvalue_ptr != nullptr, "backward_ret_ortvalue_ptr should not be null");
-
-  Tensor* t = backward_ret_ortvalue_ptr->GetMutable<Tensor>();
-  const auto& input_shape = t->Shape();
-  const auto num_dim = input_shape.NumDimensions();
-  std::cout << "ortvalue addr:" << backward_ret_ortvalue_ptr << ", tenosr addr: " << t
-            << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
-            << ", num_dim: " << num_dim << std::endl;
-
-  for (size_t i = 0; i < num_dim; ++i) {
-    std::cout << "PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    auto* backward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(outputs[i]);
+    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(0, *backward_ret_ortvalue_ptr));
   }
-  ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(0, *backward_ret_ortvalue_ptr));
 
   return Status::OK();
 }

@@ -110,10 +110,24 @@ Status PyCustomKernel::Compute(OrtKernelContext* context) {
     inputs.push_back(const_cast<OrtValue*>(ort_value));
   }
 
+  // Generate position indexes for tensor inputs. They are needed
+  // when calling InvokePythonAutoGradFunc. 
+  std::vector<int64_t> arg_positions;
+  if (!arg_positions.size()) {
+    for (int64_t i = 0; i < (int64_t)inputs.size(); ++i) {
+      arg_positions.push_back(i);
+    }
+  }
+
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), nullptr, inputs, outputs,
-                                                                   logging_func_),
+
+  // There is no constants when not calling autograd.Function from PythonOp and PythonOpGrad.
+  // Thus, const_args and const_arg_positions are empty.
+  std::vector<void*> const_args;
+  std::vector<int64_t> const_arg_positions;
+  ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, compute_.c_str(), inputs, arg_positions, outputs,
+                                                                   logging_func_, const_args, const_arg_positions),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 
