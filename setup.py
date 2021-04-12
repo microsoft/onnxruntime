@@ -44,6 +44,9 @@ if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
     nightly_build = True
 
+# hardcode to make a release build
+nightly_build = False
+
 wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
