@@ -361,17 +361,17 @@ stages:
       #   displayName: 'python3 -m pip install twine'
       #   timeoutInMinutes: 20
 
-      # this block does not work because TwineAuthenticate@1 will trigger cleanup of $(PYPIRC_PATH)
-      # at the end of pipeline execution. Because $(PYPIRC_PATH) is already cleaned by clean-agent-build-directory-step.yml
-      # the cleanup task for TwineAuthenticate@1 will fail. For this reason, we cannot used TwineAuthenticate@1.
-      # - task: TwineAuthenticate@1
-      #   inputs:
-      #     artifactFeed: 'lotus/ort-gpu-nightly-training-feed'
+      # # this block does not work because TwineAuthenticate@1 will trigger cleanup of $(PYPIRC_PATH)
+      # # at the end of pipeline execution. Because $(PYPIRC_PATH) is already cleaned by clean-agent-build-directory-step.yml
+      # # the cleanup task for TwineAuthenticate@1 will fail. For this reason, we cannot used TwineAuthenticate@1.
+      # # - task: TwineAuthenticate@1
+      # #   inputs:
+      # #     artifactFeed: 'lotus/ort-gpu-nightly-training-feed'
 
-      # - script: |
-      #     python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
-      #   displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
-      #   timeoutInMinutes: 20
+      # # - script: |
+      # #     python3 -m twine upload -r ort-gpu-nightly-training-feed --config-file $(PYPIRC_PATH) $(Build.ArtifactStagingDirectory)/Release/dist/*.whl
+      # #   displayName: 'python3 -m twine upload -r ort-gpu-nightly-training-feed $(Build.ArtifactStagingDirectory)/Release/dist/*.whl'
+      # #   timeoutInMinutes: 20
 
       # - script: |
       #     python3 -m twine upload -r ORT-Nightly --repository-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/upload \

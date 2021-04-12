@@ -257,11 +257,11 @@ if enable_training:
     # onnxruntime-1.8.0.dev20210218+nuphar-cp36-cp36m-linux_x86_64.whl
     # to keep package name the same (onnxruntime) and to use local version for EP
     # has one benefit: it enforce single onnxruntime installation in an invironment.
-    package_name = 'onnxruntime'
+    package_name = 'onnxruntime-training'
     if cuda_version:
         # removing '.' to make Cuda version number in the same form as Pytorch.
         cuda_version = cuda_version.replace('.', '')
-        local_version = '+cu' + cuda_version + ".training"
+        local_version = '+cu' + cuda_version
 
 package_data = {}
 data_files = []
