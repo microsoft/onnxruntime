@@ -18,9 +18,6 @@
     "onnxruntime-common": "file:../common",
     "prebuild-install": "^6.0.1"
   },
-  "peerDependencies": {
-    "onnxruntime-common": "file:../common"
-  },
   "scripts": {
     "build": "tsc && node ./script/build",
     "buildd": "tsc && node ./script/build --config=Debug",
