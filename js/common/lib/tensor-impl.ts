@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {Tensor as TensorInterface} from './tensor';
 
 type TensorType = TensorInterface.Type;
@@ -65,7 +68,7 @@ const calculateSize = (dims: readonly unknown[]): number => {
   return size;
 };
 
-export class Tensor implements Tensor {
+export class Tensor implements TensorInterface {
   //#region constructors
   constructor(type: TensorType, data: TensorDataType|readonly number[]|readonly boolean[], dims?: readonly number[]);
   constructor(data: TensorDataType|readonly boolean[], dims?: readonly number[]);

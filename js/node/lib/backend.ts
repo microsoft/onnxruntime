@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
 import {Binding, binding} from './binding';
 

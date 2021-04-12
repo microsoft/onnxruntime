@@ -4,6 +4,9 @@
 import {InferenceSession} from './inference-session';
 import {OnnxValue} from './onnx-value';
 
+/**
+ * Represent a handler instance of an inference session.
+ */
 export interface SessionHandler {
   dispose(): Promise<void>;
 
@@ -20,10 +23,16 @@ export declare namespace SessionHandler {
   type ReturnType = {[name: string]: OnnxValue};
 }
 
+/**
+ * Represent a backend that provides implementation of model inferencing.
+ */
 export interface Backend {
+  /**
+   * Initialize the backend asynchronously. Should throw when failed.
+   */
   init(): Promise<void>;
 
-  createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
+  createSessionHandler(uri: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
 }
 

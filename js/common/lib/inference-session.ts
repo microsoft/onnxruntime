@@ -13,7 +13,7 @@ export declare namespace InferenceSession {
   type NullableOnnxValueMapType = {readonly [name: string]: OnnxValue | null};
 
   /**
-   * A feeds (model inputs) is an object that use input names as keys and OnnxValue as corresponding values.
+   * A feeds (model inputs) is an object that uses input names as keys and OnnxValue as corresponding values.
    */
   type FeedsType = OnnxValueMapType;
 
@@ -30,7 +30,10 @@ export declare namespace InferenceSession {
    */
   type FetchesType = readonly string[]|NullableOnnxValueMapType;
 
-  type ReturnType = {readonly [name: string]: OnnxValue};
+  /**
+   * A inferencing return type is an object that uses output names as keys and OnnxValue as corresponding values.
+   */
+  type ReturnType = OnnxValueMapType;
 
   //#endregion
 
@@ -50,42 +53,58 @@ export declare namespace InferenceSession {
 
     /**
      * The intra OP threads number.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     intraOpNumThreads?: number;
 
     /**
      * The inter OP threads number.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     interOpNumThreads?: number;
 
     /**
      * The optimization level.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     graphOptimizationLevel?: 'disabled'|'basic'|'extended'|'all';
 
     /**
      * Whether enable CPU memory arena.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     enableCpuMemArena?: boolean;
 
     /**
      * Whether enable memory pattern.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     enableMemPattern?: boolean;
 
     /**
      * Execution mode.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     executionMode?: 'sequential'|'parallel';
 
     /**
      * Log ID.
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     logId?: string;
 
     /**
      * Log severity level. See
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
   }
@@ -93,25 +112,37 @@ export declare namespace InferenceSession {
   export namespace SessionOptions {
     //#region execution providers
 
-    // currently we only have CPU and CUDA EP support. in future to support more.
+    // Currently, we have the following backends to support execution providers:
+    // Backend Node.js binding: supports "cpu" and "cuda".
+    // Backend WebAssembly: supports 'wasm'.
+    // Backend ONNX.js: supports 'webgl'.
     interface ExecutionProviderOptionMap {
       cpu: CpuExecutionProviderOption;
       cuda: CudaExecutionProviderOption;
+      wasm: WebAssemblyExecutionProviderOption;
       webgl: WebGLExecutionProviderOption;
     }
 
     type ExecutionProviderName = keyof ExecutionProviderOptionMap;
-    type ExecutionProviderConfig = ExecutionProviderOptionMap[ExecutionProviderName]|ExecutionProviderName;
+    type ExecutionProviderConfig =
+        ExecutionProviderOptionMap[ExecutionProviderName]|ExecutionProviderOption|ExecutionProviderName|string;
 
-    export interface CpuExecutionProviderOption {
+    export interface ExecutionProviderOption {
+      readonly name: string;
+    }
+    export interface CpuExecutionProviderOption extends ExecutionProviderOption {
       readonly name: 'cpu';
       useArena?: boolean;
     }
-    export interface CudaExecutionProviderOption {
+    export interface CudaExecutionProviderOption extends ExecutionProviderOption {
       readonly name: 'cuda';
       deviceId?: number;
     }
-    export interface WebGLExecutionProviderOption {
+    export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
+      readonly name: 'wasm';
+      // TODO: add flags
+    }
+    export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
       readonly name: 'webgl';
       // TODO: add flags
     }
@@ -129,11 +160,15 @@ export declare namespace InferenceSession {
     /**
      * Log severity level. See
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
 
     /**
      * A tag for the Run() calls using this
+     *
+     * This setting is available only in Node.js binding or WebAssembly backend
      */
     tag?: string;
   }
@@ -209,11 +244,11 @@ export interface InferenceSessionFactory {
   /**
    * Create a new inference session and load model asynchronously from an ONNX model file.
    *
-   * @param path The file path of the model to load.
+   * @param uri The URI or file path of the model to load.
    * @param options specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(path: string, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
+  create(uri: string, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from an array bufer.

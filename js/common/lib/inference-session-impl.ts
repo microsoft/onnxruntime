@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {SessionHandler} from './backend';
 import {resolveBackend} from './backend-impl';
 import {InferenceSession as InferenceSessionInterface} from './inference-session';
@@ -9,7 +12,6 @@ type RunOptions = InferenceSessionInterface.RunOptions;
 type FeedsType = InferenceSessionInterface.FeedsType;
 type FetchesType = InferenceSessionInterface.FetchesType;
 type ReturnType = InferenceSessionInterface.ReturnType;
-
 
 export class InferenceSession implements InferenceSessionInterface {
   private constructor(handler: SessionHandler) {

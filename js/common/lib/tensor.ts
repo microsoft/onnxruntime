@@ -51,13 +51,13 @@ export declare namespace Tensor {
     uint16: number;
     int16: number;
     int32: number;
-    int64: number;  // may lose precision
+    int64: bigint;
     string: string;
     bool: boolean;
     float16: never;  // hold on before we have a concret solution for float 16
     float64: number;
     uint32: number;
-    uint64: number;  // may lose precision
+    uint64: bigint;
     // complex64: never;
     // complex128: never;
     // bfloat16: never;
