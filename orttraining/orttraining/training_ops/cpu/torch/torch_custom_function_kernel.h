@@ -45,6 +45,18 @@ class PythonOp final : public OpKernel {
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
     output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
 
+    // Each char in call_convention_ specifies the convention for an input
+    // argument, so the length of call_convention_ is the total number
+    // of input arguments.
+    num_args_ = call_convention_.length();
+    num_const_args_ = 0;
+    for (auto c : call_convention_) {
+      if (c != 'c') {
+        continue;
+      }
+      ++num_const_args_;
+    }
+
     std::string err;
     auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForward(name_);
     auto state = PyOpLibProxy::GetInstance().GetGil();
@@ -67,8 +79,6 @@ class PythonOp final : public OpKernel {
   }
 
  private:
-  void* instance_ = nullptr;
-
   // Name of containing class. For example, MyReLU.
   std::string name_;
   int64_t inplace_;
@@ -101,6 +111,12 @@ class PythonOp final : public OpKernel {
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
   std::vector<int64_t> output_tensor_requires_grads_;
+
+
+  void* instance_ = nullptr;
+  // Number of input arguments to call autograd.Function.apply(...)
+  size_t num_args_;
+  size_t num_const_args_;
 };
 
 // Pytorch's torch.autograd.Function.backward(...) wrapper.

@@ -39,10 +39,13 @@ class PyOpLibProxy {
 
   bool InvokePythonAutoGradFunc(void*,
                                 const char*,
-                                void* ctx_input,
-                                const std::vector<OrtValue*>&,
+                                const std::vector<OrtValue*>& inputs,
+                                const std::vector<int64_t>& arg_positions,
                                 std::vector<void*>& outputs,
-                                std::function<void(const char*)>);
+                                std::function<void(const char*)>,
+                                std::vector<void*>& const_args,
+                                const std::vector<int64_t>& const_arg_positions);
+
   const char* GetLastErrorMessage(std::string&);
   void* NewInstance(const char*, const char*, const OnnxAttrs&);
   void* NewInstance(void* pyClass);
