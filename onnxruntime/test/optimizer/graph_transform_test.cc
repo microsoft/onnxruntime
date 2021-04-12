@@ -72,6 +72,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -3920,6 +3921,9 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}}};
 
+  // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
+  TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
+
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
@@ -3929,7 +3933,9 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
         onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    PathString transformed_model_uri = ORT_TSTR("transformed_") + GetLastComponent(test_case.model_uri);
+    Path p = Path::Parse(test_case.model_uri);
+    ASSERT_FALSE(p.GetComponents().empty());
+    PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
     Model::Save(*p_model, transformed_model_uri);
     // Load the transformed model to validate
     ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
