@@ -1102,7 +1102,7 @@ void SummonWorkers(PerThread &pt,
     // allocation of workers (aiming to avoid concurrent main threads
     // targeting the same worker).
     std::vector<int> &preferred_workers = pt.preferred_workers;
-    unsigned num_preferred = preferred_workers.size();
+    unsigned num_preferred = static_cast<unsigned>(preferred_workers.size());
     bool was_preferred = false;
 
     if (!USE_STICKY_WORKER_ASSIGNMENT) {
