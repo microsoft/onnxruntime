@@ -608,6 +608,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
                 !utils::HasDimParam(input_n_dim) ||
                 (input_0_dim.dim_param() != input_n_dim.dim_param())) {
               all_shapes_match = false;
+              break;
             }
           }
         }
@@ -951,13 +952,15 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
   }
 
-  NodeArg* scales_arg;
+  NodeArg* sizes_arg = nullptr;
+  NodeArg* scales_arg = nullptr;
+
   if (node.SinceVersion() >= 11) {
-    // Bail out if Resize has the optional "sizes" tensor.
-    if (input_defs.size() == 3) {
+    if (input_defs.size() >= 4) {
+      sizes_arg = input_defs[3];
+    }
+    if (sizes_arg == nullptr) {
       scales_arg = input_defs[2];
-    } else {
-      return;
     }
 
     // Only support the asymmetric coordinate transformation mode.
@@ -979,28 +982,68 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     scales_arg = input_defs[1];
   }
 
-  // Require that the scales tensor be static.
-  const ONNX_NAMESPACE::TensorProto* scales_tensor_proto = nullptr;
-  if (!graph_utils::NodeArgIsConstant(graph_, *scales_arg) ||
-      !graph_.GetInitializedTensor(scales_arg->Name(), scales_tensor_proto) ||
-      (scales_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
-      (scales_tensor_proto->dims_size() != 1) ||
-      (scales_tensor_proto->dims(0) != 4)) {
-    return;
-  }
-
-  Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
-  auto* scales_data = scales.template data<float>();
-
-  // Cast the scales to integers and verify that the scales are positive and
-  // round trip back to floating point.
   std::vector<int64_t> scales_attr(4);
-  for (size_t n = 0; n < 4; n++) {
-    int64_t scale_value = static_cast<int64_t>(scales_data[n]);
-    if (scale_value <= 0 || static_cast<float>(scale_value) != scales_data[n]) {
+
+  if (sizes_arg != nullptr) {
+    // Require that the sizes tensor be static.
+    const auto* sizes_tensor_proto = graph_utils::GetConstantInitializer(graph_, sizes_arg->Name());
+    if ((sizes_tensor_proto == nullptr) ||
+        (sizes_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) ||
+        (sizes_tensor_proto->dims_size() != 1) ||
+        (sizes_tensor_proto->dims(0) != 4)) {
       return;
     }
-    scales_attr[n] = scale_value;
+
+    const auto* input_shape = input_defs[0]->Shape();
+    if (input_shape == nullptr) {
+      return;
+    }
+
+    Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
+    auto* sizes_data = sizes.template data<int64_t>();
+
+    // The sizes data can only be used if the input shape is static and the
+    // effective scaling must be an integer.
+    for (int i = 0; i < 4; i++) {
+      const auto& dim = input_shape->dim(i);
+      if (!utils::HasDimValue(dim)) {
+        return;
+      }
+      int64_t dim_value = dim.dim_value();
+      if (dim_value <= 0) {
+        return;
+      }
+      scales_attr[i] = sizes_data[i] / dim_value;
+      if (scales_attr[i] * dim_value != sizes_data[i]) {
+        return;
+      }
+    }
+
+  } else if (scales_arg != nullptr) {
+    // Require that the scales tensor be static.
+    const auto* scales_tensor_proto = graph_utils::GetConstantInitializer(graph_, scales_arg->Name());
+    if ((scales_tensor_proto == nullptr) ||
+        (scales_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+        (scales_tensor_proto->dims_size() != 1) ||
+        (scales_tensor_proto->dims(0) != 4)) {
+      return;
+    }
+
+    Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
+    auto* scales_data = scales.template data<float>();
+
+    // Cast the scales to integers and verify that the scales are positive and
+    // round trip back to floating point.
+    for (size_t n = 0; n < 4; n++) {
+      int64_t scale_value = static_cast<int64_t>(scales_data[n]);
+      if (scale_value <= 0 || static_cast<float>(scale_value) != scales_data[n]) {
+        return;
+      }
+      scales_attr[n] = scale_value;
+    }
+
+  } else {
+    return;
   }
 
   // Only support spatial scaling at this time (batch and channel are unscaled).
