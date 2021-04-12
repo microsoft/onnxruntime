@@ -31,11 +31,12 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status PythonOp::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(context);
-  std::cout << "std::this_thread::get_id() is : " << std::this_thread::get_id() << std::endl;
+  std::cout << "std::this_thread::get_id() in PythonOp::Compute is : " << std::this_thread::get_id() << std::endl;
 
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   ORT_ENFORCE(nullptr != context);
   auto inputs_count = (size_t)ctx_internal->InputCount();
+  auto outputs_count = (size_t)ctx_internal->OutputCount();
   std::vector<OrtValue*> inputs;
   std::vector<void*> outputs;
 
@@ -67,24 +68,27 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   int64_t* step_data_new = first_output_tensor->template MutableData<int64_t>();
   *step_data_new = ctx_index;
 
-  void* forward_ret_ortvalue_addr = outputs[1];
-  // OrtValue is not release til now because we keep the values in Python side until the Python class instance is destoyed.
-  // If we don't want Python do the lifecycle guarantee, we need consider PY_INCRE here as well, but be careful, need
-  // operate on PyObject, directly operating on OrtValue will bring unexpected results.
-  auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
-  ORT_ENFORCE(forward_ret_ortvalue_ptr != nullptr, "forward_ret_ortvalue_ptr should not be null");
+  for (size_t index = 1; index < outputs_count; ++index) {
+    void* forward_ret_ortvalue_addr = outputs[index];
+    // OrtValue is not release til now because we keep the values in Python side until the Python class instance is destoyed.
+    // If we don't want Python do the lifecycle guarantee, we need consider PY_INCRE here as well, but be careful, need
+    // operate on PyObject, directly operating on OrtValue will bring unexpected results.
+    auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
+    ORT_ENFORCE(forward_ret_ortvalue_ptr != nullptr, "forward_ret_ortvalue_ptr should not be null");
 
-  Tensor* t = forward_ret_ortvalue_ptr->GetMutable<Tensor>();
-  const auto& input_shape = t->Shape();
-  const auto num_dim = input_shape.NumDimensions();
-  std::cout << "ortvalue addr:" << forward_ret_ortvalue_ptr << ", tenosr addr: " << t
-            << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
-            << ", num_dim: " << num_dim << std::endl;
+    Tensor* t = forward_ret_ortvalue_ptr->GetMutable<Tensor>();
+    const auto& input_shape = t->Shape();
+    const auto num_dim = input_shape.NumDimensions();
+    std::cout << "ortvalue addr:" << forward_ret_ortvalue_ptr << ", tenosr addr: " << t
+              << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
+              << ", num_dim: " << num_dim << std::endl;
 
-  for (size_t i = 0; i < num_dim; ++i) {
-    std::cout << "PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
+    for (size_t i = 0; i < num_dim; ++i) {
+      std::cout << "PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
+    }
+
+    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr));
   }
-  ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(1, *forward_ret_ortvalue_ptr));
   return Status::OK();
 }
 

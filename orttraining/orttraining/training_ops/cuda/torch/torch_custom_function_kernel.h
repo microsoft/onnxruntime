@@ -44,9 +44,28 @@ class PythonOp final : public CudaKernel {
     // Output tensors.
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
     output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+
+
+    std::string err;
+    auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForward(name_);
+    auto state = PyOpLibProxy::GetInstance().GetGil();
+    ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
+    instance_ = PyOpLibProxy::GetInstance().NewInstance(reinterpret_cast<void*>(py_func));
+    ORT_ENFORCE(instance_ != nullptr, "Python run instance_ should not be nullptr");
+    PyOpLibProxy::GetInstance().PutGil(state);
+    ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
   };
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+  ~PythonOp() {
+    if (nullptr != instance_) {
+      auto state = PyOpLibProxy::GetInstance().GetGil();
+      PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
+      PyOpLibProxy::GetInstance().PutGil(state);
+      instance_ = nullptr;
+    }
+  }
 
  private:
   void* instance_ = nullptr;
@@ -92,11 +111,31 @@ class PythonOpGrad final : public CudaKernel {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
     ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
     ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+
+    std::string err;
+    auto py_func = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackward(name_);
+    auto state = PyOpLibProxy::GetInstance().GetGil();
+    ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
+    instance_ = PyOpLibProxy::GetInstance().NewInstance(reinterpret_cast<void*>(py_func));
+    ORT_ENFORCE(instance_ != nullptr, "Python run instance_ should not be nullptr");
+    PyOpLibProxy::GetInstance().PutGil(state);
+    ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
+
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+  ~PythonOpGrad() {
+    if (nullptr != instance_) {
+      auto state = PyOpLibProxy::GetInstance().GetGil();
+      PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
+      PyOpLibProxy::GetInstance().PutGil(state);
+      instance_ = nullptr;
+    }
+  }
+
  private:
+ void* instance_ = nullptr;
   // Name of containing class. For example, MyReLU.
   std::string name_;
   // Input types of MyReLU.backward(...).
@@ -105,5 +144,5 @@ class PythonOpGrad final : public CudaKernel {
   std::vector<int64_t> output_tensor_types_;
 };
 
-}  // namespace contrib
+}  // namespace cuda
 }  // namespace onnxruntime
