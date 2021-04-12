@@ -763,7 +763,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
                 {GO(0)},
                 {GI(0)},
                 SrcNodeAttributes())};
-  } else { // mandatory input 'axes' since opset 13
+  } else {  // mandatory input 'axes' since opset 13
     return std::vector<NodeDef>{
         NodeDef(OpDef{"Squeeze", kOnnxDomain, 13},
                 {GO(0), I(1)},
@@ -804,7 +804,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   std::vector<NodeDef> result;
   size_t numInputs = GetSrcNodeInputSize();
-  if (SrcNodeOpsetVersion() < 13) { //axes attribute
+  if (SrcNodeOpsetVersion() < 13) {  //axes attribute
     auto attributes = SrcNodeAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
@@ -814,21 +814,21 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
                   {GO(0)},
                   {GI(0)},
                   {MakeAttribute("axes", axes_values)}));
-    } 
-  } else if(numInputs == 2){ //optional input 'axes' is provided
+    }
+  } else if (numInputs == 2) {  //optional input 'axes' is provided
     result.push_back(
         NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
                 {GO(0), I(1)},
                 {GI(0)}));
-  } else { // if axes attribute/input not provided for squeeze
-      result.push_back(
-          NodeDef("Shape",
-                  {I(0)},
-                  {IA("I0_shape")}));
-      result.push_back(
-          NodeDef("Reshape",
-                  {GO(0), IA("I0_shape")},
-                  {GI(0)}));
+  } else {  // if axes attribute/input not provided for squeeze
+    result.push_back(
+        NodeDef("Shape",
+                {I(0)},
+                {IA("I0_shape")}));
+    result.push_back(
+        NodeDef("Reshape",
+                {GO(0), IA("I0_shape")},
+                {GI(0)}));
   }
 
   return result;
@@ -1137,12 +1137,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
 
         grad = IA("Unqueezed_Grad");
         result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
-
-      } 
+      }
     } else if (numInputs == 2) {  //optional input 'axes' is available as input I(1)
       grad = IA("Unqueezed_Grad");
       result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), I(1)}, {grad}));
-    } //axes is not available, the GO(0) is a scalar which can be expanded to required shape
+    }  //axes is not available, the GO(0) is a scalar which can be expanded to required shape
   }
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
@@ -1273,7 +1272,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef x_shape = IA("Shape_" + X.name);
     return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
-  
+
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
         NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
@@ -1498,49 +1497,53 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
   return std::vector<NodeDef>{
       NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
-      NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
-  };
+      NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})};
 }
+
+// Computes gradient of Tile Operation.
+// Tile is defined as follows:
+// Y = Tile(X, repeat) , say, 
+// X shape : M,N,K
+// repeat shape : a,b,c
+// Y shape : aM, bN, cK
+// To compute the gradient of y, we first reshape the gradient of y as,
+// Y^_grad = Reshape(Y_grad(a,M,b,N,c,K))
+// then perform reducesum on the reshaped Y^_grad on its even indices to get X_grad.
+// even_indices = [0,2,4...]
+// X_grad = ReduceSum(Y^_grad, even_indices) 
 
 IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<NodeDef> result = {};
-  std::vector<Dimension> orig_shape,repeats_shape;
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")}));  
 
-  result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")})); // M,N,K
-  
   std::vector<int64_t> axes_values = {1};
-  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));
-  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));
+  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)})); // M,N,K
+  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)})); //a,b,c
   result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")},
                            {MakeAttribute("axis", int64_t(1))}));  // [[a,M], [b,N], [c,K]]
-  
   std::vector<int64_t> const_shape_minusone{-1};
   NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape_minusone"));
   result.push_back(const_shape_minusone_node);
-  result.push_back(NodeDef("Reshape", {IA("concated_dims_T"),
-                            const_shape_minusone_node.output_args[0]},
-                            {IA("concated_dims_flatten")})); // flatten [a,M,b,N,c,K]
+  result.push_back(NodeDef("Reshape", {IA("concated_dims_T"), const_shape_minusone_node.output_args[0]},
+                           {IA("concated_dims_flatten")}));  // flatten [a,M,b,N,c,K]
 
-  result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")})); 
+  result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")}));
 
   NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
   NodeDef delta_node = ConstantScalarNode(int64_t{2}, {}, Name("delta_int64"));
-  
-  result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")})); // get num dimensions of the flattened grad op = 6
+  result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")}));  // get num dimensions of the flattened grad op = 6
   result.push_back(start_node);
   result.push_back(delta_node);
+  result.push_back(NodeDef("Range", {start_node.output_args[0], IA("limit"), delta_node.output_args[0]}, {IA("range_even_indices")}));
 
-  result.push_back(NodeDef("Range", {start_node.output_args[0],IA("limit"), 
-                            delta_node.output_args[0]},{IA("range_even_indices")}));
   int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
   result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-                {IA("reshape_tile_grad_op"), IA("range_even_indices")},
-                {GI(0)},
-                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
-  
+                           {IA("reshape_tile_grad_op"), IA("range_even_indices")},
+                           {GI(0)},
+                           {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+
   return result;
 }
-
 
 }  // namespace training
 }  // namespace onnxruntime
