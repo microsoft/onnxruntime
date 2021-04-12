@@ -169,16 +169,16 @@ def main():
                     status = status.append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
     
+        print('writing failures over time to database')
         write_table(engine, fail, 'ep_model_fails')
-        print('writing failures to database')
-        write_table(engine, memory, 'ep_model_memory')
         print('writing memory to database')
-        write_table(engine, latency, 'ep_model_latency')
+        write_table(engine, memory, 'ep_model_memory')
         print('writing latency to database')
-        write_table(engine, status, 'ep_models_status')
+        write_table(engine, latency, 'ep_model_latency')
         print('writing status to database')
-        insert_latency(args.commit_hash, args.report_url, latency)
+        write_table(engine, status, 'ep_models_status')
         print('writing latency over time to database')
+        insert_latency(args.commit_hash, args.report_url, latency)
 
     except BaseException as e: 
         print(str(e))
@@ -186,9 +186,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-

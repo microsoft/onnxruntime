@@ -19,7 +19,6 @@ ONNX_ZOO_VOLUME=' -v /home/hcsuser/perf/models:/usr/share/perf/models'
 MANY_MODELS_VOLUME=' -v /home/hcsuser/mount/many-models:/usr/share/mount/many-models'
 PARTNER_VOLUME=' -v /home/hcsuser/perf/partner:/usr/share/perf/partner'
 
-
 # Add Remaining Variables
 if [ $OPTION == "onnx-zoo-models" ]
 then 
