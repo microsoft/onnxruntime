@@ -164,7 +164,9 @@ PyOpLibProxy& PyOpLibProxy::GetInstance() {
 
 PyOpLibProxy::PyOpLibProxy() {
   Scope scope;
-  Py_Initialize();
+  // in theory we shouldn't initialize it any more,
+  // so comment it out currently.
+  // Py_Initialize();
   if (_import_array() < 0) {
     return;
   }
@@ -448,7 +450,7 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
   } else {
     scope.Add(pyFunc);
     auto ctx = static_cast<PyObject*>(ctx_input);
-    size_t input_cnt = inputs.size() + ctx == nullptr ? 0 : 1;
+    size_t input_cnt = inputs.size() + (ctx == nullptr ? 0 : 1);
     auto pyArgs = PyTuple_New(input_cnt);
     size_t arg_index = 0;
 
