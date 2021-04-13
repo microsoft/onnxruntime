@@ -50,8 +50,9 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            raise ValueError("Specified provider '{}' is unavailable. Available providers: '{}'".format(
-                name, ", ".join(available_provider_names)))
+            warnings.warn("Specified provider '{}' is not in available provider names."
+                          "It may be an external provider load from shared library. "
+                          "Available providers: '{}'".format(name, ", ".join(available_provider_names)))
 
         if name in provider_name_to_options:
             warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))

@@ -1,7 +1,10 @@
 ## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
 ## with modification to do training using onnxruntime as backend on cuda device.
 ## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
+## To run the demo with ORT backend:
+##      python mnist_training.py --use-ort
 
+## When "--use-ort" is not given, it will run training with PyTorch as backend.
 ## Model testing is not complete.
 
 from __future__ import print_function
@@ -13,13 +16,6 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import numpy as np
 import os
-
-from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
-#from mpi4py import MPI
-try:
-    from onnxruntime.capi._pybind_state import set_cuda_device_id
-except ImportError:
-    pass
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
@@ -34,15 +30,39 @@ class NeuralNet(nn.Module):
         out = self.fc2(out)
         return out
 
+def to_one_hot(y, n_dims=None):
+    """ Take integer y (tensor or variable) with n dims and convert it to 1-hot representation with n+1 dims. """
+    y_tensor = y
+    y_tensor = y_tensor.type(torch.LongTensor).view(-1, 1)
+    n_dims = n_dims if n_dims is not None else int(torch.max(y_tensor)) + 1
+    y_one_hot = torch.zeros(y_tensor.size()[0], n_dims).scatter_(1, y_tensor, 1)
+    y_one_hot = y_one_hot.view(*y.shape, -1)
+    return y_one_hot
+
 def my_loss(x, target):
-    return F.nll_loss(F.log_softmax(x, dim=1), target)
+    #return F.nll_loss(F.log_softmax(x, dim=1), target)
+    #return F.nll_loss(F.softmax(x, dim=1), to_one_hot(target, 10))
+    return nn.BCEWithLogitsLoss(x, to_one_hot(target, 10))
+
+# simple cross entropy cost (might be numerically unstable if pred has 0)
+def xentropy_cost(x_target, x_pred):
+    import pdb
+    pdb.set_trace()
+    assert x_target.size() == x_pred.size(), "size fail ! "+str(x_target.size()) + " " + str(x_pred.size())
+    logged_x_pred = F.log_softmax(x_pred, dim=1)
+    cost_value = -torch.sum(x_target * logged_x_pred)
+    return cost_value
 
 def train_with_trainer(args, trainer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
+        import pdb
+        pdb.set_trace()
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
 
         learning_rate = torch.tensor([args.lr])
+        x = trainer(data)
+        loss = xentropy_cost(x,  to_one_hot(target, 10))
         loss = trainer.train_step(data, target, learning_rate)
 
         # Since the output corresponds to [loss_desc, probability_desc], the first value is taken as loss.
@@ -80,7 +100,7 @@ def mnist_model_description():
 def main():
 #Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=256, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -88,6 +108,8 @@ def main():
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
+    parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
+                        help='SGD momentum (default: 0.5)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -95,6 +117,11 @@ def main():
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
 
+    parser.add_argument('--save-model', action='store_true', default=False,
+                        help='For Saving the current Model')
+
+    parser.add_argument('--use-ort', action='store_true', default=False,
+                        help='to use onnxruntime as training backend')
 
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
@@ -115,43 +142,30 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
 
-    #comm = MPI.COMM_WORLD
-    args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']) if ('OMPI_COMM_WORLD_LOCAL_RANK' in os.environ) else 0
-    args.world_rank = int(os.environ['OMPI_COMM_WORLD_RANK']) if ('OMPI_COMM_WORLD_RANK' in os.environ) else 0
+    args.local_rank = 0
+    args.world_rank = 0
     args.world_size=1
     if use_cuda:
-        torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
-        args.n_gpu = 1
-        set_cuda_device_id(args.local_rank)
     else:
         device = torch.device("cpu")
+    args.n_gpu = 1
+    
 
     input_size = 784
-    hidden_size = 500
+    hidden_size = 160
     num_classes = 10
     model = NeuralNet(input_size, hidden_size, num_classes)
 
-    model_desc = mnist_model_description()
-    # use log_interval as gradient accumulate steps
+    dummy_input = torch.randn(256, 784)
+    input_names = ["X"]
+    output_names = ["predictions"]
     import pdb
     pdb.set_trace()
-    trainer = ORTTrainer(model,
-                         my_loss,
-                         model_desc,
-                         "SGDOptimizer",
-                         None,
-                         IODescription('Learning_Rate', [1,], torch.float32),
-                         device,
-                         1,
-                         args.world_rank,
-                         args.world_size,
-                         use_mixed_precision=False,
-                         allreduce_post_accumulation=True)
-    print('\nBuild ort model done.')
-
+    torch.onnx.export(model, dummy_input, "mnist_pt.onnx", verbose=True, input_names=input_names, output_names=output_names)
+    
     for epoch in range(1, args.epochs + 1):
-        train_with_trainer(args, trainer, device, train_loader, epoch)
+        train_with_trainer(args, model, device, train_loader, epoch)
         import pdb
         test_with_trainer(args, trainer, device, test_loader)
 
