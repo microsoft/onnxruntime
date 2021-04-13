@@ -101,13 +101,6 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
   return steady_clock::now() - steady_now < rel_time ? std::cv_status::no_timeout : std::cv_status::timeout;
 }
 }  // namespace onnxruntime
-#elif defined(__wasm__)
-#include <mutex>
-#include <condition_variable>
-namespace onnxruntime {
-using OrtMutex = std::mutex;
-using OrtCondVar = std::condition_variable;
-}  // namespace onnxruntime
 #else
 #include "nsync.h"
 #include <mutex>               //for unique_lock
