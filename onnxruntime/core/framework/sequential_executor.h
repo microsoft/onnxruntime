@@ -18,10 +18,8 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(size_t program_counter_start, size_t program_counter_end, PartialGraphExecutionState& state,
-                     const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
-      : program_counter_start_{program_counter_start}, program_counter_end_{program_counter_end}, state_{&state}, 
-      terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
+  SequentialExecutor(PartialGraphExecutionState& state, const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
+      : state_{&state}, terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
 
   SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
       : terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
@@ -32,8 +30,6 @@ class SequentialExecutor : public IExecutor {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
 
-  size_t program_counter_start_;
-  size_t program_counter_end_;
   PartialGraphExecutionState* state_;
 
  private:

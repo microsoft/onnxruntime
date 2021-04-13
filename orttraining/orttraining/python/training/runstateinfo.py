@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 class RunStateInfo(object):
-   def __init__(self, run_options, state, output_info):
-      self.run_options = run_options
+   def __init__(self, state, output_info):
       self.state = state
       self.output_info = output_info

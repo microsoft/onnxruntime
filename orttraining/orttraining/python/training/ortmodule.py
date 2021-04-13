@@ -18,7 +18,7 @@ import torch
 import inspect
 from inspect import signature
 from enum import IntEnum
-
+import numpy as np
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
@@ -34,12 +34,12 @@ def _ortvalue_to_torch_tensor(ortvalue):
     # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
     # and convert the config to torch.uint8 tensor duing from_dlpack().
     # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
-    torch_tensor = from_dlpack(ortvalue._ortvalue.to_dlpack())
+    torch_tensor = from_dlpack(ortvalue.to_dlpack())
     return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
 
 def _ortvalue_from_torch_tensor(torch_tensor):
-    return OrtValue(C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool))
+    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
 
 
 class Verbosity(IntEnum):
@@ -58,36 +58,6 @@ def get_ort_device_type(device):
         return C.OrtDevice.cpu()
     else:
         raise Exception('Unsupported device type: ' + device)
-
-
-def _create_forward_iobinding(io_binding, inputs, model, device, outputs):
-    fw_feed_names = []
-    for idx, value_info in enumerate(model.graph.input):
-        fw_feed_names.insert(value_info.name)
-    fw_outputs_device_info = []
-    for output_name in outputs:
-        fw_outputs_device_info.insert(C.OrtDevice(get_ort_device_type(
-            device.type), C.OrtDevice.default_memory(), device_id=_utils.get_device_index(device)))
-
-    for idx, value_info in enumerate(model.graph.input):
-        fw_feed_names.insert(value_info.name)
-        io_binding.bind_ortvalue_input(
-            value_info.name, _ortvalue_from_torch_tensor(inputs[idx]))
-
-    for output_name in outputs:
-        io_binding.bind_output(output_name, device.type,
-                               device_id=_utils.get_device_index(device))
-
-
-def _create_backward_iobinding(io_binding, loss_gradients, loss_gradients_names, model, device):
-    '''Creates IO binding for a `model` inputs and output'''
-    for idx, name in enumerate(loss_gradients_names):
-        io_binding.bind_ortvalue_input(
-            name, _ortvalue_from_torch_tensor(loss_gradients[idx]))
-
-    for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type,
-                               device_id=_utils.get_device_index(device))
 
 
 def _check_same_device(device, argument_str, *args):
@@ -201,16 +171,9 @@ class ORTModule(torch.nn.Module):
                     _check_same_device(
                         self._device, "Input argument to forward", *inputs)
 
-                    # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
-                    #   especially the backward graph outputs.
-                    run_options = C.RunOptions()
-
-                    # Run and return module outputs.
-                    run_options.only_execute_path_to_fetches = False
-                    outputs = []
-                    state = None
-                    self._training_session.run_forward(
-                        run_options, [_ortvalue_from_torch_tensor(torch_input) for torch_input in inputs], outputs, state)
+                    state = C.PyPartialGraphExecutionState()
+                    outputs = self._training_session.run_forward(
+                        [_ortvalue_from_torch_tensor(torch_input) for torch_input in inputs], state)
 
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
                         forward_output) for forward_output in outputs)
@@ -220,7 +183,7 @@ class ORTModule(torch.nn.Module):
                     output_info = [(output.shape, output.device, output.dtype)
                                    for output in user_outputs]
                     ctx.run_info = onnxruntime.training.RunStateInfo(
-                        run_options, state, output_info)
+                        state, output_info)
 
                     # Assert that the outputs and model device match
                     _check_same_device(
@@ -260,13 +223,8 @@ class ORTModule(torch.nn.Module):
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
 
-                    # Run and get results
-                    _create_backward_iobinding(ctx.run_info.backward_io_binding, contiguous_grad_outputs,
-                                               self._onnx_graphs_info.loss_gradient_names, self._onnx_training, self._device)
-
-                    backward_outputs = []
-                    self._training_session.run_backward(
-                        ctx.run_info.run_options, [_ortvalue_from_torch_tensor(torch_input) for torch_input in contiguous_grad_outputs], backward_outputs, ctx.run_info.state)
+                    backward_outputs = self._training_session.run_backward(
+                        [_ortvalue_from_torch_tensor(torch_input) for torch_input in contiguous_grad_outputs], ctx.run_info.state)
 
                     # Return input and initializer gradients
                     num_user_input_grads = len(self._input_names_require_grad)
@@ -295,12 +253,6 @@ class ORTModule(torch.nn.Module):
                         else:
                             results.append(None)
 
-                    # The OrtValue has a shared_ptr to the data.
-                    # At this point there are two shared_ptrs to the data, one through the
-                    # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
-                    # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
-                    # on the DLpack tensors, the memory can be freed.
-                    ctx.run_info.backward_io_binding.clear_binding_outputs()
                     return tuple(results)
 
             return _ortmodule_io.populate_user_output_from_schema_and_outputs(
@@ -355,8 +307,6 @@ class ORTModule(torch.nn.Module):
         # Training model
         self._onnx_training = None
         self._training_session = None
-        training_forward_io_binding = self._training_session.io_binding()
-        training_backward_io_binding = self._training_session.io_binding()
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
@@ -436,19 +386,19 @@ class ORTModule(torch.nn.Module):
 
         fw_feed_names = []
         for idx, value_info in enumerate(self._onnx_training.graph.input):
-            fw_feed_names.insert(value_info.name)
+            fw_feed_names.append(value_info.name)
         fw_outputs_device_info = []
         for idx in range(len(self._onnx_graphs_info.user_output_names)):
-            fw_outputs_device_info.insert(C.OrtDevice(get_ort_device_type(
-                self._device.type), C.OrtDevice.default_memory(), device_id=_utils.get_device_index(self._device)))
+            fw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(
+                self._device.type), C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
 
         bw_fetches_names = []
         for idx, value_info in enumerate(self._onnx_training.graph.output):
-            bw_fetches_names.insert(value_info.name)
+            bw_fetches_names.append(value_info.name)
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
-            fw_outputs_device_info.insert(C.OrtDevice(get_ort_device_type(
-                self._device.type), C.OrtDevice.default_memory(), device_id=_utils.get_device_index(self._device)))
+            bw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(
+                self._device.type), C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
 
         self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
                                                                     session_options, providers, provider_options,

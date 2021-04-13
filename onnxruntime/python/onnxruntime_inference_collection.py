@@ -368,19 +368,6 @@ class InferenceSession(Session):
         self._create_inference_session(providers, provider_options)
 
 
-class FeedsFetchesManager:
-
-    def __init__(self, session, feed_names, fetches_names, outputs_device_info):
-        self._feedsfetchmanager = C.FeedsFetchesManager(
-            session._sess, feed_names, fetches_names, outputs_device_info)
-
-
-class PartialGraphExecutionState:
-
-    def __init__(self):
-        self._partialgraphexecutionstate = C.PartialGraphExecutionState()
-
-
 class IOBinding:
 
     '''

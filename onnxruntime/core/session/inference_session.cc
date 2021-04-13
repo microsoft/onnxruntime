@@ -1709,8 +1709,7 @@ Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<O
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches, run_options.program_counter_start,
-                                                 run_options.program_counter_end, state));
+                                                 run_options.only_execute_path_to_fetches, state));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

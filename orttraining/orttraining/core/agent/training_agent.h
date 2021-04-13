@@ -18,14 +18,16 @@ class IOBinding;
 class TrainingAgent {
  public:
   explicit TrainingAgent(InferenceSession& session, const std::vector<std::string>& fw_feed_names,
-                             const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
-                             const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
-                             const std::vector<OrtDevice>& bw_outputs_device_info);
+                         const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
+                         const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
+                         const std::vector<OrtDevice>& bw_outputs_device_info);
   ~TrainingAgent();
   // For ORTModule.forward()
-  common::Status RunForward(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  std::vector<OrtValue> RunForward(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state);
   // For ORTModule.backward()
-  common::Status RunBackward(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  std::vector<OrtValue> RunBackward(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state);
+
+  std::vector<OrtValue> RunCore(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

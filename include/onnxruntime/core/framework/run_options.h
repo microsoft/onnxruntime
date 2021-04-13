@@ -29,8 +29,6 @@ struct OrtRunOptions {
 #ifdef ENABLE_TRAINING
   // Set to 'true' to run in training mode.
   bool training_mode = true;
-  size_t program_counter_start;
-  size_t program_counter_end;
 #endif
 
   OrtRunOptions() = default;

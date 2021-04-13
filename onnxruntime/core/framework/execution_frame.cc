@@ -35,6 +35,19 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
+#ifdef ENABLE_TRAINING 
+void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
+  for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
+    int ort_value_idx = feed_mlvalue_idxs[idx];
+    // we are sharing the underlying tensor/object for MLValue
+
+    ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
+    all_values_[ort_value_idx] = feeds[idx];
+  }
+}
+#endif
+
 // Return nullptr if index map to an value that is an unused optional input/output
 const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
@@ -215,6 +228,27 @@ Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
 
   for (size_t idx = 0; idx < num_fetches; ++idx) {
     fetches[idx] = GetMLValue(fetch_mlvalue_idxs_[idx]);
+  }
+
+  return Status::OK();
+}
+
+Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs) {
+  auto num_fetches = fetch_mlvalue_idxs.size();
+
+  if (fetches.empty()) {
+    fetches.resize(num_fetches);
+  } else {
+    // if there's a mismatch things are out so sync so fail
+    if (fetches.size() != num_fetches) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
+                             " entries which doesn't match the number of fetches the frame was initialized with of ",
+                             num_fetches);
+    }
+  }
+
+  for (size_t idx = 0; idx < num_fetches; ++idx) {
+    fetches[idx] = GetMLValue(fetch_mlvalue_idxs[idx]);
   }
 
   return Status::OK();

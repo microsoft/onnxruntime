@@ -78,7 +78,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, bool only_execute_path_to_fetches,
-                            size_t program_counter_start, size_t program_counter_end,
                             PartialGraphExecutionState& state);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.

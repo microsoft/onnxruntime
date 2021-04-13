@@ -141,6 +141,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   if (state_->GetExecutionFrame() == nullptr) {
     state_->GetExecutionFrame() = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
+  } else {
+    state_->GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
   }
 
   ExecutionFrame& frame = *(state_->GetExecutionFrame());
@@ -193,7 +195,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       profile::Color::Black);
 #endif
 
-  for (size_t program_counter = program_counter_start_; program_counter <= program_counter_end_; program_counter += 1) {
+  for (size_t program_counter = state_->GetProgramCounterStart(); program_counter <= state_->GetProgramCounterEnd(); program_counter += 1) {
     const auto& node_exec_plan = exec_plan_vec[program_counter];
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -451,7 +453,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches, fetch_mlvalue_idxs));
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
