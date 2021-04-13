@@ -567,7 +567,7 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Where"] == 5);
-  ASSERT_TRUE(op_to_count["Not"] == 1); // can't remove Not if it is graph output/ has consumer that's not where
+  ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -3838,7 +3838,6 @@ TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   EXPECT_EQ(op_to_count["ReduceSum"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
   EXPECT_EQ(op_to_count["Not"], 1);
-
 }
 #endif
 #endif

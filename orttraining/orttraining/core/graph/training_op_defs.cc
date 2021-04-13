@@ -1614,7 +1614,7 @@ Example 4:
                 ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
                 ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
                 ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
-                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),              
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
                 {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
                 {{"ErfTerm"}, "Erf", {"ErfArg"}},
                 {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},

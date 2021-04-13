@@ -27,7 +27,7 @@ class IsAllFiniteOp final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-  private:
+ private:
   bool isinf_only_, isnan_only_;
 };
 

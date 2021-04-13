@@ -113,7 +113,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                    {});
     // Add edge between newly added nodes
     graph.AddEdge(isallfinite_node.Index(), not_node.Index(), 0, 0);
-    
+
     // Assign provider to the new nodes.
     isallfinite_node.SetExecutionProviderType(reduce_sum_node.GetExecutionProviderType());
     not_node.SetExecutionProviderType(reduce_sum_node.GetExecutionProviderType());
