@@ -1512,48 +1512,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
     return std::vector<NodeDef>{};
   }
 
+  if (num_src_node_inputs > 2) {
+    ORT_THROW("Min/Max gradient currently does not support over 2 inputs.");
+  }
+
+  if (!IsGradientRequiredForSrcNodeInput(0) && !IsGradientRequiredForSrcNodeInput(1)) {
+    return std::vector<NodeDef>{};
+  }
+
   std::vector<NodeDef> result;
   std::vector<Dimension> y_shape;
   const ArgDef y = O(0);
   bool get_y_shape_ok = GetShape(y, y_shape).IsOK();
-
-  int stop_here = 0;
-  while (stop_here < num_src_node_inputs) {
-    if (IsGradientRequiredForSrcNodeInput(stop_here)) {
-      break;
-    }
-    stop_here++;
+  result.push_back(NodeDef("Equal", {I(1), y}, {IA("Mask_1")}));
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    result.push_back(NodeDef("Not", {IA("Mask_1")}, {IA("Mask_0")}));
   }
-
-  for (int i = num_src_node_inputs - 1; i >= stop_here; i--) {
-    const ArgDef x = I(i);
-    const ArgDef cmp_i_def = IA("Cmp_" + std::to_string(i));
-    result.push_back(NodeDef("Equal", {x, y}, {cmp_i_def}));
+  for (int i = 0; i < num_src_node_inputs; i++) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
+      const ArgDef x = I(i);
       const ArgDef mask_cast_i_def = IA("Mask_Cast_" + std::to_string(i));
       const ArgDef pre_reduce_grad_i_def = IA("PreReduceGrad_" + std::to_string(i), OType(0));
-      if (i == num_src_node_inputs - 1) {
-        result.push_back(NodeDef("Cast",
-                                 {cmp_i_def},
-                                 {mask_cast_i_def},
-                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
-      } else if (i == 0) {
-        result.push_back(NodeDef("Cast",
-                                 {IA("Mask_0")},
-                                 {mask_cast_i_def},
-                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
-      } else {
-        const ArgDef cur_mask_i_def = IA("Cur_Mask_" + std::to_string(i));
-        result.push_back(NodeDef("And",
-                                 {cmp_i_def, IA("Mask_" + std::to_string(i))},
-                                 {cur_mask_i_def}));
-        result.push_back(NodeDef("Cast",
-                                 {cur_mask_i_def},
-                                 {mask_cast_i_def},
-                                 {MakeAttribute("to", int64_t(IElemType(0)))}));
-      }
+      result.push_back(NodeDef("Cast",
+                               {IA("Mask_" + std::to_string(i))},
+                               {mask_cast_i_def},
+                               {MakeAttribute("to", int64_t(IElemType(0)))}));
       result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
-
       std::vector<Dimension> x_shape;
       if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
         std::vector<int64_t> x_axes;
@@ -1569,18 +1553,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
         ArgDef y_shape_def = IA("Shape_" + y.name + std::to_string(i));
         ComputeBroadcastBackwardAxesDynamic(x, y, x_shape_def, y_shape_def, &x_axes_def, nullptr, result);
         HandleBroadcastingDynamic(pre_reduce_grad_i_def, x, x_shape_def, GI(i), x_axes_def, result);
-      }
-    }
-    if (i) {
-      const ArgDef next_mask_i_def = IA("Mask_" + std::to_string(i - 1));
-      if (i == num_src_node_inputs - 1) {
-        result.push_back(NodeDef("Not", {cmp_i_def}, {next_mask_i_def}));
-      } else {
-        const ArgDef not_equal_i_def = IA("Not_Equal_" + std::to_string(i));
-        result.push_back(NodeDef("Not", {cmp_i_def}, {not_equal_i_def}));
-        result.push_back(NodeDef("And",
-                                 {not_equal_i_def, IA("Mask_" + std::to_string(i))},
-                                 {next_mask_i_def}));
       }
     }
   }
