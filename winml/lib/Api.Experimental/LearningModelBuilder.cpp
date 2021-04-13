@@ -11,6 +11,8 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelBuilder::LearningModelBuilder(int64_t opset) : inputs_(nullptr), outputs_(nullptr), operators_(nullptr), inert_session_(nullptr) {
+  telemetry_helper.LogApiUsage("LearningModelBuilder::LearningModelBuilder");
+
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(engine_factory_->CreateEmptyModel(opset, model_.put()));
   inputs_ = winrt::make<winml_experimentalp::LearningModelInputs>(*this);
@@ -44,12 +46,16 @@ winml_experimental::LearningModelOperatorSet LearningModelBuilder::Operators() {
 }
 
 winml::LearningModel LearningModelBuilder::CreateModel() {
+  telemetry_helper.LogApiUsage("LearningModelBuilder::CreateModel");
+
   com_ptr<_winml::IModel> model_clone;
   model_->CloneModel(model_clone.put());
   return winrt::make<winmlp::LearningModel>(engine_factory_.get(), model_clone.get(), nullptr);
 }
 
 void LearningModelBuilder::Save(const winrt::hstring& file_name) {
+  telemetry_helper.LogApiUsage("LearningModelBuilder::Save");
+
   model_->SaveModel(file_name.c_str(), file_name.size());
 }
 
