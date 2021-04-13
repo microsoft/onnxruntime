@@ -44,8 +44,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   int block_size_inside_axis_dim = 0;
   std::vector<int64_t> split_sizes(num_outputs);
 
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
+  const Tensor* split_tensor = ctx->Input<Tensor>(1);
+  if (split_tensor != nullptr) {
     const Tensor* split_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);

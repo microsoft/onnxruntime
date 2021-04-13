@@ -468,11 +468,12 @@ void RegisterTrainingOpSchemas() {
           "Constrain index tensor to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
@@ -1596,7 +1597,42 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* Default GeluGrad computation: 
+              dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
+            which expands to the following ONNX graph:
+            */
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
+                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
+                ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),              
+                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
+                {{"ErfTerm"}, "Erf", {"ErfArg"}},
+                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
+                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
+                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
+                {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
+                {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
+                {{"ExpTerm"}, "Exp", {"ExpArg"}},
+                {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
+                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
+                {{"dX"}, "Mul", {"dY", "FullSum"}}};
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)

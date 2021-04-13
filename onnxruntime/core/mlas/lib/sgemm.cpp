@@ -227,6 +227,8 @@ Return Value:
     }
 }
 
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
 void
 MlasSgemmCopyPackB(
     float* D,
@@ -751,6 +753,275 @@ Return Value:
     }
 }
 
+#else //defined(MLAS_TARGET_WASM_SCALAR)
+
+void
+MlasSgemmCopyPackB(
+    float* D,
+    const float* B,
+    size_t ldb,
+    size_t CountX,
+    size_t CountY
+    )
+/*++
+
+Routine Description:
+
+    This routine copies elements from the source matrix to the destination
+    packed buffer.
+
+    Columns of 4 elements from the source matrix are unrolled to be physically
+    contiguous for better locality inside the SGEMM kernels. Any remaining
+    columns less than 4 elements wide are zero-padded.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+    CountX - Supplies the number of columns of the source matrix to copy.
+
+    CountY - Supplies the number of rows of the source matrix to copy.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    //
+    // Copy data from matrix B into the destination buffer 4 columns at a
+    // time.
+    //
+
+    while (CountX >= 4) {
+
+        const float* b = B;
+        size_t y = CountY;
+
+        do {
+
+            std::copy_n(b, 4, D);
+
+            D += 4;
+            b += ldb;
+            y--;
+
+        } while (y > 0);
+
+        B += 4;
+        CountX -= 4;
+    }
+
+    //
+    // Special case the handling of the remaining columns less than 4 elements
+    // wide.
+    //
+
+    if (CountX > 0) {
+
+        size_t y = CountY;
+
+        do {
+
+            std::fill_n(D, 4, 0.0f);
+
+            float* d = D;
+            const float* b = B;
+
+            if ((CountX & 2) != 0) {
+
+                float t0 = b[0];
+                float t1 = b[1];
+
+                d[0] = t0;
+                d[1] = t1;
+
+                d += 2;
+                b += 2;
+            }
+
+            if ((CountX & 1) != 0) {
+                d[0] = b[0];
+            }
+
+            D += 4;
+            B += ldb;
+            y--;
+
+        } while (y > 0);
+    }
+}
+
+void
+MlasSgemmTransposePackB(
+    float* D,
+    const float* B,
+    size_t ldb,
+    size_t CountY,
+    size_t CountX
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes elements from the source matrix to the destination
+    packed buffer.
+
+    Columns of 4 elements from the source matrix are unrolled to be physically
+    contiguous for better locality inside the SGEMM kernels. Any remaining
+    columns less than 4 elements wide are zero-padded.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+    CountY - Supplies the number of rows of the source matrix to transpose.
+
+    CountX - Supplies the number of columns of the source matrix to transpose.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    auto TransposePackByVector = [&](float *D, const float* B) {
+
+        float b0 = B[0];
+        float b1 = B[1];
+        float b2 = B[2];
+        float b3 = B[3];
+
+        D[0] = b0;
+        D[4] = b1;
+        D[8] = b2;
+        D[12] = b3;
+    };
+
+    //
+    // Transpose elements from matrix B into the packed buffer 4 rows at a
+    // time.
+    //
+
+    while (CountY >= 4) {
+
+        const float* b = B;
+        size_t x = CountX;
+
+        while (x >= 4) {
+
+            TransposePackByVector(&D[0], &b[ldb * 0]);
+            TransposePackByVector(&D[1], &b[ldb * 1]);
+            TransposePackByVector(&D[2], &b[ldb * 2]);
+            TransposePackByVector(&D[3], &b[ldb * 3]);
+
+            D += 4 * 4;
+            b += 4;
+            x -= 4;
+        }
+
+        while (x > 0) {
+
+            float t0 = b[0];
+            float t1 = b[ldb];
+            float t2 = b[ldb * 2];
+            float t3 = b[ldb * 3];
+
+            D[0] = t0;
+            D[1] = t1;
+            D[2] = t2;
+            D[3] = t3;
+
+            D += 4;
+            b += 1;
+            x--;
+        }
+
+        B += ldb * 4;
+        CountY -= 4;
+    }
+
+    //
+    // Special case the handling of the less than 16 remaining rows.
+    //
+
+    if (CountY > 0) {
+
+        size_t x = CountX;
+
+        //
+        // Transpose 4 columns at a time.
+        //
+
+        while (x >= 4) {
+
+            std::fill_n(D, 16, 0.0f);
+
+            float* d = D;
+            const float* b = B;
+
+            if ((CountY & 2) != 0) {
+
+                TransposePackByVector(&d[0], &b[ldb * 0]);
+                TransposePackByVector(&d[1], &b[ldb * 1]);
+
+                d += 2;
+                b += ldb * 2;
+            }
+
+            if ((CountY & 1) != 0) {
+                TransposePackByVector(&d[0], &b[ldb * 0]);
+            }
+
+            D += 4 * 4;
+            B += 4;
+            x -= 4;
+        }
+
+        //
+        // Transpose the remaining columns.
+        //
+
+        while (x > 0) {
+
+            std::fill_n(D, 4, 0.0f);
+
+            float* d = D;
+            const float* b = B;
+
+            if ((CountY & 2) != 0) {
+
+                float t0 = b[0];
+                float t1 = b[ldb];
+
+                d[0] = t0;
+                d[1] = t1;
+
+                d += 2;
+                b += ldb * 2;
+            }
+
+            if ((CountY & 1) != 0) {
+                d[0] = b[0];
+            }
+
+            D += 4;
+            B += 1;
+            x--;
+        }
+    }
+}
+
+#endif
+
 MLAS_FORCEINLINE
 float*
 MlasSgemmKernelLoop(
@@ -923,7 +1194,7 @@ Return Value:
             return;
         }
 
-#elif defined(MLAS_TARGET_ARM64) && !defined(_WIN32)
+#elif (defined(MLAS_TARGET_ARM64) && !defined(_WIN32)) || defined(MLAS_TARGET_WASM)
 
         if (TransB == CblasNoTrans) {
             MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));

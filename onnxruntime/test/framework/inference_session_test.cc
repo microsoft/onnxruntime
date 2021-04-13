@@ -32,6 +32,8 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/gpu_data_transfer.h"
+#elif USE_ROCM
+#include "core/providers/rocm/gpu_data_transfer.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -295,6 +297,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
 #endif
+    } else if (allocation_provider == kRocmExecutionProvider) {
+#ifdef USE_ROCM
+      AllocateMLValue<float>(TestRocmExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
+                             &output_ml_value);
+#endif
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -318,9 +325,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   ASSERT_TRUE(st.IsOK());
 
-  if ((is_preallocate_output_vec && allocation_provider == kCudaExecutionProvider) ||
+  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     // in this case we need to copy the tensor from cuda to cpu
     vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1, outputs.size());
@@ -331,7 +338,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                                           shape,
                                                                           cpu_allocator);
+#ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
+#elif USE_ROCM
+    hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
+#endif
     st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -344,6 +355,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     if (allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       TestCudaExecutionProvider()->Sync();
+#endif
+    } else if (allocation_provider == kRocmExecutionProvider) {
+#ifdef USE_ROCM
+      TestRocmExecutionProvider()->Sync();
 #endif
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
@@ -833,11 +848,15 @@ static void TestBindHelper(const std::string& log_str,
 
   InferenceSession session_object{so, GetEnvironment()};
 
-  if (bind_provider_type == kCudaExecutionProvider || run_provider_type == kCudaExecutionProvider) {
+  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
     CUDAExecutionProviderInfo epi;
     epi.device_id = 0;
     EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+#elif USE_ROCM
+  ROCMExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -945,34 +964,38 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   ASSERT_TRUE(!st.IsOK());
 }
 
-#ifdef USE_CUDA
-
+#if defined(USE_CUDA) || defined(USE_ROCM)
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
 TEST(InferenceSessionTests, TestBindCuda) {
   TestBindHelper("TestBindCuda",
-                 kCudaExecutionProvider,
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
+                 kGpuExecutionProvider,
                  false /* don't preallocate output */);
 }
 
 TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCuda) {
   TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
-                 kCudaExecutionProvider,
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
+                 kGpuExecutionProvider,
                  true /* preallocate output on GPU */,
-                 kCudaExecutionProvider);
+                 kGpuExecutionProvider);
 }
 
 TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu) {
   TestBindHelper("TestBindCudaPreallocateOutputOnCpu",
-                 kCudaExecutionProvider,
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
+                 kGpuExecutionProvider,
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
 }
 
 TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
   TestBindHelper("TestBindCudaPreallocateOutputOnCpu2",
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
                  kCpuExecutionProvider,
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
@@ -982,10 +1005,10 @@ TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
   OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
 
   TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
-                 kCudaExecutionProvider,
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
+                 kGpuExecutionProvider,
                  false /* preallocate output on GPU */,
-                 kCudaExecutionProvider,
+                 kGpuExecutionProvider,
                  &device /* specify output device */);
 }
 
@@ -1391,6 +1414,10 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+#elif USE_ROCM
+  ROCMExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1527,6 +1554,10 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+#elif USE_ROCM
+  ROCMExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
 
   status = session_object.Load(model_file_name);

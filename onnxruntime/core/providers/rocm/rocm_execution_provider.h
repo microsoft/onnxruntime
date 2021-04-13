@@ -88,6 +88,10 @@ class ROCMExecutionProvider : public IExecutionProvider {
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
+  
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
 
  private:
   ROCMExecutionProviderInfo info_;
@@ -105,7 +109,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                     ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
     ~PerThreadContext();
 
     rocblas_handle RocblasHandle() const {

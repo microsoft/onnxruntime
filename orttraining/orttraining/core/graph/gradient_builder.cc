@@ -128,16 +128,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
   ArgDef A = I(0), B = I(1), Y = O(0);
-  int elem_type = OElemType(0);
   std::vector<Dimension> A_shape, B_shape, Y_shape;
   const bool A_has_shape = GetShape(A, A_shape).IsOK();
   const bool B_has_shape = GetShape(B, B_shape).IsOK();
   const bool Y_has_shape = GetShape(Y, Y_shape).IsOK();
 
   auto dB_2d_case = [&]() {
-    NodeDef zero_float_const_node = ConstantScalarNode(0.0f, Name("zero_float"), elem_type);
-    ArgDef ZERO_F = zero_float_const_node.output_args[0];
-
     if (B_shape[0].has_dim_value() && B_shape[1].has_dim_value()) {
       // B[K, N] is a weight with known size
       int64_t K = B_shape[0].dim_value();
@@ -152,7 +148,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
       return std::vector<NodeDef>{
           A_target_shape_node,
           dY_target_shape_node,
-          zero_float_const_node,
 
           // reshape A to 2D [M, K]
           NodeDef("Reshape", {A, A_target_shape_node.output_args[0]}, {IA("A_reshape_2d")}),
@@ -161,7 +156,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           NodeDef("Reshape", {GO(0), dY_target_shape_node.output_args[0]}, {IA("dY_reshape_2d")}),
 
           // dB = A' * dY
-          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d")}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
     } else {
       NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
       NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
@@ -175,7 +170,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           zero_int64_const_node,
           one_const_node,
           neg_one_const_node,
-          zero_float_const_node,
 
           NodeDef("Shape", {B}, {IA("B_shape")}),
 
@@ -190,7 +184,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           NodeDef("Reshape", {GO(0), IA("dY_target_shape")}, {IA("dY_reshape_2d")}),
 
           // dB = A' * dY
-          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d")}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
     }
   };
 
@@ -202,10 +196,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
     if (A_shape.size() == 2 && B_shape.size() == 2) {
-      NodeDef zero_constant_node = ZeroConstantNode(elem_type);
-      ArgDef ZERO = zero_constant_node.output_args[0];
-      result.push_back(zero_constant_node);
-
       // is GI(0) required
       if (IsGradientRequiredForSrcNodeInput(0)) {
         // dA = dY * B'
@@ -213,7 +203,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         attrs.push_back(transpose_second_input);
         result.push_back(
             NodeDef("Gemm",
-                    {GO(0), B, ZERO},
+                    {GO(0), B},
                     {GI(0)},
                     attrs));
       }
@@ -225,7 +215,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         attrs.push_back(transpose_first_input);
         result.push_back(
             NodeDef("Gemm",
-                    {A, GO(0), ZERO},
+                    {A, GO(0)},
                     {GI(1)},
                     attrs));
       }
@@ -367,11 +357,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
-  NodeDef zero_contant_node = ZeroConstantNode(elem_type);
-  ArgDef ZERO = zero_contant_node.output_args[0];
-
   std::vector<NodeDef> result;
-  result.push_back(zero_contant_node);
 
   std::vector<AttributeProto> shared_attributes;
   shared_attributes.push_back(MakeAttribute("beta", float(0)));
@@ -389,14 +375,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_first_input);
         attrs.push_back(transpose_second_input);
-        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, attrs));
+        result.push_back(NodeDef("Gemm", {B, dY}, {dA}, attrs));
       }
 
       if (IsGradientRequiredForSrcNodeInput(1)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_first_input);
         attrs.push_back(transpose_second_input);
-        result.push_back(NodeDef("Gemm", {dY, A, ZERO}, {dB}, attrs));
+        result.push_back(NodeDef("Gemm", {dY, A}, {dB}, attrs));
       }
     } else {
       // Y = alpha * A' * B
@@ -404,11 +390,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       if (IsGradientRequiredForSrcNodeInput(0)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_second_input);
-        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, attrs));
+        result.push_back(NodeDef("Gemm", {B, dY}, {dA}, attrs));
       }
 
       if (IsGradientRequiredForSrcNodeInput(1)) {
-        result.push_back(NodeDef("Gemm", {A, dY, ZERO}, {dB}, shared_attributes));
+        result.push_back(NodeDef("Gemm", {A, dY}, {dB}, shared_attributes));
       }
     }
   } else {
@@ -416,13 +402,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       // Y = alpha * A * B'
       // dA = alpha * dY * B, dB = alpha * dY' * A
       if (IsGradientRequiredForSrcNodeInput(0)) {
-        result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, shared_attributes));
+        result.push_back(NodeDef("Gemm", {dY, B}, {dA}, shared_attributes));
       }
 
       if (IsGradientRequiredForSrcNodeInput(1)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_first_input);
-        result.push_back(NodeDef("Gemm", {dY, A, ZERO}, {dB}, attrs));
+        result.push_back(NodeDef("Gemm", {dY, A}, {dB}, attrs));
       }
     } else {
       // Y = alpha * A * B
@@ -430,13 +416,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       if (IsGradientRequiredForSrcNodeInput(0)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_second_input);
-        result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, attrs));
+        result.push_back(NodeDef("Gemm", {dY, B}, {dA}, attrs));
       }
 
       if (IsGradientRequiredForSrcNodeInput(1)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_first_input);
-        result.push_back(NodeDef("Gemm", {A, dY, ZERO}, {dB}, attrs));
+        result.push_back(NodeDef("Gemm", {A, dY}, {dB}, attrs));
       }
     }
   }
@@ -720,7 +706,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   }
 
   return std::vector<NodeDef>{
-      NodeDef("ConvGrad",
+      NodeDef(OpDef{"ConvGrad", kMSDomain, 1},
               {GO(0), I(0), I(1)},
               outputs,
               SrcNodeAttributes())};

@@ -10,6 +10,16 @@
 #include "contexts.h"
 #include <iomanip>
 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+#include <sys/stat.h>
+
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
@@ -18,6 +28,14 @@ const std::string log_tag = "[OpenVINO-EP] ";
 #ifndef NDEBUG
 bool IsDebugEnabled();
 #endif
+
+bool UseCompiledNetwork();
+
+std::string GetCurrentWorkingDir();
+
+bool IsDirExists(const std::string& pathname);
+
+void CreateDirectory(const std::string& ov_compiled_blobs_dir);
 
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
