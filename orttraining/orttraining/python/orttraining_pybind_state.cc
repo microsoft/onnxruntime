@@ -6,6 +6,7 @@
 
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -14,6 +15,8 @@
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/module_gradient_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+
+PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 
 namespace onnxruntime {
 namespace python {
@@ -290,6 +293,8 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m) {
+  py::bind_vector<std::vector<OrtValue>>(m, "OrtValueVector");
+
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
@@ -484,9 +489,9 @@ void addObjectMethodsForTraining(py::module& m) {
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
-                        const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
-                        const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
-                        const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
+                       const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
+                       const std::vector<OrtDevice>& bw_outputs_device_info) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
       }))
       .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, PartialGraphExecutionState* state) -> std::vector<OrtValue> {

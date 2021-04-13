@@ -172,7 +172,10 @@ class ORTModule(torch.nn.Module):
                         self._device, "Input argument to forward", *inputs)
 
                     state = C.PartialGraphExecutionState()
-                    forward_inputs = [_ortvalue_from_torch_tensor(torch_input) for torch_input in inputs]
+                    forward_inputs = C.OrtValueVector()
+                    for idx, input in enumerate(inputs):
+                        forward_inputs.append(_ortvalue_from_torch_tensor(input))
+
                     outputs = self._training_session.run_forward(forward_inputs, state)
 
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
@@ -222,8 +225,10 @@ class ORTModule(torch.nn.Module):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
-                    
-                    backward_inputs = [_ortvalue_from_torch_tensor(torch_input) for torch_input in contiguous_grad_outputs]
+
+                    backward_inputs = C.OrtValueVector()
+                    for idx, input in enumerate(contiguous_grad_outputs):
+                        backward_inputs.append(_ortvalue_from_torch_tensor(input))
                     backward_outputs = self._training_session.run_backward(backward_inputs, ctx.run_info.state)
 
                     # Return input and initializer gradients
