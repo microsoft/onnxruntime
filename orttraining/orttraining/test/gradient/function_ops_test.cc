@@ -121,14 +121,14 @@ std::vector<T> random(std::vector<int64_t> shape) {
 
 template <>
 std::vector<bool> random<bool>(std::vector<int64_t> shape) {
-    int64_t size = 1;
-    for (auto dim : shape)
-      size *= dim;
+  int64_t size = 1;
+  for (auto dim : shape)
+    size *= dim;
 
-    std::vector<bool> data(size);
-    for (int64_t i = 0; i < size; i++)
-      data[i] = bool(rand() % 2);
-    return data;
+  std::vector<bool> data(size);
+  for (int64_t i = 0; i < size; i++)
+    data[i] = bool(rand() % 2);
+  return data;
 }
 
 struct FunctionTestCase {
@@ -159,36 +159,21 @@ struct FunctionTestCase {
   }
 
   template <typename T>
-  void AddInput(std::string input_name, std::vector<int64_t> shape) {
+  void AddInputType(std::string input_name, std::vector<int64_t> shape) {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
+  }
+
+  template <typename T>
+  void AddInput(std::string input_name, std::vector<int64_t> shape) {
+    AddInputType<T>(input_name, shape);
 
     std::vector<T> data = random<T>(shape);
-
     OrtValue ort_value;
     CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
-
-  // template <>
-  // void AddInput<bool>(std::string input_name, std::vector<int64_t> shape) {
-  //   auto arg_type = TensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, shape);
-  //   input_args.emplace_back(input_name, &arg_type);
-
-  //   int64_t size = 1;
-  //   for (auto dim : shape)
-  //     size *= dim;
-
-  //   std::vector<bool> data(size);
-  //   for (int64_t i = 0; i < size; i++)
-  //     data[i] = bool(i % 2);
-
-  //   OrtValue ort_value;
-  //   CreateMLValue<bool>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
-  //   input_values.push_back(std::make_pair(input_name, ort_value));
-  //   input_value_map.insert(std::make_pair(input_name, ort_value));
-  // }
 
   void AddOutput(std::string output_name) {
     output_names.emplace_back(output_name);
@@ -327,42 +312,73 @@ TEST(SoftmaxGradExpansionTest, OpsetTest) {
   AssertEqual(results1, results2);
 }
 
-TEST(DropoutGradExpansionTest, WithoutRatio) {
+template <typename T>
+void DropoutGradWithoutRatio() {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<T>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
 
-TEST(DropoutGradExpansionTest, WithoutRatioDouble) {
+TEST(DropoutGradExpansionTest, WithoutRatio) {
+  DropoutGradWithoutRatio<float>();
+  DropoutGradWithoutRatio<double>();
+}
+
+template <typename T>
+void DropoutGradWithRatio() {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInput<double>("dY", shape);
+  testCase.AddInput<T>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
 
 TEST(DropoutGradExpansionTest, WithRatio) {
-  FunctionTestCase testCase("DropoutGrad");
-  std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInput<float>("dY", shape);
-  testCase.AddInput<bool>("mask", shape);
-  testCase.AddInput("ratio", {}, {0.5f});
-  testCase.AddOutput("dX");
-  testCase.RunTest();
+  DropoutGradWithRatio<float>();
+  DropoutGradWithRatio<double>();
 }
 
-TEST(DropoutGradExpansionTest, WithRatioDouble) {
+template <typename T>
+void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInput<double>("dY", shape);
+  testCase.AddInputType<T>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
+  auto model = testCase.CreateModel(inline_call);
+  if (!inline_call) {
+    auto& node = *model->MainGraph().Nodes().begin();
+    auto* fnbody = node.GetFunctionBody(true);
+    EXPECT_EQ(fnbody, nullptr);
+  }
+}
+
+TEST(CheckDropoutGradExpansionTest, WithoutRatio) {
+  // bfloat16 not yet supported by ONNX op Where
+  CheckDropoutGradWithoutRatio<BFloat16>(false);
+  CheckDropoutGradWithoutRatio<MLFloat16>(true);
+}
+
+template <typename T>
+void CheckDropoutGradWithRatio(bool inline_call) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInputType<T>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
   testCase.AddInput("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
-  testCase.RunTest();
+  testCase.CreateModel(inline_call);
+}
+
+TEST(CheckDropoutGradExpansionTest, WithRatio) {
+  // bfloat16 not yet supported by ONNX op Where
+  CheckDropoutGradWithRatio<BFloat16>(false);
+  CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 
 TEST(GeluGradExpansionTest, 2D) {
@@ -372,6 +388,22 @@ TEST(GeluGradExpansionTest, 2D) {
   testCase.AddInput<float>("X", shape);
   testCase.AddOutput("dX");
   testCase.RunTest();
+}
+
+template <typename T>
+void CheckGeluGrad() {
+  // Tests only expanded model creation and checking.
+  FunctionTestCase testCase("GeluGrad");
+  std::vector<int64_t> shape{16, 4};
+  testCase.AddInputType<T>("dY", shape);
+  testCase.AddInputType<T>("X", shape);
+  testCase.AddOutput("dX");
+  testCase.CreateModel(true);
+}
+
+TEST(CheckGeluGradExpansionTest, HalfPrecision) {
+  CheckGeluGrad<BFloat16>();
+  CheckGeluGrad<MLFloat16>();
 }
 
 }  // namespace test

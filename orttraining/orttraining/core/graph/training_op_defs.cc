@@ -1409,7 +1409,7 @@ Example 4:
              "The mask output of the dropout. ", "T2")
       .Input(2, "ratio",
              "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
-              "If this input is not specified, a default value of 0.5 is used.",
+             "If this input is not specified, a default value of 0.5 is used.",
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
@@ -1451,7 +1451,9 @@ Example 4:
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
-            
+            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+              return false; // ONNX op Where doesn't support bfloat16 yet.
+
             if (ctx.hasInput(2)) {
               // ratio specified.
               std::vector<FunctionBodyHelper::NodeDef> body{
@@ -1475,7 +1477,6 @@ Example 4:
 
               return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             }
-            
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
@@ -1654,7 +1655,7 @@ Example 4:
                 ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
                 ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
                 ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
-                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),              
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
                 {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
                 {{"ErfTerm"}, "Erf", {"ErfArg"}},
                 {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
