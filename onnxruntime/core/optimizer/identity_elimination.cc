@@ -51,6 +51,9 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   
   // check the input nodearg of Identity - it must only have one consumer, which is the Identity itself
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
+  if (p_input_node == nullptr)
+    return false;
+    
   // find the edge between input node and this Identity node, and then get its src arg from input node
   int src_arg_index = -1;
   for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
