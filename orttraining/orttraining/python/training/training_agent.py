@@ -67,11 +67,11 @@ class TrainingAgent(object):
          Compute the forward subgraph for given feeds and fetches.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
         """
-        return self._training_agent.run_forward(feeds, state.get())
+        return self._training_agent.run_forward(feeds, state)
 
     def run_backward(self, feeds, state):
         """
          Compute the backward subgraph for given feeds and fetches.
          :param backward_output_grads: Output gradients for backward.
         """
-        return self._training_agent.run_backward(feeds, state.get())
+        return self._training_agent.run_backward(feeds, state)

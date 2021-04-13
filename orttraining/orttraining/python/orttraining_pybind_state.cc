@@ -474,24 +474,11 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
-  
-  struct PyPartialGraphExecutionState {
-    PyPartialGraphExecutionState() {
-      state_ = onnxruntime::make_unique<PartialGraphExecutionState>();
-    }
 
-    PartialGraphExecutionState& Get() { return *state_;}
-
-    std::unique_ptr<PartialGraphExecutionState> state_;
-  };
-
-  py::class_<PyPartialGraphExecutionState>(m, "PyPartialGraphExecutionState")
+  py::class_<PartialGraphExecutionState>(m, "PartialGraphExecutionState")
       .def(py::init([]() {
-        return onnxruntime::make_unique<PyPartialGraphExecutionState>();
-      }))
-      .def("get", [](PyPartialGraphExecutionState* state) -> PyPartialGraphExecutionState* {
-        return state;
-      });
+        return onnxruntime::make_unique<PartialGraphExecutionState>();
+      }));
 
   py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
@@ -502,11 +489,11 @@ void addObjectMethodsForTraining(py::module& m) {
                         const std::vector<OrtDevice>& bw_outputs_device_info) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, PyPartialGraphExecutionState* state) -> std::vector<OrtValue> {
-        return agent->RunForward(feeds, state->Get());
+      .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, PartialGraphExecutionState* state) -> std::vector<OrtValue> {
+        return agent->RunForward(feeds, *state);
       })
-      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, PyPartialGraphExecutionState* state) -> std::vector<OrtValue> {
-        return agent->RunBackward(feeds, state->Get());
+      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, PartialGraphExecutionState* state) -> std::vector<OrtValue> {
+        return agent->RunBackward(feeds, *state);
       });
 
   py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(

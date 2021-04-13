@@ -54,12 +54,10 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
                 name, ", ".join(available_provider_names)))
 
         if name in provider_name_to_options:
-            warnings.warn(
-                "Duplicate provider '{}' encountered, ignoring.".format(name))
+            warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
             return
 
-        normalized_options = {str(key): str(value)
-                              for key, value in options.items()}
+        normalized_options = {str(key): str(value) for key, value in options.items()}
         provider_name_to_options[name] = normalized_options
 
     if not isinstance(providers, collections.abc.Sequence):
@@ -70,12 +68,10 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
             raise ValueError("'provider_options' should be a sequence.")
 
         if len(providers) != len(provider_options):
-            raise ValueError(
-                "'providers' and 'provider_options' should be the same length if both are given.")
+            raise ValueError("'providers' and 'provider_options' should be the same length if both are given.")
 
         if not all([isinstance(provider, str) for provider in providers]):
-            raise ValueError(
-                "Only string values for 'providers' are supported if 'provider_options' is given.")
+            raise ValueError("Only string values for 'providers' are supported if 'provider_options' is given.")
 
         if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
             raise ValueError("'provider_options' values must be dicts.")
@@ -91,8 +87,7 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
                     isinstance(provider[0], str) and isinstance(provider[1], dict):
                 set_provider_options(provider[0], provider[1])
             else:
-                raise ValueError(
-                    "'providers' values must be either strings or (string, dict) tuples.")
+                raise ValueError("'providers' values must be either strings or (string, dict) tuples.")
 
     return list(provider_name_to_options.keys()), list(provider_name_to_options.values())
 
@@ -101,7 +96,6 @@ class Session:
     """
     This is the main class used to run a model.
     """
-
     def __init__(self):
 
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
@@ -187,18 +181,15 @@ class Session:
         num_inputs = len(input_feed)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(
-                num_required_inputs, num_inputs))
+            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(
-                    str(err), self._providers))
-                print("Falling back to {} and retrying.".format(
-                    self._fallback_providers))
+                print("EP Error: {} using {}".format(str(err), self._providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
@@ -242,7 +233,6 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-
     def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
@@ -277,29 +267,24 @@ class InferenceSession(Session):
             self._model_bytes = None
         elif isinstance(path_or_bytes, bytes):
             self._model_path = None
-            # TODO: This is bad as we're holding the memory indefinitely
-            self._model_bytes = path_or_bytes
+            self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
         else:
-            raise TypeError(
-                "Unable to load from type '{0}'".format(type(path_or_bytes)))
+            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
-        self._read_config_from_model = os.environ.get(
-            'ORT_LOAD_CONFIG_FROM_MODEL') == '1'
+        self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs['disabled_optimizers'] if 'disabled_optimizers' in kwargs else None
 
         try:
-            self._create_inference_session(
-                providers, provider_options, disabled_optimizers)
+            self._create_inference_session(providers, provider_options, disabled_optimizers)
         except ValueError:
             if self._enable_fallback:
                 print("EP Error using {}".format(providers))
-                print("Falling back to {} and retrying.".format(
-                    self._fallback_providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
@@ -311,8 +296,7 @@ class InferenceSession(Session):
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
-            self._fallback_providers = [
-                'CUDAExecutionProvider', 'CPUExecutionProvider']
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
@@ -323,11 +307,9 @@ class InferenceSession(Session):
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
-            sess = C.InferenceSession(
-                session_options, self._model_path, True, self._read_config_from_model)
+            sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
-            sess = C.InferenceSession(
-                session_options, self._model_bytes, False, self._read_config_from_model)
+            sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
 
         if disabled_optimizers is None:
             disabled_optimizers = set()
@@ -336,8 +318,7 @@ class InferenceSession(Session):
             disabled_optimizers = set(disabled_optimizers)
 
         # initialize the C++ InferenceSession
-        sess.initialize_session(
-            providers, provider_options, disabled_optimizers)
+        sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
         self._sess_options = self._sess.session_options
@@ -369,11 +350,9 @@ class InferenceSession(Session):
 
 
 class IOBinding:
-
     '''
     This class provides API to bind input/output to a specified device, e.g. GPU.
     '''
-
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
         self._numpy_obj_references = []
@@ -433,8 +412,7 @@ class IOBinding:
                                                     device_id))
         else:
             if element_type is None or shape is None:
-                raise ValueError(
-                    "`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+                raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                     device_id),
@@ -459,18 +437,6 @@ class IOBinding:
 
         return returned_ortvalues
 
-    def get_inputs(self):
-        '''
-        Returns the input OrtValues from the Run() that preceded the call.
-        The data buffer of the obtained OrtValues may not reside on CPU memory
-        '''
-        returned_ortvalues = []
-
-        for ortvalue in self._iobinding.get_inputs():
-            returned_ortvalues.append(OrtValue(ortvalue))
-
-        return returned_ortvalues
-
     def copy_outputs_to_cpu(self):
         '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
         return self._iobinding.copy_outputs_to_cpu()
@@ -488,7 +454,6 @@ class OrtValue:
     to place the data backing these on a device, for example, on a CUDA supported device.
     This class provides APIs to construct and deal with OrtValues.
     '''
-
     def __init__(self, ortvalue, numpy_obj=None):
         if isinstance(ortvalue, C.OrtValue):
             self._ortvalue = ortvalue
@@ -513,9 +478,7 @@ class OrtValue:
         # is backed directly by the data buffer of the numpy object and so the numpy object
         # must be around until this OrtValue instance is around
         return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
-                                                                              C.OrtDevice.default_memory(), device_id)),
-                        numpy_obj if device_type.lower() == 'cpu'
-                        else None)
+                        C.OrtDevice.default_memory(), device_id)), numpy_obj if device_type.lower() == 'cpu' else None)
 
     @staticmethod
     def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
@@ -527,12 +490,10 @@ class OrtValue:
         :param device_id: device id, e.g. 0
         '''
         if shape is None or element_type is None:
-            raise ValueError(
-                "`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
         return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
-                                                                C.OrtDevice(get_ort_device_type(device_type),
-                                                                            C.OrtDevice.default_memory(), device_id)))
+                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
 
     def data_ptr(self):
         '''

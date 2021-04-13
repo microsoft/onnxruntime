@@ -50,11 +50,8 @@ class IExecutionFrame {
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
 #ifdef ENABLE_TRAINING
-  // Override the index-th output with ort_value
-  Status SetOutputMLValue(int index, const OrtValue& ort_value);
- 
   void UpdateFeeds(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches);
-
+  Status GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs);
 #endif
 
   // TO DO: make it thread safe
@@ -72,7 +69,7 @@ class IExecutionFrame {
    * Don't access the values after SessionState is destroyed 
    */
   Status GetOutputs(std::vector<OrtValue>& fetches);
-  Status GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs);
+
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
   Status ReleaseMLValue(int ort_value_idx);

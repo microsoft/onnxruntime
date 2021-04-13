@@ -72,30 +72,6 @@ struct ModelMetadata {
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 
-struct PartialGraphExecutionState {
- public:
-  PartialGraphExecutionState() {
-    execution_frame_ = nullptr;
-  }
-
-  ~PartialGraphExecutionState() {
-    execution_frame_.~unique_ptr<ExecutionFrame>();
-  }
-
-  void SetProgramCounterStart(size_t start) { program_counter_start_ = start; }
-  void SetProgramCounterEnd(size_t end) { program_counter_end_ = end; }
-
-  size_t GetProgramCounterStart() { return program_counter_start_; }
-  size_t GetProgramCounterEnd() { return program_counter_end_; }
-
-  std::unique_ptr<ExecutionFrame>& GetExecutionFrame() { return execution_frame_; }
-
- private:
-  std::unique_ptr<ExecutionFrame> execution_frame_;
-  size_t program_counter_start_;
-  size_t program_counter_end_;
-};
-
 /**
  * @brief This is the main class used to Run a model.
  * Sample simple usage:
@@ -327,9 +303,11 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
   std::pair<size_t, size_t> GetBreakpointAndEndPoint();
   common::Status Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                      PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
+#endif
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.

@@ -1503,6 +1503,7 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
+#ifdef ENABLE_TRAINING
 std::pair<size_t, size_t> InferenceSession::GetBreakpointAndEndPoint() {
   size_t end_point;
   size_t break_point = 0;
@@ -1519,6 +1520,116 @@ std::pair<size_t, size_t> InferenceSession::GetBreakpointAndEndPoint() {
   }
   return std::make_pair(break_point, end_point);
 }
+
+Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                             PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
+  TimePoint tp;
+  if (session_profiler_.IsEnabled()) {
+    tp = session_profiler_.StartTime();
+  }
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
+  ortrun_activity.SetRelatedActivity(session_activity);
+  TraceLoggingWriteStart(ortrun_activity, "OrtRun");
+#endif
+  Status retval = Status::OK();
+  const Env& env = Env::Default();
+
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart();
+
+    if (!run_options.run_tag.empty()) {
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+    }
+
+    ++current_num_runs_;
+
+    // scope of owned_run_logger is just the call to Execute.
+    // If Execute ever becomes async we need a different approach
+    std::unique_ptr<logging::Logger> owned_run_logger;
+    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call OnRunStart for all providers in-use
+    for (auto& xp : execution_providers_) {
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
+    }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    if (run_options.only_execute_path_to_fetches) {
+      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+    }
+#endif
+
+    // execute the graph
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
+                                                 session_options_.execution_mode, run_options.terminate, run_logger,
+                                                 run_options.only_execute_path_to_fetches, state));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+  }
+
+  // info all execution providers InferenceSession:Run ended
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  --current_num_runs_;
+
+  // keep track of telemetry
+  ++telemetry_.total_runs_since_last_;
+  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+
+  // time to send telemetry?
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
+    // send the telemetry
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                              telemetry_.total_run_duration_since_last_);
+    // reset counters
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
+  }
+
+  // log evaluation stop to trace logging provider
+  env.GetTelemetryProvider().LogEvaluationStop();
+
+  // send out profiling events (optional)
+  if (session_profiler_.IsEnabled()) {
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+  }
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+#endif
+  return retval;
+}
+#endif 
 
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
@@ -1601,115 +1712,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-    });
-  }
-  ORT_CATCH(...) {
-    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
-  }
-
-  // info all execution providers InferenceSession:Run ended
-  for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
-    ORT_CHECK_AND_SET_RETVAL(status);
-  }
-
-  --current_num_runs_;
-
-  // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-
-  // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
-  }
-
-  // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
-
-  // send out profiling events (optional)
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
-  }
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingWriteStop(ortrun_activity, "OrtRun");
-#endif
-  return retval;
-}
-
-Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                             PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
-  TimePoint tp;
-  if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
-  }
-
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
-  ortrun_activity.SetRelatedActivity(session_activity);
-  TraceLoggingWriteStart(ortrun_activity, "OrtRun");
-#endif
-  Status retval = Status::OK();
-  const Env& env = Env::Default();
-
-  std::vector<IExecutionProvider*> exec_providers_to_stop;
-  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
-
-  ORT_TRY {
-    if (!is_inited_) {
-      LOGS(*session_logger_, ERROR) << "Session was not initialized";
-      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-    }
-
-    // log evaluation start to trace logging provider
-    env.GetTelemetryProvider().LogEvaluationStart();
-
-    if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
-    }
-
-    ++current_num_runs_;
-
-    // scope of owned_run_logger is just the call to Execute.
-    // If Execute ever becomes async we need a different approach
-    std::unique_ptr<logging::Logger> owned_run_logger;
-    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
-
-    // info all execution providers InferenceSession:Run started
-    // TODO: only call OnRunStart for all providers in-use
-    for (auto& xp : execution_providers_) {
-      // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop]() {
-        auto status = xp->OnRunStart();
-        if (status.IsOK())
-          exec_providers_to_stop.push_back(xp.get());
-
-        return status;
-      };
-
-      ORT_CHECK_AND_SET_RETVAL(start_func());
-    }
-
-#if !defined(ORT_MINIMAL_BUILD)
-    if (run_options.only_execute_path_to_fetches) {
-      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-    }
-#endif
-
-    // execute the graph
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches, state));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
