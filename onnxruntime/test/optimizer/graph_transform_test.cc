@@ -3820,7 +3820,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       {kCpuExecutionProvider});
 }
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
   std::shared_ptr<Model> p_model;
