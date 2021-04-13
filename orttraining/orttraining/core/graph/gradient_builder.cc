@@ -1504,7 +1504,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
 // Tile is defined as follows:
 // Y = Tile(X, repeat), say,
 // X shape : M, N, K
-// repeat shape : a, b, c
+// repeat is a 1D tensor with value: [a, b, c] 
 // Y shape : aM, bN, cK
 // To compute the gradient of y, we first reshape the gradient of y as,
 // Y^_grad = Reshape(Y_grad(a, M, b, N, c, K))
