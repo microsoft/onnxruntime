@@ -38,8 +38,6 @@ set(onnxruntime_pybind_srcs_pattern
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind_srcs_pattern
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.h"
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
   )
@@ -74,13 +72,20 @@ if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()
 if(onnxruntime_USE_ROCM)
-    target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-  endif()
+  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
+
+  # Build provider with Pytorch's C++ APIs.
+  if (onnxruntime_USE_TORCH)
+    target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${TORCH_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
+  endif()
 endif()
 
 if(APPLE)

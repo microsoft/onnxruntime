@@ -1488,5 +1488,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
   };
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTorchEmbeddingGradient) {
+  std::vector<NodeDef> output;
+  ArgDef num_weights_arg_def = ArgDef("");
+  std::vector<Dimension> weight_shape;
+  if (GetShape(I(0), weight_shape).IsOK() && weight_shape[0].has_dim_value()) {
+    NodeDef num_weights_const_node = ConstantScalarNode(weight_shape[0].dim_value(), {1}, Name("num_weights"));
+    num_weights_arg_def = num_weights_const_node.output_args[0];
+    output.emplace_back(num_weights_const_node);
+  } else {
+    NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
+    ArgDef ZERO = zero_int64_const_node.output_args[0];
+    num_weights_arg_def = IA("num_weights");
+    output.emplace_back(zero_int64_const_node);
+    output.emplace_back(NodeDef("Shape", {I(0)}, {IA("W_shape")}));
+    output.emplace_back(
+        NodeDef("Gather", {IA("W_shape"), ZERO}, {num_weights_arg_def}, {MakeAttribute("axis", int64_t(0))}));
+  }
+
+  std::vector<ArgDef> torch_embedding_grad_inputs{GO(0), I(1), num_weights_arg_def};
+  for (int i = 2; i < GetSrcNodeInputSize(); ++i) {
+    torch_embedding_grad_inputs.emplace_back(I(i));
+  }
+
+  output.emplace_back(NodeDef(OpDef{"TorchEmbeddingGrad", kMSDomain, 1}, torch_embedding_grad_inputs, {GI(0)}));
+  return output;
+}
+
 }  // namespace training
 }  // namespace onnxruntime

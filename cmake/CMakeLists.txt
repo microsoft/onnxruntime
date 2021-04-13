@@ -151,6 +151,19 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+# LIBTORCH_HOME can be either a path to libtorch downloaded from Pytorch website,
+# Pytorch python package installed using Anaconda, Pytorch build folder if you built
+# Pytorch from source, and so on.
+# This D_GLIBCXX_USE_CXX11_ABI flag should match what is used when compiling Pytorch/LibTorch and
+# all other ORT dependencies.
+# Do not build using multi-threading when ABI is set. Some packages have their
+# own logics to determine this flag and seems resulting race conditions.
+if (onnxruntime_ENABLE_TRAINING AND onnxruntime_USE_TORCH)
+  add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0 -DUSE_TORCH=1 -DTHRUST_IGNORE_CUB_VERSION_CHECK)
+  list(APPEND CMAKE_PREFIX_PATH "${onnxruntime_TORCH_HOME}")
+  find_package(Torch REQUIRED PATHS "${onnxruntime_TORCH_HOME}")
+endif()
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -1246,7 +1259,7 @@ if (onnxruntime_USE_CUDA)
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
     else()
       # the following compute capabilities are removed in CUDA 11 Toolkit
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11 AND NOT onnxruntime_USE_TORCH)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
       # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.

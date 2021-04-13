@@ -70,6 +70,7 @@ DECLARE_GRADIENT_BUILDER(GetFlattenGradient)
 DECLARE_GRADIENT_BUILDER(GetTopKGradient)
 DECLARE_GRADIENT_BUILDER(GetClipGradient)
 DECLARE_GRADIENT_BUILDER(GetAbsGradient)
+DECLARE_GRADIENT_BUILDER(GetTorchEmbeddingGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

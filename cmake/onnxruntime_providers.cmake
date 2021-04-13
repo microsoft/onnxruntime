@@ -172,7 +172,18 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/dlpack/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/*.h"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
+endif()
+
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
+
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -217,6 +228,19 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  # DLPack is a header-only dependency
+  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
+
+  # Build provider with Pytorch's C++ APIs.
+  if (onnxruntime_USE_TORCH)
+    target_compile_options(onnxruntime_providers PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
+    target_include_directories(onnxruntime_providers PRIVATE ${TORCH_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
   endif()
 endif()
 
@@ -279,7 +303,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
-  
+
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")

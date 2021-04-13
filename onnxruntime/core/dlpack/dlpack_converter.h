@@ -6,10 +6,14 @@
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
 
+#ifdef USE_TORCH
+#include <torch/torch.h>
+#endif
+
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 
 namespace onnxruntime {
-namespace python {
+namespace dlpack {
 
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 
@@ -17,5 +21,10 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
-}  // namespace python
+#ifdef USE_TORCH
+at::Tensor ToTorchTensor(OrtValue& ort_value);
+OrtValue FromTorchTensor(const at::Tensor& torch_tensor);
+#endif
+
+}  // namespace dlpack
 }  // namespace onnxruntime

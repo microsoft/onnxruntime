@@ -1,10 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/dlpack/dlpack_converter.h"
+#include "core/dlpack/dlpack_converter.h"
+
+#ifdef USE_TORCH
+#include <ATen/DLConvertor.h>
+#endif
 
 namespace onnxruntime {
-namespace python {
+namespace dlpack {
 
 namespace {
 
@@ -230,5 +234,13 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   return ort_value;
 }
 
-}  // namespace python
+#ifdef USE_TORCH
+at::Tensor ToTorchTensor(OrtValue& ort_value) { return at::fromDLPack(dlpack::OrtValueToDlpack(ort_value)); }
+
+OrtValue FromTorchTensor(const at::Tensor& torch_tensor) {
+  return dlpack::DlpackToOrtValue(at::toDLPack(torch_tensor), torch_tensor.dtype() == at::kBool);
+}
+#endif
+
+}  // namespace dlpack
 }  // namespace onnxruntime

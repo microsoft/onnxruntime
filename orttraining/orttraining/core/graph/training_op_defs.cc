@@ -2298,6 +2298,34 @@ Return true if all elements are true and false otherwise.
           j++;
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchEmbeddingGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient of TorchEmbedding.")
+      .Input(0, "grad", "dY", "T")
+      .Input(1, "indices", "Long tensor containing the indices to extract from embedding matrix.", "tensor(int64)")
+      .Input(2, "num_weights", "weight.size(0)", "tensor(int64)")
+      .Input(3, "padding_idx",
+             "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
+             "therefore, the embedding vector at `padding_idx` is not updated during training, "
+             "i.e. it remains as a fixed pad.",
+             "tensor(int64)", OpSchema::Optional)
+      .Input(4, "scale_grad_by_freq",
+             "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
+             "the indices (words) in the mini-batch. Default  is ``False``",
+             "tensor(bool)", OpSchema::Optional)
+      .Output(0, "weight_grad", "dWeight", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)", "tensor(uint8)", "tensor(uint16)",
+           "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"},
+          "Constrain input and output types to all numeric tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

@@ -2437,6 +2437,32 @@ TEST(GradientCheckerTest, ClipGrad) {
   }
 }
 
+#ifdef USE_TORCH
+TEST(GradientCheckerTest, TorchEmbeddingGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"TorchEmbedding", kMSDomain, 1};
+
+  TensorInfo x_info({5, 4});
+  std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
+
+  {
+    TensorInfo indices_info({1}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo y_info({1, 4});
+    gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // 2D Indices
+  {
+    TensorInfo indices_info({2, 2}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo y_info({2, 2, 4});
+    gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_info}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
 
