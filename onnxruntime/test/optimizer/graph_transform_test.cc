@@ -3896,18 +3896,6 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       // 3. The inputs and/or output may be transposed
       // These variations help testing the following functions.
       // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_input_casts.onnx", 2, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_output_cast.onnx", 1, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_input_casts.onnx", 2, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_input_casts_output_cast.onnx", 3, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_output_cast.onnx", 1, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_input_casts.onnx", 2, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_output_output_cast.onnx", 1, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_input_casts.onnx", 2, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 3, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float16_transpose_inputs_transpose_output_output_cast.onnx", 1, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts.onnx", 1, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
       {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_output_cast.onnx", 2, {"MatMul", "Transpose"}},
@@ -3926,6 +3914,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
 
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
+    std::cout << test_case.model_uri << std::endl;
     ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
     ASSERT_STATUS_OK(graph.Resolve());
