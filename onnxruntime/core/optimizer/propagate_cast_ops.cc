@@ -188,7 +188,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* node,
 }
 
 // SearchUpstream:
-// Recursively DFS traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
+// ReverseDFS, traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
 // inorder to move an FP16 Cast operation up the graph.
 // Visited float NodeArgs are either in require_cast or require_type_change so that the same
 // nodearg is traversed not more than once.
@@ -466,7 +466,7 @@ static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
 }
 
 // PropagateFP32CastsFromInputsToOutputs
-// This non recursive fusion, checks whether the given node is fp16 safe op and
+// This non-recursive fusion, checks whether the given node is fp16 safe op and
 // whether all floatingpoint inputs are cast to fp32
 // and propagates cast op to the floatingpoint outputs.
 static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
@@ -517,7 +517,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
 }
 
 // PropagateFP16CastsFromOutputsToInputs
-// This non recursive fusion, checks whether the given node is fp16 safe op and
+// This non-recursive fusion, checks whether the given node is fp16 safe op and
 // whether all floatingpoint outputs are cast to fp16
 // and propagates cast op to the floatingpoint inputs.
 static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
@@ -612,75 +612,68 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
     // Remove unnecessary casts
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
-          node->OpType() != "Cast") {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+          node->OpType() == "Cast") {
+        local_modified |= RemoveUnnecessaryCasts(graph, node, removed_nodes, logger);
       }
-      local_modified |= RemoveUnnecessaryCasts(graph, node, removed_nodes, logger);
     }
 
     // Fuse subgraphs, sibling Cast nodes with same input
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+        local_modified |= FuseSiblingCasts(graph, node, removed_nodes, logger);
       }
-      local_modified |= FuseSiblingCasts(graph, node, removed_nodes, logger);
     }
 
     // Propagate FP32 Casts forward
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
-          !IsCastTo(node, TensorProto::FLOAT)) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+          IsCastTo(node, TensorProto::FLOAT)) {
+        local_modified |= PropagateForwards(graph, node, removed_nodes, level_, logger);
       }
-      local_modified |= PropagateForwards(graph, node, removed_nodes, level_, logger);
     }
 
     // Remove back to back Casts, with FLOAT->FLOAT16 followed by FLOAT16->FLOAT, but not the other way.
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
-          !IsCastTo(node, TensorProto::FLOAT)) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+          IsCastTo(node, TensorProto::FLOAT)) {
+        local_modified |= RemoveBackToBackCasts(graph, node, removed_nodes, logger);
       }
-      local_modified |= RemoveBackToBackCasts(graph, node, removed_nodes, logger);
     }
 
     // Propagate FP16 Casts backward
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
-          !IsCastTo(node, TensorProto::FLOAT16)) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+          IsCastTo(node, TensorProto::FLOAT16)) {
+        local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
       }
-      local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
     }
 
     // Propagate FP16 Casts from outputs to inputs
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+        local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
       }
-      local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
     }
 
     // Propagate FP32 Casts from inputs to outputs
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
-      if (node == nullptr ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end()) {
-        continue;
+      if (node != nullptr &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+        local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
       }
-      local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
     }
 
     for (NodeIndex removed_node : removed_nodes) {
