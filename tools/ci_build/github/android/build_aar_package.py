@@ -19,8 +19,11 @@ from util import is_windows  # noqa: E402
 
 # We by default will build all 4 ABIs
 DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
-# Android API 21 is the lowest API version we support
-DEFAULT_ANDROID_MIN_SDK_VER = 21
+
+# Android API levle 24 is the lowest API version officially supported, based on Microsoft 1CS
+# It is possible to build from source using API level 21 and higher as the minimal SDK version
+DEFAULT_ANDROID_MIN_SDK_VER = 24
+
 # Android API 28 is the default target API version for Android builds
 DEFAULT_ANDROID_TARGET_SDK_VER = 28
 
@@ -35,11 +38,6 @@ def _parse_build_settings(args):
         _build_settings_data = json.load(f)
 
     build_settings = {}
-
-    if 'build_flavor' in _build_settings_data:
-        build_settings['build_flavor'] = _build_settings_data['build_flavor']
-    else:
-        raise ValueError('build_flavor is required in the build config file')
 
     if 'build_abis' in _build_settings_data:
         build_settings['build_abis'] = _build_settings_data['build_abis']
@@ -84,11 +82,11 @@ def _build_aar(args):
 
     # Temp dirs to hold building results
     _intermediates_dir = os.path.join(build_dir, 'intermediates')
-    _build_flavor = build_settings['build_flavor']
-    _aar_dir = os.path.join(_intermediates_dir, 'aar', _build_flavor)
-    _jnilibs_dir = os.path.join(_intermediates_dir, 'jnilibs', _build_flavor)
+    _build_config = args.config
+    _aar_dir = os.path.join(_intermediates_dir, 'aar', _build_config)
+    _jnilibs_dir = os.path.join(_intermediates_dir, 'jnilibs', _build_config)
     _base_build_command = [
-        'python3', BUILD_PY, '--config=' + _build_flavor
+        sys.executable, BUILD_PY, '--config=' + _build_config
     ] + build_settings['build_params']
 
     # Build binary for each ABI, one by one
@@ -115,10 +113,10 @@ def _build_aar(args):
             # add double check with os.path.islink
             if os.path.exists(_target_lib_name) or os.path.islink(_target_lib_name):
                 os.remove(_target_lib_name)
-            os.symlink(os.path.join(_build_dir, _build_flavor, lib_name), _target_lib_name)
+            os.symlink(os.path.join(_build_dir, _build_config, lib_name), _target_lib_name)
 
     # The directory to publish final AAR
-    _aar_publish_dir = os.path.join(build_dir, 'aar_out', _build_flavor)
+    _aar_publish_dir = os.path.join(build_dir, 'aar_out', _build_config)
     os.makedirs(_aar_publish_dir, exist_ok=True)
 
     # get the common gradle command args
@@ -165,6 +163,10 @@ def parse_args():
     parser.add_argument(
         "--include_ops_by_config", type=str,
         help="Include ops from config file. See /docs/Reduced_Operator_Kernel_build.md for more information.")
+
+    parser.add_argument("--config", type=str, default="Release",
+                        choices=["Debug", "MinSizeRel", "Release", "RelWithDebInfo"],
+                        help="Configuration to build.")
 
     parser.add_argument('build_settings_file', type=pathlib.Path,
                         help='Provide the file contains settings for building AAR')

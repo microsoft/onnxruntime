@@ -46,7 +46,6 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
 
   const Tensor* split_tensor = ctx->Input<Tensor>(1);
   if (split_tensor != nullptr) {
-    const Tensor* split_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const int64_t* data = split_tensor->template Data<int64_t>();
