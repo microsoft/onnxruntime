@@ -28,7 +28,7 @@
     "install": "prebuild-install -r napi || (tsc && node ./script/build)",
     "prepare": "tsc",
     "test": "mocha ./test/test-main",
-    "prepack": "node ./script/pack-prebuild"
+    "prepack": "node ./script/prepack"
   },
   "keywords": [
     "ONNX",
