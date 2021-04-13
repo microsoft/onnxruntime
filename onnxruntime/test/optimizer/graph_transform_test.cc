@@ -3877,6 +3877,9 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
     int level = 0;                       // Level of optimization
   };
+  std::vector<std::string> allow_matmul = {"MatMul"};
+  std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
+  std::vector<std::string> allow_add_matmul_transpose = {"Add", "MatMul", "Transpose"};
 
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
       // Test fusing back to back casts functionality
@@ -3896,18 +3899,31 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       // 3. The inputs and/or output may be transposed
       // These variations help testing the following functions.
       // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts.onnx", 1, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_output_cast.onnx", 2, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_input_casts.onnx", 1, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_input_casts_output_cast.onnx", 0, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_output_cast.onnx", 2, {"MatMul"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_input_casts.onnx", 1, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts.onnx", 1, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_input_casts_output_cast.onnx", 0, {"MatMul", "Transpose"}},
-      {MODEL_FOLDER "propagate_cast/compute_float_transpose_inputs_transpose_output_output_cast.onnx", 2, {"MatMul", "Transpose"}}};
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose}
+  };
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};

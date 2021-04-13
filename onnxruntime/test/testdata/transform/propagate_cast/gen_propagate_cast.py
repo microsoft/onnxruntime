@@ -117,71 +117,74 @@ def gen_fuse_sibling_casts(model_path):
 
         save(model_path + "_" + type_to_string(type1) + "_" + type_to_string(type2), nodes, inputs, outputs, [])
 
-def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_output, insert_input_casts, insert_output_cast, is_float16):
+def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add):
     nodes = [
         helper.make_node(
             "MatMul",
-            ["transpose_output_0" if transpose_inputs else ("cast_output_0" if insert_input_casts else "input_0"),
-             "transpose_output_1" if transpose_inputs else ("cast_output_1" if insert_input_casts else "input_1")],
+            ["input_transpose_0" if transpose_inputs else ("cast_input_0" if cast_inputs else "input_0"),
+             "input_transpose_1" if transpose_inputs else ("cast_input_1" if cast_inputs else "input_1")],
             ["product"],
             "MatMul_0")
     ]
 
-    if insert_output_cast:
-        output_cast_type = TensorProto.FLOAT if is_float16 else TensorProto.FLOAT16
+    if cast_product:
         nodes.append(helper.make_node(
             "Cast",
-             ["transpose_output_2" if transpose_output else "product"],
-             ["cast_output_2"],
+             ["product_transpose" if transpose_product else "product"],
+             ["product_cast"],
              "Cast_2",
-             to = output_cast_type))
+             to = TensorProto.FLOAT16))
 
-    if insert_input_casts:
-        input_cast_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
+    if cast_inputs:
+        input_cast_type = TensorProto.FLOAT
         nodes.extend([helper.make_node(
             "Cast",
             ["input_0"],
-            ["cast_output_0"],
+            ["cast_input_0"],
             "Cast_0",
-            to = input_cast_type),
+            to = TensorProto.FLOAT),
         helper.make_node(
             "Cast",
             ["input_1"],
-            ["cast_output_1"],
+            ["cast_input_1"],
             "Cast_1",
-            to = input_cast_type)])
+            to = TensorProto.FLOAT)])
 
     if transpose_inputs:
-        nodes.extend([helper.make_node("Transpose", ["cast_output_0" if insert_input_casts else "input_0"], ["transpose_output_0"], "Transpose_0"),
-                      helper.make_node("Transpose", ["cast_output_1" if insert_input_casts else "input_1"], ["transpose_output_1"], "Transpose_1")])
+        nodes.extend([helper.make_node("Transpose", ["cast_input_0" if cast_inputs else "input_0"], ["input_transpose_0"], "Transpose_0"),
+                      helper.make_node("Transpose", ["cast_input_1" if cast_inputs else "input_1"], ["input_transpose_1"], "Transpose_1")])
 
-    if transpose_output:
-        nodes.extend([helper.make_node("Transpose", ["product"], ["transpose_output_2"], "Transpose_2")])
+    if transpose_product:
+        nodes.append(helper.make_node("Transpose", ["product"], ["product_transpose"], "Transpose_2"))
 
-    input_type = (TensorProto.FLOAT if insert_input_casts else TensorProto.FLOAT16) if is_float16 else (TensorProto.FLOAT16 if insert_input_casts else TensorProto.FLOAT)
-    output_type = (TensorProto.FLOAT if insert_output_cast else TensorProto.FLOAT16) if is_float16 else (TensorProto.FLOAT16 if insert_output_cast else TensorProto.FLOAT)
+    if insert_add:
+        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "input_2"], ["sum"], "Add_0"))
+
+    input_type = TensorProto.FLOAT16 if cast_inputs else TensorProto.FLOAT
+    output_type = TensorProto.FLOAT16 if cast_product else TensorProto.FLOAT
     inputs = [
         helper.make_tensor_value_info(
             "input_0", input_type, ['N', 'N']),
         helper.make_tensor_value_info(
             "input_1", input_type, ['N', 'N'])
     ]
+    if insert_add:
+        inputs.append(helper.make_tensor_value_info("input_2", (TensorProto.FLOAT16 if input_type == TensorProto.FLOAT else TensorProto.FLOAT) if cast_inputs != cast_product else input_type, ['N', 'N']))
 
     outputs = [
         helper.make_tensor_value_info(
-            "cast_output_2" if insert_output_cast else ("transpose_output_2" if transpose_output else "product"), output_type, ['N', 'N'])
+            "sum" if insert_add else ("product_cast" if cast_product else ("product_transpose" if transpose_product else "product")), output_type, ['N', 'N'])
     ]
 
-    save(model_path + ("_float16"      if is_float16          else "_float" ) +
-                      ("_transpose_inputs" if transpose_inputs else "")  +
-                      ("_transpose_output" if transpose_output else "")  +
-                      ("_input_casts"  if insert_input_casts  else "") +
-                      ("_output_cast"  if insert_output_cast else ""),
+    save(model_path + ("_transpose_inputs" if transpose_inputs else "")  +
+                      ("_transpose_product" if transpose_product else "")  +
+                      ("_cast_inputs"  if cast_inputs  else "") +
+                      ("_cast_product"  if cast_product else ""),
         nodes, inputs, outputs, [])
 
-for (transpose_inputs, transpose_output, insert_input_casts, insert_output_cast, is_float16) in list(itertools.product([False, True], repeat=5)):
-  if insert_input_casts or insert_output_cast:
-      gen_propagate_cast_test_model("compute", transpose_inputs, transpose_output, insert_input_casts, insert_output_cast, is_float16)
+for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add) in list(itertools.product([False, True], repeat=5)):
+  if cast_inputs or cast_product:
+      gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add)
 
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")

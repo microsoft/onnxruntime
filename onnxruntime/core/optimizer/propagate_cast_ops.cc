@@ -158,7 +158,8 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 }
 
 // RemoveBackToBackCasts
-// Remove FLOAT and FLOAT16 casts back-to-back, only if FLOAT16->FLOAT followed by FLOAT -> FLOAT16
+// Remove FLOAT and FLOAT16 casts back-to-back, only if a first cast is from FLOAT16 to FLOAT
+// and the second cast is from FLOAT to FLOAT16.
 // Condition: The parent cast should have only one output
 // The inputs is Cast to FLOAT16
 static bool RemoveBackToBackCasts(Graph& graph, Node* node,
@@ -166,7 +167,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* node,
                                   const logging::Logger& logger) {
   ORT_ENFORCE(IsCastTo(node, TensorProto::FLOAT));
   bool modified = false;
-  if (node->GetOutputEdgesCount() == 1) {
+  if (graph_utils::CanRemoveNode(graph, *node, logger)) {
     NodeArg* cast_output = node->MutableOutputDefs()[0];
     for (Node* child : graph.GetMutableConsumerNodes(cast_output->Name())) {
       if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
@@ -361,7 +362,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   ORT_ENFORCE(node != nullptr);
   std::unordered_set<NodeArg*> require_cast;
   NodeArg* cast_input = node->MutableInputDefs()[0];
-  std::unordered_set<NodeArg*> require_type_change;
+  std::unordered_set<NodeArg*> require_type_change = {cast_input};
   SearchUpstream(graph, cast_input, require_cast, require_type_change, removed_nodes, level);
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
     // Remove Cast operation
