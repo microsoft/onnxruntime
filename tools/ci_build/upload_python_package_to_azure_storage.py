@@ -48,6 +48,8 @@ if __name__ == "__main__":
     parser.add_argument("--account_key", type=str, help="account key")
     parser.add_argument("--container_name", type=str, help="container name")
 
+    # TODO: figure out a way to secure args.account_key to prevent later code changes
+    # that may accidentally print out it to the console.
     args = parser.parse_args()
 
     upload_whl(args.python_wheel_path, args.account_name, args.account_key, args.container_name)
