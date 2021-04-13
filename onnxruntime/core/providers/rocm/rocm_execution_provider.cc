@@ -58,7 +58,36 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                                        ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
+  if (external_allocator_info.UseExternalAllocator()) {
+    AllocatorCreationInfo default_memory_info(
+        [external_allocator_info](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<ROCMExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free);
+        },
+        device_id,
+        false);
+
+    return CreateAllocator(default_memory_info);
+
+  } else {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<ROCMAllocator>(id, CUDA);
+        },
+        device_id,
+        true,
+        {gpu_mem_limit,
+         static_cast<int>(arena_extend_strategy),
+         -1, -1, -1, false});
+
+    // ROCM malloc/free is expensive so always use an arena
+    return CreateAllocator(default_memory_info);
+  }
+}
+
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit,
+                                                          ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   stream_ = stream;
 
@@ -78,7 +107,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
        -1, -1, -1, false});
 
   // HIP malloc/free is expensive so always use an arena
-  allocator_ = CreateAllocator(default_memory_info);
+  allocator_ = CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -121,38 +150,6 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
-
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMAllocator>(device_id, CUDA);
-      },
-      info_.device_id,
-      true,
-      {info_.gpu_mem_limit,
-       static_cast<int>(info_.arena_extend_strategy),
-       -1, -1, -1, false});
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
-      },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
-  InsertAllocator(CreateAllocator(pinned_memory_info));
-
-  // TODO: this is actually used for the hip kernels which explicitly ask for inputs from CPU.
-  // This will be refactored/removed when allocator and execution provider are decoupled.
-  AllocatorCreationInfo cpu_memory_info(
-      [](int device_id) {
-        return onnxruntime::make_unique<CPUAllocator>(
-            OrtMemoryInfo("HIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                          OrtMemTypeCPUInput));
-      },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -206,7 +203,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy);
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1822,6 +1819,53 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
   return result;
+}
+
+void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  // Try to get a ROCM allocator from allocator manager first
+  // Used to allocate ROCM device memory
+  auto rocm_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
+  if (nullptr == rocm_alloc) {
+    rocm_alloc = CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy, info_.external_allocator_info);
+    allocator_manager->InsertAllocator(rocm_alloc);
+  }
+  TryInsertAllocator(rocm_alloc);
+
+  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy ROCM device memory to CPU
+  // Use pinned memory instead of pageable memory make the data transfer faster
+  // Used by node MemcpyToHost only
+  auto rocm_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == rocm_pinned_alloc) {
+    AllocatorCreationInfo pinned_memory_info(
+        [](OrtDevice::DeviceId device_id) {
+          return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
+    allocator_manager->InsertAllocator(rocm_pinned_alloc);
+  }
+  TryInsertAllocator(rocm_pinned_alloc);
+
+  // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
+  auto rocm_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  if (nullptr == rocm_cpu_alloc) {
+    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+    // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
+    AllocatorCreationInfo cpu_memory_info(
+        [](int device_id) {
+          return onnxruntime::make_unique<CPUAllocator>(
+              OrtMemoryInfo("ROCM_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                            OrtMemTypeCPUInput));
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
+    allocator_manager->InsertAllocator(rocm_cpu_alloc);
+  }
+  TryInsertAllocator(rocm_cpu_alloc);
 }
 
 }  // namespace onnxruntime
