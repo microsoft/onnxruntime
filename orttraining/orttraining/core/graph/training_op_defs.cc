@@ -1834,33 +1834,6 @@ Example 4:
           "The output tensor. Its shape is the same as the input.",
           "T1");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("IsAllFinite")
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .TypeConstraint(
-          "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)"},
-          "Constrain the output to a boolean tensor.")
-      .Input(0, "input", "Input tensors to check.", "V",
-             OpSchema::Variadic)
-      .Output(
-          0,
-          "output",
-          "The output scalar. Its value is true if all input "
-          "tensors are finite. Otherwise, the output value would "
-          "be false.",
-          "T")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-      });
-
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
 )DOC";
