@@ -79,14 +79,14 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         true,
         {gpu_mem_limit,
          static_cast<int>(arena_extend_strategy),
-         -1, -1});
+         -1, -1, -1, false});
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, 
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit,
                                                           ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   stream_ = stream;
