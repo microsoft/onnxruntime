@@ -89,7 +89,7 @@ MlasTrySimpleParallel(
 #pragma omp parallel for
 #endif
         
-    for (ptrdiff_t tid = 0; tid < Iterations; tid ++) {
+    for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
         Work(tid);
     }
 #else

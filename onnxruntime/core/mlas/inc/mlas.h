@@ -327,7 +327,8 @@ MlasGemmBatch(
     const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool);
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 //
 // Buffer packing routines.

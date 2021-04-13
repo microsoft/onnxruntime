@@ -24,6 +24,7 @@ Abstract:
 #include <cmath>
 #include <type_traits>
 #include <stdexcept>
+#include <functional>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -102,8 +103,6 @@ Abstract:
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 #include "core/platform/threadpool.h"
-#else
-#include  <functional>
 #endif
 
 #if defined(_OPENMP)
@@ -780,7 +779,8 @@ void
 MlasTrySimpleParallel(
     MLAS_THREADPOOL* ThreadPool,
     const std::ptrdiff_t Iterations,
-    const std::function<void(std::ptrdiff_t tid)>& Work);
+    const std::function<void(std::ptrdiff_t tid)>& Work
+    );
 
 inline
 ptrdiff_t
