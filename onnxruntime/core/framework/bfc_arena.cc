@@ -465,7 +465,7 @@ Status BFCArena::Shrink() {
     }
 
     if (deallocate_region) {
-      auto shrink_size = region_sizes[i];
+      int64_t shrink_size = static_cast<int64_t>(region_sizes[i]);
       stats_.num_arena_shrinkages += 1;
       stats_.total_allocated_bytes -= shrink_size;
 
