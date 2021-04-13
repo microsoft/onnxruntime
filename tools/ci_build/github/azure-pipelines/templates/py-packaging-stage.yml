@@ -312,18 +312,18 @@ stages:
                 bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
           workingDirectory: $(Build.SourcesDirectory)
 
-      - task: CopyFiles@2
-        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
-          Contents: '**'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
+      # - task: CopyFiles@2
+      #   displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+      #   condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+      #   inputs:
+      #     SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
+      #     Contents: '**'
+      #     TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
-        inputs:
-          ArtifactName: onnxruntime_gpu
+      # - task: PublishBuildArtifacts@1
+      #   displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+      #   inputs:
+      #     ArtifactName: onnxruntime_gpu
 
       - script: |
           sudo apt-get update
