@@ -448,7 +448,7 @@ Status BFCArena::Shrink() {
     }
   }
 
-  int64_t i = 0;
+  size_t i = 0;
   for (void* region_ptr : region_ptrs) {
     bool deallocate_region = true;
     ChunkHandle region_begin_chunk = region_manager_.get_handle(region_ptr);
@@ -465,7 +465,7 @@ Status BFCArena::Shrink() {
     }
 
     if (deallocate_region) {
-      int64_t shrink_size = static_cast<int64_t>(region_sizes[i]);
+      auto shrink_size = region_sizes[i];
       stats_.num_arena_shrinkages += 1;
       stats_.total_allocated_bytes -= shrink_size;
 
