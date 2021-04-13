@@ -52,7 +52,7 @@ static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quan
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
 // Enable or disable using arena for allocating initialized tensor memory. "1": disable; "0": enable. The default is "0".
-static const char* const kOrtSessionOptionsDisableArenaForInitializedTensorMemory = "optimization.disable_arena_for_initialized_tensor_memory";
+static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run

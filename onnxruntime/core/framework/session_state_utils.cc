@@ -57,7 +57,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
-                                             bool disable_arena_for_initialized_tensor_memory_allocation = false) {
+                                             bool use_device_allocator_for_initializers = false) {
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
@@ -74,7 +74,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                              p_tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    if (disable_arena_for_initialized_tensor_memory_allocation && alloc->Info().alloc_type == OrtArenaAllocator) {
+    if (use_device_allocator_for_initializers && alloc->Info().alloc_type == OrtArenaAllocator) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(ReserveUsingArenaFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
@@ -97,7 +97,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     // deserialize to CPU first for non-CPU allocator, then copy
     std::unique_ptr<Tensor> p_deserialize_tensor;
-    if (disable_arena_for_initialized_tensor_memory_allocation && default_cpu_alloc->Info().alloc_type == OrtArenaAllocator) {
+    if (use_device_allocator_for_initializers && default_cpu_alloc->Info().alloc_type == OrtArenaAllocator) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(ReserveUsingArenaFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
@@ -239,10 +239,10 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
-      bool disable_arena_for_initialized_tensor_memory_allocation = session_options.GetConfigOrDefault(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "0") == "1";
+      bool use_device_allocator_for_initializers = session_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr, disable_arena_for_initialized_tensor_memory_allocation);
+                                         data_transfer_mgr, use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

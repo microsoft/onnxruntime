@@ -1444,7 +1444,7 @@ TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
 #endif
 
   // disable using arena for the sole initializer in the model
-  session_options.AddConfigEntry(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
 
   // This is mostly an usage example - if the logging level for the default logger is made INFO (by default it is at WARNING)
   // when the Ort::Env instance is instantiated, logs pertaining to initializer memory being allocated from non-arena memory

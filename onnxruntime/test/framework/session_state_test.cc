@@ -212,7 +212,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Finalize the session state
     SessionOptions so;
     // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
-    so.AddConfigEntry(kOrtSessionOptionsDisableArenaForInitializedTensorMemory, "1");
+    so.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
@@ -224,10 +224,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     AllocatorStats alloc_stats;
     static_cast<BFCArena*>(alloc.get())->GetStats(&alloc_stats);
 
-    // Test that we have made 1 Reserve() call (for allocating memory for the sole initializer in the model)
-    // and that we have made no calls that does an allocation from arena memory (0 calls to Alloc())
-    ASSERT_EQ(alloc_stats.num_allocs, 0);    // no calls to Alloc()
-    ASSERT_EQ(alloc_stats.num_reserves, 1);  // one call to Reserve() for the sole initializer in the model
+    // Assert that we have made 1 Reserve() call (for allocating memory for the sole initializer in the model)
+    ASSERT_EQ(alloc_stats.num_reserves, 1);
   }
 
   // Part 2: Feature turned OFF (i.e.) allocate from arena memory (default behavior)
@@ -273,9 +271,11 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     AllocatorStats alloc_stats;
     static_cast<BFCArena*>(alloc.get())->GetStats(&alloc_stats);
 
-    // Test that we have made no calls to Reserve()
-    ASSERT_EQ(alloc_stats.num_allocs, 1);    // one call to Alloc() for the sole initializer in the model
-    ASSERT_EQ(alloc_stats.num_reserves, 0);  // no calls to Reserve()
+    // Assert that we have made no Reserve() calls
+    ASSERT_EQ(alloc_stats.num_reserves, 0);
+
+    // Assert to ensure an allocation was made for the initializer through the arena allocator (Alloc() was invoked)
+    ASSERT_EQ(alloc_stats.num_allocs, 1);
   }
 }
 

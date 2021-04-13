@@ -238,6 +238,7 @@ void* BFCArena::Reserve(size_t size) {
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
   stats_.num_reserves += 1;
+  stats_.num_allocs += 1;
   stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
   stats_.max_bytes_in_use = std::max<int64_t>(static_cast<int64_t>(stats_.max_bytes_in_use), stats_.bytes_in_use);
   stats_.total_allocated_bytes += size;
