@@ -1281,7 +1281,6 @@ def testLossScalerLegacyAndExperimentalFullCycle():
             old_ls.update_loss_scale(train_step_info.all_finite)
             old_loss_scale = old_ls.loss_scale_
             assert new_ls._stable_steps_count == old_ls.stable_steps_
-            # import pdb; pdb.set_trace()
             assert_allclose(new_loss_scale, old_loss_scale)
 
         # 2000th update without overflow doubles the loss and zero stable steps until max_loss_scale is reached

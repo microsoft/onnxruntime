@@ -971,14 +971,18 @@ if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
   target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
-onnxruntime_add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
+file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/mlas/unittest/*.h"
+  "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
+)
+onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
 if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock onnxruntime_mlas onnxruntime_common)
 if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
 endif()

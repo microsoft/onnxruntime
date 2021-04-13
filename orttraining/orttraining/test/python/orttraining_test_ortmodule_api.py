@@ -476,7 +476,7 @@ def test_input_requires_grad_saved(device):
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device, requires_grad=True) + 1
     model(x)
-    assert model._execution_manager(model._is_training())._input_names_require_grad == ['input1']
+    assert model._execution_manager(model._is_training())._input_info.require_grad_names == ['input1']
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_backward_creates_input_grad(device):
@@ -1797,5 +1797,118 @@ def test_with_torch_no_grad_context():
     assert output_pt is not None
     # Assert that the output from torch is the same as the one from ORTModule
     assert torch.equal(output, output_pt)
-
     assert output.grad is None and output_pt.grad is None
+
+def test_unused_layer():
+    class Net(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(Net, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            return out
+
+    device = torch.device('cuda')
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+
+    x = torch.randn(N, D_in, device=device)
+    output = ort_model(x)
+    assert output is not None
+
+def test_forward_dynamic_args():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    model = ORTModule(model)
+    args_size1 = [torch.randn(N, D_in, device=device)]*4
+    args_size2 = [torch.randn(N, D_in, device=device)]*3
+    args_size3 = [torch.randn(N, D_in, device=device)]*5
+
+    # Make sure model runs without any exception
+    for i in range(2):
+
+        # Test both train and inference mode
+        if i % 2 == 0:
+            model.train()
+        else:
+            model.eval()
+
+        # Train model with one set of input
+        for _ in range(10):
+            output = model(*args_size1)
+            assert output is not None
+        hash_args_size1 = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_args_size1 is not None
+
+        # Decrease number of inputs and train some more
+        for _ in range(10):
+            output = model(*args_size2)
+            assert output is not None
+        hash_args_size2 = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_args_size2 != hash_args_size1
+
+        # Increase number of inputs and train some more
+        for _ in range(10):
+            output = model(*args_size3)
+            assert output is not None
+        hash_args_size3 = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_args_size3 != hash_args_size2
+
+
+def test_forward_dynamic_kwargs():
+    one = torch.FloatTensor([1])
+    model = NeuralNetSimplePositionalAndKeywordArguments()
+    model = ORTModule(model)
+
+    # Make sure model runs without any exception
+    for i in range(2):
+
+        # Test both train and inference mode
+        if i % 2 == 0:
+            model.train()
+        else:
+            model.eval()
+
+        # Train model with positional argument x only
+        for _ in range(10):
+            output = model(one)
+            assert output is not None
+        hash_x = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_x is not None
+
+        # Train with x and y as inputs
+        for _ in range(10):
+            output = model(one,y=one)
+            assert output is not None
+        hash_x_y = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_x_y != hash_x
+
+        # Train with x and z as inputs
+        for _ in range(10):
+            output = model(one,z=one)
+            assert output is not None
+        hash_x_z = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_x_z != hash_x_y
+
+        # Train with x, y and z as inputs
+        for _ in range(10):
+            output = model(one,y=one, z=one)
+            assert output is not None
+        hash_x_y_z = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_x_y_z != hash_x_z
+
+        # Return to original input with x as input
+        for _ in range(10):
+            output = model(one)
+            assert output is not None
+        hash_x2 = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
+        assert hash_x2 != hash_x_y_z
+        assert hash_x2 == hash_x
