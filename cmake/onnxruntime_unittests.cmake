@@ -522,7 +522,7 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   )
 
 #without auto initialize onnxruntime
-add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
+onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -551,7 +551,7 @@ file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
 
 list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -580,7 +580,7 @@ if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 if (onnxruntime_USE_CUDA)
-  add_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
+  onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
 endif()
 
@@ -697,7 +697,7 @@ if(WIN32)
   endif()
 endif()
 
-add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
@@ -722,7 +722,7 @@ onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
-  add_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
+  onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
   target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
@@ -884,7 +884,7 @@ endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
-  add_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
+  onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
   target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
   set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -999,7 +999,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
 endif()
 
-add_library(custom_op_library SHARED ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+onnxruntime_add_static_library(custom_op_library SHARED ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)

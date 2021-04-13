@@ -62,7 +62,7 @@ file(GLOB onnxruntime4j_native_src
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
 # Build the JNI library
-add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+onnxruntime_add_static_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
 set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
 # Tell the JNI code about the requested providers

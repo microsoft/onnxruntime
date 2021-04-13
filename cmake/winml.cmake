@@ -151,7 +151,7 @@ add_dependencies(winml_api_native_internal RESTORE_NUGET_PACKAGES)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_telemetry STATIC
+onnxruntime_add_static_library(winml_lib_telemetry STATIC
   ${winml_lib_telemetry_dir}/inc/TelemetryEvent.h
   ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfig.h
   ${winml_lib_common_dir}/inc/WinMLTelemetryHelper.h
@@ -222,7 +222,7 @@ if (onnxruntime_USE_DML)
 endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
+onnxruntime_add_static_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
 
 # Compiler options
 target_compile_features(winml_lib_ort PRIVATE cxx_std_17)
@@ -297,7 +297,7 @@ if (onnxruntime_USE_DML)
     )
 endif()
 
-add_library(winml_adapter ${winml_adapter_files})
+onnxruntime_add_static_library(winml_adapter ${winml_adapter_files})
 
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1")
@@ -339,7 +339,7 @@ list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_image STATIC
+onnxruntime_add_static_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/inc/ConverterResourceStore.h
   ${winml_lib_api_image_dir}/inc/D3DDeviceCache.h
   ${winml_lib_api_image_dir}/inc/DeviceHelpers.h
@@ -426,7 +426,7 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_api STATIC
+onnxruntime_add_static_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/impl/FeatureCompatibility.h
   ${winml_lib_api_dir}/impl/IData.h
   ${winml_lib_api_dir}/impl/IMapFeatureValue.h
@@ -540,7 +540,7 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_api_experimental STATIC
+onnxruntime_add_static_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
@@ -630,7 +630,7 @@ endif(onnxruntime_USE_DML)
 # Add winml_lib_common
 ###########################
 
-add_library(winml_lib_common STATIC
+onnxruntime_add_static_library(winml_lib_common STATIC
   ${winml_lib_common_dir}/inc/common.h
   ${winml_lib_common_dir}/inc/CommonDeviceHelpers.h
   ${winml_lib_common_dir}/inc/cppwinrt_onnx.h
@@ -692,7 +692,7 @@ set_source_files_properties(
   TRUE)
 
 # Add library
-add_library(winml_dll SHARED
+onnxruntime_add_static_library(winml_dll SHARED
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated/module.g.excl.cpp
   ${winml_dll_dir}/winml.def
   ${winml_dll_dir}/winml.rc
