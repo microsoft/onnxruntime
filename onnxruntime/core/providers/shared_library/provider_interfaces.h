@@ -38,6 +38,7 @@ class LongformerAttentionBase;
 class AttentionBase;
 class Group;
 class PassThrough;
+class YieldOp;
 }  // namespace contrib
 
 template <typename T, typename TResult>
@@ -423,6 +424,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) = 0;
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, const std::vector<std::pair<int, int>>& aliases) = 0;
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
+  virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;
 
@@ -572,6 +574,7 @@ struct ProviderHost {
   virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;
 
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
+  virtual uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) = 0;
   virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
 
   // SessionState
@@ -753,6 +756,7 @@ struct ProviderHost {
   virtual void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) = 0;
   virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
+  virtual Status YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
 #endif
 };
 
@@ -1154,6 +1158,11 @@ struct KernelDefBuilder {
     return *this;
   }
 
+  KernelDefBuilder& ExternalOutputs() {
+    g_host->KernelDefBuilder__ExternalOutputs(this);
+    return *this;
+  }
+
   std::unique_ptr<KernelDef> Build() {
     return g_host->KernelDefBuilder__Build(this);
   }
@@ -1445,6 +1454,7 @@ struct OpKernelInfo {
   const KernelDef& GetKernelDef() const { return g_host->OpKernelInfo__GetKernelDef(this); }
 
   uint32_t GetInputCount() const { return g_host->OpKernelInfo__GetInputCount(this); }
+  uint32_t GetOutputCount() const { return g_host->OpKernelInfo__GetOutputCount(this); }
 
   const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
 

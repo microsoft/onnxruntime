@@ -352,6 +352,7 @@ std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/group.h"
+#include "orttraining/training_ops/cpu/controlflow/yield.h"
 #endif
 
 namespace onnxruntime {
@@ -452,6 +453,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorSh
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {
   return g_host->AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
 }
+
+Status YieldOp::Compute(OpKernelContext* context) const { return g_host->YieldOp__Compute(this, context); }
 
 }  // namespace contrib
 #endif

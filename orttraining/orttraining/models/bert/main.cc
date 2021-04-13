@@ -610,7 +610,7 @@ void setup_training_params(BertParameters& params) {
         0,
         nullptr};
 
-    if (params.cuda_mem_limit_in_gb > 0) {
+    if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
@@ -884,4 +884,3 @@ int main(int argc, char* argv[]) {
 #endif
   return 0;
 }
-

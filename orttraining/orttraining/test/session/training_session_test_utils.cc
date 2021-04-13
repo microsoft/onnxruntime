@@ -246,4 +246,3 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 }  // namespace training_session_test_utils
 }  // namespace test
 }  // namespace onnxruntime
-

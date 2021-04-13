@@ -8,6 +8,10 @@
 
 namespace onnxruntime {
 namespace cuda {
+
+// Initialize the singleton instance
+HalfGemmOptions HalfGemmOptions::instance;
+
 namespace test {
 
 TEST(CudaGemmOptionsTest, DefaultOptions) {

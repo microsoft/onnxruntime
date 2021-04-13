@@ -10,7 +10,7 @@ ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
                         1,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
-                            .OutputMemoryType<OrtMemTypeCPUInput>(1)
+                            .OutputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         ConcatTraining);
 
@@ -81,4 +81,3 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
 }
 }  // namespace cuda
 }  // namespace onnxruntime
-

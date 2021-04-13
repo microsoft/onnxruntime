@@ -18,7 +18,7 @@
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
-#elif USE_ROCM
+#ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #endif
 #endif
@@ -1896,4 +1896,3 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
 }  // namespace test
 }  // namespace onnxruntime
-

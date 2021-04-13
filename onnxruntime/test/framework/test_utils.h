@@ -114,4 +114,3 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into
 
 }  // namespace test
 }  // namespace onnxruntime
-
