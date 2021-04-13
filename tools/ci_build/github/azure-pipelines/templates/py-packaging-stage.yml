@@ -236,15 +236,6 @@ stages:
           #   PythonVersion: '3.9'
       steps:
 
-      # - task: AzureCLI@2
-      #   inputs:
-      #     azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      #     scriptType: 'bash'
-      #     scriptLocation: 'inlineScript'
-      #     inlineScript: |
-      #       az storage blob download --container-name '$web' --account-name onnxruntimepackages --account-key $(orttrainingpackagestorageaccountkey) --name onnxruntime_nightly.html --file ./onnxruntime_nightly.html
-      #     condition: succeededOrFailed()
-
       - checkout: self
         clean: true
         submodules: recursive
