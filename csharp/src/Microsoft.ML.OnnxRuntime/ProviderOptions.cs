@@ -94,15 +94,19 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         private bool disposed_ = false; // To detect redundant calls
 
-        // Public implementation of Dispose pattern callable by consumers.
+        /// <summary>
+        /// Public implementation of Dispose pattern callable by consumers.
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
             // TODO: uncomment the following line if the finalizer is overridden above.
             // GC.SuppressFinalize(this);
         }
-
-        // Protected implementation of Dispose pattern.
+        /// <summary>
+        /// Protected implementation of Dispose pattern.
+        /// </summary>
+        /// <param name="disposing">indicates whether the method call comes from a Dispose method (its value is true) or from a finalizer (its value is false)</param>
         protected virtual void Dispose(bool disposing)
         {
             if (disposed_)
