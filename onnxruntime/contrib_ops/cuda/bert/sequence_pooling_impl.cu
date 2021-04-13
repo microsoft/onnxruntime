@@ -66,7 +66,6 @@ __global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_le
         local_max = (float)value > (float)local_max ? value : local_max;
       }
     }
-
     output[output_offset] = local_max;
   }
 
