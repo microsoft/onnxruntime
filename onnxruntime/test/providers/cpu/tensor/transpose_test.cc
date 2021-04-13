@@ -613,6 +613,7 @@ TEST(TransposeOpTest, Transpose0312) {
 }
 #endif
 
+// Test crafted with specific shape to trigger bug reported in GH issue : 7316
 TEST(TransposeOpTest, FloatDataPerm0213) {
   std::vector<int64_t> input_shape({1, 1, 128, 1});
   std::vector<float> input_vals(128, 1);
