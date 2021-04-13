@@ -636,7 +636,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
-
+        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_SPARSE_LT=" + ("ON" if args.use_cusparse_lt else "OFF"),
