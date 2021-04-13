@@ -184,7 +184,7 @@ class ORTModule(torch.nn.Module):
                     # Use IO binding
                     # it is found for megatron training, the training input is non-contiguous.
                     contiguous_inputs = []
-                    for idx, _input in enumerate(inputs):    
+                    for idx, _input in enumerate(inputs):
                         if _input is None:
                             raise ValueError("find some of input is None")
                         elif not _input.is_contiguous():
@@ -467,6 +467,12 @@ class ORTModule(torch.nn.Module):
         '''
         # User inputs
         non_none_inputs = [inp for inp in inputs if inp is not None]
+        if len(non_none_inputs) != len(self._onnx_graphs_info.user_input_names):
+            # temporary for fp16 training, ignore the attention_mask input, which is not used in fp16 training
+            # todo: should we handle this in exporter?
+            print("fp16, remove attention_mask input because it it not used")
+            del non_none_inputs[2]
+
         result = []
         for input_idx, name in enumerate(self._onnx_graphs_info.user_input_names):
             inp = None
@@ -546,4 +552,17 @@ class ORTModule(torch.nn.Module):
                 index += 1
 
         onnx.save(my_model, 'my_model_new.onnx')
+        initializer_names = [i.name for i in my_model.graph.initializer]
+        exported_model_input_count = [i for i in my_model.graph.input if i.name not in initializer_names]
+        if len(sample_inputs_copy) != len(exported_model_input_count):
+            print("WARINING: exported model has inputs {}, while training inputs are {}".format(exported_model_input_count, sample_inputs_copy))
+            # for fp16 training, workaround the naming mismatch between exported model parameters and pytorch named parameters.
+            for p in my_model.graph.initializer:
+                p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
+            for p in my_model.graph.input:
+                p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
+            for node in my_model.graph.node:
+                for i, _ in enumerate(node.input):
+                    node.input[i] = node.input[i].replace("_base_module.language_model", "_base_module.module.language_model")
+        onnx.save(my_model, 'my_model_rectified.onnx')
         return my_model
