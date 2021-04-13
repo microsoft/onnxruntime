@@ -62,7 +62,7 @@ class IAllocator {
   const OrtMemoryInfo& Info() const { return memory_info_; };
 
   /**
-     Some allocators may optionally choose to do some cleanup after every Run() call
+     Some allocators may optionally choose to do some stateful cleanup after every Run() call
   */
   virtual Status OnRunEnd() { return Status::OK(); }
 
