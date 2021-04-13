@@ -54,49 +54,49 @@ export declare namespace InferenceSession {
     /**
      * The intra OP threads number.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     intraOpNumThreads?: number;
 
     /**
      * The inter OP threads number.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     interOpNumThreads?: number;
 
     /**
      * The optimization level.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     graphOptimizationLevel?: 'disabled'|'basic'|'extended'|'all';
 
     /**
      * Whether enable CPU memory arena.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     enableCpuMemArena?: boolean;
 
     /**
      * Whether enable memory pattern.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     enableMemPattern?: boolean;
 
     /**
      * Execution mode.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     executionMode?: 'sequential'|'parallel';
 
     /**
      * Log ID.
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     logId?: string;
 
@@ -104,7 +104,7 @@ export declare namespace InferenceSession {
      * Log severity level. See
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
   }
@@ -161,14 +161,14 @@ export declare namespace InferenceSession {
      * Log severity level. See
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
 
     /**
      * A tag for the Run() calls using this
      *
-     * This setting is available only in Node.js binding or WebAssembly backend
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     tag?: string;
   }
@@ -196,6 +196,7 @@ export interface InferenceSession {
    *
    * @param feeds Representation of the model input. See type description of `InferenceSession.InputType` for detail.
    * @param options Optional. A set of options that controls the behavior of model inference.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
   run(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
