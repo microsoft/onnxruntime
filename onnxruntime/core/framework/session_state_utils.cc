@@ -39,13 +39,13 @@ static common::Status ReserveUsingArenaFromShapeAndType(const TensorShape& tenso
 
   int64_t shape_size = tensor_shape.Size();
   if (shape_size < 0)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "shape.Size() must >=0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape.Size() must >=0");
 
   p_data = nullptr;
   if (shape_size > 0) {
     SafeInt<size_t> mem_size = 0;
     if (!arena_alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed memory size calculation");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
 
     p_data = static_cast<IArenaAllocator*>(arena_alloc.get())->Reserve(mem_size);
   }
