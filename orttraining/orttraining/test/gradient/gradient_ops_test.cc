@@ -2431,7 +2431,7 @@ TEST(GradientCheckerTest, TileGrad) {
   {
     TensorInfo x_info({2, 4}, true);
     TensorInfo repeat_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1,2,3,4,5,6,7,8}, {2,2}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2, 2}};
 
     TensorInfo y_info({4, 8}, true);
 
@@ -2443,7 +2443,7 @@ TEST(GradientCheckerTest, TileGrad) {
   {
     TensorInfo x_info({2}, true);
     TensorInfo repeat_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1,2}, {4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2}, {4}};
 
     TensorInfo y_info({8}, true);
 
@@ -2453,11 +2453,11 @@ TEST(GradientCheckerTest, TileGrad) {
 
   // 3D input
   {
-    TensorInfo x_info({2,2,3}, true);
+    TensorInfo x_info({2, 2, 3}, true);
     TensorInfo repeat_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1,2,3,4,5,6,7,8,9,10,11,12}, {2,3,4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {2, 3, 4}};
 
-    TensorInfo y_info({4,6,12}, true);
+    TensorInfo y_info({4, 6, 12}, true);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
@@ -2465,11 +2465,11 @@ TEST(GradientCheckerTest, TileGrad) {
 
   // 3D input - repeating 1s
   {
-    TensorInfo x_info({2,2,3}, true);
+    TensorInfo x_info({2, 2, 3}, true);
     TensorInfo repeat_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1,2,3,4,5,6,7,8,9,10,11,12}, {1,1,1}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 1}};
 
-    TensorInfo y_info({2,2,3}, true);
+    TensorInfo y_info({2, 2, 3}, true);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);

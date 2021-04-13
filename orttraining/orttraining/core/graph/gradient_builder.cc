@@ -1502,46 +1502,68 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
 
 // Computes gradient of Tile Operation.
 // Tile is defined as follows:
-// Y = Tile(X, repeat) , say, 
-// X shape : M,N,K
-// repeat shape : a,b,c
+// Y = Tile(X, repeat), say,
+// X shape : M, N, K
+// repeat shape : a, b, c
 // Y shape : aM, bN, cK
 // To compute the gradient of y, we first reshape the gradient of y as,
-// Y^_grad = Reshape(Y_grad(a,M,b,N,c,K))
+// Y^_grad = Reshape(Y_grad(a, M, b, N, c, K))
 // then perform reducesum on the reshaped Y^_grad on its even indices to get X_grad.
-// even_indices = [0,2,4...]
-// X_grad = ReduceSum(Y^_grad, even_indices) 
+// even_indices = [0, 2, 4...]
+// X_grad = ReduceSum(Y^_grad, even_indices)
 
 IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<NodeDef> result = {};
-  result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")}));  
 
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")}));
   std::vector<int64_t> axes_values = {1};
-  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)})); // M,N,K
-  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)})); //a,b,c
+  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));  // M, N, K
+  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));                 //a, b, c
   result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")},
-                           {MakeAttribute("axis", int64_t(1))}));  // [[a,M], [b,N], [c,K]]
+                           {MakeAttribute("axis", int64_t(1))}));  // [[a, M], [b, N], [c, K]]
   std::vector<int64_t> const_shape_minusone{-1};
   NodeDef const_shape_minusone_node = ConstantVectorNode(const_shape_minusone, Name("const_shape_minusone"));
   result.push_back(const_shape_minusone_node);
   result.push_back(NodeDef("Reshape", {IA("concated_dims_T"), const_shape_minusone_node.output_args[0]},
-                           {IA("concated_dims_flatten")}));  // flatten [a,M,b,N,c,K]
+                           {IA("concated_dims_flatten")}));  // flatten [a, M, b, N, c, K]
 
   result.push_back(NodeDef("Reshape", {GO(0), IA("concated_dims_flatten")}, {IA("reshape_tile_grad_op")}));
 
-  NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
-  NodeDef delta_node = ConstantScalarNode(int64_t{2}, {}, Name("delta_int64"));
-  result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")}));  // get num dimensions of the flattened grad op = 6
-  result.push_back(start_node);
-  result.push_back(delta_node);
-  result.push_back(NodeDef("Range", {start_node.output_args[0], IA("limit"), delta_node.output_args[0]}, {IA("range_even_indices")}));
+  std::vector<Dimension> orig_shape, repeat_shape;
+  bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
+  bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
 
-  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
-  result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-                           {IA("reshape_tile_grad_op"), IA("range_even_indices")},
-                           {GI(0)},
-                           {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+  if (orig_has_shape || repeat_has_shape) {
+    int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
+    limit = 2 * limit;
 
+    std::vector<int64_t> even_indices;
+
+    for (int64_t i = 0; i < limit; i = i + 2) {
+      even_indices.push_back(i);
+    }
+    NodeDef even_indices_node = ConstantVectorNode(even_indices, Name("even_indices"));
+    result.push_back(even_indices_node);
+    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+    result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("reshape_tile_grad_op"), even_indices_node.output_args[0]},
+                             {GI(0)},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+
+  } else {
+    NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
+    NodeDef delta_node = ConstantScalarNode(int64_t{2}, {}, Name("delta_int64"));
+    result.push_back(NodeDef("Size", {IA("concated_dims_flatten")}, {IA("limit")}));  // get num dimensions of the flattened grad op = 6
+    result.push_back(start_node);
+    result.push_back(delta_node);
+    result.push_back(NodeDef("Range", {start_node.output_args[0], IA("limit"), delta_node.output_args[0]}, {IA("range_even_indices")}));
+
+    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+    result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("reshape_tile_grad_op"), IA("range_even_indices")},
+                             {GI(0)},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+  }
   return result;
 }
 
