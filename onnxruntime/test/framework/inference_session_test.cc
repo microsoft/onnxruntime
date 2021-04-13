@@ -854,9 +854,9 @@ static void TestBindHelper(const std::string& log_str,
     epi.device_id = 0;
     EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+    ROCMExecutionProviderInfo epi;
+    epi.device_id = 0;
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1957,9 +1957,14 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   AllocatorStats alloc_stats;
   static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+#ifdef ENABLE_TRAINING
+  // In training builds, initializers ae allocated using the Reserve() call which
+  // will not cause an arena extension
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
+#else
   // The arena would have made an extension to accommodate the sole initializer on CUDA
-  ASSERT_EQ(alloc_stats.num_allocs, 1);
   ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
+#endif
 
   // no shrinkages should have occurred during this time (sanity check)
   ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
@@ -1970,12 +1975,17 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   RunModel(session_object, run_options);
 
   static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
   // The arena would have made 2 more extensions as part of servicing memory requests within Run()
   // 1) - To take the solitary feed to cuda memory
   // 2) - Allocate output of the solitary node
-  // So we should have seen 3 total extensions by now
-  ASSERT_EQ(alloc_stats.num_allocs, 3);
+#ifdef ENABLE_TRAINING
+  // In training - that is a total of 2 extensions
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+  // In inferencing - that is a total of 3 extensions
   ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
 
   // The arena would have shrunk both extensions it made as part of Run() - because these allocations
   // would have been left unused after Run() itself
