@@ -84,7 +84,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cuda_options)
         {
             CheckCudaExecutionProviderDLLs();
-            SessionOptions options = new SessionOptions();
 
             OrtCUDAProviderOptionsNative cuda_options_native;
             cuda_options_native.device_id = cuda_options.device_id;
@@ -94,9 +93,12 @@ namespace Microsoft.ML.OnnxRuntime
             cuda_options_native.do_copy_in_default_stream = cuda_options.do_copy_in_default_stream;
             cuda_options_native.has_user_compute_stream = 0;
             cuda_options_native.user_compute_stream = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options_native));
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
-            return options;
+            using (SessionOptions options = new SessionOptions())
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options_native));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+                return options;
+            }
         }
 
         /// <summary>
@@ -669,6 +671,39 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         #endregion
+
+        #region IDisposable Support
+        private bool disposed_ = false; // To detect redundant calls
+
+        // Public implementation of Dispose pattern callable by consumers.
+        public void Dispose()
+        {
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+
+        // Protected implementation of Dispose pattern.
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposed_)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                // TODO: dispose managed state (managed objects).
+            }
+
+            // free unmanaged resources(unmanaged objects)
+            NativeMethods.OrtReleaseSessionOptions(handle);
+            handle = IntPtr.Zero;
+
+            disposed_ = true;
+        }
+        #endregion
+
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of

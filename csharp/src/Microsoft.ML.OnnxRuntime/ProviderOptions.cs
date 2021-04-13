@@ -91,15 +91,46 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+        #region IDisposable Support
+        private bool disposed_ = false; // To detect redundant calls
+
+        // Public implementation of Dispose pattern callable by consumers.
+        public void Dispose()
+        {
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+
+        // Protected implementation of Dispose pattern.
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposed_)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                // TODO: dispose managed state (managed objects).
+            }
+
+            // free unmanaged resources(unmanaged objects)
+            handle = IntPtr.Zero;
+
+            disposed_ = true;
+        }
+        #endregion
+
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of SessionOptions
+        /// the native instance of ProviderOptions
         /// </summary>
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-            handle = IntPtr.Zero;
+            Dispose();
             return true;
         }
 
