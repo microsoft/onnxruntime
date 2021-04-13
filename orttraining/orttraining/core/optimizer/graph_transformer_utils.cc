@@ -39,6 +39,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -93,6 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
