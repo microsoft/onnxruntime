@@ -2324,7 +2324,6 @@ Return true if all elements are true and false otherwise.
           "Constrain input and output types to all numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
       });
 }
 }  // namespace training
