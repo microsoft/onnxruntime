@@ -117,7 +117,10 @@ def gen_fuse_sibling_casts(model_path):
 
         save(model_path + "_" + type_to_string(type1) + "_" + type_to_string(type2), nodes, inputs, outputs, [])
 
-def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add):
+def flip_type(flip, type):
+    return (TensorProto.FLOAT16 if type == TensorProto.FLOAT else TensorProto.FLOAT) if flip else type
+
+def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum):
     nodes = [
         helper.make_node(
             "MatMul",
@@ -157,11 +160,8 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
     if transpose_product:
         nodes.append(helper.make_node("Transpose", ["product"], ["product_transpose"], "Transpose_2"))
 
-    if insert_add:
-        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "input_2"], ["sum"], "Add_0"))
-
     input_type = TensorProto.FLOAT16 if cast_inputs else TensorProto.FLOAT
-    output_type = TensorProto.FLOAT16 if cast_product else TensorProto.FLOAT
+    output_type = flip_type(cast_sum, flip_type(cast_product, flip_type(cast_inputs, input_type)))
     inputs = [
         helper.make_tensor_value_info(
             "input_0", input_type, ['N', 'N']),
@@ -169,22 +169,34 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             "input_1", input_type, ['N', 'N'])
     ]
     if insert_add:
-        inputs.append(helper.make_tensor_value_info("input_2", (TensorProto.FLOAT16 if input_type == TensorProto.FLOAT else TensorProto.FLOAT) if cast_inputs != cast_product else input_type, ['N', 'N']))
+        add_input_type = (TensorProto.FLOAT16 if input_type == TensorProto.FLOAT else TensorProto.FLOAT) if cast_inputs != cast_product else input_type
+        inputs.append(helper.make_tensor_value_info("input_2", add_input_type, ['N', 'N']))
+        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "input_2"], ["sum"], "Add_0"))
+        if cast_sum:
+            nodes.append(helper.make_node(
+                "Cast",
+                ["sum"],
+                ["cast_sum"],
+                "Cast_3",
+                to = TensorProto.FLOAT16 if add_input_type == TensorProto.FLOAT else TensorProto.FLOAT))
 
     outputs = [
         helper.make_tensor_value_info(
-            "sum" if insert_add else ("product_cast" if cast_product else ("product_transpose" if transpose_product else "product")), output_type, ['N', 'N'])
+            "cast_sum" if cast_sum else "sum" if insert_add else ("product_cast" if cast_product else ("product_transpose" if transpose_product else "product")), output_type, ['N', 'N'])
     ]
 
     save(model_path + ("_transpose_inputs" if transpose_inputs else "")  +
                       ("_transpose_product" if transpose_product else "")  +
                       ("_cast_inputs"  if cast_inputs  else "") +
-                      ("_cast_product"  if cast_product else ""),
+                      ("_cast_product"  if cast_product else "") +
+                      ("_cast_sum"  if cast_sum else ""),
         nodes, inputs, outputs, [])
 
-for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add) in list(itertools.product([False, True], repeat=5)):
-  if cast_inputs or cast_product:
-      gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add)
+for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum) in list(itertools.product([False, True], repeat=6)):
+    cast_sum = False if not insert_add else cast_sum
+    cast_sum = False if cast_inputs != cast_product else cast_sum
+    if cast_inputs or cast_product or cast_sum:
+        gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum)
 
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")

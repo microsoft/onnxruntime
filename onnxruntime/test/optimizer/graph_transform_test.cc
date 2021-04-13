@@ -3879,7 +3879,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   };
   std::vector<std::string> allow_matmul = {"MatMul"};
   std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
-  std::vector<std::string> allow_add_matmul_transpose = {"Add", "MatMul", "Transpose"};
+  std::vector<std::string> allow_matmul_transpose_add = {"Add", "MatMul", "Transpose"};
 
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
       // Test fusing back to back casts functionality
@@ -3899,6 +3899,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       // 3. The inputs and/or output may be transposed
       // These variations help testing the following functions.
       // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
+
       {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
@@ -3922,7 +3923,15 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose}
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose_add},
   };
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
@@ -3930,7 +3939,6 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
 
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
     std::shared_ptr<Model> p_model;
-    std::cout << test_case.model_uri << std::endl;
     ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
     ASSERT_STATUS_OK(graph.Resolve());
