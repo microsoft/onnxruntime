@@ -18,7 +18,9 @@ TEST(InvokerTest, Basic) {
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
       &logger_id); 
-  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), logging_manager->DefaultLogger());
+  std::unique_ptr<Environment> env;
+  Environment::Create(std::move(logging_manager), env);
+  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
