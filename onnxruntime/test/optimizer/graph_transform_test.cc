@@ -116,7 +116,7 @@ TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
 }
 
 TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
-  auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test_partition_combine.onnx";
+  auto model_uri = MODEL_FOLDER "mlp_megatron_basic_test_partition_combine.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
