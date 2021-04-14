@@ -13,8 +13,14 @@ export interface SessionHandler {
   readonly inputNames: string[];
   readonly outputNames: string[];
 
-  run(feeds: {[name: string]: OnnxValue}, fetches: {[name: string]: OnnxValue|null},
-      options: InferenceSession.RunOptions): Promise<{[name: string]: OnnxValue}>;
+  run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+}
+
+export declare namespace SessionHandler {
+  type FeedsType = {[name: string]: OnnxValue};
+  type FetchesType = {[name: string]: OnnxValue | null};
+  type ReturnType = {[name: string]: OnnxValue};
 }
 
 /**
