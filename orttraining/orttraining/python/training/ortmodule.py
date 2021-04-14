@@ -176,10 +176,11 @@ class ORTModule(torch.nn.Module):
                     for idx, input in enumerate(inputs):
                         forward_inputs.append(_ortvalue_from_torch_tensor(input))
 
-                    outputs = self._training_session.run_forward(forward_inputs, state)
+                    forward_outputs = C.OrtValueVector()
+                    self._training_session.run_forward(forward_inputs, forward_outputs, state)
 
                     user_outputs = tuple(_ortvalue_to_torch_tensor(
-                        forward_output) for forward_output in outputs)
+                        forward_output) for forward_output in forward_outputs)
                     # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                     # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                     ctx.set_materialize_grads(False)
@@ -229,7 +230,8 @@ class ORTModule(torch.nn.Module):
                     backward_inputs = C.OrtValueVector()
                     for idx, input in enumerate(contiguous_grad_outputs):
                         backward_inputs.append(_ortvalue_from_torch_tensor(input))
-                    backward_outputs = self._training_session.run_backward(backward_inputs, ctx.run_info.state)
+                    backward_outputs = C.OrtValueVector()
+                    self._training_session.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
 
                     # Return input and initializer gradients
                     num_user_input_grads = len(self._input_names_require_grad)

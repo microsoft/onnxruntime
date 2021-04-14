@@ -39,21 +39,20 @@ TrainingAgent::TrainingAgent(InferenceSession& session, const std::vector<std::s
 
 TrainingAgent::~TrainingAgent(){};
 
-std::vector<OrtValue> TrainingAgent::RunForward(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state) {
+void TrainingAgent::RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(0);
   state.SetProgramCounterEnd(fw_program_counter_end_);
-  return RunCore(feeds, state, *fw_feeds_fetches_manager_);
+  RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_);
 }
 
-std::vector<OrtValue> TrainingAgent::RunBackward(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state) {
+void TrainingAgent::RunBackward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_ + 1);
   state.SetProgramCounterEnd(bw_program_counter_end_);
-  return RunCore(feeds, state, *bw_feeds_fetches_manager_);
+  RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_);
 }
 
-std::vector<OrtValue> TrainingAgent::RunCore(std::vector<OrtValue>& feeds, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
+void TrainingAgent::RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
-  std::vector<OrtValue> fetches;
   fetches.resize(fetches_size);
   for (size_t index = 0; index < fetches_size; index += 1) {
     fetches[index] = {};
@@ -64,8 +63,6 @@ std::vector<OrtValue> TrainingAgent::RunCore(std::vector<OrtValue>& feeds, Parti
   if (!status.IsOK()) {
     throw std::runtime_error("Error in execution: " + status.ErrorMessage());
   }
-
-  return fetches;
 }
 
 }  // namespace training

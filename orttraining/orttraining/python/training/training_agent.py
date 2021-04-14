@@ -62,16 +62,16 @@ class TrainingAgent(object):
         "Return an onnxruntime.IOBinding object`."
         return IOBinding(self._inference_session)
 
-    def run_forward(self, feeds, state):
+    def run_forward(self, feeds, fetches, state):
         """
          Compute the forward subgraph for given feeds and fetches.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
         """
-        return self._training_agent.run_forward(feeds, state)
+        self._training_agent.run_forward(feeds, fetches, state)
 
-    def run_backward(self, feeds, state):
+    def run_backward(self, feeds, fetches, state):
         """
          Compute the backward subgraph for given feeds and fetches.
          :param backward_output_grads: Output gradients for backward.
         """
-        return self._training_agent.run_backward(feeds, state)
+        self._training_agent.run_backward(feeds, fetches, state)
