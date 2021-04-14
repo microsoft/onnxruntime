@@ -155,30 +155,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_DML(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
-        }
-
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="deviceId">device identification, default empty string</param>
-        public void AppendExecutionProvider_OpenVINO(string deviceId = "")
-        {
-            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
-            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
-            }
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="deviceId">device identification</param>
-        public void AppendExecutionProvider_Tensorrt(int deviceId)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
-        }
+        }       
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
