@@ -44,6 +44,7 @@ function packPrebuild() {
                                                 path: i.path,
                                                 name: path.relative(ROOT_FOLDER, i.path).replace(/\\/g, '/'),
                                                 size: i.stats.size,
+                                                // eslint-disable-next-line no-bitwise
                                                 mode: i.stats.mode | parseInt('444', 8) | parseInt('222', 8),
                                                 gid: i.stats.gid,
                                                 uid: i.stats.uid
