@@ -804,7 +804,7 @@ void ResizeImpl(
             reinterpret_cast<CubicMappingInfo*>(dims_mapping));
         return;
       }
-    case UpsampleMode::LINEAR:
+    case UpsampleMode::NN:
 	  ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
   }
 }
