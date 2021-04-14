@@ -62,9 +62,6 @@ if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
-endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
