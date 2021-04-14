@@ -81,51 +81,6 @@ export function warmup(): void {
   }
 }
 
-// This function check whether 2 tensors should be considered as 'match' or not
-export function assertTensorEqual(actual: Tensor, expected: Tensor): void {
-  assert(typeof actual === 'object');
-  assert(typeof expected === 'object');
-
-  assert(Array.isArray(actual.dims));
-  assert(Array.isArray(expected.dims));
-
-  const actualDims = actual.dims;
-  const actualType = actual.type;
-  const expectedDims = expected.dims;
-  const expectedType = expected.type;
-
-  assert.strictEqual(actualType, expectedType);
-  assert.deepStrictEqual(actualDims, expectedDims);
-
-  assertDataEqual(actualType, actual.data, expected.data);
-}
-
-export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType): void {
-  switch (type) {
-    case 'float32':
-    case 'float64':
-      assertFloatEqual(
-          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array);
-      break;
-
-    case 'uint8':
-    case 'int8':
-    case 'uint16':
-    case 'int16':
-    case 'uint32':
-    case 'int32':
-    case 'uint64':
-    case 'int64':
-    case 'bool':
-    case 'string':
-      assert.deepStrictEqual(actual, expected);
-      break;
-
-    default:
-      throw new Error('type not implemented or not supported');
-  }
-}
-
 export function assertFloatEqual(
     actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): void {
   const THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
@@ -168,6 +123,51 @@ export function assertFloatEqual(
     // if code goes here, it means both (abs/rel) check failed.
     assert.fail(`actual[${i}]=${a}, expected[${i}]=${b}`);
   }
+}
+
+export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType): void {
+  switch (type) {
+    case 'float32':
+    case 'float64':
+      assertFloatEqual(
+          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array);
+      break;
+
+    case 'uint8':
+    case 'int8':
+    case 'uint16':
+    case 'int16':
+    case 'uint32':
+    case 'int32':
+    case 'uint64':
+    case 'int64':
+    case 'bool':
+    case 'string':
+      assert.deepStrictEqual(actual, expected);
+      break;
+
+    default:
+      throw new Error('type not implemented or not supported');
+  }
+}
+
+// This function check whether 2 tensors should be considered as 'match' or not
+export function assertTensorEqual(actual: Tensor, expected: Tensor): void {
+  assert(typeof actual === 'object');
+  assert(typeof expected === 'object');
+
+  assert(Array.isArray(actual.dims));
+  assert(Array.isArray(expected.dims));
+
+  const actualDims = actual.dims;
+  const actualType = actual.type;
+  const expectedDims = expected.dims;
+  const expectedType = expected.type;
+
+  assert.strictEqual(actualType, expectedType);
+  assert.deepStrictEqual(actualDims, expectedDims);
+
+  assertDataEqual(actualType, actual.data, expected.data);
 }
 
 export function loadTensorFromFile(pbFile: string): Tensor {

@@ -18,7 +18,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
     this.outputNames = this.#inferenceSession.outputNames;
   }
 
-  dispose(): Promise<void> {
+  async dispose(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -26,8 +26,8 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   readonly outputNames: string[];
 
 
-  run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+  async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
+      Promise<SessionHandler.ReturnType> {
     return new Promise((resolve, reject) => {
       process.nextTick(() => {
         try {
@@ -42,13 +42,11 @@ class OnnxruntimeSessionHandler implements SessionHandler {
 }
 
 class OnnxruntimeBackend implements Backend {
-  init(): Promise<void> {
+  async init(): Promise<void> {
     return Promise.resolve();
   }
 
-  createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
     return new Promise((resolve, reject) => {
       process.nextTick(() => {

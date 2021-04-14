@@ -53,12 +53,9 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  * @returns a promise that resolves to the backend.
  */
 export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
-  if (backendHints.length === 0) {
-    backendHints = backendsSortedByPriority;
-  }
-
+  const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
   const errors = [];
-  for (const backendName of backendHints) {
+  for (const backendName of backendNames) {
     const backendInfo = backends[backendName];
     if (backendInfo) {
       if (backendInfo.initialized) {

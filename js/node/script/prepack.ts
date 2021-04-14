@@ -4,11 +4,6 @@ import * as path from 'path';
 import {pack} from 'tar-stream';
 import * as zlib from 'zlib';
 
-// update version of dependency "onnxruntime-common" before packing
-updatePackageJson();
-// pack prebuilds
-packPrebuild();
-
 function updatePackageJson() {
   const commonPackageJsonPath = path.join(__dirname, '..', '..', 'common', 'package.json');
   const nodePackageJsonPath = path.join(__dirname, '..', 'package.json');
@@ -52,8 +47,6 @@ function packPrebuild() {
 
   console.log(`=== start to pack prebuild: ${tarName}`);
 
-  packNextFile();
-
   function packNextFile(): void {
     const nextEntry = entries.shift();
     if (nextEntry) {
@@ -65,4 +58,11 @@ function packPrebuild() {
       tarStream.finalize();
     }
   }
+
+  packNextFile();
 }
+
+// update version of dependency "onnxruntime-common" before packing
+updatePackageJson();
+// pack prebuilds
+packPrebuild();

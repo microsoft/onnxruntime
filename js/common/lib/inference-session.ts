@@ -49,7 +49,7 @@ export declare namespace InferenceSession {
      * An execution provider option can be a string indicating the name of the execution provider,
      * or an object of corresponding type.
      */
-    executionProviders?: readonly SessionOptions.ExecutionProviderConfig[];
+    executionProviders?: readonly ExecutionProviderConfig[];
 
     /**
      * The intra OP threads number.
@@ -109,45 +109,43 @@ export declare namespace InferenceSession {
     logSeverityLevel?: 0|1|2|3|4;
   }
 
-  export namespace SessionOptions {
-    //#region execution providers
+  //#region execution providers
 
-    // Currently, we have the following backends to support execution providers:
-    // Backend Node.js binding: supports "cpu" and "cuda".
-    // Backend WebAssembly: supports 'wasm'.
-    // Backend ONNX.js: supports 'webgl'.
-    interface ExecutionProviderOptionMap {
-      cpu: CpuExecutionProviderOption;
-      cuda: CudaExecutionProviderOption;
-      wasm: WebAssemblyExecutionProviderOption;
-      webgl: WebGLExecutionProviderOption;
-    }
-
-    type ExecutionProviderName = keyof ExecutionProviderOptionMap;
-    type ExecutionProviderConfig =
-        ExecutionProviderOptionMap[ExecutionProviderName]|ExecutionProviderOption|ExecutionProviderName|string;
-
-    export interface ExecutionProviderOption {
-      readonly name: string;
-    }
-    export interface CpuExecutionProviderOption extends ExecutionProviderOption {
-      readonly name: 'cpu';
-      useArena?: boolean;
-    }
-    export interface CudaExecutionProviderOption extends ExecutionProviderOption {
-      readonly name: 'cuda';
-      deviceId?: number;
-    }
-    export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
-      readonly name: 'wasm';
-      // TODO: add flags
-    }
-    export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
-      readonly name: 'webgl';
-      // TODO: add flags
-    }
-    //#endregion
+  // Currently, we have the following backends to support execution providers:
+  // Backend Node.js binding: supports "cpu" and "cuda".
+  // Backend WebAssembly: supports 'wasm'.
+  // Backend ONNX.js: supports 'webgl'.
+  interface ExecutionProviderOptionMap {
+    cpu: CpuExecutionProviderOption;
+    cuda: CudaExecutionProviderOption;
+    wasm: WebAssemblyExecutionProviderOption;
+    webgl: WebGLExecutionProviderOption;
   }
+
+  type ExecutionProviderName = keyof ExecutionProviderOptionMap;
+  type ExecutionProviderConfig =
+      ExecutionProviderOptionMap[ExecutionProviderName]|ExecutionProviderOption|ExecutionProviderName|string;
+
+  export interface ExecutionProviderOption {
+    readonly name: string;
+  }
+  export interface CpuExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'cpu';
+    useArena?: boolean;
+  }
+  export interface CudaExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'cuda';
+    deviceId?: number;
+  }
+  export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'wasm';
+    // TODO: add flags
+  }
+  export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webgl';
+    // TODO: add flags
+  }
+  //#endregion
 
   //#endregion
 
