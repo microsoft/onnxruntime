@@ -49,11 +49,8 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
     return true;
   }
   
-  // skip if this is subgraph - case like Scan (as parent graph) would fail UTs
-  if (graph.IsSubgraph())
-    return false;
-
   // check the input nodearg of Identity - it must only have one consumer, which is the Identity itself
+
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
   if (p_input_node == nullptr)
     return false;
@@ -67,7 +64,7 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
     }
   }
   
-  // skip if the src arg is a graph output
+  // skip if the src arg is also a graph output
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
     return false;
 

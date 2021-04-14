@@ -115,6 +115,70 @@ TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
+TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
+  auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test_partition_combine.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 8);
+  ASSERT_TRUE(op_to_count["Add"] == 8);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // after CommonSubexpressionElimination, Add would have 1 output def and 4 edges
+  // each edge would share the same input node arg 0. Thus after execution, only one of the 4 outputs
+  // has data. Thus skip.
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 4);
+  ASSERT_TRUE(op_to_count["Add"] == 5);
+}
+
+TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
+  auto model_uri = MODEL_FOLDER "keras2coreml_GRU_ImageNet.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Identity's input is also graph output. Thus skip.
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+}
+
+TEST_F(GraphTransformationTests, IdentityInSubgraphAndInputIsGraphOutputNotEliminated) {
+  auto model_uri = MODEL_FOLDER "scan9_sum.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+
+  // tip: to dump the subgraph, can use python tool - dump_subgraphs.py 
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Identity's input in subgraph is also graph output. Thus skip.
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+}
+
 TEST_F(GraphTransformationTests, DropoutElimination) {
   auto model_uri = MODEL_FOLDER "dropout.onnx";
   std::shared_ptr<Model> model;
