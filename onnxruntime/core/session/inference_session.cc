@@ -1527,7 +1527,7 @@ Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<O
                              PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

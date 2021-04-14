@@ -526,7 +526,6 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
   ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
->>>>>>> f62db1a09c401420e6399b7a400e8722d9883786
       .def("initialize",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
               const OrtModuleGraphBuilderConfiguration& config) {
