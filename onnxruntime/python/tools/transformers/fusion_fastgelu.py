@@ -209,17 +209,19 @@ class FusionFastGelu(Fusion):
 
     def fuse_3(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
-            This pattern is from onnx model from Megatron.
-            Fuse Gelu with tanh into one node:
-                +------------Mul (B=0.7978845834732056) -----+
-                |                                            |
-                +---------------------------+                |
-                |                           |                |
-                |                           v                v
-                [root] ---> Mul ------------>  Mul --> Add --> Mul --> Tanh --> Add(B=1) --> Mul-->
-                |    B=0.044714998453855515)        (B=1)                                   |
-                |                                                                           |
-                +-------------Mul (B=0.5)---------------------------------------------------+
+            OpenAI's gelu implementation, also used in Megatron:
+               Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1.0 + 0.044715 * x * x)))
+
+            Fuse subgraph into a FastGelu node:
+                +------------ Mul (B=0.79788456) -------------------+
+                |                                                   |
+                +-------------------------------+                   |
+                |                               |                   |
+                |                               v                   v
+              [root] --> Mul (B=0.044715) --> Mul --> Add(B=1) --> Mul --> Tanh --> Add(B=1) --> Mul-->
+                |                                                                                 ^
+                |                                                                                 |
+                +-----------> Mul (B=0.5) --------------------------------------------------------+
             """
         if tanh_node.output[0] not in input_name_to_nodes:
             return
@@ -263,7 +265,7 @@ class FusionFastGelu(Fusion):
         mul_7978 = self.model.match_parent(mul_before_tanh, 'Mul', None, output_name_to_node)
         if mul_7978 is None:
             return
-        k = self.model.find_constant_input(mul_7978, 0.7978845834732056)
+        k = self.model.find_constant_input(mul_7978, 0.79788456)
         if k < 0:
             return
         if mul_7978.input[0 if k == 1 else 1] != root_input:
@@ -283,7 +285,7 @@ class FusionFastGelu(Fusion):
         mul_0447 = self.model.match_parent(mul_before_add_1, 'Mul', another, output_name_to_node)
         if mul_0447 is None:
             return
-        m = self.model.find_constant_input(mul_0447, 0.044714998453855515)
+        m = self.model.find_constant_input(mul_0447, 0.044715)
         if m < 0:
             return
 
