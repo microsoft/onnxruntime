@@ -290,6 +290,9 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
       }
     }
   }
+  if (graph.IsOutput(node_arg) && require_cast.find(node_arg) == require_cast.end()) {
+    require_cast.insert(node_arg);
+  }
 }
 
 // ConcatNames
