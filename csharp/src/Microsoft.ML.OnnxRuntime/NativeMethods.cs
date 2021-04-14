@@ -185,7 +185,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
         public IntPtr SessionOptionsAppendExecutionProvider_ROCM;
-        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO;
         public IntPtr SetGlobalDenormalAsZero;
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
@@ -566,13 +565,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
-                                                    IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);

@@ -791,28 +791,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds OpenVINO as an execution backend.
-     *
-     * @param deviceId The id of the OpenVINO execution device.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addOpenVINO(String deviceId) throws OrtException {
-      checkClosed();
-      addOpenVINO(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
-    }
-
-    /**
-     * Adds Nvidia's TensorRT as an execution backend.
-     *
-     * @param deviceNum The id of the CUDA device.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addTensorrt(int deviceNum) throws OrtException {
-      checkClosed();
-      addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
-    }
-
-    /**
      * Adds Android's NNAPI as an execution backend. Uses the default empty flag.
      *
      * @throws OrtException If there was an error in native code.
@@ -982,12 +960,6 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)
-        throws OrtException;
-
-    private native void addOpenVINO(long apiHandle, long nativeHandle, String deviceId)
-        throws OrtException;
-
-    private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
     private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)

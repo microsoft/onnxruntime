@@ -394,40 +394,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addOpenVINO
- * Signature: (JJLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addOpenVINO
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring deviceIDString) {
-    (void)jobj;
-  #ifdef USE_OPENVINO
-    const char* deviceID = (*jniEnv)->GetStringUTFChars(jniEnv, deviceIDString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_OpenVINO((OrtSessionOptions*) handle, deviceID));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,deviceIDString,deviceID);
-  #else
-    (void)apiHandle;(void)handle;(void)deviceIDString; // Parameters used when OpenVINO is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with OpenVINO support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addTensorrt
- * Signature: (JJI)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTensorrt
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
-    (void)jobj;
-  #ifdef USE_TENSORRT
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tensorrt((OrtSessionOptions*) handle, deviceNum));
-  #else
-    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when TensorRT is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TensorRT support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addNnapi
  * Signature: (JJI)V
  */

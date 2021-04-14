@@ -112,12 +112,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 SetDllDirectory(null);
 
 #endif
-#if USE_OPENVINO
-                opt.AppendExecutionProvider_OpenVINO();
-#endif
-#if USE_TENSORRT
-                opt.AppendExecutionProvider_Tensorrt(0);
-#endif
 #if USE_MIGRAPHX
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
@@ -2355,12 +2349,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
-#endif
-#if USE_OPENVINO
-            ,"OrtSessionOptionsAppendExecutionProvider_OpenVINO"
-#endif
-#if USE_TENSORRT
-            ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
 #endif
 #if USE_MIGRAPHX
             ,"OrtSessionOptionsAppendExecutionProvider_MIGraphX"
