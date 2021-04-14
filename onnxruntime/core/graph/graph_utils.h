@@ -213,6 +213,21 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 */
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
 
+/** Finalize the fusion of two or more nodes which are being replaced with two or more nodes.
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
+    Conceptually multiple nodes are being combined, and post-fusion will produce output/s with the same names
+    as the last node in 'nodes', and be connected to the same downstream nodes.
+
+    The input edges to the first node in 'nodes' will be moved to replacement_node_start. No other input edges are moved.
+    The output definitions and edges from the last node in 'nodes' will be moved to replacement_node_end.
+    All nodes in 'nodes' will be removed.
+*/
+void FinalizeNodeFusion(Graph& graph,
+                        const std::vector<std::reference_wrapper<Node>>& nodes,
+                        Node& replacement_node_start,
+                        Node& replacement_node_end);
+
 /** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.
 */
