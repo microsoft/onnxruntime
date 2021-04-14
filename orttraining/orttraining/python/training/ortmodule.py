@@ -14,6 +14,7 @@ import io
 import logging
 import onnx
 import onnxruntime
+import os
 import torch
 import inspect
 import numpy as np

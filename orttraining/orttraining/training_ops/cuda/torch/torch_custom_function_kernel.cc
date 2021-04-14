@@ -104,7 +104,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   }
 
   // arg_positions[i] is the position index for the i-th tensor input.
-  std::vector<int64_t> arg_positions(inputs.size());
+  std::vector<int64_t> arg_positions;
   // Search for empty slots for tensors.
   // The i-th empty slot is assigned the i-th input tensor.
   for (size_t i = 0; i < occupied.size(); ++i) {
