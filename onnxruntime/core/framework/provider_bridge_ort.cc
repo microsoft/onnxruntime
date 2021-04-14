@@ -41,6 +41,7 @@ void Foo() {}
 #include "core/providers/cpu/math/einsum.h"
 #include "core/providers/cpu/math/cumsum.h"
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
+#include "core/providers/cpu/object_detection/roialign.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
@@ -500,7 +501,7 @@ struct ProviderHostImpl : ProviderHost {
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
-  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) {
+  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) override {
     return p->TryFindKernel(node, exec_provider, out);
   }
 
@@ -735,7 +736,7 @@ struct ProviderHostImpl : ProviderHost {
   bool TileOp__IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) override { return TileOp::IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies); }
 
   // ROI
-  Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) override { return CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr); }
+  Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) override { return onnxruntime::CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr); }
 
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
   Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
