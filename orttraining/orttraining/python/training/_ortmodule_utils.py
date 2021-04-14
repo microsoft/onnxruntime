@@ -13,16 +13,21 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
 
-def _ortvalue_to_torch_tensor(ortvalue):
+def _ortvalue_to_torch_tensor(ortvalue, inner = False):
     # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
     # and convert the config to torch.uint8 tensor duing from_dlpack().
     # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
-    torch_tensor = from_dlpack(ortvalue.to_dlpack())
+    if inner:
+        torch_tensor = from_dlpack(ortvalue._ortvalue.to_dlpack())
+    else:
+        torch_tensor = from_dlpack(ortvalue.to_dlpack())
     return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
-
-def _ortvalue_from_torch_tensor(torch_tensor):
-    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
+def _ortvalue_from_torch_tensor(torch_tensor, inner = False):
+    if inner:
+        return OrtValue(C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool))
+    else:
+        return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
 
 def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
     gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
@@ -67,3 +72,11 @@ def get_device_from_module(module):
         # Model doesn't have a device set to any of the model parameters
         pass
     return device
+
+def _create_iobinding(io_binding, inputs, model, device, inner = False):
+    '''Creates IO binding for a `model` inputs and output'''
+    for idx, value_info in enumerate(model.graph.input):
+        io_binding.bind_ortvalue_input(value_info.name, _ortvalue_from_torch_tensor(inputs[idx], inner))
+
+    for value_info in model.graph.output:
+        io_binding.bind_output(value_info.name, device.type, device_id=_utils.get_device_index(device))

@@ -5,6 +5,8 @@
 
 from . import _ortmodule_utils as _utils, _ortmodule_io as _io
 from ._ortmodule_graph_execution_manager import GraphExecutionManager, _run_forward
+from onnxruntime.capi import _pybind_state as C
+from . import _utils as U
 
 import onnx
 import onnxruntime
@@ -21,7 +23,7 @@ class TrainingManager(GraphExecutionManager):
         super().__init__(model)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
     
-    def get_ort_device_type(device):
+    def _get_ort_device_type(self, device):
         device = device.lower()
         if device == 'cuda':
             return C.OrtDevice.cuda()
@@ -131,7 +133,7 @@ class TrainingManager(GraphExecutionManager):
                     backward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
 
                 backward_outputs = C.OrtValueVector()
-                self._training_session.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
 
                 # Return input and initializer gradients
                 num_user_input_grads = len(self._input_info.require_grad_names)
@@ -160,12 +162,6 @@ class TrainingManager(GraphExecutionManager):
                     else:
                         results.append(None)
 
-                # The OrtValue has a shared_ptr to the data.
-                # At this point there are two shared_ptrs to the data, one through the
-                # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
-                # The following call clears the iobinding output, reducing the use_count to 1,
-                # so that once torch finishes computation on the DLpack tensors, the memory can be freed.
-                training_io_binding.clear_binding_outputs()
                 return tuple(results)
 
         return _io.populate_user_output_from_schema_and_outputs(self._module_output_schema,
@@ -198,16 +194,16 @@ class TrainingManager(GraphExecutionManager):
             fw_feed_names.append(value_info.name)
         fw_outputs_device_info = []
         for idx in range(len(self._graph_info.user_output_names)):
-            fw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(
-                self._device.type), C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
+            fw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
+            C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         bw_fetches_names = []
         for idx, value_info in enumerate(self._optimized_onnx_model.graph.output):
             bw_fetches_names.append(value_info.name)
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
-            bw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(
-                self._device.type), C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
+            bw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
+            C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                                                     session_options, providers, provider_options,
