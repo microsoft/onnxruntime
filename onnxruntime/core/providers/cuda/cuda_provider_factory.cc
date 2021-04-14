@@ -44,7 +44,7 @@ namespace onnxruntime {
 struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
-    auto cuda_err = cudaGetDeviceCount(&num_devices);
+    auto cuda_err = ::cudaGetDeviceCount(&num_devices);
     if (cuda_err != cudaSuccess) {
       return CreateStatus(ORT_FAIL, "Failed to set device id since cudaGetDeviceCount failed.");
     }
@@ -113,8 +113,28 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     }
   }
 
-  // Used only by slice_concatenate_test.cc
-  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice); }
+  // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
+  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice)); }
+  // Used by onnxruntime_pybind_state.cc
+  void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost)); }
+
+  int cudaGetDeviceCount() override {
+    int num_devices = 0;
+    CUDA_CALL_THROW(::cudaGetDeviceCount(&num_devices));
+    return num_devices;
+  }
+
+  void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) {
+    info = CUDAExecutionProviderInfo::FromProviderOptions(options);
+  }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const CUDAExecutionProviderInfo& info) override {
+    return std::make_shared<CUDAProviderFactory>(info);
+  }
+
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info) override {
+    return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info);
+  }
 
 } g_info;
 

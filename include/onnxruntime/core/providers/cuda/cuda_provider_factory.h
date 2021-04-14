@@ -4,9 +4,15 @@
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
+#include "core/framework/provider_options.h"
+
 namespace onnxruntime {
 class IAllocator;
 class IDataTransfer;
+struct IExecutionProviderFactory;
+struct CUDAExecutionProviderInfo;
+enum class ArenaExtendStrategy : int32_t;
+struct CUDAExecutionProviderExternalAllocatorInfo;
 }  // namespace onnxruntime
 
 struct ProviderInfo_CUDA {
@@ -25,6 +31,12 @@ struct ProviderInfo_CUDA {
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
+  virtual void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) = 0;
+  virtual int cudaGetDeviceCount() = 0;
+  virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
+
+  virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
+  virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info) = 0;
 };
 
 extern "C" {

@@ -454,8 +454,6 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
   return g_host->AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
 }
 
-Status YieldOp::Compute(OpKernelContext* context) const { return g_host->YieldOp__Compute(this, context); }
-
 }  // namespace contrib
 #endif
 
@@ -467,6 +465,7 @@ std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const Loop::Con
 namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
+Status YieldOp::Compute(OpKernelContext* context) const { return g_host->YieldOp__Compute(this, context); }
 }  // namespace contrib
 #endif
 
