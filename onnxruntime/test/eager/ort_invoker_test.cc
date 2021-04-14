@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "core/eager/ort_kernel_invoker.h"
+#include "core/common/logging/sinks/clog_sink.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/framework/test_utils.h"
 
@@ -11,7 +12,13 @@ namespace test {
 
 TEST(InvokerTest, Basic) {
   std::unique_ptr<IExecutionProvider> cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
-  ORTInvoker kernel_invoker(std::move(cpu_execution_provider));
+  const std::string logger_id{"InvokerTest"};
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+      logging::Severity::kVERBOSE, false,
+      logging::LoggingManager::InstanceType::Default,
+      &logger_id); 
+  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), logging_manager->DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};

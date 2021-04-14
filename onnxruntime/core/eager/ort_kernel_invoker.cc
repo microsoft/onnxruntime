@@ -4,28 +4,11 @@
 #include "core/eager/ort_kernel_invoker.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
 #include "core/graph/model.h"
 #include "core/framework/op_kernel.h"
 #include "core/session/ort_env.h"
 
 namespace onnxruntime {
-
-std::once_flag init_flag;
-std::unique_ptr<Environment> ort_env;
-
-ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider)
-  : execution_provider_(std::move(execution_provider)) {
-  std::call_once(init_flag, [&]{
-    std::string logger_id{"ORTInvoker"};
-    auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
-      std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
-      logging::Severity::kVERBOSE, false,
-      logging::LoggingManager::InstanceType::Default,
-      &logger_id);
-    Environment::Create(std::move(logging_manager), ort_env);
-  });
-}
 
 common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   //optional inputs / outputs?
@@ -35,7 +18,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   const std::string domain,
                                   const int /*version*/) {
   //create a graph
-  Model model("test", false, ort_env->GetLoggingManager()->DefaultLogger());
+  Model model("test", false, logger_);
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
@@ -81,7 +64,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   }
 
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, ort_env->GetLoggingManager()->DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger_);
   ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
   return frame.GetOutputs(outputs);
