@@ -13,7 +13,7 @@
 #include "orttraining/core/agent/training_agent.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
-#include "orttraining/core/framework/module_gradient_graph_builder.h"
+#include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
@@ -501,52 +501,57 @@ void addObjectMethodsForTraining(py::module& m) {
         agent->RunBackward(feeds, fetches, *state);
       });
 
-  py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
-      m, "ModuleGradientGraphBuilderConfiguration",
-      R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
-  module_gradient_graph_builder_config.def(py::init())
-      .def_readwrite("initializer_names", &ModuleGradientGraphBuilderConfiguration::initializer_names)
-      .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
-      .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad",
-                     &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
+  py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
+      m, "OrtModuleGraphBuilderConfiguration",
+      R"pbdoc(Configuration information for module graph builder.)pbdoc");
+  module_graph_builder_config.def(py::init())
+      .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
+      .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
+      .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
+      .def_readwrite("use_invertible_layernorm_grad", &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph);
 
-  py::class_<TrainingGraphInfo> training_graph_info(m, "TrainingGraphInfo",
-                                                    R"pbdoc(The information of split graphs for frontend.)pbdoc");
-  training_graph_info.def(py::init())
-      .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
-      .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
-      .def_readwrite("initializer_names", &TrainingGraphInfo::initializer_names)
-      .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)
-      .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
-      .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
-      .def_readwrite("output_grad_indices_non_differentiable", &TrainingGraphInfo::output_grad_indices_non_differentiable)
-      .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape)
-      .def_readwrite("loss_gradient_names", &TrainingGraphInfo::loss_gradient_names);
+  py::class_<GraphInfo> graph_info(m, "GraphInfo",
+                                      R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  graph_info.def(py::init())
+      .def_readwrite("user_input_names", &GraphInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names", &GraphInfo::initializer_names)
+      .def_readwrite("initializer_names_to_train", &GraphInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &GraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("user_output_names", &GraphInfo::user_output_names)
+      .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
+      .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
+      .def_readwrite("loss_gradient_names", &GraphInfo::loss_gradient_names);
 
-  py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
-  module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
+  py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
+  ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
+>>>>>>> f62db1a09c401420e6399b7a400e8722d9883786
       .def("initialize",
-           [](ModuleGradientGraphBuilder* module_gradient_graph_builder, const py::bytes& serialized_model,
-              const ModuleGradientGraphBuilderConfiguration& config) {
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
+              const OrtModuleGraphBuilderConfiguration& config) {
              std::istringstream buffer(serialized_model);
-             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Initialize(buffer, config));
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
            })
       .def("build",
-           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build());
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build());
            })
       .def("build",
-           [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder,
               const std::vector<std::vector<int64_t>>& input_shapes) {
-             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build(&input_shapes));
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
            })
-      .def("get_training_model",
-           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-             return py::bytes(module_gradient_graph_builder->GetGradientModel());
+      .def("get_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetModel());
            })
-      .def("get_training_graph_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-        return module_gradient_graph_builder->GetTrainingGraphInfo();
+      .def("get_inference_optimized_model",
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+           })
+      .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
+        return ortmodule_graph_builder->GetGraphInfo();
       });
 }
 

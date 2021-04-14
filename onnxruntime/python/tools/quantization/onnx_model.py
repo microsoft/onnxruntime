@@ -261,13 +261,13 @@ class ONNXModel:
         deps_count = [0]*len(self.nodes()) # dependency count of each node
         deps_to_nodes = {} # input to node indice
         for node_idx, node in enumerate(self.nodes()):
-            deps_count[node_idx] = len(node.input)
+            # CANNOT use len(node.input) directly because input can be optional
+            deps_count[node_idx] = sum(1 for _ in node.input if _ )
             for input_name in node.input:
                 if input_name not in deps_to_nodes:
                     deps_to_nodes[input_name] = [node_idx]
                 else:
                     deps_to_nodes[input_name].append(node_idx)
-
 
         # initialize sorted_nodes
         sorted_nodes = []

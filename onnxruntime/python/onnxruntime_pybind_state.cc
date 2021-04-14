@@ -619,7 +619,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   CUDAExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = gpu_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
@@ -643,7 +643,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               : [&]() {
                   ROCMExecutionProviderInfo info{};
                   info.device_id = cuda_device_id;
-                  info.cuda_mem_limit = gpu_mem_limit;
+                  info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.external_allocator_info = external_allocator_info;
                   return info;

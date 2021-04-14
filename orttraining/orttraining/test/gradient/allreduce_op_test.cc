@@ -434,11 +434,11 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
 std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
   CUDAExecutionProviderInfo info;
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(training::MPIContext::GetInstance().GetLocalRank());
-  size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
-  cuda_mem_limit = static_cast<size_t>(1 * 1024 * 1024 * 1024);
+  size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
+  gpu_mem_limit = static_cast<size_t>(1 * 1024 * 1024 * 1024);
 
   info.device_id = device_id;
-  info.cuda_mem_limit = cuda_mem_limit;
+  info.gpu_mem_limit = gpu_mem_limit;
   info.arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
   return onnxruntime::make_unique<CUDAExecutionProvider>(info);
 }

@@ -98,7 +98,8 @@
         "^test_scatter_elements_with_negative_indices", // Does not support negative indices
         "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_neg"
+        "^test_neg",
+        "^test_nllloss.*"
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",
@@ -165,7 +166,24 @@
         "^test_softmax_*", // Does not support opset-13 yet
         "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
-        "^test_neg"
+        "^test_neg",
+        "^test_loop11",
+        "^test_loop13_seq",
+        "^test_if",
+        "^test_if_seq",
+        "^test_sequence_insert_at_back",
+        "^test_sequence_insert_at_front",
+        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+        "^test_maxpool_with_argmax_2d_precomputed_pads", //Disabled as it throws segfault
+        "^test_resize_downsample_scales_cubic", // Runs but there's accuracy mismatch
+        "^test_resize_downsample_scales_linear", // Runs but there's accuracy mismatch
+        "^test_softmax_axis_0", // Runs but there's accuracy mismatch
+        "^test_softmax_axis_1", // Runs but there's accuracy mismatch
+        "^test_softmax_default_axis", // Runs but there's accuracy mismatch
+        "^test_training_dropout_default_mask", // Runs but there's accuracy mismatch
+        "^test_training_dropout_mask", // Runs but there's accuracy mismatch
+        "^test_training_dropout_default" // Runs but there's accuracy mismatch
+
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

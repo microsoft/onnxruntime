@@ -175,8 +175,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
+                                         gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(conv_attrs_.group)));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -330,6 +330,7 @@ Status CudnnConvolutionDescriptor::Set(
     const std::vector<int64_t>& pads,
     const std::vector<int64_t>& strides,
     const std::vector<int64_t>& dilations,
+    int groups,
     cudnnConvolutionMode_t mode,
     cudnnDataType_t data_type) {
   if (!desc_)
@@ -344,6 +345,10 @@ Status CudnnConvolutionDescriptor::Set(
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
   }
 
+  // This piece of code is copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // Setting math_type to CUDNN_DATA_FLOAT for half input
+  cudnnDataType_t math_type = data_type;
+  if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
       gsl::narrow_cast<int>(rank),
@@ -351,7 +356,16 @@ Status CudnnConvolutionDescriptor::Set(
       stride_dims.data(),
       dilation_dims.data(),
       mode,
-      data_type));
+      math_type));
+
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
+
+  // Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // See Note [behavior of cudnnFind and cudnnGet] at /pytorch/aten/src/ATen/native/cudnn/Conv_v7.cpp
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
+  if (data_type == CUDNN_DATA_HALF) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  }
 
   return Status::OK();
 }

@@ -27,6 +27,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -45,6 +46,7 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -52,6 +54,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -358,12 +361,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   // Check DequantizeLinear aren't constant folded for default setting.
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
-  // set SessionOptionsEnableQuantQDQ to enable it explicitly
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "1");
+  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "0");
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
@@ -525,6 +528,46 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     ASSERT_TRUE(op_to_count["Add"] == 0);
     ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
   }
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/div_mul.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<DivMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 5);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
+}
+
+TEST_F(GraphTransformationTests, NotWhereFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/not_where.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Not"] == 4);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NotWhereFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+  ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -3776,6 +3819,27 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       },
       {kCpuExecutionProvider});
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
+  auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<IsInfReduceSumFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["IsInf"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
+  EXPECT_EQ(op_to_count["Not"], 1);
+}
+#endif
 #endif
 
 TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {

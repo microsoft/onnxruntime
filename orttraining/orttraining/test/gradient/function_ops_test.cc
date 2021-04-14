@@ -4,8 +4,10 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
+#include <cstdlib>
 
 #include "gtest/gtest.h"
+#include "core/framework/data_types.h"
 #include "core/graph/model.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "orttraining/core/graph/training_op_defs.h"
@@ -15,6 +17,9 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 #include "test/framework/test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
+
+#define _LOCAL_DEBUG_FLAG_ 1
 
 using namespace ::onnxruntime::common;
 
@@ -82,12 +87,13 @@ Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> out
 }
 
 // Restricted to float tensors
+template <typename T>
 static void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
   auto size = tensor1.Shape().Size();
-  auto* data1 = tensor1.template Data<float>();
-  auto* data2 = tensor2.template Data<float>();
+  auto* data1 = tensor1.template Data<T>();
+  auto* data2 = tensor2.template Data<T>();
 
-  float threshold = 0.001f;
+  T threshold = T(0.001f);
 
   for (int i = 0; i < size; ++i) {
     ASSERT_NEAR(data1[i], data2[i], threshold) << "as position i:" << i;
@@ -99,8 +105,30 @@ static void AssertEqual(const std::vector<OrtValue>& results1, const std::vector
   for (int i = 0; i < results1.size(); i++) {
     auto& value1 = results1[i].Get<Tensor>();
     auto& value2 = results2[i].Get<Tensor>();
-    AssertEqual(value1, value2);
+    // Currently, only float or double:
+    if (value1.DataType() == DataTypeImpl::GetType<float>())
+      AssertEqual<float>(value1, value2);
+    else
+      AssertEqual<double>(value1, value2);
   }
+}
+
+template <typename T>
+std::vector<T> random(std::vector<int64_t> shape) {
+  RandomValueGenerator generator{};
+  return generator.Uniform<T>(shape, 0.0f, 1.0f);
+}
+
+template <>
+std::vector<bool> random<bool>(std::vector<int64_t> shape) {
+  int64_t size = 1;
+  for (auto dim : shape)
+    size *= dim;
+
+  std::vector<bool> data(size);
+  for (int64_t i = 0; i < size; i++)
+    data[i] = bool(rand() % 2);
+  return data;
 }
 
 struct FunctionTestCase {
@@ -126,6 +154,23 @@ struct FunctionTestCase {
 
     OrtValue ort_value;
     CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    input_values.push_back(std::make_pair(input_name, ort_value));
+    input_value_map.insert(std::make_pair(input_name, ort_value));
+  }
+
+  template <typename T>
+  void AddInputType(std::string input_name, std::vector<int64_t> shape) {
+    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    input_args.emplace_back(input_name, &arg_type);
+  }
+
+  template <typename T>
+  void AddInput(std::string input_name, std::vector<int64_t> shape) {
+    AddInputType<T>(input_name, shape);
+
+    std::vector<T> data = random<T>(shape);
+    OrtValue ort_value;
+    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
@@ -175,6 +220,9 @@ struct FunctionTestCase {
 
     if (inline_call) {
       graph.InlineFunction(call_node);
+#if _LOCAL_DEBUG_FLAG_
+      std::cout << graph << std::endl;
+#endif
       status = graph.Resolve();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
@@ -194,16 +242,8 @@ struct FunctionTestCase {
 };
 
 static void InitSoftmaxGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
-
-  std::vector<float> value(size);
-  for (int64_t i = 0; i < size; i++)
-    value[i] = float(i);
-
-  testCase.AddInput("dY", shape, value);
-  testCase.AddInput("Y", shape, value);
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<float>("Y", shape);
   testCase.AddOutput("dX");
 }
 
@@ -270,6 +310,100 @@ TEST(SoftmaxGradExpansionTest, OpsetTest) {
   auto results2 = onnxruntime::test::Run(*model1, testCase.input_value_map, testCase.output_names);
 
   AssertEqual(results1, results2);
+}
+
+template <typename T>
+void DropoutGradWithoutRatio() {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<T>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
+TEST(DropoutGradExpansionTest, WithoutRatio) {
+  DropoutGradWithoutRatio<float>();
+  DropoutGradWithoutRatio<double>();
+}
+
+template <typename T>
+void DropoutGradWithRatio() {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInput<T>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
+TEST(DropoutGradExpansionTest, WithRatio) {
+  DropoutGradWithRatio<float>();
+  DropoutGradWithRatio<double>();
+}
+
+template <typename T>
+void CheckDropoutGradWithoutRatio(bool inline_call) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInputType<T>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddOutput("dX");
+  auto model = testCase.CreateModel(inline_call);
+  if (!inline_call) {
+    auto& node = *model->MainGraph().Nodes().begin();
+    auto* fnbody = node.GetFunctionBody(true);
+    EXPECT_EQ(fnbody, nullptr);
+  }
+}
+
+TEST(CheckDropoutGradExpansionTest, WithoutRatio) {
+  // bfloat16 not yet supported by ONNX op Where
+  CheckDropoutGradWithoutRatio<BFloat16>(false);
+  CheckDropoutGradWithoutRatio<MLFloat16>(true);
+}
+
+template <typename T>
+void CheckDropoutGradWithRatio(bool inline_call) {
+  FunctionTestCase testCase("DropoutGrad");
+  std::vector<int64_t> shape{16, 4, 4};
+  testCase.AddInputType<T>("dY", shape);
+  testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddOutput("dX");
+  testCase.CreateModel(inline_call);
+}
+
+TEST(CheckDropoutGradExpansionTest, WithRatio) {
+  // bfloat16 not yet supported by ONNX op Where
+  CheckDropoutGradWithRatio<BFloat16>(false);
+  CheckDropoutGradWithRatio<MLFloat16>(true);
+}
+
+TEST(GeluGradExpansionTest, 2D) {
+  FunctionTestCase testCase("GeluGrad");
+  std::vector<int64_t> shape{16, 4};
+  testCase.AddInput<float>("dY", shape);
+  testCase.AddInput<float>("X", shape);
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+}
+
+template <typename T>
+void CheckGeluGrad() {
+  // Tests only expanded model creation and checking.
+  FunctionTestCase testCase("GeluGrad");
+  std::vector<int64_t> shape{16, 4};
+  testCase.AddInputType<T>("dY", shape);
+  testCase.AddInputType<T>("X", shape);
+  testCase.AddOutput("dX");
+  testCase.CreateModel(true);
+}
+
+TEST(CheckGeluGradExpansionTest, HalfPrecision) {
+  CheckGeluGrad<BFloat16>();
+  CheckGeluGrad<MLFloat16>();
 }
 
 }  // namespace test

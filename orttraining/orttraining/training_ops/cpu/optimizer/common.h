@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename TS, typename TC>
+template <typename TC, typename TS>
 TC compute_bias_correction_coefficient(
   const TC momentum_update_coefficient,
   const TS step) {
