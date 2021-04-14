@@ -788,7 +788,8 @@ TEST(CApiTest, io_binding) {
   binding.ClearBoundOutputs();
 }
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT)
+//TODO: Replace the function call OrtSessionOptionsAppendExecutionProvider_CUDA
+#if defined(USE_CUDA)
 TEST(CApiTest, io_binding_cuda) {
   struct CudaMemoryDeleter {
     explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
@@ -802,11 +803,7 @@ TEST(CApiTest, io_binding_cuda) {
   };
 
   Ort::SessionOptions session_options;
-#ifdef USE_TENSORRT
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
-#else
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-#endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);

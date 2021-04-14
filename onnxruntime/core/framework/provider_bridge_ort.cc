@@ -43,8 +43,6 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/shared_library/provider_interfaces.h"
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "core/providers/openvino/openvino_provider_factory.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -693,16 +691,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
-}
-
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
   if (!factory) {
@@ -717,18 +705,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
-}
-
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
-  OrtOpenVINOProviderOptions provider_options;
-  provider_options.device_type = device_type;
-  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&provider_options);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
