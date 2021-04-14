@@ -66,6 +66,11 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
       break;
     }
   }
+  
+  // skip if the src arg is a graph output
+  if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
+    return false;
+
   // count how many consumers are sharing the same src arg
   int count = 0;
   for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
