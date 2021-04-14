@@ -353,6 +353,12 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         graph_transformer (dict):
             graph transformer related configurations
+        graph_transformer.attn_dropout_recompute(bool, default False)
+        graph_transformer.gelu_recompute(bool, default False)
+        graph_transformer.transformer_layer_recompute(bool, default False)
+        graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_level(integet, default -1)
+        graph_transformer.propagate_cast_ops_allow(list of str, [])
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
