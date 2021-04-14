@@ -56,6 +56,8 @@ jobs:
       force32bit: $(isX86)
 
   - task: JavaToolInstaller@0
+    #Our build machine doesn't have java x86
+    condition: and(succeeded(), eq(variables['buildArch'], 'x64'))
     inputs:
       versionSpec: '11'
       jdkArchitectureOption: $(buildArch)
