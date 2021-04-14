@@ -782,9 +782,8 @@ void ResizeImpl(
             reinterpret_cast<LinearMappingInfo*>(dims_mapping));
         return;
       }
-
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
       break;
-
     case UpsampleMode::CUBIC:
       if (is_2D) {
         _ResizeCubicCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0, stream>>>(
@@ -804,8 +803,9 @@ void ResizeImpl(
             reinterpret_cast<CubicMappingInfo*>(dims_mapping));
         return;
       }
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
     case UpsampleMode::NN:
-	  ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
   }
 }
 
