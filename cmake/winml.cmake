@@ -692,7 +692,7 @@ set_source_files_properties(
   TRUE)
 
 # Add library
-onnxruntime_add_static_library(winml_dll SHARED
+onnxruntime_add_shared_library(winml_dll 
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated/module.g.excl.cpp
   ${winml_dll_dir}/winml.def
   ${winml_dll_dir}/winml.rc
