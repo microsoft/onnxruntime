@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef ENABLE_TRAINING
 #include "core/framework/partial_executor.h"
 
 #include <chrono>
@@ -431,3 +431,4 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   return Status::OK();
 }
 }  // namespace onnxruntime
+#endif

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include <vector>
@@ -36,3 +36,4 @@ class PartialExecutor : public SequentialExecutor {
   const bool only_execute_path_to_fetches_;
 };
 }  // namespace onnxruntime
+#endif
