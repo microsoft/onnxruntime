@@ -26,7 +26,7 @@
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
-#ifdef USE_DIRECTML
+#ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
 

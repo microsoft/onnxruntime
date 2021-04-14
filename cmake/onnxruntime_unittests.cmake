@@ -533,9 +533,7 @@ elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
-endif()
+
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
 endif()
@@ -1032,6 +1030,7 @@ if (onnxruntime_BUILD_JAVA)
         -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
         -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -DREPO_ROOT=${REPO_ROOT}
+        ${ORT_PROVIDER_CMAKE_FLAGS}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
       add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>

@@ -92,16 +92,18 @@ endif()
 set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
-    ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_VITISAI}
-    ${PROVIDERS_NNAPI}
-    ${PROVIDERS_RKNPU}
-    ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_COREML}
+    ${PROVIDERS_CUDA}
+    ${PROVIDERS_DML}
+    ${PROVIDERS_MIGRAPHX}
+    ${PROVIDERS_NNAPI}
+    ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_ROCM}
+    ${PROVIDERS_VITISAI}
+    ${PROVIDERS_INTERNAL_TESTING}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

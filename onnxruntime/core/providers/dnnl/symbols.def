@@ -1,2 +1,2 @@
 EXPORTS
-   GetProvider
+   GetProvider PRIVATE
