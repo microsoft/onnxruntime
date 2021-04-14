@@ -29,7 +29,7 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
 
   static size_t RegisterSingleTest(bool use_offb, size_t M, size_t N, size_t K, size_t Batch, uint8_t offa, uint8_t offb) {
     std::stringstream ss;
-    ss << "Batch" << Batch << "M" << M << "xN" << N << "xK" << K << "/"
+    ss << "Batch" << Batch << "/M" << M << "xN" << N << "xK" << K << "/"
        << "offa" << (unsigned)offa << "/"
        << "offb";
     if (use_offb) {
