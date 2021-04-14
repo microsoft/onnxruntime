@@ -14,17 +14,19 @@ namespace Microsoft.ML.OnnxRuntime
     };
 
     // NOTE: The order of the APIs in this struct should match exactly that in
-    // OrtApi ort_api_1_to_4 (onnxruntime_c_api.cc)
+    // OrtApi ort_api_1_to_8 (onnxruntime_c_api.cc)
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
+
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
         public IntPtr EnableTelemetryEvents;
         public IntPtr DisableTelemetryEvents;
+
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
@@ -60,6 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetInputName;
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
+
         public IntPtr CreateRunOptions;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
@@ -129,6 +132,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
+        // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr GetDenotationFromTypeInfo;
         public IntPtr CastTypeInfoToMapTypeInfo;
         public IntPtr CastTypeInfoToSequenceTypeInfo;
@@ -138,7 +143,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
-
         public IntPtr SessionGetModelMetadata;
         public IntPtr ModelMetadataGetProducerName;
         public IntPtr ModelMetadataGetGraphName;
@@ -147,6 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ModelMetadataLookupCustomMetadataMap;
         public IntPtr ModelMetadataGetVersion;
         public IntPtr ReleaseModelMetadata;
+        // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
         public IntPtr CreateEnvWithGlobalThreadPools;
         public IntPtr DisablePerSessionThreads;
@@ -154,14 +159,19 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseThreadingOptions;
         public IntPtr ModelMetadataGetCustomMetadataMapKeys;
         public IntPtr AddFreeDimensionOverrideByName;
+        // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
         public IntPtr GetAvailableProviders;
         public IntPtr ReleaseAvailableProviders;
+        // End of Version 4 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr GetStringTensorElementLength;
         public IntPtr GetStringTensorElement;
         public IntPtr FillStringTensorElement;
         public IntPtr AddSessionConfigEntry;
 
+        // IoBinding and above are propagated in the same order to C# API
+        // Do not move
         public IntPtr CreateAllocator;
         public IntPtr ReleaseAllocator;
         public IntPtr RunWithBinding;
@@ -181,14 +191,27 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalIntraOpNumThreads;
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
+        // End of Version 5 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr AddInitializer;
         public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
         public IntPtr SessionOptionsAppendExecutionProvider_ROCM;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO;
         public IntPtr SetGlobalDenormalAsZero;
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
+        // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
+
         public IntPtr ModelMetadataGetGraphDescription;
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
+        public IntPtr SetCurrentGpuDeviceId;
+        public IntPtr GetCurrentGpuDeviceId;
+        // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
+
+        // Version 8 - In development, feel free to add/remove/rearrange here
+        public IntPtr KernelInfoGetAttributeArray_float;
+        public IntPtr KernelInfoGetAttributeArray_int64;
     }
 
     internal static class NativeMethods
