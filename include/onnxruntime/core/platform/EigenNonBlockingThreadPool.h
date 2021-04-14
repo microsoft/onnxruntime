@@ -922,12 +922,12 @@ void EndParallelSectionInternal(PerThread &pt,
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
-  while (ps.tasks_finished < tasks_to_wait_for) {
+  while (ps.tasks_finished.load(std::memory_order_acquire) < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
-  ps.tasks_finished = 0;
+  ps.tasks_finished.store(0, std::memory_order_release);
 }
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
@@ -1078,72 +1078,93 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
-
-void RunInParallel(std::function<void(unsigned idx)> fn, unsigned /*n*/, std::ptrdiff_t block_size) override {
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
-  PerThread *pt = GetPerThread();
+  PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
 
-  /*
-  // Summon workers to run the function (n is the desired maximum
-  // degree of parallelism, including the main thread).  Unlike the
-  // multi-loop RunInParallelSection, this single-loop worker can run
-  // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(*pt, ps, n, fn);
-  */
+  int dispatch_q_idx = -1;  // index of thread that dispatch work to all other threads
+  int dispatch_w_idx = -1;  // index of enqueued work
+  std::atomic<bool> dispatch_done{false};
+  std::atomic<bool> dispatch_work_done{false};
 
-  std::function<bool(int, Task&, bool)> enqueue_fn = [&, this](int idx, Task w, bool logging) {
-    WorkerData& td = worker_data_[idx];
+  Task worker_fn = [&]() {
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    ps.tasks_finished.fetch_add(1, std::memory_order_release);
+  };
+
+  std::function<int(int, Task&, bool)> enqueue_fn = [&, this](int q_idx, Task& w, bool logging) {
+    WorkerData& td = worker_data_[q_idx];
     Queue& q = td.queue;
     unsigned w_idx;
     Task t = q.PushBackWithTag(w, pt->tag, w_idx);
     if (t) {
-      return false;
+      return -1;
     } else {
       td.EnsureAwake();
       if (logging) {
-        ps.tasks.push_back({idx, w_idx});
+        ps.tasks.push_back({q_idx, w_idx});
       }
-      return true;
-    } 
-  };
-
-  Task call_worker_fn = [&]() {
-    unsigned my_idx = ps.worker_idx++;
-    fn(my_idx);
-    ps.tasks_finished++;
-  };
-
-  bool dist_done = false;
-  bool work_done = false;
-  Task dist_task = [&] () {
-    for (auto i = 1; i < num_threads_; i++) {
-      enqueue_fn(i, call_worker_fn, true);
+      return static_cast<int>(w_idx);
     }
-    dist_done = true;
-    fn(ps.worker_idx++);
-    work_done = true;
   };
 
-  bool dist_start = enqueue_fn(0, dist_task, false);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  unsigned extra_needed = n > current_dop ? n - current_dop : 0;
+  std::vector<unsigned> good_hints, alt_hints;
 
-  // Run work in the main thread
-  fn(ps.worker_idx++);
+  Task dispatch_task = [&]() {  // dispatch work to other threads
+    for (auto i = 1u; i < extra_needed; i++) {
+      int q_idx;
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
+      } else {
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
+        } else {
+          q_idx = Rand(&pt->rand) % num_threads_;
+        }
+      }  // else
+      enqueue_fn(q_idx, worker_fn, true);
+    }
+    dispatch_done.store(true, std::memory_order_release);  // dispatch complete
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    dispatch_work_done.store(true, std::memory_order_release);  // work complete
+  };
+
+  if (extra_needed > 0) {
+    profiler_.LogStart();
+    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    if (!good_hints.empty()) {
+      dispatch_q_idx = good_hints[0];
+    } else if (!alt_hints.empty()) {
+      dispatch_q_idx = alt_hints[0];
+    } else {
+      dispatch_q_idx = Rand(&pt->rand) % num_threads_;
+    }
+    dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
+    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+  }
+
+  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+  fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));  // run work in the main thread
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-  if (dist_start) {
-    while (!dist_done) {
-      onnxruntime::concurrency::SpinPause();
+
+  if (dispatch_w_idx != -1) {
+    Queue& q = worker_data_[dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, dispatch_w_idx)) {
+      dispatch_w_idx = -1;  // cancel dispatch if not started yet
+    } else {
+      while (!dispatch_done.load(std::memory_order_acquire)) {  // if started, wait for dispatch completion
+        onnxruntime::concurrency::SpinPause();
+      }
     }
   }
-  // Wait for workers to exit the parallel section and hence to have
-  // completed the loop (i.e., ps.tasks_finished matches the number of
-  // tasks that have been created less the number successfully
-  // revoked).
   EndParallelSectionInternal(*pt, ps);
-  if (dist_start) {
-    while (!work_done) {
+  if (dispatch_w_idx != -1) {
+    while (!dispatch_work_done.load(std::memory_order_acquire)) {  // if started, wait for work completion
       onnxruntime::concurrency::SpinPause();
     }
   }

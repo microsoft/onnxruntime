@@ -19,7 +19,6 @@ import java.nio.ShortBuffer;
  * returned as outputs.
  */
 public class OnnxTensor implements OnnxValue {
-
   static {
     try {
       OnnxRuntime.init();
@@ -558,7 +557,6 @@ public class OnnxTensor implements OnnxValue {
       OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
-      int bufferSize = data.capacity();
       return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");

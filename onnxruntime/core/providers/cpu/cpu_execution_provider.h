@@ -52,4 +52,8 @@ class CPUExecutionProvider : public IExecutionProvider {
  private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
+
+// Registers all available CPU kernels
+Status RegisterCPUKernels(KernelRegistry& kernel_registry);
+
 }  // namespace onnxruntime

@@ -12,12 +12,12 @@ namespace onnxruntime {
 namespace cuda {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
-constexpr const char* kMemLimit = "cuda_mem_limit";
+constexpr const char* kMemLimit = "gpu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
-constexpr const char* kcudaExternalAlloc = "cuda_external_alloc";
-constexpr const char* kcudaExternalFree = "cuda_external_free";
+constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
+constexpr const char* kGpuExternalFree = "gpu_external_free";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -55,7 +55,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddValueParser(
-              cuda::provider_option_names::kcudaExternalAlloc,
+              cuda::provider_option_names::kGpuExternalAlloc,
               [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
@@ -63,14 +63,14 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddValueParser(
-              cuda::provider_option_names::kcudaExternalFree,
+              cuda::provider_option_names::kGpuExternalFree,
               [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
                 free  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
-          .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.cuda_mem_limit)
+          .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)
@@ -88,9 +88,9 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
 ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
-      {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.cuda_mem_limit)},
-      {cuda::provider_option_names::kcudaExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
-      {cuda::provider_option_names::kcudaExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
+      {cuda::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {cuda::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {cuda::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
