@@ -830,10 +830,10 @@ if (WIN32)
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning
-  list(APPEND ORT_WARNING_FLAGS " -Wall -Wextra")
+  list(APPEND ORT_WARNING_FLAGS -Wall -Wextra)
 
   if(onnxruntime_DEV_MODE)
-    list(APPEND ORT_WARNING_FLAGS " -Werror")
+    list(APPEND ORT_WARNING_FLAGS -Werror)
   endif()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
@@ -853,18 +853,18 @@ else()
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
-    list(APPEND ORT_WARNING_FLAGS " -Wno-tautological-pointer-compare")
+    list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
   endif()
   if(HAS_NONNULL_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
-    list(APPEND ORT_WARNING_FLAGS " -Wno-nonnull-compare")    
+    list(APPEND ORT_WARNING_FLAGS -Wno-nonnull-compare)
   endif()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen
-    list(APPEND ORT_WARNING_FLAGS " -Wno-deprecated-copy")
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-copy)
   endif()
   if(HAS_PARENTHESES)
-    list(APPEND ORT_WARNING_FLAGS " -Wno-parentheses")
+    list(APPEND ORT_WARNING_FLAGS -Wno-parentheses)
   endif()
 endif()
 
