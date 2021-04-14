@@ -51,6 +51,70 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     //LOGS_DEFAULT(WARNING) << msg << std::endl;
   };
 
+  std::vector<void*> const_args;
+  std::vector<int64_t> const_arg_positions;
+
+  for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_int_scalar_positions_.at(i));
+    const_args.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
+  }
+  
+  for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_float_scalar_positions_.at(i));
+    const_args.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
+  }
+
+  for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_int_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("L", input_int_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions.emplace_back(input_int_tuple_positions_.at(i));
+    const_args.emplace_back(tuple);
+  }
+
+  for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_float_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("f", input_float_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions.emplace_back(input_float_tuple_positions_.at(i));
+    const_args.emplace_back(tuple);
+  }
+
+  // occupied[i] being true means the i-th input argument
+  // to Python function has been set.
+  std::vector<bool> occupied(inputs.size() + const_args.size(), false);
+
+  // We know all non-tensors were set above, so let's catch up.
+  for (const auto pos : const_arg_positions) {
+    occupied.at(pos) = true;
+  }
+
+  // arg_positions[i] is the position index for the i-th tensor input.
+  std::vector<int64_t> arg_positions;
+  // Search for empty slots for tensors.
+  // The i-th empty slot is assigned the i-th input tensor.
+  for (size_t i = 0; i < occupied.size(); ++i) {
+    if (occupied.at(i)) {
+      continue;
+    }
+    // Find an empty slot whose position index is i.
+    arg_positions.push_back(i);
+  }
+
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "compute", nullptr, inputs, outputs,
