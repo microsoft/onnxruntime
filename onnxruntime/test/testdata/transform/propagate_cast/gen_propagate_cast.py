@@ -120,7 +120,7 @@ def gen_fuse_sibling_casts(model_path):
 def flip_type(flip, type):
     return (TensorProto.FLOAT16 if type == TensorProto.FLOAT else TensorProto.FLOAT) if flip else type
 
-def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum):
+def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2):
     nodes = [
         helper.make_node(
             "MatMul",
@@ -169,17 +169,25 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             "input_1", input_type, ['N', 'N'])
     ]
     if insert_add:
-        add_input_type = (TensorProto.FLOAT16 if input_type == TensorProto.FLOAT else TensorProto.FLOAT) if cast_inputs != cast_product else input_type
+        add_input_type = flip_type(True, input_type) if cast_inputs != cast_product else input_type
+        add_input_type = flip_type(cast_input2, add_input_type)
         inputs.append(helper.make_tensor_value_info("input_2", add_input_type, ['N', 'N']))
-        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "input_2"], ["sum"], "Add_0"))
+        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "cast_input_2" if cast_input2 else "input_2"], ["sum"], "Add_0"))
         if cast_sum:
+            input2_cast_type = flip_type(True, flip_type(cast_input2, add_input_type))
             nodes.append(helper.make_node(
                 "Cast",
                 ["sum"],
                 ["cast_sum"],
                 "Cast_3",
-                to = TensorProto.FLOAT16 if add_input_type == TensorProto.FLOAT else TensorProto.FLOAT))
-
+                to = input2_cast_type))
+        if cast_input2:
+            nodes.append(helper.make_node(
+                "Cast",
+                ["input_2"],
+                ["cast_input_2"],
+                "Cast_4",
+                to = flip_type(True, add_input_type)))
     outputs = [
         helper.make_tensor_value_info(
             "cast_sum" if cast_sum else "sum" if insert_add else ("product_cast" if cast_product else ("product_transpose" if transpose_product else "product")), output_type, ['N', 'N'])
@@ -189,14 +197,15 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
                       ("_transpose_product" if transpose_product else "")  +
                       ("_cast_inputs"  if cast_inputs  else "") +
                       ("_cast_product"  if cast_product else "") +
+                      ("_cast_input2"  if cast_input2 else "") +
                       ("_cast_sum"  if cast_sum else ""),
         nodes, inputs, outputs, [])
 
-for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum) in list(itertools.product([False, True], repeat=6)):
-    if not insert_add and cast_sum:
+for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2) in list(itertools.product([False, True], repeat=7)):
+    if not insert_add and (cast_sum or cast_input2):
         continue
     if cast_inputs or cast_product or cast_sum:
-        gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum)
+        gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2)
 
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")
