@@ -556,6 +556,7 @@ class ORTModule(torch.nn.Module):
         exported_model_input_count = [i for i in my_model.graph.input if i.name not in initializer_names]
         if len(sample_inputs_copy) != len(exported_model_input_count):
             print("WARINING: exported model has inputs {}, while training inputs are {}".format(exported_model_input_count, sample_inputs_copy))
+        if "FP16_TRAINING" in os.environ:
             # for fp16 training, workaround the naming mismatch between exported model parameters and pytorch named parameters.
             for p in my_model.graph.initializer:
                 p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
