@@ -158,7 +158,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
-      VerifyOutputSizes(output_index, node, shape);
+      if (this->IsOutput(ort_value_idx)) {
+        VerifyOutputSizes(output_index, node, shape);
+      }
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);
     }
   }
