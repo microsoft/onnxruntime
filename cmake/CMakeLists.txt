@@ -962,7 +962,6 @@ function(onnxruntime_set_compile_flags target_name)
     endforeach()
     if(HAS_DEPRECATED_COPY)
       #too many such errors in eigen
-      list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-copy)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>") 
     endif()
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
