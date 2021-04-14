@@ -193,8 +193,8 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
         nodes, inputs, outputs, [])
 
 for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum) in list(itertools.product([False, True], repeat=6)):
-    cast_sum = False if not insert_add else cast_sum
-    cast_sum = False if cast_inputs != cast_product else cast_sum
+    if not insert_add and cast_sum:
+        continue
     if cast_inputs or cast_product or cast_sum:
         gen_propagate_cast_test_model("matmul_add" if insert_add else "matmul", transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum)
 
