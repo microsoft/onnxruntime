@@ -859,10 +859,6 @@ else()
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-nonnull-compare)
   endif()
-  if(HAS_DEPRECATED_COPY)
-    #too many such errors in eigen
-    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-copy)
-  endif()
   if(HAS_PARENTHESES)
     list(APPEND ORT_WARNING_FLAGS -Wno-parentheses)
   endif()
@@ -870,6 +866,7 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 #The list of legacy providers that have not been converted to dynamic loading
+#But DNNL is an exception, it still needs be here.
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
@@ -887,6 +884,7 @@ if (onnxruntime_USE_VITISAI)
 endif()
 if (onnxruntime_USE_DNNL)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_DNNL=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DNNL=1)
 endif()
 if (onnxruntime_USE_OPENVINO)
@@ -962,6 +960,11 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
+    if(HAS_DEPRECATED_COPY)
+      #too many such errors in eigen
+      list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-copy)
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:SHELL:--compiler-options -Wno-deprecated-copy>") 
+    endif()
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")      
     endforeach()
