@@ -63,8 +63,7 @@ class BFCArena : public IArenaAllocator {
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
            int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-           int intial_regrowth_chunk_size_bytes_after_shrink = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES_AFTER_SHRINK,
-           bool shrink_on_every_run = false);
+           int intial_regrowth_chunk_size_bytes_after_shrink = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES_AFTER_SHRINK);
 
   ~BFCArena() override;
 
@@ -76,7 +75,13 @@ class BFCArena : public IArenaAllocator {
   //If p is NULL, no operation is performed.
   void Free(void* p) override;
 
-  Status OnRunEnd() override;
+  // Frees all allocation regions in which no chunk is in use.
+  // Does not free any reserved chunks.
+  // Resets the size that the arena will grow by in the next allocation to
+  // `intial_regrowth_chunk_size_bytes_after_shrink_` but ultimately all
+  // future allocation sizes are determined by the arena growth strategy
+  // and the allocation request.
+  Status Shrink() override;
 
   void* Reserve(size_t size) override;
 
@@ -102,13 +107,6 @@ class BFCArena : public IArenaAllocator {
  private:
   void* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
-
-  // Frees all allocation regions in which no chunk is in use.
-  // Does not free any reserved chunks.
-  // Resets the size that the arena will grow by in the next allocation to
-  // `intial_regrowth_chunk_size_bytes_after_shrink_`.
-  // All further allocation sizes are determined by the arena growth strategy
-  Status Shrink();
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
@@ -485,7 +483,6 @@ class BFCArena : public IArenaAllocator {
   const int initial_chunk_size_bytes_;
   const int max_dead_bytes_per_chunk_;
   const int intial_regrowth_chunk_size_bytes_after_shrink_;
-  const bool shrink_on_every_run_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

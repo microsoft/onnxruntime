@@ -58,8 +58,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                            arena_extend_str,
                                            initial_chunk_size_bytes,
                                            max_dead_bytes_per_chunk,
-                                           initial_regrowth_chunk_size_bytes_after_shrink,
-                                           info.arena_cfg.shrink_on_every_run));
+                                           initial_regrowth_chunk_size_bytes_after_shrink));
 #endif
   }
 

@@ -1434,6 +1434,8 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
 #endif
 
 #ifdef USE_CUDA
+
+// Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator 
 TEST(CApiTest, configure_cuda_arena) {
   const auto& api = Ort::GetApi();
 
@@ -1447,30 +1449,10 @@ TEST(CApiTest, configure_cuda_arena) {
   std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
 
   OrtCUDAProviderOptions cuda_provider_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(nullptr);
-  cuda_provider_options.arena_cfg = arena_cfg;
+  cuda_provider_options.default_memory_arena_cfg = arena_cfg;
 
   session_options.AppendExecutionProvider_CUDA(cuda_provider_options);
+
   Ort::Session session(*ort_env, MODEL_URI, session_options);
-
-  // prepare inputs
-  std::vector<Input> inputs(1);
-  Input& input = inputs.back();
-  input.name = "X";
-  input.dims = {3, 2};
-  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-
-  RunSession<float>(default_allocator.get(),
-                    session,
-                    inputs,
-                    "Y",
-                    expected_dims_y,
-                    expected_values_y,
-                    nullptr);
 }
 #endif

@@ -1871,28 +1871,30 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
                     _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
-  *out = new OrtArenaCfg();
+  auto cfg = onnxruntime::make_unique<OrtArenaCfg>();
 
   for (size_t i = 0; i < num_keys; ++i) {
     if (strcmp(arena_config_keys[i], "max_mem") == 0) {
-      (*out)->max_mem = arena_config_values[i];
+      cfg->max_mem = arena_config_values[i];
     } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
-      (*out)->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
+      cfg->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
-      (*out)->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+      cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
-      (*out)->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
+      cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_regrowth_chunk_size_bytes_after_shrink") == 0) {
-      (*out)->initial_regrowth_chunk_size_bytes_after_shrink = static_cast<int>(arena_config_values[i]);
+      cfg->initial_regrowth_chunk_size_bytes_after_shrink = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "shrink_on_every_run") == 0) {
-      (*out)->shrink_on_every_run = (arena_config_values[i] != 0);
+      cfg->shrink_on_every_run = (arena_config_values[i] != 0);
     } else {
-      // free before we return unsuccessful status
-      delete *out;
-      return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid key found");
+      std::ostringstream oss;
+      oss << "Invalid key found: " << arena_config_keys[i];
+
+      return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
     }
   }
 
+  *out = cfg.release();
   return nullptr;
   API_IMPL_END
 }

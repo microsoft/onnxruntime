@@ -62,11 +62,6 @@ class IAllocator {
   const OrtMemoryInfo& Info() const { return memory_info_; };
 
   /**
-     Some allocators may optionally choose to do some stateful cleanup after every Run() call
-  */
-  virtual Status OnRunEnd() { return Status::OK(); }
-
-  /**
      optional CreateFence interface, as provider like DML has its own fence
   */
   virtual FencePtr CreateFence(const SessionState* /*unused*/) { return nullptr; }

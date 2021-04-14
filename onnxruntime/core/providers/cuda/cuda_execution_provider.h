@@ -88,6 +88,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
+  bool shrink_default_memory_allocator_on_every_run_end_ = false;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

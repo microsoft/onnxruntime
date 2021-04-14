@@ -17,15 +17,19 @@ class IArenaAllocator : public IAllocator {
  public:
   IArenaAllocator(const OrtMemoryInfo& info) : IAllocator(info) {}
   ~IArenaAllocator() override = default;
-  // Alloc call need to be thread safe.
+  // Alloc call needs to be thread safe.
   void* Alloc(size_t size) override = 0;
-  // The chunk allocated by Reserve call won't be reused with other request.
-  // It will be return to the devices when it is freed.
-  // Reserve call need to be thread safe.
+  // The chunk allocated by Reserve call won't be reused with other request
+  // (i.e.) it is not maintained by the arena and
+  // it will be return to the devices when it is freed.
+  // Reserve call needs to be thread safe.
   virtual void* Reserve(size_t size) = 0;
-  // Free call need to be thread safe.
+  // Free call needs to be thread safe.
   void Free(void* p) override = 0;
-  Status OnRunEnd() override = 0;
+  // All unused device allocations maintained by the arena
+  // (i.e.) physical allocations with no chunks in use will be de-allocated.
+  // Shrink call needs to be thread safe.
+  virtual Status Shrink() = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
   // allocate host pinned memory?

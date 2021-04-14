@@ -59,7 +59,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   info.do_copy_in_default_stream = cuda_options->do_copy_in_default_stream;
   info.has_user_compute_stream = cuda_options->has_user_compute_stream;
   info.user_compute_stream = cuda_options->user_compute_stream;
-  info.arena_cfg = cuda_options->arena_cfg;
+  info.default_memory_arena_cfg = cuda_options->default_memory_arena_cfg;
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 
   return nullptr;

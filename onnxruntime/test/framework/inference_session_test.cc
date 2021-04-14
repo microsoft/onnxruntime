@@ -1944,7 +1944,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   SessionOptions so;
   InferenceSession session_object{so, GetEnvironment()};
   CUDAExecutionProviderInfo epi;
-  epi.arena_cfg = &arena_cfg;
+  epi.default_memory_arena_cfg = &arena_cfg;
 
   epi.device_id = 0;
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));

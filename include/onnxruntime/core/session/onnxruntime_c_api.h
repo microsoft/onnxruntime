@@ -275,7 +275,7 @@ typedef struct OrtCUDAProviderOptions {
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
-  OrtArenaCfg* arena_cfg;
+  OrtArenaCfg* default_memory_arena_cfg;
 } OrtCUDAProviderOptions;
 
 /// <summary>
@@ -313,9 +313,9 @@ typedef struct OrtOpenVINOProviderOptions {
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
-  size_t num_of_threads;  // 0 uses default number of threads
-  unsigned char use_compiled_network; // 0 = false, nonzero = true
-  const char* blob_dump_path; // path is set to empty by default
+  size_t num_of_threads;               // 0 uses default number of threads
+  unsigned char use_compiled_network;  // 0 = false, nonzero = true
+  const char* blob_dump_path;          // path is set to empty by default
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -1194,6 +1194,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 
   /**
+  * (Deprecated) Use `CreateArenaCfgV2` instead
   * Use this API to create the configuration of an arena that can eventually be used to define
   * an arena based allocator's behavior
   * \param max_mem - use 0 to allow ORT to choose the default
