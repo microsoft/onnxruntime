@@ -114,17 +114,17 @@ void IExecutionFrame::VerifyOutputSizes(int output_index, const Node& node,
   if (tensortype.has_shape()) {
     const auto& shape = tensortype.shape();
 
-    int actualNumDims = static_cast<int>(output_shape->NumDimensions());
-    int expectedNumDims = shape.dim_size();
-    if (actualNumDims != expectedNumDims) {
+    int actual_num_dims = static_cast<int>(output_shape->NumDimensions());
+    int expected_num_dims = shape.dim_size();
+    if (actual_num_dims != expected_num_dims) {
       if (GetLogger() != nullptr) {
-        LOGS(*GetLogger(), WARNING) << "Number of dimension(" << actualNumDims << ") of output shape didn't match "
-                                               << "with model's expected number("<< expectedNumDims <<") of dimension of output shape";
+        LOGS(*GetLogger(), WARNING) << "Number of dimension(" << actual_num_dims << ") of output shape didn't match "
+                                               << "with model's expected number("<< expected_num_dims <<") of dimension of output shape";
       }
       return;
     }
 
-    for (uint32_t output_dim = 0, end = actualNumDims; output_dim < end; ++output_dim) {
+    for (uint32_t output_dim = 0, end = actual_num_dims; output_dim < end; ++output_dim) {
       const auto dim = shape.dim(output_dim);
       
       if (dim.has_dim_value()) {
