@@ -71,6 +71,14 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptim
         # providers are priority based, so register NNAPI first
         providers.insert(0, 'NnapiExecutionProvider')
 
+    # if the optimization level is 'all' we manually exclude the NCHWc transformer. It's not applicable to ARM
+    # devices, and creates a device specific model which won't run on all hardware.
+    # If someone really really really wants to run it they could manually create an optimized onnx model first,
+    # or they could comment out this code.
+    optimizer_filter = None
+    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL:
+        optimizer_filter = ['NchwcTransformer']
+
     for model in models:
         # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
         # of this script
@@ -88,14 +96,16 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level: ort.GraphOptim
             so = _create_session_options(optimization_level, optimized_target_path, custom_op_library)
 
             print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
-            _ = ort.InferenceSession(str(model), sess_options=so, providers=providers)
+            _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
+                                     disabled_optimizers=optimizer_filter)
 
         # Load ONNX model, optimize, and save to ORT format
         so = _create_session_options(optimization_level, ort_target_path, custom_op_library)
         so.add_session_config_entry('session.save_model_format', 'ORT')
 
         print("Converting optimized ONNX model to ORT format model {}".format(ort_target_path))
-        _ = ort.InferenceSession(str(model), sess_options=so, providers=providers)
+        _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
+                                 disabled_optimizers=optimizer_filter)
 
         # orig_size = os.path.getsize(onnx_target_path)
         # new_size = os.path.getsize(ort_target_path)
@@ -110,12 +120,9 @@ def _get_optimization_level(level):
         # Constant folding and other optimizations that only use ONNX operators
         return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
     if level == 'extended':
-        # Optimizations using custom operators, excluding NCHWc optimizations
+        # Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     if level == 'all':
-        # all optimizations, including NCHWc (which has hardware specific logic)
-        print('WARNING: Enabling layout optimizations is not recommended unless the ORT format model will be executed '
-              'on the same hardware used to create the model.')
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     raise ValueError('Invalid optimization level of ' + level)
@@ -139,12 +146,13 @@ def parse_args():
                              'NNAPI execution provider takes, in order to preserve those nodes in the ORT format '
                              'model.')
 
-    parser.add_argument('--optimization_level', default='extended',
+    parser.add_argument('--optimization_level', default='all',
                         choices=['disable', 'basic', 'extended', 'all'],
                         help="Level to optimize ONNX model with, prior to converting to ORT format model. "
                              "These map to the onnxruntime.GraphOptimizationLevel values. "
-                             "NOTE: It is NOT recommended to use 'all' unless you are creating the ORT format model on "
-                             "the device you will run it on, as the generated model may not be valid on other hardware."
+                             "If the level is 'all' the NCHWc transformer is manually disabled as it contains device "
+                             "specific logic, so the ORT format model must be generated on the device it will run on. "
+                             "Additionally, the NCHWc optimizations are not applicable to ARM devices."
                         )
 
     parser.add_argument('--enable_type_reduction', action='store_true',

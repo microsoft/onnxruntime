@@ -21,10 +21,10 @@ class IOBinding;
 class TrainingAgent {
 
   public:
-    explicit TrainingAgent(InferenceSession* session);
-    virtual ~TrainingAgent();
+    explicit TrainingAgent(InferenceSession& session);
+    ~TrainingAgent();
     // For ORTModule.forward()
-    virtual common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
+    common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
                                                std::vector<OrtValue>& user_outputs,
                                                int64_t& run_id) ORT_MUST_USE_RESULT;
     // For ORTModule.backward()
@@ -34,10 +34,10 @@ class TrainingAgent {
   private:
     // mutex for accessing bg_threads_
     std::mutex bg_threads_mutex_;
-    // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
+    // background threads for RunForward and RunBackward
     std::unordered_map<int64_t, std::thread> bg_threads_;
     // TrainingAgent runs on a InferenceSession under the hood
-    InferenceSession* inference_session_;
+    InferenceSession& inference_session_;
 };
 
 }  // namespace training

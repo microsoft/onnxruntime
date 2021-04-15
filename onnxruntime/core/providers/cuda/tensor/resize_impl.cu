@@ -20,11 +20,11 @@ __device__ int NearestPixel_ROUND_PREFER_FLOOR(float x_original, bool) {
   if (x_original == static_cast<int>(x_original) + 0.5f) {
     return static_cast<int>(_Floor(x_original));
   }
-  return static_cast<int>(_Round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_ROUND_PREFER_CEIL(float x_original, bool) {
-  return static_cast<int>(_Round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_FLOOR(float x_original, bool) {

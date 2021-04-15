@@ -39,7 +39,7 @@ ForwardReturnType OrtTasks::WaitForForwardOutputs(int64_t run_id) {
   return task->forward_output_future_.get();
 }
 
-bool OrtTasks::ForwardOutputsIsValid() {
+bool OrtTasks::ForwardOutputsIsValid() const{
   int64_t run_id = hasher_(std::this_thread::get_id());
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -76,7 +76,7 @@ void OrtTasks::SetStatus(const Status& status) {
   iter->second->status_promise_.set_value(status);
 }
 
-bool OrtTasks::TaskIsCompleted(int64_t run_id) {
+bool OrtTasks::TaskIsCompleted(int64_t run_id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = bg_tasks_.find(run_id);
   ORT_ENFORCE(iter != bg_tasks_.end());

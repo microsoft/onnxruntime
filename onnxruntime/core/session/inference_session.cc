@@ -251,7 +251,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      bool allow_inter_op_spinning = 
+      bool allow_inter_op_spinning =
           session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
@@ -510,9 +510,8 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
-  std::copy(transformers_to_enable.begin(), transformers_to_enable.end(), std::back_inserter(transformers_to_enable_));
-
+common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable) {
+  optimizers_to_disable_ = optimizers_to_disable;
   return Status::OK();
 }
 
@@ -561,7 +560,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
   ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -942,9 +941,11 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                                        GraphPartitioner::Mode::kOrtFormatLoad,
                                                        &compiled_kernel_hashes));
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   if (!compiled_kernel_hashes.empty()) {
     session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
   }
+#endif
 
   return Status::OK();
 }
@@ -1113,7 +1114,7 @@ common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
   ORT_TRY {
@@ -1155,7 +1156,7 @@ common::Status InferenceSession::Initialize() {
     // Read shared allocators from the environment and update them in the respective providers.
     //
     // The reason for updating the providers is so that when the session state is created the allocators
-    // are setup appropariately keyed by OrtMemoryInfo with delegates going to the respective providers.
+    // are setup appropriately keyed by OrtMemoryInfo with delegates going to the respective providers.
     // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
     // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
     // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
@@ -1213,8 +1214,7 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
       // add predefined transformers
-      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                                transformers_to_enable_);
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level);
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -1511,7 +1511,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -1906,27 +1906,17 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                 TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-    auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_,
-                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
-                                              custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
-
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
-
+                                                 TransformerLevel graph_optimization_level) {
+  const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if (graph_optimization_level >= level) {
+      // Generate and register transformers for level
+      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                                            optimizers_to_disable_);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry), level);
+      }
     }
   }
 }

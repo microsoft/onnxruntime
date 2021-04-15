@@ -45,7 +45,7 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
-  virtual ~TrainingSession() {};
+  virtual ~TrainingSession(){};
 
   /**
    * The training configuration options.
@@ -252,6 +252,9 @@ class TrainingSession : public InferenceSession {
       bool transformer_layer_recompute{false};
       // Number of layers to apply recompute
       int number_recompute_layers{0};
+      // Propagate FP16 Cast operations up and FP32 operations down
+      int propagate_cast_ops_level{-1};
+      std::vector<std::string> propagate_cast_ops_allow;
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
@@ -488,13 +491,11 @@ class TrainingSession : public InferenceSession {
                                   GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
-                                  const std::vector<std::string>& custom_list = {});
+                                  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list) override;
+                                 TransformerLevel graph_optimization_level) override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
@@ -522,16 +523,16 @@ class TrainingSession : public InferenceSession {
       std::string& loss_name,
       const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
       optional<std::string>& loss_scale_input_name);
-  
+
   virtual common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
@@ -615,14 +616,14 @@ class PipelineTrainingSession final : public TrainingSession {
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
 
   common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
 
   // Set some PipelineContext fields based on configuration result
   // returned by TrainingSession::ConfigureForTraining.
