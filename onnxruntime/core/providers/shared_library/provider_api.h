@@ -10,6 +10,7 @@
 #ifdef USE_ROCM
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/onehot.h"
+#include "core/providers/cpu/tensor/gather_elements.h"
 #else
 #define SHARED_PROVIDER 1
 
