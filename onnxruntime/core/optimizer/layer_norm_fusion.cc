@@ -477,7 +477,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     Node* p_cast_2 = nullptr;
     if (allow_precision_change_ &&
-        graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13})) {
+        graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
+        optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       p_cast_2 = next_node;
       next_node = graph.GetNode(p_cast_2->OutputNodesBegin()->Index());
       nodes_to_remove.push_back(*p_cast_2);
@@ -571,7 +572,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
     if (allow_precision_change_ && p_cast_2 != nullptr) {
-      const ONNX_NAMESPACE::TypeProto* casted_type = DataTypeImpl::TensorTypeFromONNXEnum(cast_1_to_attr)->GetTypeProto();
+      ONNX_NAMESPACE::TensorProto_DataType cast_1_type = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_1_to_attr);
+      const ONNX_NAMESPACE::TypeProto* casted_type = DataTypeImpl::TensorTypeFromONNXEnum(cast_1_type)->GetTypeProto();
       NodeArg* LN_output = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("layer_norm_out"), casted_type);
       layer_norm_node.MutableOutputDefs().push_back(LN_output);
 
