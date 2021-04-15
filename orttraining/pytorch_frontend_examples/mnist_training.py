@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
-#from mpi4py import MPI
+from mpi4py import MPI
 try:
     from onnxruntime.capi._pybind_state import set_cuda_device_id
 except ImportError:
@@ -115,10 +115,10 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
 
-    #comm = MPI.COMM_WORLD
+    comm = MPI.COMM_WORLD
     args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']) if ('OMPI_COMM_WORLD_LOCAL_RANK' in os.environ) else 0
     args.world_rank = int(os.environ['OMPI_COMM_WORLD_RANK']) if ('OMPI_COMM_WORLD_RANK' in os.environ) else 0
-    args.world_size=1
+    args.world_size=comm.Get_size()
     if use_cuda:
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
@@ -134,8 +134,6 @@ def main():
 
     model_desc = mnist_model_description()
     # use log_interval as gradient accumulate steps
-    import pdb
-    pdb.set_trace()
     trainer = ORTTrainer(model,
                          my_loss,
                          model_desc,

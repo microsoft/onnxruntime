@@ -40,6 +40,7 @@
 #endif
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/shared_library/provider_host_api.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -196,17 +197,6 @@ std::string nuphar_settings;
 const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
-
-struct Provider {
-  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
-  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
-
-  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
-  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
-
-  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
-  virtual void Shutdown() = 0;
-};
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
