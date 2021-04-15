@@ -684,7 +684,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'propagate_cast_ops_level': {
                 'type': 'integer',
-                'min': -1
+                'min': -1,
                 'default': -1
             },
             'propagate_cast_ops_allow': {
