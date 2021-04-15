@@ -83,7 +83,11 @@ class GraphExecutionManager(ABC):
         self._save_onnx_prefix = ''
 
         # Graph transformer config
+        # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+        # Use predetermined list of opcodes considered safe to move before/after cast operation
+        # if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
         self._propagate_cast_ops_level = -1
+        # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
 
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL

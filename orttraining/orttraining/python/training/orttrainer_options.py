@@ -358,7 +358,11 @@ class ORTTrainerOptions(object):
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
         graph_transformer.propagate_cast_ops_level(integet, default -1)
+            Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+            Use predetermined list of opcodes considered safe to move before/after cast operation
+            if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
         graph_transformer.propagate_cast_ops_allow(list of str, [])
+            List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -680,6 +684,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'propagate_cast_ops_level': {
                 'type': 'integer',
+                'min': -1
                 'default': -1
             },
             'propagate_cast_ops_allow': {
