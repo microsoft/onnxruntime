@@ -97,7 +97,8 @@ function(AddTest)
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
       XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES"
-      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
+      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
 
     xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET}
       ${TEST_SRC_DIR}/xctest/ortxctest.m
@@ -319,7 +320,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
@@ -745,6 +746,12 @@ if(MSVC)
   target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnx_test_runner PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
+endif()
+
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -844,6 +851,11 @@ if (WIN32)
   if (NOT DEFINED SYS_PATH_LIB)
     set(SYS_PATH_LIB shlwapi)
   endif()
+endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnxruntime_perf_test PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -977,6 +989,11 @@ onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
 if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnxruntime_mlas_test PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
 endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
