@@ -17,7 +17,7 @@ id2 = helper.make_node('Identity', ['add2'], ['output2'], name='id2')
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
     [add1, add2, id1, id2],
-    'cast_elimination_model',
+    'identity_elimination_model',
     [X1, X2],
     [Y1, Y2]
 )

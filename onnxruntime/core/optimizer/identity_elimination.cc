@@ -11,24 +11,40 @@
 namespace onnxruntime {
 
 /**
-  Special case to eliminate Identity node when its output is graph output 
-  note that there is no output edge for Identity
+  Case to eliminate Identity node when 
+  - the input nodearg has only one consumer, which is the Identity itself
+  - the input def is not a graph output
+  
+  For examples: 
 
-  X ---> Identity ---> graph output
+  OK to eliminate:
+  
+    Identity output is another node, and the Identity is the only consumer of X
+      X ---> Identity ---> Y where Y could be graph output
 
-  becomes 
+    Identity input arg is not shared with other output arg of X
+      + (arg0) ---> Identity0 ---> Z 
+      |
+      X (arg1) ---> Identity1 ---> Y
 
-  X ---> graph output
+  Not OK to eliminate:
+
+    Identity input arg, i.e., arg0, is also an input arg of other Identity
+      + (arg0) ---> Identity0 ---> Z 
+      |
+      X (arg0) ---> Identity1 ---> Y
+
+    Identity input def, i.e., def0, is also a graph output
+      + (def0) ---> Z where Z is graph output
+      |
+      X (def0/arg0) ---> Identity ---> Y
  */
 Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  // regular case - when Identity's output has no graph output 
   if (graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     if (graph_utils::RemoveNode(graph, node)) {
       rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
     }
   } else {
-    // handling special case
-
     // keep a reference of output def to the graph output
     NodeArg* output = node.MutableOutputDefs()[0];
     const Node* p_input_node = graph_utils::GetInputNode(node, 0);
@@ -48,43 +64,27 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   if (graph_utils::CanRemoveNode(graph, node, logger)) {
     return true;
   }
-  
-  // check the input nodearg of Identity - it must only have one consumer, which is the Identity itself
+
+  // relax the condition if Identity is connecting to graph output
+  bool may_relax = node.GetOutputEdgesCount() == 0 && node.OutputDefs().size() == 1 &&
+    !graph.GetNodeOutputsInGraphOutputs(node).empty();
+  if (may_relax == false) 
+    return false;
 
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
   if (p_input_node == nullptr)
     return false;
     
-  // find the edge between input node and this Identity node, and then get its src arg from input node
-  int src_arg_index = -1;
-  for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
-    if (it->GetNode().Index() == node.Index()) {
-      src_arg_index = it->GetSrcArgIndex();
-      break;
-    }
-  }
-  
   // skip if the src arg is also a graph output
+  int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());  
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
     return false;
 
-  // count how many consumers are sharing the same src arg
-  int count = 0;
-  for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
-    if (it->GetSrcArgIndex() == src_arg_index) {
-      count++;
-    }
-  }
-  // condition not met if there are more than 1 consumer for the same src arg
-  if (count > 1) 
+  // skip if more than 1 consumer for the src arg
+  if (graph.GetConsumerNodes(node.InputDefs()[0]->Name()).size() > 1)
     return false;
 
-  // relax the condition if Identity is connecting to graph output
-  if (node.GetOutputEdgesCount() == 0 && node.OutputDefs().size() == 1 &&
-    !graph.GetNodeOutputsInGraphOutputs(node).empty()) {
-    return true;
-  }
-  return false;
+  return true;
 }
 
 }  // namespace onnxruntime

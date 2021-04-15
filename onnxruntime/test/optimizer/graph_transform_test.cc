@@ -147,7 +147,8 @@ TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
-  // tip: to dump the subgraph, can use python tool - dump_subgraphs.py 
+  // tips: to dump the subgraph, can use python tool - dump_subgraphs.py
+  // or click on one of the input to see the drop down graph list and view subgraph 
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
