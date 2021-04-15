@@ -7,7 +7,9 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#ifndef USE_ROCM
+#ifdef USE_ROCM
+#include "core/providers/common.h"
+#else
 #define SHARED_PROVIDER 1
 
 #include <vector>
