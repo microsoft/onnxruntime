@@ -354,32 +354,31 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
-if (True)
-  file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
-  )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
-  onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs})
-  set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
-  set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
+file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
+"${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
+"${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
+)
 
-  if(APPLE)
-    set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/shared/exported_symbols.lst")
-  elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds -Xlinker --gc-sections")
-  elseif(WIN32)
-    set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/shared/symbols.def")
-  else()
-    message(FATAL_ERROR "onnxruntime_providers_shared unknown platform, need to specify shared library exports for it")
-  endif()
+source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
+onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs})
+set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
+set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
 
-  install(TARGETS onnxruntime_providers_shared
-          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(APPLE)
+set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/shared/exported_symbols.lst")
+elseif(UNIX)
+set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds -Xlinker --gc-sections")
+elseif(WIN32)
+set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/shared/symbols.def")
+else()
+message(FATAL_ERROR "onnxruntime_providers_shared unknown platform, need to specify shared library exports for it")
 endif()
+
+install(TARGETS onnxruntime_providers_shared
+        ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if (onnxruntime_USE_DNNL)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
