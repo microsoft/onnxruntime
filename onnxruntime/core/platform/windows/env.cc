@@ -39,6 +39,10 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 namespace onnxruntime {
 
+static bool ORT_FORCE_AFFINITY = false;
+static bool set_main_affinity = false;
+static std::vector<size_t> forced_affinities;
+
 namespace {
 class WindowsThread : public EnvThread {
  private:
@@ -79,6 +83,11 @@ class WindowsThread : public EnvThread {
     // TODO: should I try to use SetThreadSelectedCpuSets?
     if (!p->thread_options.affinity.empty())
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    if (ORT_FORCE_AFFINITY) {
+      target = forced_affinities[p->index+1];
+      ::std::cerr << "Setting affinity " << p->index+1 << " -> " << target << "\n";
+      SetThreadAffinityMask(GetCurrentThread(), target);
+    }
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -116,6 +125,17 @@ class WindowsEnv : public Env {
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
+    std::string v = GetEnvironmentVar("ORT_FORCE_AFFINITY");
+    if (!v.empty()) {
+      ORT_FORCE_AFFINITY = atoi(v.c_str())
+    }
+    if (ORT_FORCE_AFFINITY && !set_main_affinity) {
+      set_main_affinity = true;
+      forced_affinities = GetThreadAffinityMasks();
+      ::std::cerr << "Forcing affinity, setting main thread, got " << forced_affinities.size() << "\n";
+      ::std::cerr << "Setting affinity of main -> " << forced_affinities[0] << "\n";
+      SetThreadAffinityMask(GetCurrentThread(), forced_affinities[0]);
+    }
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
 
