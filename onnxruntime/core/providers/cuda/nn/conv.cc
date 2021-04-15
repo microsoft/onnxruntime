@@ -67,6 +67,9 @@ size_t getMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& 
 
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+  // Assuming 10% of fragmentation
+  free *= 0.9;
+
   std::cout << "free: " << free << " total: " << total << std::endl;
 
   for (int i = 0; i < n_algo; i++) {
