@@ -1078,6 +1078,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
+/*
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
@@ -1144,6 +1145,80 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
     } else {
       dispatch_q_idx = Rand(&pt->rand) % num_threads_;
     }
+    dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
+    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+  }
+
+  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
+  fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));  // run work in the main thread
+  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
+
+  if (dispatch_w_idx != -1) {
+    Queue& q = worker_data_[dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, dispatch_w_idx)) {
+      dispatch_w_idx = -1;  // cancel dispatch if not started yet
+    } else {
+      while (!dispatch_done.load(std::memory_order_acquire)) {  // if started, wait for dispatch completion
+        onnxruntime::concurrency::SpinPause();
+      }
+    }
+  }
+  EndParallelSectionInternal(*pt, ps);
+  if (dispatch_w_idx != -1) {
+    while (!dispatch_work_done.load(std::memory_order_acquire)) {  // if started, wait for work completion
+      onnxruntime::concurrency::SpinPause();
+    }
+  }
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
+}*/
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  profiler_.LogStartAndCoreAndBlock(block_size);
+  PerThread* pt = GetPerThread();
+  ThreadPoolParallelSection ps;
+  StartParallelSectionInternal(*pt, ps);
+
+  std::atomic<bool> dispatch_done{false};
+  int dispatch_q_idx = -1;  // index of thread that dispatch work to all other threads
+  int dispatch_w_idx = -1;  // index of enqueued work
+
+  Task worker_fn = [&]() {
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    ps.tasks_finished.fetch_add(1, std::memory_order_release);
+  };
+
+  std::function<int(int, Task&, bool)> enqueue_fn = [&, this](int q_idx, Task& w, bool logging) {
+    WorkerData& td = worker_data_[q_idx];
+    Queue& q = td.queue;
+    unsigned w_idx;
+    Task t = q.PushBackWithTag(w, pt->tag, w_idx);
+    if (t) {
+      return -1;
+    } else {
+      td.EnsureAwake();
+      if (logging) {
+        ps.tasks.push_back({q_idx, w_idx});
+      }
+      return static_cast<int>(w_idx);
+    }
+  };
+
+  static std::atomic<unsigned> thread_offset{0};
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  unsigned extra_needed = n > current_dop ? n - current_dop : 0;
+  std::atomic<bool> dispatch_work_done{false};
+
+  Task dispatch_task = [&]() {  // dispatch work to other threads
+    for (auto i = 1u; i < extra_needed; i++) {
+      enqueue_fn((dispatch_q_idx + i) % num_threads_, worker_fn, true);
+    }
+    dispatch_done.store(true, std::memory_order_release);  // dispatch complete
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    dispatch_work_done.store(true, std::memory_order_release);  // work complete
+  };
+
+  if (extra_needed > 0) {
+    profiler_.LogStart();
+    dispatch_q_idx = thread_offset.fetch_add(extra_needed, std::memory_order_relaxed) % num_threads_;
     dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
@@ -1392,7 +1467,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->thread_id = thread_id;
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
-    SetGoodWorkerHint(thread_id, true /* Is good */);
+    //SetGoodWorkerHint(thread_id, true /* Is good */);
 
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
@@ -1409,12 +1484,12 @@ int CurrentThreadId() const EIGEN_FINAL {
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
 
-          SetGoodWorkerHint(thread_id, true);
+          //SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
-          SetGoodWorkerHint(thread_id, false);
+          //SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
