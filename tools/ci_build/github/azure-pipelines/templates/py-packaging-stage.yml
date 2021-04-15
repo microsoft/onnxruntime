@@ -232,10 +232,10 @@ stages:
         matrix:
           Python36:
             PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
+          # Python37:
+          #   PythonVersion: '3.7'
+          # Python38:
+          #   PythonVersion: '3.8'
           # dependency PyTorch does not support Python 3.9 yet
           # Python39:
           #   PythonVersion: '3.9'
@@ -253,7 +253,7 @@ stages:
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
-            --build-arg INSTALL_DEPS_EXTRA_ARGS=-t
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmu
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetrainingrocmbuild
 
@@ -261,26 +261,39 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
-              --volume /data/onnx:/data/onnx:ro \
+            docker run --rm \
+              --privileged \
+              --ipc=host \
+              --network=host \
+              --device=/dev/kfd \
+              --device=/dev/dri \
+              --group-add video \
+              --cap-add=SYS_PTRACE \
+              --security-opt seccomp=unconfined \
+              -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              --workdir /onnxruntime_src \
+              --entrypoint $(PythonManylinuxDir)/bin/python3 \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              --user onnxruntimedev \
               onnxruntimetrainingrocmbuild \
-                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
+                /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
-                  --skip_submodule_sync \
+                  --use_rocm \
+                    --rocm_version=4.1 \
+                    --rocm_home=/opt/rocm \
+                    --nccl_home=/opt/rocm \
+                  --update \
                   --parallel \
+                  --build_dir /build \
+                  --build \
                   --build_wheel \
                   --skip_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_rocm --rocm_version=4.1 --rocm_home=/opt/rocm --nccl_home=/opt/rocm
+                  --cmake_extra_defines  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
           workingDirectory: $(Build.SourcesDirectory)
   
       - task: CopyFiles@2
@@ -297,15 +310,13 @@ stages:
           script: |
             mkdir -p $HOME/.onnx
             docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              --entrypoint /bin/bash \
               onnxruntimetrainingrocmbuild \
-                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+                /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -321,31 +332,31 @@ stages:
         inputs:
           ArtifactName: onnxruntime_rocm
 
-      - script: |
-          sudo apt-get update
-          sudo apt-get install python3-pip python-dev
-        displayName: 'sudo apt-get install python3-pip python-dev'
+#      - script: |
+#          sudo apt-get update
+#          sudo apt-get install python3-pip python-dev
+#        displayName: 'sudo apt-get install python3-pip python-dev'
+#
+#      - script: |
+#          python3 -m pip install azure-storage-blob==2.1.0
+#        displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
+#        timeoutInMinutes: 20
 
-      - script: |
-          python3 -m pip install azure-storage-blob==2.1.0
-        displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
-        timeoutInMinutes: 20
-
-      - task: AzureCLI@2
-        inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
-            echo ${files[0]} && \
-            tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} \
-                --account_name onnxruntimepackages \
-                --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web'
-          condition: succeededOrFailed()
-          displayName: 
+#      - task: AzureCLI@2
+#        inputs:
+#          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+#          scriptType: 'bash'
+#          scriptLocation: 'inlineScript'
+#          inlineScript: |
+#            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+#            echo ${files[0]} && \
+#            tools/ci_build/upload_python_package_to_azure_storage.py \
+#                --python_wheel_path ${files[0]} \
+#                --account_name onnxruntimepackages \
+#                --account_key $(orttrainingpackagestorageaccountkey) \
+#                --container_name '$web'
+#          condition: succeededOrFailed()
+#          displayName: 
 
       - template: component-governance-component-detection-steps.yml
         parameters:

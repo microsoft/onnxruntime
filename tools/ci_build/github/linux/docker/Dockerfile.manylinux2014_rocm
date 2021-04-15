@@ -19,7 +19,7 @@ ENV LD_LIBRARY_PATH $DEVTOOLSET_ROOTPATH/usr/lib64:$DEVTOOLSET_ROOTPATH/usr/lib:
 ENV PKG_CONFIG_PATH /usr/local/lib/pkgconfig
 
 COPY manylinux2014_build_scripts /manylinux2014_build_scripts
-RUN bash /manylinux2014_build_scripts/build.sh 8 && rm -r manylinux2014_build_scripts && yum downgrade  -y glibc-2.17-317.el7 glibc-common-2.17-317.el7 glibc-devel-2.17-317.el7 glibc-headers-2.17-317.el7
+RUN bash /manylinux2014_build_scripts/build.sh 8 && rm -r /manylinux2014_build_scripts && yum downgrade  -y glibc-2.17-317.el7 glibc-common-2.17-317.el7 glibc-devel-2.17-317.el7 glibc-headers-2.17-317.el7
 
 ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 
@@ -35,7 +35,7 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 
-ARG BUILD_UID=1001
+ARG BUILD_UID=1002
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER

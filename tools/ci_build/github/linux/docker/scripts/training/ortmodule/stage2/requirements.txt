@@ -1,2 +1,2 @@
-deepspeed
+# git+https://github.com/ROCmSoftwarePlatform/DeepSpeed.git
 fairscale
