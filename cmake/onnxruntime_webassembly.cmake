@@ -60,7 +60,6 @@ else()
 endif()
 
 if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-  #set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=onnxWasmThreadsBindingJs -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=onnxWasmThreadsBindingJs -s USE_PTHREADS=1")
   set_target_properties(onnxruntime_wasm PROPERTIES OUTPUT_NAME "onnxruntime_wasm_threads")
 else()
