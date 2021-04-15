@@ -776,6 +776,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/eigen.cc
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
+    ${BENCHMARK_DIR}/quantize.cc
     ${BENCHMARK_DIR}/reduceminmax.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)

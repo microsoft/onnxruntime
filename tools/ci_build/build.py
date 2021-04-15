@@ -1482,7 +1482,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 
 def build_python_wheel(
-        source_dir, build_dir, configs, use_cuda, use_dnnl,
+        source_dir, build_dir, configs, use_cuda, cuda_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False,
         use_cusparselt=False):
@@ -1519,6 +1519,8 @@ def build_python_wheel(
             args.append('--use_tensorrt')
         elif use_cuda:
             args.append('--use_cuda')
+            if cuda_version:
+                args.append('--cuda_version={}'.format(cuda_version))
         elif use_cusparselt:
             args.append('--use_cusparselt')
         elif use_openvino:
@@ -2030,6 +2032,7 @@ def main():
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.cuda_version,
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,
