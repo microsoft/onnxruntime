@@ -36,10 +36,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvTranspose<float>);
 
-static void Transpose(const float* src, float* dst, size_t M, size_t N) {
-  EigenMatrixMapRowMajor<float>(dst, N, M) = ConstEigenMatrixMapRowMajor<float>(src, M, N).transpose();
-}
-
 template <typename T>
 Status ConvTranspose<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
   is_packed = false;
@@ -59,7 +55,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
 
     const size_t K = static_cast<size_t>(filter_shape_[0]) / conv_transpose_attrs_.group;
     const size_t N = filter_shape_.SizeFromDimension(1);
-    packed_bytes_per_group_ = MlasGemmPackBSize(N, K);
+    packed_bytes_per_group_ = ((N * K + 7) & ~7) * sizeof(float);
     if (packed_bytes_per_group_ == 0) {
       return Status::OK();
     }
@@ -69,19 +65,13 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
     packed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
 
     for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
-      MlasGemmPackB(
-          CblasNoTrans,
-          N,
-          K,
-          tensor.Data<float>() + (N * K * group_id),
-          N,
-          ((char*)packed_filter_data) + (packed_bytes_per_group_ * group_id));
+      MlasTranspose(tensor.Data<float>() + (N * K * group_id),
+                    (float*)(((char*)packed_filter_data) + (packed_bytes_per_group_ * group_id)),
+                    K, N);
     }
 
-    // Do not set
-    //    is_packed = true;
-    // This kind of packing improve well when input image size (h x w) is small.
-    // Need keep original tensor for other case.
+    // do not set is_packed as dynamic_padding mode exists
+    // is_packed = true;
   }
   return Status::OK();
 }
@@ -222,17 +212,10 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
 
   const float* Xdata = p.X->template Data<float>();
-  bool use_prepacked_filter = !dynamic_padding && packed_filter_ && input_image_size <= 16 && kernel_dim > input_image_size;
+  bool use_prepacked_filter = !dynamic_padding && packed_filter_;
   const float* filter_data = use_prepacked_filter ? static_cast<float*>(packed_filter_.get()) : p.F->template Data<float>();
   float* Ydata = p.Y->template MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
-
-  BufferUniquePtr extra_buffer;
-  if (use_prepacked_filter) {
-    auto extra_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-    extra_buffer = BufferUniquePtr(extra_data, BufferDeleter(alloc));
-  }
-  float* extra_buffer_data = static_cast<float*>(extra_buffer.get());
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -251,21 +234,18 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
             col_buffer_data,
             thread_pool);
       } else {
-        MlasGemm(
-            CblasTrans,
-            static_cast<size_t>(input_image_size),
-            static_cast<size_t>(kernel_dim),
-            static_cast<size_t>(p.num_input_channels / conv_transpose_attrs_.group),
-            1.0f,
-            Xdata + group_id * X_offset,
-            static_cast<size_t>(input_image_size),
+        math::Gemm<float>(
+            CblasNoTrans,
+            CblasNoTrans,
+            kernel_dim,
+            input_image_size,
+            p.num_input_channels / conv_transpose_attrs_.group,
+            1,
             (float*)(((char*)filter_data) + group_id * packed_bytes_per_group_),
-            0.0f,
-            extra_buffer_data,
-            static_cast<size_t>(kernel_dim),
+            Xdata + group_id * X_offset,
+            0,
+            col_buffer_data,
             thread_pool);
-
-        Transpose(extra_buffer_data, col_buffer_data, input_image_size, kernel_dim);
       }
 
       if (p.X->Shape().NumDimensions() == 4) {
