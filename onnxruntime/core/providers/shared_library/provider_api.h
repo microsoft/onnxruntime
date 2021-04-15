@@ -7,6 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+#ifndef USE_ROCM
 #define SHARED_PROVIDER 1
 
 #include <vector>
@@ -298,3 +299,5 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+
+#endif
