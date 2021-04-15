@@ -100,8 +100,19 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 
 /** Find the first child of the specified op type. */
 const Node* FirstChildByType(const Node& node, const std::string& child_type);
+
+/** Find node children by op types.
+    @returns The matched children are sorted by source argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type);
+
 /** Find the first parent of the specified op type. */
 const Node* FirstParentByType(const Node& node, const std::string& parent_type);
+
+/** Find node parents by op types.
+    @returns The matched parents are sorted by destination argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type);
 
 /** Tests if we can remove a node and merge its input edge (if any) with its output edges.
 Conditions:
@@ -201,6 +212,21 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
     All nodes in 'nodes' will be removed.
 */
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
+
+/** Finalize the fusion of two or more nodes which are being replaced with two or more nodes.
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
+    Conceptually multiple nodes are being combined, and post-fusion will produce output/s with the same names
+    as the last node in 'nodes', and be connected to the same downstream nodes.
+
+    The input edges to the first node in 'nodes' will be moved to replacement_node_start. No other input edges are moved.
+    The output definitions and edges from the last node in 'nodes' will be moved to replacement_node_end.
+    All nodes in 'nodes' will be removed.
+*/
+void FinalizeNodeFusion(Graph& graph,
+                        const std::vector<std::reference_wrapper<Node>>& nodes,
+                        Node& replacement_node_start,
+                        Node& replacement_node_end);
 
 /** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.

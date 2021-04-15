@@ -8,6 +8,7 @@
 namespace onnxruntime {
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
+using KernelDefHashes = std::vector<std::pair<std::string, uint64_t>>;
 
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
@@ -60,6 +61,9 @@ class KernelRegistry {
     return kernel_creator_fn_map_;
   }
 #endif
+
+  // Get sorted kernel def key and hash pairs.
+  KernelDefHashes ExportKernelDefHashes() const;
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)

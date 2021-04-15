@@ -139,10 +139,20 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
   file(GLOB_RECURSE onnxruntime_cpu_full_training_only_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -269,7 +279,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
-  
+
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
@@ -279,7 +289,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
       target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
-  endforeach()  
+  endforeach()
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -392,15 +402,16 @@ if (onnxruntime_USE_DNNL)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
-  if (onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
-    target_compile_definitions(onnxruntime_providers_dnnl PRIVATE USE_DNNL_GPU_OCL=1)
-  endif()
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/dnnl/exported_symbols.lst")
+    set_target_properties(onnxruntime_providers_dnnl PROPERTIES
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH_USE_LINK_PATH FALSE)
     target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
   elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections")
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\$ORIGIN")
     target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/dnnl/symbols.def")
@@ -416,6 +427,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   add_definitions(-DUSE_TENSORRT=1)
+  set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
   include_directories(${PROJECT_SOURCE_DIR}/external/protobuf)
@@ -446,14 +458,8 @@ if (onnxruntime_USE_TENSORRT)
     unset(OLD_CMAKE_CXX_FLAGS)
     unset(OLD_CMAKE_CUDA_FLAGS)
     set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-    target_sources(onnx2trt PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/getopt.cc)
-    target_sources(getSupportedAPITest PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/getopt.cc)
-    target_include_directories(onnx2trt PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/include)
-    target_include_directories(getSupportedAPITest PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/include)
     target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
     target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
-    target_compile_options(onnx2trt PRIVATE /FIio.h /wd4100)
-    target_compile_options(getSupportedAPITest PRIVATE /FIio.h /wd4100)
   endif()
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   include_directories(${TENSORRT_INCLUDE_DIR})
@@ -588,7 +594,7 @@ if (onnxruntime_USE_OPENVINO)
   target_link_libraries(onnxruntime_providers_openvino onnxruntime_providers_shared ${OPENVINO_LIB_LIST})
 
   if(MSVC)
-    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
+    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4099 /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
   endif()
 
   if(APPLE)
@@ -608,6 +614,10 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_COREML)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    message(FATAL_ERROR "CoreML EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
+  endif()
+
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
@@ -1008,10 +1018,10 @@ if (onnxruntime_USE_ROCM)
       #list(APPEND HIP_CXX_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
-  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})  
+  list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
 
   # Generate GPU code during compilation
-  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)  
+  list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
@@ -1030,7 +1040,7 @@ if (onnxruntime_USE_ROCM)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
   # During transition to separate hipFFT repo, put hipfft/include early
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/include/hipcub ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+  target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
   target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)

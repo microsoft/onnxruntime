@@ -167,6 +167,13 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     weight_data = weight.template Data<T>();
   }
 
+  // Compute buffer size in byte for reduction APIs.
+  const auto buffer_size =
+      compute_reduction_buffer_size<T>(static_cast<int>(N));
+  // Allocate reduction buffer whose size is buffer_size bytes.
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+      buffer_size);
+
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::SUM) {
     const T normalize_factor = static_cast<T>(1);
@@ -176,12 +183,6 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
       const T normalize_factor = static_cast<T>(N);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream()));
     } else {
-      // Compute buffer size in byte for reduction APIs.
-      const auto buffer_size =
-          compute_reduction_buffer_size<T>(static_cast<int>(N));
-      // Allocate reduction buffer whose size is buffer_size bytes.
-      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
-          buffer_size);
       ORT_RETURN_IF_ERROR(reduce_sum(
           Stream(),
           weight_data,
@@ -202,14 +203,13 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
                                 D);
 
   // ReduceSum on loss_per_sample
-  std::vector<int64_t> output_dims(1, 1);
-  return ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+  return reduce_sum(
+      Stream(),
       tmp_loss_sample.get(),
-      label_reshape,
       total_loss_data,
-      TensorShape({}),
-      CUDNN_REDUCE_TENSOR_ADD,
-      output_dims);
+      static_cast<int>(N),
+      reduction_buffer.get(),
+      buffer_size);
 }
 
 template <typename T, typename Tin>

@@ -134,7 +134,7 @@ class GradientGraphBuilder {
   NodeSet BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const;
 
   /**
-  Perferms a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
+  Performs a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
   It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
   The resulting node set contains all the nodes that are differentiable wrt the input nodes
   @param Starting nodes for ReverseBFS
