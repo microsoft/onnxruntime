@@ -7,19 +7,18 @@ from enum import Enum
 
 def GenerateModel(model_name, has_casts=False):
     nodes = [  # SimplifiedLayerNorm subgraph
-        helper.make_node("Pow", ["cast_A0" if has_casts else "A", "pow_in_2"], ["pow_out"], "pow"),
+        helper.make_node("Pow", ["cast_A" if has_casts else "A", "pow_in_2"], ["pow_out"], "pow"),
         helper.make_node("ReduceMean", ["pow_out"], ["rd2_out"], "reduce", axes=[-1], keepdims=1),
         helper.make_node("Add", ["rd2_out", "const_e12"], ["add1_out"], "add"),
         helper.make_node("Sqrt", ["add1_out"], ["sqrt_out"], "sqrt"),
-        helper.make_node("Div", ["cast_A1" if has_casts else "A", "sqrt_out"], ["div_out"], "div"),
+        helper.make_node("Div", ["cast_A" if has_casts else "A", "sqrt_out"], ["div_out"], "div"),
         helper.make_node("Mul", ["gamma", "cast_div_out" if has_casts else "div_out"], ["C"], "mul"),
     ]
 
     if has_casts:
         nodes.extend(
             [
-                helper.make_node("Cast", ["A"], ["cast_A0"], "cast A 0", to=1),
-                helper.make_node("Cast", ["A"], ["cast_A1"], "cast A 1", to=1),
+                helper.make_node("Cast", ["A"], ["cast_A"], "cast A", to=1),
                 helper.make_node("Cast", ["div_out"], ["cast_div_out"], "cast_2", to=10),
             ]
         )
