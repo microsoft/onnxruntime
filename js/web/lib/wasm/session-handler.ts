@@ -110,7 +110,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     }
   }
 
-  dispose(): Promise<void> {
+  async dispose(): Promise<void> {
     const wasm = getInstance();
     if (this.inputNamesUTF8Encoded) {
       this.inputNamesUTF8Encoded.forEach(str => wasm._OrtFree(str));
@@ -124,9 +124,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       wasm._OrtReleaseSession(this.sessionHandle);
       this.sessionHandle = 0;
     }
-    return Promise.resolve();
   }
-  run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+
+  async run(
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
     const wasm = getInstance();
 
@@ -201,12 +202,12 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       let outputValuesIndex = outputValuesOffset / 4;
       let outputNamesIndex = outputNamesOffset / 4;
       for (let i = 0; i < inputCount; i++) {
-        wasm.HEAP32[inputValuesIndex++] = inputValues[i];
-        wasm.HEAP32[inputNamesIndex++] = this.inputNamesUTF8Encoded[inputIndices[i]];
+        wasm.HEAPU32[inputValuesIndex++] = inputValues[i];
+        wasm.HEAPU32[inputNamesIndex++] = this.inputNamesUTF8Encoded[inputIndices[i]];
       }
       for (let i = 0; i < outputCount; i++) {
-        wasm.HEAP32[outputValuesIndex++] = 0;
-        wasm.HEAP32[outputNamesIndex++] = this.outputNamesUTF8Encoded[outputIndices[i]];
+        wasm.HEAPU32[outputValuesIndex++] = 0;
+        wasm.HEAPU32[outputNamesIndex++] = this.outputNamesUTF8Encoded[outputIndices[i]];
       }
 
       // support RunOptions
@@ -228,7 +229,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
                 tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
             let tensorDataIndex = tensorDataOffset / 4;
             const dataType = wasm.HEAPU32[tensorDataIndex++];
-            const dataOffset = wasm.HEAPU32[tensorDataIndex++];
+            const dataOffset: number = wasm.HEAPU32[tensorDataIndex++];
             const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
             const dimsLength = wasm.HEAPU32[tensorDataIndex++];
             const dims = [];
@@ -259,7 +260,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       inputDataOffsets.forEach(i => wasm._free(i));
 
       if (errorCode === 0) {
-        return Promise.resolve(output);
+        return output;
       } else {
         throw new Error(`failed to call OrtRun(). error code = ${errorCode}.`);
       }

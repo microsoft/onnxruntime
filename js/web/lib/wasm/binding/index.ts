@@ -1,7 +1,7 @@
 import wasmModuleFactory, {BackendWasmModule} from './onnxruntime_wasm';
 
 // some global parameters to deal with wasm binding initialization
-let binding: BackendWasmModule|undefined;
+let wasm: BackendWasmModule;
 let initialized = false;
 let initializing = false;
 
@@ -22,11 +22,12 @@ export const init = async(): Promise<void> => {
 
   return new Promise<void>((resolve, reject) => {
     wasmModuleFactory().then(
-        () => {
+        initializedModule => {
           // resolve init() promise
-          resolve();
+          wasm = initializedModule;
           initializing = false;
           initialized = true;
+          resolve();
         },
         err => {
           initializing = false;
@@ -35,4 +36,4 @@ export const init = async(): Promise<void> => {
   });
 };
 
-export const getInstance = (): BackendWasmModule => binding!;
+export const getInstance = (): BackendWasmModule => wasm;

@@ -32,7 +32,7 @@ npmlog.info('Build', 'Building bundle...');
 
   npmlog.info('Build.Bundle', '(2/2) Running webpack to generate bundles...');
   const webpackCommand = path.join(npmBin, 'webpack');
-  const webpackArgs = [];
+  const webpackArgs: string[] = [];
   npmlog.info('Build.Bundle', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
   const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
   if (webpack.status !== 0) {
