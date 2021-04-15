@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 

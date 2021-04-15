@@ -165,9 +165,6 @@ size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
-#ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
