@@ -2290,6 +2290,83 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         }
       });
 
+  static const char* TorchEmbedding_ver1_doc = R"DOC(
+      Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
+       for a dictionary of fixed size.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchEmbedding)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(TorchEmbedding_ver1_doc)
+      .Input(
+          0,
+          "weight",
+          "The embedding matrix of size N x M. 'N' is equal to the maximum possible index + 1, and 'M' is "
+          "equal to the embedding size",
+          "T")
+      .Input(
+          1,
+          "indices",
+          "Long tensor containing the indices to extract from embedding matrix.",
+          "tensor(int64)")
+      .Input(
+          2,
+          "padding_idx",
+          "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
+          "therefore, the embedding vector at `padding_idx` is not updated during training, "
+          "i.e. it remains as a fixed pad.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "scale_grad_by_freq",
+          "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
+          "the indices (words) in the mini-batch. Default  is ``False``",
+          "tensor(bool)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type as the input tensor. Shape of the output is * x M, where '*' is the shape of "
+          "input indices, and 'M' is the embedding size.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)"},
+          "Constrain input and output types to all numeric tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        TensorShapeProto outputs_shape;
+        Dim input_dim_i;
+
+        if (hasInputShape(ctx, 1)) {
+          auto& input_shape = getInputShape(ctx, 1);
+          for (int32_t i = 0; i < input_shape.dim_size(); i++) {
+            input_dim_i = input_shape.dim(i);
+            *outputs_shape.add_dim() = input_dim_i;
+          }
+        }
+
+        Dim embedding_dim;
+        unifyInputDim(ctx, 0, 1, embedding_dim);
+        *outputs_shape.add_dim() = embedding_dim;
+        updateOutputShape(ctx, 0, outputs_shape);
+      });
+
   static const char* Trilu_ver1_doc = R"DOC(
       Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
       the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
@@ -2424,6 +2501,45 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
             propagateShapeFromInputToOutput(ctx, 0, 1);
           }
         }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("IsAllFinite")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("isinf_only",
+            "If true, check only for Inf, -Inf.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("isnan_only",
+            "If true, check only for NaN.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)"},
+          "Constrain the output to a boolean tensor.")
+      .Input(0, "input", "Input tensors to check.", "V",
+             OpSchema::Variadic)
+      .Output(
+          0,
+          "output",
+          "The output scalar. Its value is true if all input "
+          "tensors are finite. Otherwise, the output value would "
+          "be false.",
+          "T")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        bool isinf_only = static_cast<bool>(getAttribute(ctx, "isinf_only", int64_t(0)));
+        bool isnan_only = static_cast<bool>(getAttribute(ctx, "isnan_only", int64_t(0)));
+        ORT_ENFORCE(!(isinf_only && isnan_only),
+                    "Both attributes isinf_only and isnan_only cannot be set. Unset both to check for both conditions.");
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
   // Register the NCHWc schemas if supported by the platform.

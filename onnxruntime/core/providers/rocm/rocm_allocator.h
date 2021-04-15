@@ -22,6 +22,25 @@ class ROCMAllocator : public IAllocator {
   void CheckDevice(bool throw_when_fail) const;
 };
 
+class ROCMExternalAllocator : public ROCMAllocator {
+  typedef void* (*ExternalAlloc)(size_t size);
+  typedef void (*ExternalFree)(void* p);
+
+ public:
+  ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+      : ROCMAllocator(device_id, name) {
+    alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<void*>(alloc));
+    free_ = reinterpret_cast<ExternalFree>(const_cast<void*>(free));
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+
+ private:
+  ExternalAlloc alloc_;
+  ExternalFree free_;
+};
+
 //TODO: add a default constructor
 class ROCMPinnedAllocator : public IAllocator {
  public:

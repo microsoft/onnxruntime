@@ -63,6 +63,14 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
 
+Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  return g_host->IDataTransfer__CopyTensor(this, src, dst);
+}
+
+Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
+}
+
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {
