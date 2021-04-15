@@ -65,11 +65,15 @@ size_t getMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& 
 
   // TODO: get maximum available size from memory areana
 
+  size_t free, total;
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+  std::cout << "free: " << free << " total: " << total << std::endl;
+
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
     err = getWorkspaceSize(s, algo[i], &sz);
-    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size)
+    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free)
       continue;
     max_ws_size = sz;
   }
@@ -275,7 +279,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               max_ws_size));
           break;
         }
-        case 1: 
+        case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
               s_.handle,
               s_.x_tensor,
