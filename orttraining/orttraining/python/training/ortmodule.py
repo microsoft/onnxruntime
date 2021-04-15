@@ -71,8 +71,9 @@ class ORTModule(torch.nn.Module):
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
-        # Get the module that flattens the output from the original module into a tuple
-        self._flattened_module = _io.get_flattened_module(self._original_module)
+
+        # Get the module that flattens both input and output
+        self._flattened_module = _io._FlattenedModule(self._original_module)
 
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
 

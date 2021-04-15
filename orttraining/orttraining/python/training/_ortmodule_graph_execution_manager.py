@@ -17,6 +17,8 @@ import inspect
 import onnx
 import onnxruntime
 import torch
+import warnings
+
 from torch.utils.cpp_extension import ROCM_HOME
 
 ONNX_OPSET_VERSION = 12
@@ -107,7 +109,7 @@ class GraphExecutionManager(ABC):
         self._module_output_schema = None
 
         # Log level
-        self._loglevel = _logger.LogLevel.WARNING
+        self._loglevel = _logger.LogLevel.INFO
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
@@ -117,8 +119,8 @@ class GraphExecutionManager(ABC):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                raise NotImplementedError(
-                    "The model's forward method has **kwargs parameter which is currently not supported.")
+                warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!", UserWarning)
+                    
 
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
@@ -193,6 +195,8 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+        if self._save_onnx:
+            onnx.save(self._onnx_model, self._save_onnx_prefix + 'inference.onnx')
 
         if self._run_symbolic_shape_infer:
             self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)

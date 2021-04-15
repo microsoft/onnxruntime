@@ -268,27 +268,6 @@ def test_forward_call_multiple_positional_arguments():
     output = ort_model(x, y)
     assert output is not None
 
-def test_forward_call_multiple_positional_arguments_var_keyword():
-    device = 'cuda'
-
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-
-    # TODO: remove exception check and uncomment the rest of the test when
-    # PyTorch ONNX exporter supports **kwargs.
-    with pytest.raises(NotImplementedError) as runtime_error:
-        ort_model = ORTModule(model)
-    assert '**kwargs' in str(runtime_error.value)
-
-    # # Check that the original forward signature is preserved.
-    # assert signature(model.forward) == signature(ort_model.forward)
-    # x = torch.randn(N, D_in, device=device)
-    # y = torch.randn(N, D_in, device=device)
-
-    # # Make sure model runs without any exception
-    # output = ort_model(x, y)
-    # assert output is not None
-
 def test_forward_call_positional_arguments():
     device = 'cuda'
 
@@ -1912,3 +1891,64 @@ def test_forward_dynamic_kwargs():
         hash_x2 = hash(repr(model._execution_manager(model._is_training())._input_info.schema))
         assert hash_x2 != hash_x_y_z
         assert hash_x2 == hash_x
+
+
+def test_forward_call_kwargs_input():
+    import pdb
+    class KwargsNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(KwargsNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, pos_0, *args, kw_0=None, **kwargs):
+            model_input = pos_0
+
+            print(f'KwargsNet.forward.pos_0={pos_0}')
+            if args:
+                print(f'\nKwargsNet.forward.args={args}')
+                model_input += sum(args)
+            else:
+                print('\nNOT using KwargsNet.forward.args *******************************\n')
+
+            if kw_0 is not None:
+                print(f'\nKwargsNet.forward.kw_0={kw_0}')
+                model_input += kw_0
+            else:
+                print('\nNOT using KwargsNet.forward.kw_0 *******************************\n')
+
+            if kwargs:
+                print(f'\nkwargs: {kwargs} *******************************\n')
+                if 'KwargsNet.forward.kwargs_0' in kwargs:
+                    model_input += kwargs['kwargs_0']
+
+                if 'kwargs_1' in kwargs:
+                    model_input += torch.matmul(kwargs['kwargs_0'], kwargs['kwargs_1'])
+            else:
+                print('\nNOT using KwargsNet.forward.kwargs *******************************\n')
+
+            out = self.fc1(model_input)
+            out = self.relu(out)
+            out = self.fc2(out)
+            return out
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = KwargsNet(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    ort_model = ORTModule(model)
+    ort_model._execution_manager(True)._save_onnx = True
+    ort_model._execution_manager(True)._save_onnx_prefix = '/home/thiagofc/dev/github/onnxruntime/build/Linux/RelWithDebInfo/__ortmodule_args_kwargs_'
+
+    pos_0 = torch.randn(N, D_in, device=device)
+    kw_0 = torch.randn(N, D_in, device=device)
+    args = [torch.randn(N, D_in, device=device)]*2
+    kwargs = {'kwargs_0' : torch.randn(N, D_in, device=device),
+              'kwargs_1' : torch.randn(D_in, D_in, device=device)}
+    # kwargs = {'kwargs_0' : torch.randn(N, D_in, device=device)}
+    prediction = ort_model(pos_0, *args, kw_0=kw_0, **kwargs)
+    assert prediction is not None
+    prediction = prediction.sum()
+    loss = prediction.backward()
+    # assert loss is not None
