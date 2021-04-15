@@ -80,9 +80,18 @@ class FusionLayerNormalization(Fusion):
         if not self.model.find_constant_input(pow_node, 2.0) == 1:
             return
 
-        mul_node = input_name_to_nodes[div_node.output[0]][0]
-        if mul_node.op_type != 'Mul':
-            return
+        # bugbug
+        cast_node = None
+        mul_node = None
+        node_after_div = input_name_to_nodes[div_node.output[0]][0]
+        if node_after_div.op_type != 'Mul':
+            if node_after_div.op_type == 'Cast':
+                cast_node = node_after_div
+                mul_node = input_name_to_nodes[cast_node.output[0]][0]
+                if mul_node.op_type != 'Mul':
+                    return
+            else:
+                return
 
         last_add_node = input_name_to_nodes[mul_node.output[0]][0]
         if last_add_node.op_type != 'Add':
@@ -93,12 +102,18 @@ class FusionLayerNormalization(Fusion):
         subgraph_nodes.extend(parent_nodes[:-1])
 
         subgraph_nodes.extend([last_add_node, mul_node, div_node])
+        if cast_node is not None:
+            subgraph_nodes.extend([cast_node])
+
         if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, last_add_node.output, input_name_to_nodes,
                                                 output_name_to_node):
             logger.debug(f"It is not safe to fuse LayerNormalization node. Skip")
             return
 
-        weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
+        if cast_node is None:
+            weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
+        else:
+            weight_input = mul_node.input[0]
         if not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
             return
 
@@ -107,10 +122,10 @@ class FusionLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-
         normalize_node = helper.make_node('LayerNormalization',
                                           inputs=[node.input[0], weight_input, bias_input],
                                           outputs=[last_add_node.output[0]])
+
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
 

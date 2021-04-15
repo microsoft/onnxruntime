@@ -52,13 +52,14 @@ opt_model = optimize_model(onnx_model_path,
                            use_gpu=True,
                            only_onnxruntime=False)
 
+opt_model.convert_model_float32_to_float16()
 opt_model.save_model_to_file(optimized_model_path, use_external_data_format = False)
 print(opt_model.get_fused_operator_statistics())
 
 # test parity
 print("test parity")
 num_layers = 6
-input_ids, position_ids, attention_mask, past_key_values = create_dummy_inputs(1, 1, 1, 1024, 16, 6, 1024, "cuda", 50304, True)
+input_ids, position_ids, attention_mask, past_key_values = create_dummy_inputs(1, 1, 0, 1024, 16, 6, 1024, "cuda", 50304, True)
 past_key_values_fp32 = [v.clone().to(torch.float32) for v in past_key_values]
 
 ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
