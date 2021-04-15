@@ -21,7 +21,9 @@ namespace onnxruntime {
 
 class ORTInvoker {
  public:
-  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider);
+  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, const logging::Logger& logger) : 
+      execution_provider_(std::move(execution_provider)), logger_(logger) {
+  }
 
   IExecutionProvider& GetCurrentExecutionProvider() {
     return *execution_provider_;
@@ -37,6 +39,7 @@ class ORTInvoker {
 
  private:
   std::unique_ptr<IExecutionProvider> execution_provider_;
+  const logging::Logger& logger_;
 };
 
 #ifdef __GNUC__

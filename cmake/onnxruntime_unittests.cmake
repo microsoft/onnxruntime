@@ -798,7 +798,6 @@ set(onnxruntime_eager_mode_libs
         onnxruntime_providers
         onnxruntime_util
         onnxruntime_framework
-        onnxruntime_flatbuffers
         flatbuffers
         onnxruntime_graph 
         onnxruntime_common
@@ -808,6 +807,7 @@ set(onnxruntime_eager_mode_libs
         protobuf::libprotobuf
         GTest::gtest
         re2::re2
+        onnxruntime_flatbuffers
         ${CMAKE_DL_LIBS}
         )
 if(onnxruntime_ENABLE_TRAINING)
