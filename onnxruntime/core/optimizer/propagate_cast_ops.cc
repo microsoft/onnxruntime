@@ -306,18 +306,23 @@ static std::string ConcatNames(C const& items) {
 }
 
 // Change the elem_type of the given NodeArgs from FLOAT to FLOAT16.
-static void ChangeTypeToFP16(Graph& graph, std::unordered_set<NodeArg*>& require_type_change, const logging::Logger& logger) {
+static void ChangeTypeToFP16(Graph& graph, std::unordered_set<NodeArg*>& require_type_change, bool is_forward, const logging::Logger& logger) {
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
   for (NodeArg* node_arg : require_type_change) {
     if (IsType(*node_arg, TensorProto::FLOAT)) {
       node_arg->UpdateTypeAndShape(type_proto, true, true, logger);
-      for (const Node* node : graph.GetConsumerNodes(node_arg->Name())) {
-        converted_node_names.insert(node->Name());
-      }
-      const Node* producer = graph.GetProducerNode(node_arg->Name());
-      if (nullptr != producer) {
-        converted_node_names.insert(producer->Name());
+      if (is_forward) {
+        // Propagating forwards. Count consumers.
+        for (const Node* node : graph.GetConsumerNodes(node_arg->Name())) {
+          converted_node_names.insert(node->Name());
+        }
+      } else {
+        // Propagating backwards. Count producers.
+        const Node* producer = graph.GetProducerNode(node_arg->Name());
+        if (nullptr != producer) {
+          converted_node_names.insert(producer->Name());
+        }
       }
     }
   }
@@ -347,7 +352,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
     LOGS(logger, VERBOSE) << "PropagateForwards: Removed Cast node  " << node->Name();
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, false, removed_nodes);
-    ChangeTypeToFP16(graph, require_type_change, logger);
+    ChangeTypeToFP16(graph, require_type_change, true, logger);
     LOGS(logger, VERBOSE) << "PropagateForwwards: Inserted Cast nodes " << ConcatNames<std::unordered_set<NodeArg*>>(require_cast);
     modified = true;
   }
@@ -379,7 +384,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
     LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, true, removed_nodes);
-    ChangeTypeToFP16(graph, require_type_change, logger);
+    ChangeTypeToFP16(graph, require_type_change, false, logger);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted Cast nodes "
                           << ConcatNames<std::unordered_set<NodeArg*>>(require_cast);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Changed the type from float to float16 : "
@@ -522,7 +527,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
         }
       }
       InsertCastNodes(graph, node_args, false, removed_nodes);
-      ChangeTypeToFP16(graph, require_type_change, logger);
+      ChangeTypeToFP16(graph, require_type_change, true, logger);
       LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Inserted Cast node to "
                             << ConcatNames(node_args);
       modified = true;
@@ -581,7 +586,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
         }
       }
       InsertCastNodes(graph, node_args, true, removed_nodes);
-      ChangeTypeToFP16(graph, require_type_change, logger);
+      ChangeTypeToFP16(graph, require_type_change, false, logger);
       LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted Cast node to " << ConcatNames(node_args);
       modified = true;
     }
