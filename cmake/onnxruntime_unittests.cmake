@@ -451,7 +451,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    # CUDA, TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
+    # CUDA, TENSORRT, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
