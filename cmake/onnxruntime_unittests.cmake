@@ -150,7 +150,7 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.h"
   "${TEST_SRC_DIR}/common/logging/*.cc"
   "${TEST_SRC_DIR}/common/logging/*.h"
-  )
+)
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
@@ -306,9 +306,9 @@ if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_internal_testing_src})
 endif()
 
-set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
-set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
-set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${ONNXRUNTIME_ROOT}/test/api_tests_without_env")
+set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
+set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
+set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -424,8 +424,8 @@ if(onnxruntime_USE_COREML)
 endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
-  "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
+  "${TEST_SRC_DIR}/tvm/*.h"
+  "${TEST_SRC_DIR}/tvm/*.cc"
   )
 
 if(onnxruntime_USE_NUPHAR)
@@ -526,7 +526,7 @@ add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-else()
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -555,7 +555,7 @@ add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-else()
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -575,7 +575,7 @@ set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
-if(NOT TARGET onnxruntime)
+if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
 
@@ -602,6 +602,20 @@ endif()
 # list given it's built on top of that library and needs all the same dependencies.
 if(WIN32)
   list(APPEND onnxruntime_test_providers_libs Advapi32)
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  # blacklist for WebAssembly for now.
+  # exclude thread test since WebAssembly doesn't support multi-threads properly yet.
+  list(REMOVE_ITEM all_tests
+    "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
+    "${TEST_SRC_DIR}/framework/inference_session_test.cc"
+    "${TEST_SRC_DIR}/platform/barrier_test.cc"
+    "${TEST_SRC_DIR}/platform/threadpool_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
+    "${TEST_SRC_DIR}/providers/memcpy_test.cc"
+  )
 endif()
 
 AddTest(
@@ -634,9 +648,11 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+endif()
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata")
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -653,14 +669,14 @@ set(TEST_SAMPLES_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
 
 # Copy test data from source to destination.
 add_custom_command(
-  TARGET ${test_data_target} POST_BUILD
+  TARGET ${test_data_target} PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
 
 # Copy test samples from source to destination.
 add_custom_command(
-  TARGET ${test_data_target} POST_BUILD
+  TARGET ${test_data_target} PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${TEST_SAMPLES_SRC}
   ${TEST_SAMPLES_DES})
@@ -757,6 +773,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/eigen.cc
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
+    ${BENCHMARK_DIR}/quantize.cc
     ${BENCHMARK_DIR}/reduceminmax.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
@@ -773,7 +790,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
   onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
   target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-  target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_mlas onnxruntime_common)
+  target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_mlas onnxruntime_common onnxruntime_framework onnxruntime_util)
   if(NOT WIN32)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp)
   endif()
@@ -784,7 +801,7 @@ if(WIN32)
   target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-if (NOT onnxruntime_REDUCED_OPS_BUILD)
+if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   add_test(NAME onnx_test_pytorch_converted
     COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
   add_test(NAME onnx_test_pytorch_operator
@@ -835,7 +852,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
           onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
-  if(NOT WIN32)
+  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -868,14 +885,14 @@ endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
-  add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
-  target_include_directories(onnxruntime_mocked_allocator PUBLIC ${ONNXRUNTIME_ROOT}/test/util/include)
+  add_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
+  target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
   set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-  if(NOT WIN32)
+  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
@@ -952,15 +969,19 @@ if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
   target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
-onnxruntime_add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
+file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/mlas/unittest/*.h"
+  "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
+)
+onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
 if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
-if(NOT WIN32)
+set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock onnxruntime_mlas onnxruntime_common)
+if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
 endif()
 if (onnxruntime_USE_OPENMP)
@@ -975,17 +996,20 @@ if (onnxruntime_LINK_LIBATOMIC)
   target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+endif()
 
-add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
+add_library(custom_op_library SHARED ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
-  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.def")
+  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 

@@ -468,11 +468,12 @@ void RegisterTrainingOpSchemas() {
           "Constrain index tensor to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
@@ -1406,18 +1407,15 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "dy", "The gradient tensor from output.", "T")
       .Input(1, "mask",
-             "The mask tensor of the dropout. ", "T2")
+             "The mask output of the dropout. ", "T2")
       .Input(2, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
-             "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
-             "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
-             "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+             "Same value as the training_mode input supplied to the dropout op. "
+             "If this input is not specified, a default value of false is used.",
              "T2",
              OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
@@ -1435,7 +1433,52 @@ Example 4:
           "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* DropoutGrad (dy, mask, optional ratio, optional training_mode) => dX 
+                 dX = Where (mask, dY / (1-ratio), 0)
+              where ratio = 0.5 if not specified.
+
+              TODO: Note that the above doesn't handle the case where training_mode=false and a non-zero
+              value is specified for ratio. In general, it is unclear why we need the training_mode as an
+              input here, since the Gradient will be used only for training.
+            */
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+              return false; // ONNX op Where doesn't support bfloat16 yet.
+
+            if (ctx.hasInput(2)) {
+              // ratio specified.
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            } else {
+              // ratio not specified. Use a value of 0.5
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            }
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
@@ -1596,7 +1639,42 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* Default GeluGrad computation: 
+              dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
+            which expands to the following ONNX graph:
+            */
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
+                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
+                ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
+                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
+                {{"ErfTerm"}, "Erf", {"ErfArg"}},
+                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
+                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
+                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
+                {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
+                {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
+                {{"ExpTerm"}, "Exp", {"ExpArg"}},
+                {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
+                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
+                {{"dX"}, "Mul", {"dY", "FullSum"}}};
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -1755,33 +1833,6 @@ Example 4:
           "Y",
           "The output tensor. Its shape is the same as the input.",
           "T1");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("IsAllFinite")
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .TypeConstraint(
-          "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)"},
-          "Constrain the output to a boolean tensor.")
-      .Input(0, "input", "Input tensors to check.", "V",
-             OpSchema::Variadic)
-      .Output(
-          0,
-          "output",
-          "The output scalar. Its value is true if all input "
-          "tensors are finite. Otherwise, the output value would "
-          "be false.",
-          "T")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-      });
 
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.

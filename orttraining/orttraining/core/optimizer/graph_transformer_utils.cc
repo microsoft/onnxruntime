@@ -31,6 +31,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -38,6 +39,8 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -76,6 +79,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<DivMulFusion>());
       rule_transformer->Register(make_unique<EliminateDropout>());
+      rule_transformer->Register(make_unique<NotWhereFusion>());
       rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
@@ -91,6 +95,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
@@ -111,6 +116,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.transformer_layer_recompute) {
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
+      }
+      if (config.propagate_cast_ops_level >= 0) {
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
+        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
+                                                                             config.propagate_cast_ops_allow,
+                                                                             cuda_execution_provider));
       }
     } break;
 
