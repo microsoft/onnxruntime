@@ -6,7 +6,8 @@ stages:
     build_py_parameters: --enable_training
     enable_linux_cpu: false
     enable_linux_gpu: false
-    enable_linux_gpu_training: true
+    enable_linux_gpu_training: false
+    enable_linux_rocm_training: true
     enable_windows_cpu: false
     enable_windows_gpu: false
     enable_mac_cpu: false
