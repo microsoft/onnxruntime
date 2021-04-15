@@ -5,6 +5,7 @@
 import unittest
 import os
 import numpy as np
+
 import onnxruntime as onnxrt
 import threading
 import sys
@@ -226,11 +227,12 @@ class TestInferenceSession(unittest.TestCase):
                 runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
 
-    def testInvalidSetProviders(self):
-        with self.assertRaises(ValueError) as context:
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
-            sess.set_providers(['InvalidProvider'])
-        self.assertTrue('\'InvalidProvider\' is unavailable' in str(context.exception))
+    #disable this test since we change it from exception to warning
+    #def testInvalidSetProviders(self):
+    #    with self.assertRaises(ValueError) as context:
+    #        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+    #        sess.set_providers(['InvalidProvider'])
+    #    self.assertTrue('\'InvalidProvider\' is unavailable' in str(context.exception))
 
     def testSessionProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
@@ -878,8 +880,9 @@ class TestInferenceSession(unittest.TestCase):
             with self.assertRaises(ValueError):
                 check_and_normalize_provider_args(providers, provider_options, valid_providers)
 
+        # disable this test
         # provider not valid
-        check_failure(["d"], None)
+        #check_failure(["d"], None)
 
         # providers not sequence
         check_failure(3, None)
@@ -899,6 +902,36 @@ class TestInferenceSession(unittest.TestCase):
         # provider options unsupported mixed specification
         check_failure([("a", {1: 2})], [{3: 4}])
 
+    def testRegisterCustomEPsLibrary(self):
+        if sys.platform.startswith("win"):
+            shared_library = 'test_execution_provider.dll'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        elif sys.platform.startswith("darwin"):
+            shared_library = 'test_execution_provider.dylib'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        else:
+            shared_library = './test_execution_provider.so'
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+
+        this = os.path.dirname(__file__)
+        custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
+        if not os.path.exists(custom_op_model):
+            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+
+
+        from onnxruntime.capi import _pybind_state as C
+        session_options = C.get_default_session_options()
+        sess = C.InferenceSession(session_options, custom_op_model, True, True)
+        sess.initialize_session(['my_ep'], 
+                        [{'shared_lib_path': shared_library,
+                          'device_id':'1', 'some_config':'val'}], 
+                        set())
+        print("Create session with customize execution provider successfully!")
 
 if __name__ == '__main__':
     unittest.main()

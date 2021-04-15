@@ -314,6 +314,9 @@ add_custom_command(
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_shared>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_datasets_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
   COMMAND ${CMAKE_COMMAND} -E copy
