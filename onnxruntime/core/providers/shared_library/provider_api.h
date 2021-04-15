@@ -7,22 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#ifdef USE_ROCM
-#include <vector>
-#include <string>
-#include <map>
-#include <gsl/gsl>
-#include <unordered_map>
-#include <unordered_set>
-#include "onnx/common/stl_backports.h"
-#include "core/common/common.h"
-#include "core/framework/data_transfer.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/data_types_internal.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/common.h"
-#else
+#ifndef USE_ROCM
 #define SHARED_PROVIDER 1
 
 #include <vector>
