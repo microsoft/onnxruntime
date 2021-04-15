@@ -8,12 +8,12 @@ parameters:
 - name: enable_linux_cpu
   displayName: 'Whether Linux CPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_gpu_training
   displayName: 'Whether Linux GPU package is built.'
@@ -28,17 +28,17 @@ parameters:
 - name: enable_windows_gpu
   displayName: 'Whether Windows GPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_mac_cpu
   displayName: 'Whether Mac CPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_arm
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
-  default: true
+  default: false
 
 stages:
 - stage: Python_Packaging
@@ -52,14 +52,8 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -96,6 +90,7 @@ stages:
                   --enable_lto \
                   --build_wheel \
                   --enable_onnx_tests \
+                  --skip_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
@@ -455,14 +450,6 @@ stages:
           rename *.whl *.zip
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
         displayName: 'Rename file extension for codesign validation'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**\*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
