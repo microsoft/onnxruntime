@@ -7,7 +7,22 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#ifndef USE_ROCM
+#ifdef USE_ROCM
+#include <vector>
+#include <string>
+#include <map>
+#include <gsl/gsl>
+#include <unordered_map>
+#include <unordered_set>
+#include "onnx/common/stl_backports.h"
+#include "core/common/common.h"
+#include "core/framework/data_transfer.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/data_types_internal.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
+#else
 #define SHARED_PROVIDER 1
 
 #include <vector>
@@ -209,7 +224,7 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
