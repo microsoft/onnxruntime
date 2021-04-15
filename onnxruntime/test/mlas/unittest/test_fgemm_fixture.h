@@ -27,7 +27,7 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     std::stringstream ss;
     ss << (trans_a ? "TransA" : "A") << "/"
        << (trans_b ? "TransB" : "B") << "/"
-       << "BatchSize" << BatchSize << "M" << M << "xN" << N << "xK" << K << "/"
+       << "BatchSize" << BatchSize << "/M" << M << "xN" << N << "xK" << K << "/"
        << "Alpha" << alpha << "/"
        << "Beta" << beta;
     auto test_name = ss.str();
@@ -58,9 +58,7 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     size_t test_registered = 0;
     for (size_t b = 0; b < 16; b++) {
       test_registered += RegisterTestTransposeABProduct(b, b, b, 1, 1.0f, 0.0f);
-      if (!Packed) {
-        test_registered += RegisterTestTransposeABProduct(b, b, b, 3, 1.0f, 0.0f);      
-      }
+      test_registered += RegisterTestTransposeABProduct(b, b, b, 3, 1.0f, 0.0f);      
     }
     for (size_t b = 16; b <= 256; b <<= 1) {
       test_registered += RegisterTestTransposeABProduct(b, b, b, 1, 1.0f, 0.0f);
@@ -71,9 +69,7 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
 
     test_registered += RegisterTestTransposeABProduct(128, 3072, 768, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(128, 768, 3072, 1, 1.0f, 0.0f);
-    if (!Packed) {
-      test_registered += RegisterTestTransposeABProduct(25, 81, 79, 7, 1.0f, 0.0f);
-    }
+    test_registered += RegisterTestTransposeABProduct(25, 81, 79, 7, 1.0f, 0.0f);
     return test_registered;
   }
 

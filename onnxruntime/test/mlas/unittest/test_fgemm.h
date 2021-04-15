@@ -21,8 +21,8 @@ const char* GetGemmTestSuitePrefix<double>() {
 template <typename T, bool Packed>
 class FgemmPackedContext;
 
-template <typename T>
-class FgemmPackedContext<T, false> {
+template <>
+class FgemmPackedContext<float, false> {
  public:
   void
   TestGemm(
@@ -32,41 +32,103 @@ class FgemmPackedContext<T, false> {
       size_t N,
       size_t K,
       size_t BatchSize,
-      const T alpha,
-      const T* A,
+      const float alpha,
+      const float* A,
       size_t lda,
-      const T* B,
+      const float* B,
       size_t ldb,
-      const T beta,
-      T* C,
-      size_t ldc,
-      MLAS_THREADPOOL* threadpool);
-};
-
-template <typename T>
-class FgemmPackedContext<T, true> {
- public:
-  void
-  TestGemm(
-      CBLAS_TRANSPOSE TransA,
-      CBLAS_TRANSPOSE TransB,
-      size_t M,
-      size_t N,
-      size_t K,
-      size_t BatchSize,
-      const T alpha,
-      const T* A,
-      size_t lda,
-      const T* B,
-      size_t ldb,
-      const T beta,
-      T* C,
+      const float beta,
+      float* C,
       size_t ldc,
       MLAS_THREADPOOL* threadpool) {
-    ASSERT_EQ(BatchSize, size_t(1)) << "Batching does not support Pack B yet!";
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = B + K * N * i;
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+  }
+};
+
+#ifdef MLAS_TARGET_AMD64
+template <>
+class FgemmPackedContext<double, false> {
+ public:
+  void TestGemm(
+      CBLAS_TRANSPOSE TransA,
+      CBLAS_TRANSPOSE TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      size_t BatchSize,
+      double alpha,
+      const double* A,
+      size_t lda,
+      const double* B,
+      size_t ldb,
+      double beta,
+      double* C,
+      size_t ldc,
+      MLAS_THREADPOOL* threadpool) {
+    std::vector<MLAS_DGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = B + K * N * i;
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+  }
+};
+#endif
+
+template <>
+class FgemmPackedContext<float, true> {
+ public:
+  void
+  TestGemm(
+      CBLAS_TRANSPOSE TransA,
+      CBLAS_TRANSPOSE TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      size_t BatchSize,
+      const float alpha,
+      const float* A,
+      size_t lda,
+      const float* B,
+      size_t ldb,
+      const float beta,
+      float* C,
+      size_t ldc,
+      MLAS_THREADPOOL* threadpool) {
     size_t PackedBSize = MlasGemmPackBSize(N, K);
-    void* PackedB = BufferBPacked.GetBuffer(PackedBSize, true);
-    MlasGemmPackB(TransB, N, K, B, ldb, PackedB);
+    void* PackedB = BufferBPacked.GetBuffer(PackedBSize * BatchSize, true);
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      MlasGemmPackB(TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i);
+      data[i].BIsPacked = true;
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = (float*)((uint8_t*)PackedB + PackedBSize * i);
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+
     MlasGemm(TransA, M, N, K, alpha, A, lda, PackedB, beta, C, ldc, threadpool);
   }
 

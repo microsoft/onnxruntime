@@ -1457,7 +1457,6 @@ Return Value:
 
 void
 MlasSgemmThreaded(
-    const bool BIsPacked,
     const ptrdiff_t ThreadCountM,
     const ptrdiff_t ThreadCountN,
     const CBLAS_TRANSPOSE TransA,
@@ -1477,8 +1476,6 @@ Routine Description:
     SGEMM operation.
 
 Arguments:
-
-    BIsPacked - Indicate whether the B matrix is pre packed.
 
     ThreadCountM - Supplies the total thread partition on the M dimension.
 
@@ -1541,7 +1538,7 @@ Return Value:
     const float* A = DataParams->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-    if (BIsPacked) {
+    if (DataParams->BIsPacked) {
 
         MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
             K, DataParams->alpha, A, lda, DataParams->B,
@@ -1558,10 +1555,9 @@ Return Value:
     }
 }
 
-MLAS_FORCEINLINE
 void
-MlasSgemmSchedule(
-    bool BIsPacked,
+MLASCALL
+MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -1636,116 +1632,9 @@ MlasSgemmSchedule(
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
         ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
-        MlasSgemmThreaded(BIsPacked, ThreadCountM, ThreadCountN,
+        MlasSgemmThreaded(ThreadCountM, ThreadCountN,
             TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
     });
-}
-
-void
-MLASCALL
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS& Data,
-    MLAS_THREADPOOL* ThreadPool
-    )
-{
-    MlasSgemmSchedule(false, //B not packed
-        TransA, TransB, M, N, K, &Data, 1, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemmBatch(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
-    )
-{
-    MlasSgemmSchedule(false, // B not packed
-      TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-}
-
-void
-MLASCALL
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const float* A,
-    size_t lda,
-    const void* PackedB,
-    float beta,
-    float* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the single precision matrix/matrix multiply
-    operation (SGEMM).
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    PackedB - Supplies the address of packed matrix B.
-
-    beta - Supplies the scalar beta multiplier (see SGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_SGEMM_DATA_PARAMS DataParams;
-    DataParams.A = A;
-    DataParams.lda = lda;
-    DataParams.B = static_cast<const float*>(PackedB);
-    DataParams.ldb = 0;
-    DataParams.C = C;
-    DataParams.ldc = ldc;
-    DataParams.alpha = alpha;
-    DataParams.beta = beta;
-
-    MlasSgemmSchedule(
-        true,  // B is packed
-        TransA,
-        CblasTrans,  // deos not matter when B is packed
-        M, N, K, &DataParams, 1, ThreadPool);
 }
 
 size_t
