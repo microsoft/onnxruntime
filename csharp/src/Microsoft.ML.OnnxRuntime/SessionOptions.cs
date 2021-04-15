@@ -85,20 +85,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
 
-            OrtCUDAProviderOptionsNative cuda_options_native;
-            cuda_options_native.device_id = cuda_options.device_id;
-            cuda_options_native.cudnn_conv_algo_search = cuda_options.cudnn_conv_algo_search;
-            cuda_options_native.gpu_mem_limit = cuda_options.gpu_mem_limit;
-            cuda_options_native.arena_extend_strategy = cuda_options.arena_extend_strategy;
-            cuda_options_native.do_copy_in_default_stream = cuda_options.do_copy_in_default_stream;
-            cuda_options_native.has_user_compute_stream = 0;
-            cuda_options_native.user_compute_stream = IntPtr.Zero;
-            using (SessionOptions options = new SessionOptions())
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options_native));
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
-                return options;
-            }
+            SessionOptions options = new SessionOptions();
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
         }
 
         /// <summary>
@@ -181,15 +171,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="cuda_options">CUDA EP provider options to configure the CUDA EP instance</param>
         public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cuda_options)
         {
-            OrtCUDAProviderOptionsNative cuda_options_native;
-            cuda_options_native.device_id = cuda_options.device_id;
-            cuda_options_native.cudnn_conv_algo_search = cuda_options.cudnn_conv_algo_search;
-            cuda_options_native.gpu_mem_limit = cuda_options.gpu_mem_limit;
-            cuda_options_native.arena_extend_strategy = cuda_options.arena_extend_strategy;
-            cuda_options_native.do_copy_in_default_stream = cuda_options.do_copy_in_default_stream;
-            cuda_options_native.has_user_compute_stream = 0;
-            cuda_options_native.user_compute_stream = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(handle, ref cuda_options_native));
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(handle, ref cuda_options));
         }
 
         /// <summary>
@@ -670,43 +652,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        #endregion
-
-        #region IDisposable Support
-        private bool disposed_ = false; // To detect redundant calls
-
-        /// <summary>
-        /// Public implementation of Dispose pattern callable by consumers.
-        /// </summary>
-        public void Dispose()
-        {
-            Dispose(true);
-            // TODO: uncomment the following line if the finalizer is overridden above.
-            // GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Protected implementation of Dispose pattern.
-        /// </summary>
-        /// <param name="disposing">indicates whether the method call comes from a Dispose method (its value is true) or from a finalizer (its value is false)</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposed_)
-            {
-                return;
-            }
-
-            if (disposing)
-            {
-                // TODO: dispose managed state (managed objects).
-            }
-
-            // free unmanaged resources(unmanaged objects)
-            NativeMethods.OrtReleaseSessionOptions(handle);
-            handle = IntPtr.Zero;
-
-            disposed_ = true;
-        }
         #endregion
 
         #region SafeHandle

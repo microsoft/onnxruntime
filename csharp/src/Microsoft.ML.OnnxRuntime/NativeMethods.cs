@@ -195,7 +195,7 @@ namespace Microsoft.ML.OnnxRuntime
     #region ORT Provider options
 
     [StructLayout(LayoutKind.Sequential)]
-    public struct OrtCUDAProviderOptionsNative
+    public struct OrtCUDAProviderOptions
     {
         public int device_id;                                  // cuda device with id=0 as default device.
         public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
@@ -586,7 +586,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="cudaProviderOptions">Native OrtCUDAProviderOptions instance</param>
         public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_CUDA(
                                                IntPtr /*(OrtSessionOptions*)*/ options,
-                                               ref OrtCUDAProviderOptionsNative cudaProviderOptions);
+                                               ref OrtCUDAProviderOptions cudaProviderOptions);
 
         public static DSessionOptionsAppendExecutionProvider_CUDA SessionOptionsAppendExecutionProvider_CUDA;
 

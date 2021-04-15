@@ -19,42 +19,10 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// Provider options for CUDA EP.
-    /// </summary>
-    public struct OrtCUDAProviderOptions
-    {
-        public int device_id;                                   //!< cuda device with id=0 as default device.
-        public OrtCudnnConvAlgoSearch cudnn_conv_algo_search;   //!< cudnn conv algo search option
-        public UIntPtr gpu_mem_limit;                           //!< default cuda memory limitation to maximum finite value of size_t.
-        public int arena_extend_strategy;                       //!< default area extend strategy to KNextPowerOfTwo.
-        public int do_copy_in_default_stream;                   //!< Whether to do copies in the default stream or use separate streams.
-    }
-
-    /// <summary>
     /// Holds provider options configuration for creating an InferenceSession.
     /// </summary>
-    public class ProviderOptions : SafeHandle
+    public static class ProviderOptions
     {
-        internal IntPtr Handle
-        {
-            get
-            {
-                return handle;
-            }
-        }
-
-        #region Constructor and Factory methods
-
-        /// <summary>
-        /// Constructs an empty ProviderOptions
-        /// </summary>
-        public ProviderOptions()
-            : base(IntPtr.Zero, true)
-        {
-        }
-
-        #endregion
-
         #region Public Methods
 
         /// <summary>
@@ -76,66 +44,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
             cuda_options.arena_extend_strategy = 0;
             cuda_options.do_copy_in_default_stream = 1;
+            cuda_options.has_user_compute_stream = 0;
+            cuda_options.user_compute_stream = IntPtr.Zero;
 
             return cuda_options;
-        }
-        #endregion
-
-        #region Public Properties
-
-        /// <summary>
-        /// Overrides SafeHandle.IsInvalid
-        /// </summary>
-        /// <value>returns true if handle is equal to Zero</value>
-        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
-
-        #endregion
-
-        #region IDisposable Support
-        private bool disposed_ = false; // To detect redundant calls
-
-        /// <summary>
-        /// Public implementation of Dispose pattern callable by consumers.
-        /// </summary>
-        public void Dispose()
-        {
-            Dispose(true);
-            // TODO: uncomment the following line if the finalizer is overridden above.
-            // GC.SuppressFinalize(this);
-        }
-        /// <summary>
-        /// Protected implementation of Dispose pattern.
-        /// </summary>
-        /// <param name="disposing">indicates whether the method call comes from a Dispose method (its value is true) or from a finalizer (its value is false)</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposed_)
-            {
-                return;
-            }
-
-            if (disposing)
-            {
-                // TODO: dispose managed state (managed objects).
-            }
-
-            // free unmanaged resources(unmanaged objects)
-            handle = IntPtr.Zero;
-
-            disposed_ = true;
-        }
-        #endregion
-
-        #region SafeHandle
-        /// <summary>
-        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of ProviderOptions
-        /// </summary>
-        /// <returns>always returns true</returns>
-        protected override bool ReleaseHandle()
-        {
-            Dispose();
-            return true;
         }
 
         #endregion
