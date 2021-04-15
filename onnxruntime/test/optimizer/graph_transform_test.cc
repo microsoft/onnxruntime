@@ -54,6 +54,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -566,7 +567,7 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Where"] == 5);
-  ASSERT_TRUE(op_to_count["Not"] == 1); // can't remove Not if it is graph output/ has consumer that's not where
+  ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -3818,6 +3819,27 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       },
       {kCpuExecutionProvider});
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
+  auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<IsInfReduceSumFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["IsInf"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
+  EXPECT_EQ(op_to_count["Not"], 1);
+}
+#endif
 #endif
 
 TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
