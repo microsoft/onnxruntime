@@ -67,7 +67,7 @@ struct TrainingParameters {
   bool enable_adasum = false;
 
   // transformation
-  int propagate_cast_ops_level = 1;
+  int propagate_cast_ops_level = -1;
   std::vector<std::string> propagate_cast_ops_allow;
 
   // graph dumping

@@ -113,7 +113,6 @@ class OrtModuleGraphBuilder {
 
   OrtModuleGraphBuilderConfiguration config_;
   const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger();  // use default logger for now.
-  TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config_;
 };
 
 }  // namespace training
