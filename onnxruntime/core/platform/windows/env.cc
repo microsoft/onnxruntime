@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <Shlwapi.h>
 #include <Windows.h>
+#include <iostream>
 
 #include <fstream>
 #include <string>
@@ -84,7 +85,7 @@ class WindowsThread : public EnvThread {
     if (!p->thread_options.affinity.empty())
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
     if (ORT_FORCE_AFFINITY) {
-      target = forced_affinities[p->index+1];
+      size_t target = forced_affinities[p->index+1];
       ::std::cerr << "Setting affinity " << p->index+1 << " -> " << target << "\n";
       SetThreadAffinityMask(GetCurrentThread(), target);
     }
@@ -127,7 +128,7 @@ class WindowsEnv : public Env {
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     std::string v = GetEnvironmentVar("ORT_FORCE_AFFINITY");
     if (!v.empty()) {
-      ORT_FORCE_AFFINITY = atoi(v.c_str())
+      ORT_FORCE_AFFINITY = atoi(v.c_str());
     }
     if (ORT_FORCE_AFFINITY && !set_main_affinity) {
       set_main_affinity = true;
