@@ -39,7 +39,6 @@ if [ "$OS_VERSION" = "16.04" ]; then
         gfortran \
         python3-dev \
         language-pack-en \
-        libopenblas-dev \
         liblttng-ust0 \
         libcurl3 \
         libssl1.0.0 \
@@ -72,7 +71,6 @@ elif [ "$OS_VERSION" = "18.04" ]; then
         gfortran \
         python3-dev \
         language-pack-en \
-        libopenblas-dev \
         liblttng-ust0 \
         libcurl4 \
         libssl1.0.0 \
@@ -105,7 +103,6 @@ else # ubuntu20.04
         gfortran \
         python3-dev \
         language-pack-en \
-        libopenblas-dev \
         liblttng-ust0 \
         libcurl4 \
         libssl1.1 \

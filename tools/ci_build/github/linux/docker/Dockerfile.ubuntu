@@ -8,8 +8,6 @@ RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && /tmp/scripts/install_de
 
 WORKDIR /root
 
-ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
-
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID

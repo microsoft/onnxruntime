@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu16.04
+FROM nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04
 
 ARG PYTHON_VERSION=3.6
 ARG INSTALL_DEPS_EXTRA_ARGS
@@ -18,8 +18,6 @@ RUN _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2) && \
     mkdir -p /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64 && \
     ln -s /etc/alternatives/libcudnn_so /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64/libcudnn.so && \
     ln -s /usr/local/cudnn{-$_CUDNN_VERSION,}
-
-ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
