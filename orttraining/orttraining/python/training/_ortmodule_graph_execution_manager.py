@@ -168,6 +168,7 @@ class GraphExecutionManager(ABC):
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
+        session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = False
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
