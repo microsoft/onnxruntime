@@ -717,7 +717,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               provider_options.insert(option);
           }
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(LoadExecutionProvider(shared_lib_path_it->second, provider_options)));
+                                   std::move(LoadExecutionProvider(shared_lib_path_it->second, provider_options))));
           continue;
         }
       }
