@@ -70,11 +70,12 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
 
-bool GemmPackBFp32(const OpKernelInfo& info,
-                   const Tensor& tensor_b,
-                   bool trans_b,
-                   BufferUniquePtr& packed_b,
-                   TensorShape& b_shape) {
+bool GemmPackBFp32_sizes(const Tensor& tensor_b,
+                         bool trans_b,
+                         TensorShape& b_shape,
+                         size_t& out_packed_b_size,
+                         size_t& out_K,
+                         size_t& out_N) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
   if (tensor_b.Shape().NumDimensions() != 2) {
@@ -82,15 +83,23 @@ bool GemmPackBFp32(const OpKernelInfo& info,
   }
   b_shape = tensor_b.Shape();
 
-  const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
-  const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
+  out_K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
+  out_N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  const size_t packed_b_size = MlasGemmPackBSize(N, K);
-  if (packed_b_size == 0) {
+  out_packed_b_size = MlasGemmPackBSize(out_N, out_K);
+  if (out_packed_b_size == 0) {
     return false;
   }
+  return true;
+}
 
-  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
+bool GemmPackBFp32_run(AllocatorPtr alloc,
+                         const Tensor& tensor_b,
+                         bool trans_b,
+                         BufferUniquePtr& packed_b,
+                         size_t packed_b_size,
+                         size_t K,
+                         size_t N) {
   auto* packed_b_data = alloc->Alloc(packed_b_size);
   packed_b = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
   MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
@@ -100,6 +109,19 @@ bool GemmPackBFp32(const OpKernelInfo& info,
                 trans_b ? K : N,
                 packed_b_data);
   return true;
+}
+
+bool GemmPackBFp32(const OpKernelInfo& info,
+                   const Tensor& tensor_b,
+                   bool trans_b,
+                   BufferUniquePtr& packed_b,
+                   TensorShape& b_shape) {
+  size_t packed_b_size, K, N;
+  if (!GemmPackBFp32_sizes(tensor_b, trans_b, b_shape, packed_b_size, K, N)) {
+    return false;
+  }
+  AllocatorPtr alloc = info.GetAllocator(0, OrtMemTypeDefault);
+  return GemmPackBFp32_run(alloc, tensor_b, trans_b, packed_b, packed_b_size, K, N);
 }
 
 template <typename T>

@@ -142,6 +142,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
   const auto& b_shape = b ? b->Shape() : b_shape_;
+  if (packed_b_)
+    throw std::runtime_error("packed_b_ is not empty.");
 
   // match CUDA kernel implementation, ignore transpose for vectors
   const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
