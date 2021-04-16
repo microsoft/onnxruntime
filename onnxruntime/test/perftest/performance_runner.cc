@@ -207,7 +207,6 @@ Status PerformanceRunner::ForkJoinRepeat() {
   OrtCondVar cv;
 
   // Fork
-  ::std::cerr << "Creating thread pool " << run_config.concurrent_session_runs << "\n";
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
     counter++;
     tpool->Schedule([this, &counter, &requests, &m, &cv, &run_config]() {
