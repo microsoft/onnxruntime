@@ -14,10 +14,12 @@
 
 Sticky allocation, todo:
 
-- Check for non-trivially-destructible thread local state
+- Avoid non-trivially-destructible thread local state
+- Note race on preferred_workers -- can be resized in the main thread while written into in a worker starting
 - Update comments
 - Avoid cast on access to ps.submitter_pt
 - PushBack -- should return ready status via enum (i.e. return FAILED / OK_EMPTY / OK_NONEMPTY )
+- Describe assumptions for queues, and focus on work producer selecting and waking threads
 
  */
 
@@ -793,25 +795,17 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   void Schedule(std::function<void()> fn) override {
     PerThread* pt = GetPerThread();
-    if (pt->pool == this) {
-      // Worker thread of this pool, push onto the thread's queue.
-      Queue& q = worker_data_[pt->thread_id].queue;
-      fn = q.PushFront(std::move(fn));
+    int q_idx = Rand(&pt->rand) % num_threads_;
+    WorkerData &td = worker_data_[q_idx];
+    Queue& q = td.queue;
+    fn = q.PushBack(std::move(fn));
+    if (!fn) {
+      // The queue accepted the work; ensure that the thread will pick it up
+      td.EnsureAwake();
     } else {
-      // A free-standing thread (or worker of another pool), push onto a random
-      // queue.
-      int q_idx = Rand(&pt->rand) % num_threads_;
-      WorkerData &td = worker_data_[q_idx];
-      Queue& q = td.queue;
-      fn = q.PushBack(std::move(fn));
-      if (!fn) {
-        // The queue accepted the work; ensure that the thread will pick it up
-        td.EnsureAwake();
-      }
+      // Run the work directly if the queue rejected the work
+      fn();
     }
-
-    // Run the work directly if the queue rejected the work
-    if (fn) fn();
   }
 
 //......................................................................
@@ -978,7 +972,7 @@ void SummonWorkers(PerThread &pt,
             // re-use that when submitting work on the next loop.
             ((PerThread*)ps.submitter_pt)->preferred_workers[idx] = GetPerThread()->thread_id;
             // Run the work
-            worker_fn(idx);
+            worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
             // ThreadPoolParallelSection object may be destroyed.
             ps.tasks_finished++;
@@ -986,8 +980,11 @@ void SummonWorkers(PerThread &pt,
           pt.tag,
           w_idx,
           was_ready);
-      
-      if (enqueued) { // Queue accepted task
+
+      // Queue accepted the task; wake the thread that owns the queue.
+      // In addition, if the queue was non-empty, attempt to wake
+      // another thread (which may then steal the task).
+      if (enqueued) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
         if (!was_ready) {
@@ -1111,18 +1108,6 @@ int CurrentThreadId() const EIGEN_FINAL {
 }
 
  private:
-
-#ifdef NDEBUG
-  void AssertBounds(int, int) {
-  }
-#else
-  void AssertBounds(int start, int end) {
-    assert(start >= 0);
-    assert(start < end);  // non-zero sized partition
-    assert(end <= num_threads_);
-  }
-#endif
-
   void ComputeCoprimes(int N, Eigen::MaxSizeVector<unsigned>* coprimes) {
     for (int i = 1; i <= N; i++) {
       unsigned a = i;
@@ -1332,13 +1317,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           }
 
           if (!t) {
-            // No work passed to us while spinning; ensure we make
-            // at least one attempt to steal before blocking
-            if (num_threads_ != 1) {
-              t = Steal(StealAttemptKind::TRY_ONE);
-            }
-            if (!t) {
-              td.SetBlocked(
+            td.SetBlocked(
                   // Pre-block test
                   [&]() -> bool {
                     bool should_block = true;
@@ -1374,16 +1353,11 @@ int CurrentThreadId() const EIGEN_FINAL {
                     blocked_--;
                   });
 
-              // Thread just unblocked.  Unless we have work, assume
-              // we were woken because work was pushed to an
-              // overloaded queue; attempt to steal it.
-              if (!t) {
-                t = q.PopFront();
-              }
-              if (!t) {
-                t = Steal(StealAttemptKind::TRY_ALL);
-              }
-            }
+            // Thread just unblocked.  Aside from exit conditions,
+            // either work was pushed to us, or it was pushed to an
+            // overloaded queue
+            if (!t) t = q.PopFront();
+            if (!t) t = Steal(StealAttemptKind::TRY_ALL);
           }
         }
         if (t) {
