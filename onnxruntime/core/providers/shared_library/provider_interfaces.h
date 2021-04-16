@@ -1146,7 +1146,7 @@ struct KernelDefBuilder {
     g_host->KernelDefBuilder__MayInplace(this, input_index, output_index);
     return *this;
   }
-  KernelDefBuilder& KernelDefBuilder::Alias(const std::vector<std::pair<int, int>>& aliases) {
+  KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases) {
     g_host->KernelDefBuilder__Alias(this, aliases);
     return *this;
   }
