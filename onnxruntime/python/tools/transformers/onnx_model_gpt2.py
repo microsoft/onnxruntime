@@ -11,7 +11,8 @@ from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model_bert import BertOnnxModel
 from fusion_gpt_attention_no_past import FusionGptAttentionNoPast
-from fusion_gpt_attention import FusionGptAttention
+#from fusion_gpt_attention import FusionGptAttention
+from fusion_gpt_attention_megatron import FusionGptAttention
 
 logger = logging.getLogger(__name__)
 
