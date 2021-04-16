@@ -1,6 +1,4 @@
 
-#pragma once
-
 #include "my_ep_data_transfer.h"
 
 namespace onnxruntime {
