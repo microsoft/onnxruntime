@@ -31,7 +31,8 @@ class Gpt2HelperFactory:
         return w
 
 class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
-    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state."""
+    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one 
+    step beam search."""
 
     def __init__(self, config, batch_size, beam_size):
         super().__init__(config)
@@ -52,12 +53,14 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
     ):
         input_ids = input_ids.view(self.config.batch_size, -1, input_ids.size(-1))
         past = [past[i].index_select(1, beam_select_idx[0]) for i in range(len(past))]
-        logits_flat, present_flat = super().forward(
+        result = super().forward(
             input_ids.view(-1, input_ids.size(-1)),
             position_ids=position_ids,
             attention_mask=attention_mask,
-            past=past,
+            past_key_values=past,
+            return_dict=False,
         )
+        logits_flat, present_flat = MyGPT2Model.post_process(result, self.config.n_layer)
         next_token_logits = logits_flat[:, -1].view(
             self.config.batch_size, -1, logits_flat.size(-1)
         )
@@ -152,14 +155,14 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
     ):
         super().__init__(input_ids, position_ids, attention_mask, past)
         self.prev_step_results: torch.LongTensor = prev_step_results
-        self.prev_step_scores: torch.FloatTensor = prev_step_scores
+        self.prev_step_scores: Union[torch.FloatTensor, torch.HalfTensor] = prev_step_scores
         if beam_select_idx is None:
             self.beam_select_idx: torch.LongTensor = torch.zeros(
                 [1, len(input_ids)]
             ).long()
         else:
             self.beam_select_idx: torch.LongTensor = beam_select_idx
-        self.input_log_probs: torch.FloatTensor = input_log_probs
+        self.input_log_probs: Union[torch.FloatTensor, torch.HalfTensor] = input_log_probs
         self.input_unfinished_sents: torch.ByteTensor = input_unfinished_sents
 
     def to_list(self) -> List:
@@ -181,23 +184,6 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
             input_list.extend(self.past)
         return input_list
 
-    def to_tuple(self) -> Tuple:
-        return tuple(
-            v
-            for v in [
-                self.input_ids,
-                self.position_ids,
-                self.attention_mask,
-                self.past,
-                self.beam_select_idx,
-                self.input_log_probs,
-                self.input_unfinished_sents,
-                self.prev_step_results,
-                self.prev_step_scores,
-            ]
-            if v is not None
-        )
-
     def to_fp32(self):
         gpt2_inputs = super().to_fp32()
         return Gpt2BeamSearchInputs(
@@ -205,11 +191,11 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
             gpt2_inputs.position_ids,
             gpt2_inputs.attention_mask,
             gpt2_inputs.past,
-            self.beam_select_idx,
-            self.input_log_probs,
-            self.input_unfinished_sents,
-            self.prev_step_results,
-            self.prev_step_scores,
+            self.beam_select_idx.to_fp32(),
+            self.input_log_probs.to_fp32(),
+            self.input_unfinished_sents.to_fp32(),
+            self.prev_step_results.to_fp32(),
+            self.prev_step_scores.to_fp32(),
         )
 
 
