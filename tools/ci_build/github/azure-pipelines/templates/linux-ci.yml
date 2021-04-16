@@ -55,9 +55,9 @@ jobs:
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
       - script: |
          npm pack
-         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'

@@ -2025,7 +2025,7 @@ def main():
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
