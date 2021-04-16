@@ -3,8 +3,17 @@
 
 #import <Foundation/Foundation.h>
 
+/**
+ * The ORT environment.
+ */
 @interface ORTEnv : NSObject
 
-- (instancetype)initWithError:(NSError **)error;
+/**
+ * Creates an ORT Environment.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return The instance, or nil if an error occurs.
+ */
+- (instancetype)initWithError:(NSError**)error;
 
 @end

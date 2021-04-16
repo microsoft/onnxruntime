@@ -22,14 +22,22 @@ endif()
 SET(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
 SET(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES")
 
-# onnxruntime_objc
-file(GLOB onnxruntime_objc_headers
-    "${REPO_ROOT}/objc/include/onnxruntime/*.h")
+# onnxruntime_objc target
+
+# these headers are the public interface
+# explicitly list them here so it is easy to see what is included
+set(onnxruntime_objc_headers
+    "${REPO_ROOT}/objc/include/onnxruntime.h"
+    "${REPO_ROOT}/objc/include/onnxruntime/ort_env.h"
+    "${REPO_ROOT}/objc/include/onnxruntime/ort_session.h"
+    "${REPO_ROOT}/objc/include/onnxruntime/ort_value.h"
+    )
 
 file(GLOB onnxruntime_objc_srcs
-    "${REPO_ROOT}/objc/src/onnxruntime/*.h"
-    "${REPO_ROOT}/objc/src/onnxruntime/*.m"
-    "${REPO_ROOT}/objc/src/onnxruntime/*.mm")
+    "${REPO_ROOT}/objc/src/*.h"
+    "${REPO_ROOT}/objc/src/*.m"
+    "${REPO_ROOT}/objc/src/*.mm"
+    )
 
 source_group(TREE "${REPO_ROOT}/objc"
     FILES ${onnxruntime_objc_headers} ${onnxruntime_objc_srcs})
@@ -41,7 +49,7 @@ target_include_directories(onnxruntime_objc
         "${REPO_ROOT}/objc/include"
     PRIVATE
         "${OPTIONAL_LITE_INCLUDE_DIR}"
-        "${REPO_ROOT}/objc/src")
+        "${REPO_ROOT}/objc")
 
 target_link_libraries(onnxruntime_objc PUBLIC onnxruntime)
 
@@ -56,11 +64,12 @@ set_target_properties(onnxruntime_objc PROPERTIES
 if (onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)
 
-    # onnxruntime_test_objc
+    # onnxruntime_test_objc target
+
     file(GLOB onnxruntime_objc_test_srcs
-        "${REPO_ROOT}/objc/test/onnxruntime/*.h"
-        "${REPO_ROOT}/objc/test/onnxruntime/*.m"
-        "${REPO_ROOT}/objc/test/onnxruntime/*.mm")
+        "${REPO_ROOT}/objc/test/*.h"
+        "${REPO_ROOT}/objc/test/*.m"
+        "${REPO_ROOT}/objc/test/*.mm")
 
     source_group(TREE "${REPO_ROOT}/objc"
         FILES ${onnxruntime_objc_test_srcs})
@@ -68,7 +77,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
         ${onnxruntime_objc_test_srcs})
 
-    set_target_properties(onnxruntime_objc_test PROPERTIES FOLDER "ONNXRuntimeTest")
+    target_include_directories(onnxruntime_objc_test
+        PRIVATE
+            "${REPO_ROOT}/objc")
+
+    set_target_properties(onnxruntime_objc_test PROPERTIES
+        FOLDER "ONNXRuntimeTest")
 
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory

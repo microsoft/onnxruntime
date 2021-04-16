@@ -10,9 +10,9 @@
 
 @implementation ORTEnvTest
 
-- (void)testCreateEnv {
-    ORTEnv* env = [[ORTEnv alloc] initWithError:nil];
-    XCTAssertNotNil(env);
+- (void)testInitOk {
+  ORTEnv* env = [[ORTEnv alloc] initWithError:nil];
+  XCTAssertNotNil(env);
 }
 
 @end
