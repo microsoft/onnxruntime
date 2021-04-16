@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-
 from . import _ortmodule_utils as _utils, _ortmodule_io as _io
 from . import _ortmodule_logger as _logger
 
@@ -119,8 +118,9 @@ class GraphExecutionManager(ABC):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
-                              UserWarning)
+                if self._loglevel <= _logger.LogLevel.WARNING:
+                    warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
+                                  UserWarning)
 
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
@@ -228,10 +228,7 @@ class GraphExecutionManager(ABC):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
-        sample_inputs_as_tuple = tuple(_io._transform_args_kwargs_input_to_flat_list(self._input_info,
-                                                                                     *sample_inputs_copy,
-                                                                                     **sample_kwargs_copy))
-
+        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy))
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.

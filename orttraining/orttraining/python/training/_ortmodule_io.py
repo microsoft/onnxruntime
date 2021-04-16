@@ -1,6 +1,5 @@
 from collections import abc
 import copy
-import functools
 import inspect
 import torch
 import warnings
@@ -13,32 +12,39 @@ class _InputInfo(object):
                  require_grad_names=None,
                  dynamic_axes=None,
                  schema=None,
-                 positionals=0,
-                 var_positionals=0,
-                 keywords=0,
-                 var_keywords=0):
+                 num_positionals=0,
+                 keyword_names=None):
         self.names = names
         self.shape = shape
         self.require_grad_names = require_grad_names if require_grad_names else []
         self.dynamic_axes = dynamic_axes if dynamic_axes else {}
         self.schema = schema if schema else []
-        self.positionals = positionals
-        self.var_positionals = var_positionals
-        self.keywords = keywords
-        self.var_keywords = var_keywords
+        self.num_positionals = num_positionals
+        self.keyword_names = keyword_names
 
     def __repr__(self) -> str:
         return f'''_InputInfo class:
-            \tNames:                 {self.names}
-            \tShape:                 {self.shape}
-            \tRequire gradient:      {self.require_grad_names}
-            \tDynamic axes:          {self.dynamic_axes}
-            \tSchema:                {self.schema}
-            \t#Positionals:          {self.positionals}
-            \t#Variable positionals: {self.var_positionals}
-            \t#Keywords:             {self.keywords}
-            \t#Variable keywords:    {self.var_keywords}'''
+            \tNames:            {self.names}
+            \tShape:            {self.shape}
+            \tRequire gradient: {self.require_grad_names}
+            \tDynamic axes:     {self.dynamic_axes}
+            \tSchema:           {self.schema}
+            \t#Positionals:     {self.num_positionals}
+            \tKeyword names:    {self.keyword_names}'''
 
+    def flatten(self, args, kwargs):
+        assert len(args) == self.num_positionals
+        assert set(kwargs.keys()) == set(self.keyword_names)
+        ret = list(args)
+        for _, kwarg in sorted(kwargs.items()):
+            ret.append(kwarg)
+        return tuple(ret)
+
+    def unflatten(self, flat_args):
+        assert len(flat_args) == self.num_positionals + len(self.keyword_names)
+        args = tuple(flat_args[:self.num_positionals])
+        kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
+        return args, kwargs
 
 def _convert_input_to_list(param_names, user_input_names, buffer_names, inputs, kwargs):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
@@ -259,20 +265,6 @@ def _transform_output_to_flat_tuple(data):
     return tuple(flat_data)
 
 
-def _transform_flat_input_to_args_kwargs(input_info, *inputs):
-    num_positionals = input_info.positionals+input_info.var_positionals
-    new_args = [arg for arg in inputs[:num_positionals]]
-    new_kwargs = {input_info.names[idx]: arg for idx, arg in enumerate(inputs[num_positionals:], num_positionals)}
-    return new_args, new_kwargs
-
-
-def _transform_args_kwargs_input_to_flat_list(input_info, *inputs, **kwargs):
-    num_positionals = input_info.positionals+input_info.var_positionals
-    new_args = [arg for arg in inputs]
-    new_args.extend([kwargs[name] if name in kwargs else None for name in input_info.names[num_positionals:]])
-    return new_args
-
-
 class _FlattenedModule(torch.nn.Module):
     def __init__(self, original_module):
         super(_FlattenedModule, self).__init__()
@@ -284,7 +276,7 @@ class _FlattenedModule(torch.nn.Module):
 
     def forward(self, *args):
         # TODO: Convert *args into *args + **kwars andd call _original_module with it
-        new_args, new_kwargs = _transform_flat_input_to_args_kwargs(self._input_info, *args)
+        new_args, new_kwargs = self._input_info.unflatten(args)
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
 
@@ -299,16 +291,10 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     dynamic_axes = {}
     input_names_require_grad = []
     input_shape = []
-    positionals = 0
-    var_positionals = 0
-    keywords = 0
-    var_keywords = 0
-    found_var_positionals = False
 
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
             # VAR_POSITIONAL parameter carries all *args parameters from original forward method
-            found_var_positionals = True
             var_positional_idx = 0
             for args_i in range(input_idx, len(inputs)):
                 name = f'{input_parameter.name}_{var_positional_idx}'
@@ -318,14 +304,11 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                     if inp.requires_grad:
                         # input_names_require_grad holds all input tensors that have requires_grad
                         input_names_require_grad.append(name)
-
                     input_names.append(name)
                     dynamic_axes[name] = {}
                     for dim_idx in range(len(inp.shape)):
                         dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
-
                     input_shape.append(list(inp.size()))
-            var_positionals = var_positional_idx
         elif input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY or\
              input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or\
              input_parameter.kind == inspect.Parameter.KEYWORD_ONLY:
@@ -334,18 +317,12 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
             inp = None
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
-                if found_var_positionals:
-                    keywords += 1
-                else:
-                    positionals += 1
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-                keywords += 1
             if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
                 if inp.requires_grad:
                     # input_names_require_grad holds all input tensors that have requires_grad
                     input_names_require_grad.append(name)
-
                 input_names.append(name)
                 dynamic_axes[name] = {}
                 for dim_idx in range(len(inp.shape)):
@@ -360,13 +337,11 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                         if inp.requires_grad:
                             # input_names_require_grad holds all input tensors that have requires_grad
                             input_names_require_grad.append(name)
-
                         input_names.append(name)
                         dynamic_axes[name] = {}
                         for dim_idx in range(len(inp.shape)):
                             dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
                         input_shape.append(list(inp.size()))
-            var_keywords = len(kwargs.items()) - keywords
 
     # Shallow copy is ok as we need the data structure, not the content
     schema = _extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
@@ -376,10 +351,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       require_grad_names=input_names_require_grad,
                       dynamic_axes=dynamic_axes,
                       schema=schema,
-                      positionals=positionals,
-                      var_positionals=var_positionals,
-                      keywords=keywords,
-                      var_keywords=var_keywords)
+                      num_positionals=len(inputs),
+                      keyword_names=sorted(kwargs.keys()))
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):

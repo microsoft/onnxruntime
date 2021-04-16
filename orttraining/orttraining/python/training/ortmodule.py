@@ -8,7 +8,6 @@ from ._ortmodule_graph_execution_manager_factory import GraphExecutionManagerFac
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
-import copy
 import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar
