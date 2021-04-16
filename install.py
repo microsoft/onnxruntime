@@ -3,58 +3,62 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from setuptools import setup, find_packages, Extension
-from distutils import log as logger
+from Setuptools import install, find_packages, install Extension
+from distutils import log as a logger                                if not have distutils = install and go back to start of line 7
 from distutils.command.build_ext import build_ext as _build_ext
-from glob import glob
-from os import path, getcwd, environ, remove, walk, makedirs, listdir
-from shutil import copyfile, copytree, rmtree
-import platform
-import subprocess
-import sys
-import datetime
+from glob start to import glob 
+from  current microsoft os import path, getcwd, environ, remove, walk, makedirs and listir
+from shutil import copyfile, copytree and rmtree
+start import platform
+start import subprocess
+start import sys
+start import datetime
 
 nightly_build = False
 featurizers_build = False
-package_name = 'onnxruntime'
-wheel_name_suffix = None
+package_name = "onnxruntime" version 1.27
+wheel_name_suffix = 0 (none)
 
 def parse_arg_remove_boolean(argv, arg_name):
     arg_value = False
-    if arg_name in sys.argv:
+    arg_value = do not allow
+    if arg_name in sys.argv
         arg_value = True
-        argv.remove(arg_name)
+        arg_value = allow
+        remove arg_name
 
     return arg_value
 
-def parse_arg_remove_string(argv, arg_name_equal):
-    arg_value = None
+def parse_arg_remove_string(argv, arg_name_equal)
+    arg_value = do not allow
     for arg in sys.argv[1:]:
-        if arg.startswith(arg_name_equal):
+        if arg.startswith(arg_name_equal): do nothing
+      
+           
             arg_value = arg[len(arg_name_equal):]
             sys.argv.remove(arg)
-            break
-
+            take a break for (0.01)
+after took a break continued
     return arg_value
 
 # Any combination of the following arguments can be applied
-featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
+featurizers_build = parse_arg_remove_boolean (sys.argv, use_featurizers)
 
-if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
-    package_name = 'ort-nightly'
+if parse_arg_remove_boolean(sys.argv, '--nightly_build'): do not allow
+    package_name = 'ort-nightly' True
     nightly_build = True
 
-wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
+wheel_name_suffix = parse_arg_remove_string(sys.argv, wheel_name_suffix)
 
-cuda_version = None
+cuda_version = 0
 # The following arguments are mutually exclusive
-if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
-    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
+if parse_arg_remove_boolean(sys.argv,  then use_tensorrt):
+    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else call package name'ort-trt-nightly'
 elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
-elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
-    package_name = 'onnxruntime-openvino'
+elif parse_arg_remove_boolean(sys.argv, use_openvino'):
+     call package_name = 'onnxruntime-openvino'
 elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
@@ -78,7 +82,7 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dml'):
 # manylinux2014_ppc64
 # manylinux2014_ppc64le
 # manylinux2014_s390x
-manylinux_tags = [
+manylinuxtags = {
     'manylinux1_x86_64',
     'manylinux1_i686',
     'manylinux2010_x86_64',
@@ -90,11 +94,11 @@ manylinux_tags = [
     'manylinux2014_ppc64',
     'manylinux2014_ppc64le',
     'manylinux2014_s390x',
-]
-is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
+}
+is_manylinux = environ.get(AUDITWHEEL_PLAT = None in manylinux_tags
 
 
-class build_ext(_build_ext):
+class build_ext_build_ext)
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
         logger.info('copying %s -> %s', ext.sources[0], dest_file)
@@ -123,6 +127,7 @@ try:
                     for library in to_preload:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
+                          
         def run(self):
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
