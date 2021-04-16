@@ -66,22 +66,36 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   }
 
   // relax the condition if Identity is connecting to graph output
-  bool may_relax = node.GetOutputEdgesCount() == 0 && node.OutputDefs().size() == 1 &&
-    !graph.GetNodeOutputsInGraphOutputs(node).empty();
-  if (may_relax == false) 
+  if (node.GetOutputEdgesCount() != 0 || node.OutputDefs().size() != 1 ||
+    graph.GetNodeOutputsInGraphOutputs(node).empty() == true)
     return false;
 
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
   if (p_input_node == nullptr)
     return false;
     
+  // find the edge between input node and this Identity node, and then get its src arg from input node
+  int src_arg_index = -1;
+  for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetNode().Index() == node.Index()) {
+      src_arg_index = it->GetSrcArgIndex();
+      break;
+    }
+  }
+
   // skip if the src arg is also a graph output
-  int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());  
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
     return false;
 
-  // skip if more than 1 consumer for the src arg
-  if (graph.GetConsumerNodes(node.InputDefs()[0]->Name()).size() > 1)
+  // count how many consumers are sharing the same src arg
+  int count = 0;
+  for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == src_arg_index) {
+      count++;
+    }
+  }
+  // condition not met if there are more than 1 consumer for the same src arg
+  if (count > 1) 
     return false;
 
   return true;
