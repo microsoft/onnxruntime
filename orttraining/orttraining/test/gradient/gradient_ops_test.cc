@@ -2473,6 +2473,8 @@ TEST(GradientCheckerTest, MinGrad) {
 
 TEST(GradientCheckerTest, MaxGrad) {
   GradientCheckerMinMaxGradHelper("Max");
+}
+
 TEST(GradientCheckerTest, TileGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
