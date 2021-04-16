@@ -58,6 +58,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph.SetInputs(input_args);
+  logging::LoggingManager::SetDefaultLoggerSeverity(config_.loglevel);
   return Status::OK();
 }
 

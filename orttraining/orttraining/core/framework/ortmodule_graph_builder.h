@@ -28,7 +28,11 @@ struct OrtModuleGraphBuilderConfiguration {
   bool use_invertible_layernorm_grad = false;
   bool build_gradient_graph = true;
 
+  // Graph transformer configuration
   TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
+
+  // Log severity
+  logging::Severity loglevel{logging::Severity::kWARNING};
 };
 
 /**
