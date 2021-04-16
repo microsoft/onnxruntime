@@ -20,7 +20,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       int opset_version) {
+                       int opset_version,
+                       double per_sample_tolerance,
+                       double relative_per_sample_tolerance) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -68,8 +70,6 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   ASSERT_TRUE(num_outputs == target_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
-    double per_sample_tolerance = 0.0;
-    double relative_per_sample_tolerance = 0.0;
     std::pair<COMPARE_RESULT, std::string> ret =
         CompareOrtValue(target_fetches[i],
                         baseline_fetches[i],

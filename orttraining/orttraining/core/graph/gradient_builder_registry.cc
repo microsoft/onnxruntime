@@ -103,6 +103,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Abs", GetAbsGradient);
   REGISTER_GRADIENT_BUILDER("Min", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Max", GetMinMaxGradient);
+  REGISTER_GRADIENT_BUILDER("Tile", GetTileGradient);
 };
 
 }  // namespace training

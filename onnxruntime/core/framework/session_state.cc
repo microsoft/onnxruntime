@@ -928,6 +928,12 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
       }
     }
   }
+  // Initializers can be used as graph outputs
+  for (const auto* arg : graph.GetOutputs()) {
+    if (arg->Exists() && graph.GetConstantInitializer(arg->Name(), true /*check_outer_scope*/)) {
+      constant_initializers_use_count[arg->Name()]++;
+    }
+  }
 }
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
