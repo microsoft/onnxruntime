@@ -188,6 +188,15 @@ class ORTTrainerOptions(object):
                             'type': 'integer',
                             'min': 0,
                             'default': 0
+                        },
+                        'propagate_cast_ops_level': {
+                            'type': 'integer',
+                            'default': -1
+                        },
+                        'propagate_cast_ops_allow': {
+                            'type': 'list',
+                            'schema': {'type': 'string'},
+                            'default': []
                         }
                     }
                 },
@@ -344,6 +353,16 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         graph_transformer (dict):
             graph transformer related configurations
+        graph_transformer.attn_dropout_recompute(bool, default False)
+        graph_transformer.gelu_recompute(bool, default False)
+        graph_transformer.transformer_layer_recompute(bool, default False)
+        graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_level(integet, default -1)
+            Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+            Use predetermined list of opcodes considered safe to move before/after cast operation
+            if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+        graph_transformer.propagate_cast_ops_allow(list of str, [])
+            List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -662,6 +681,16 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
+            },
+            'propagate_cast_ops_level': {
+                'type': 'integer',
+                'min': -1,
+                'default': -1
+            },
+            'propagate_cast_ops_allow': {
+                'type': 'list',
+                'schema': {'type': 'string'},
+                'default': []
             }
         }
     },

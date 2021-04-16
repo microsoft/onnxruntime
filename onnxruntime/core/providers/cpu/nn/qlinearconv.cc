@@ -500,10 +500,13 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             worker_gemm_input = input_data + output_start * kernel_dim;
           }
 
-          MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-          gemm_params.M = static_cast<size_t>(output_count);
-          gemm_params.N = static_cast<size_t>(group_output_channels);
-          gemm_params.K = static_cast<size_t>(kernel_dim);
+          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+          gemm_shape.M = static_cast<size_t>(output_count);
+          gemm_shape.N = static_cast<size_t>(group_output_channels);
+          gemm_shape.K = static_cast<size_t>(kernel_dim);
+          gemm_shape.BIsSigned = is_W_signed;
+
+          MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
           gemm_params.A = worker_gemm_input;
           gemm_params.lda = static_cast<size_t>(kernel_dim);
           gemm_params.ZeroPointA = X_zero_point_value;
@@ -515,10 +518,9 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             gemm_params.ldb = static_cast<size_t>(M);
           }
           gemm_params.ZeroPointB = &W_zero_point_value;
-          gemm_params.BIsSigned = is_W_signed;
           gemm_params.C = worker_gemm_output + group_id * group_output_channels;
           gemm_params.ldc = static_cast<size_t>(M);
-          MlasGemm(&gemm_params, nullptr);
+          MlasGemm(gemm_shape, gemm_params, nullptr);
         }
       }
 

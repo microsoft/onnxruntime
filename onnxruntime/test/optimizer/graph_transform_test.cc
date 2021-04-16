@@ -55,6 +55,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -71,6 +72,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -3866,6 +3868,131 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Shape"] == 1);
   ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
   ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
+TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
+  struct PropagateCastOpsTestSpecs {
+    PathString model_uri;
+    int casts_count;                     // Expected number of casts after the transformation
+    vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
+    int level = 0;                       // Level of optimization
+  };
+  std::vector<std::string> allow_matmul = {"MatMul"};
+  std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
+  std::vector<std::string> allow_matmul_transpose_add = {"Add", "MatMul", "Transpose"};
+
+  const std::vector<PropagateCastOpsTestSpecs> test_cases = {
+      // Test fusing back to back casts functionality
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", 2},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float16.onnx", 0},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float.onnx", 1},
+      // Test fusing subgraph functionality
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float.onnx", 1},
+
+      // Test constant propagation with various combinations
+      // 1. Computation is float or float16
+      // 2. The inputs and/or output may be casted
+      // 3. The inputs and/or output may be transposed
+      // These variations help testing the following functions.
+      // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
+
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add}};
+
+  // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
+  TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
+
+  for (PropagateCastOpsTestSpecs test_case : test_cases) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    ASSERT_STATUS_OK(graph.Resolve());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    Path p = Path::Parse(test_case.model_uri);
+    ASSERT_FALSE(p.GetComponents().empty());
+    PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+    Model::Save(*p_model, transformed_model_uri);
+    // Load the transformed model to validate
+    ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
+    Graph& transformed_graph = p_model->MainGraph();
+    ASSERT_STATUS_OK(transformed_graph.Resolve());
+    std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
+    ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
+  }
 }
 
 }  // namespace test
