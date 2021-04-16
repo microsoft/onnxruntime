@@ -296,17 +296,13 @@ class BFCArena : public IArenaAllocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size, id));
     }
 
-    Status RemoveAllocationRegion(void* ptr) {
+    void RemoveAllocationRegion(void* ptr) {
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
 
-      if (entry == regions_.end()) {
-        LOGS_DEFAULT(FATAL) << "Could not find Region for " << ptr;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Could not find Region for ", ptr);
-      }
+      ORT_ENFORCE(entry != regions_.end(), "Could not find Region for: " << ptr);
 
       regions_.erase(entry);
-      return Status::OK();
     }
 
     ChunkHandle get_handle(const void* p) const {
@@ -474,7 +470,7 @@ class BFCArena : public IArenaAllocator {
   int64_t next_allocation_id_;
 
   // Counter tracking total number of allocation regions
-  int64_t allocation_region_counter_;
+  int64_t next_allocation_region_id_;
 
   AllocatorStats stats_;
 

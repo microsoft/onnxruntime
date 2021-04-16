@@ -19,7 +19,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      allocation_region_counter_(0),
+      next_allocation_region_id_(0),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
       intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink) {
@@ -176,7 +176,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
                      << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes, allocation_region_counter_++);
+  region_manager_.AddAllocationRegion(mem_addr, bytes, next_allocation_region_id_++);
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.

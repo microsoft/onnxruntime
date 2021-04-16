@@ -150,7 +150,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   // The user has requested that the default memory allocator be considered for shrinking at the end of every Run().
   // This keeps the arena growth in check (as without this the arena will hang onto any growth permanently)
   if (info_.default_memory_arena_cfg && info_.default_memory_arena_cfg->shrink_on_every_run) {
-    LOGS_DEFAULT(WARNING) << "The CUDA default memory allocator will be shrunk at the end of every Run";
+    LOGS_DEFAULT(INFO) << "The CUDA default memory allocator will be shrunk at the end of every Run";
     shrink_default_memory_allocator_on_every_run_end_ = true;
   }
 
