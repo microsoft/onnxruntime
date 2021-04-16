@@ -35,7 +35,6 @@
 #include "core/framework/memory_info.h"
 #endif
 #include "core/framework/execution_frame.h"
-#include <execinfo.h>
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
