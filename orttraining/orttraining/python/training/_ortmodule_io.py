@@ -258,20 +258,35 @@ def _transform_output_to_flat_tuple(data):
     _flatten_data(data, flat_data)
     return tuple(flat_data)
 
+
+def _transform_flat_input_to_args_kwargs(input_info, *inputs):
+    num_positionals = input_info.positionals+input_info.var_positionals
+    new_args = [arg for arg in inputs[:num_positionals]]
+    new_kwargs = {input_info.names[idx]: arg for idx, arg in enumerate(inputs[num_positionals:], num_positionals)}
+    return new_args, new_kwargs
+
+
+def _transform_args_kwargs_input_to_flat_list(input_info, *inputs, **kwargs):
+    num_positionals = input_info.positionals+input_info.var_positionals
+    new_args = [arg for arg in inputs]
+    new_args.extend([kwargs[name] if name in kwargs else None for name in input_info.names[num_positionals:]])
+    return new_args
+
+
 class _FlattenedModule(torch.nn.Module):
-    def __init__(self, module):
+    def __init__(self, original_module):
         super(_FlattenedModule, self).__init__()
-        self._base_module = module
+        self._original_module = original_module
 
-        def _forward(self, *args, **kwargs):
-            return _transform_output_to_flat_tuple(self._base_module(*args, **kwargs))
+        # Before `forward` is called, _ort_module must be assigned
+        # Updated input info is needed to expand args into *args, **kwargs
+        self._input_info = None
 
-        # Exporter does not support use of **kwargs in the forward method.
-        # Work around it by making the signature of the forward method to resemble that of the
-        # original model
-        # Copy the forward signature from the original PyTorch module.
-        self.forward = _forward.__get__(self)
-        functools.update_wrapper(self.forward.__func__, module.forward.__func__)
+    def forward(self, *args):
+        # TODO: Convert *args into *args + **kwars andd call _original_module with it
+        new_args, new_kwargs = _transform_flat_input_to_args_kwargs(self._input_info, *args)
+        return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
+
 
 def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwargs):
     # Ignore optional inputs explicitly specified as None
