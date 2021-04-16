@@ -35,7 +35,6 @@ Sticky allocation, todo:
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
-#pragma warning(disable : 4505)
 #pragma warning(disable : 4805)
 #endif
 
@@ -145,9 +144,9 @@ namespace onnxruntime {
 namespace concurrency {
 
 #ifdef _WIN32
- using CHAR_TYPE = wchar_t;
+using CHAR_TYPE = wchar_t;
 #else
- using CHAR_TYPE = char;
+using CHAR_TYPE = char;
 #endif
 
 enum class StealAttemptKind {
@@ -729,6 +728,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
+
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
@@ -1332,7 +1332,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           }
 
           if (!t) {
-            // // No work passed to us while spinning; ensure we make
+            // No work passed to us while spinning; ensure we make
             // at least one attempt to steal before blocking
             if (num_threads_ != 1) {
               t = Steal(StealAttemptKind::TRY_ONE);
