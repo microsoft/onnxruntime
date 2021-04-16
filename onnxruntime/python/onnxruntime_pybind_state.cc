@@ -716,7 +716,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             if (option.first != kExecutionProviderSharedLibraryPath)
               provider_options.insert(option);
           }
-          sess->RegisterExecutionProvider(std::move(LoadExecutionProvider(shared_lib_path_it->second, provider_options)));
+          ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
+                                   std::move(LoadExecutionProvider(shared_lib_path_it->second, provider_options)));
           continue;
         }
       }
