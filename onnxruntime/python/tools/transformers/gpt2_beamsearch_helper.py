@@ -191,11 +191,11 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
             gpt2_inputs.position_ids,
             gpt2_inputs.attention_mask,
             gpt2_inputs.past,
-            self.beam_select_idx.to_fp32(),
-            self.input_log_probs.to_fp32(),
-            self.input_unfinished_sents.to_fp32(),
-            self.prev_step_results.to_fp32(),
-            self.prev_step_scores.to_fp32(),
+            self.beam_select_idx,
+            self.input_log_probs,
+            self.input_unfinished_sents,
+            self.prev_step_results,
+            self.prev_step_scores,
         )
 
 
