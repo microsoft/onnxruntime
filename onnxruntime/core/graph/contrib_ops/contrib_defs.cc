@@ -2143,7 +2143,70 @@ Example 4:
           saved_inv_std_var_shape->CopyFrom(input_shape);
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // LayerNormalization <axis, epsilon> (X, scale, bias) => (Y, mean?, invstdvar?)
+
+            // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            int64_t T = tp->tensor_type().elem_type();
+
+            auto type_attr = ctx.getAttribute("stash_type");
+            int64_t U = (type_attr != nullptr) ? type_attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            if ((U != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) && (U != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+              return;  // Error
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : -1;
+            auto* epsilon_attr = ctx.getAttribute("epsilon");
+            float epsilon = (epsilon_attr != nullptr) ? epsilon_attr->f() : 1e-5f;
+            // nodes: {outputs, op, inputs, attributes}
+
+            // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                FunctionBodyHelper::Const<float>("epsilon", epsilon),
+                {{"shape"}, "Shape", {"X"}},
+                {{"X2D"}, "Flatten", {"X"}, {{"axis", axis}}},
+                {{"XU"}, "Cast", {"X2D"}, {{"to", U}}},
+                {{"Mean"}, "ReduceMean", {"XU"}, {{"axes", {1}}}},
+                {{"Square"}, "Mul", {"XU", "XU"}},
+                {{"MeanOfSquare"}, "ReduceMean", {"Square"}, {{"axes", {1}}}},
+                {{"SquareOfMean"}, "Mul", {"Mean", "Mean"}},
+                {{"Diff"}, "Sub", {"MeanOfSquare", "SquareOfMean"}},
+                {{"DiffPlusEpsilon"}, "Add", {"Diff", "epsilon"}},
+                {{"StdDev"}, "Sqrt", {"DiffPlusEpsilon"}},
+                {{"Deviation"}, "Sub", {"XU", "Mean"}},
+                {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
+                {{"Scaled"}, "Mul", {"Normalized", "scale"}},
+                {{"Biased"}, "Add", {"Scaled", "B"}},
+                {{"Y2D"}, "Cast", {"Biased"}, {{"to", T}}}
+                {{"Y"}, "Reshape", {"Y2D", "shape"}}
+
+            };
+
+            // For negative axis, add n to axis-value k; then use Range(...).
+            if (axis >= 0) {
+              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+            } else {
+              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
+              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
+            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
+            body.push_back({{"c"}, "Sub", {"dY", "b"}});
+            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
       .SetDomain(kOnnxDomain)
