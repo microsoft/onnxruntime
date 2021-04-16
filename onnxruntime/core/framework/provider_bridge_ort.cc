@@ -726,6 +726,11 @@ struct ProviderHostImpl : ProviderHost {
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
 
+  // AllocatorManager
+  void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->InsertAllocator(allocator); }
+  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) override { return p->GetAllocator(id, mem_type); };
+
+#ifdef USE_CUDA
   // GatherElements
   Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) override { return GatherElements::ValidateInputShapes(input_data_shape, indices_shape, axis); }
 
@@ -812,10 +817,6 @@ struct ProviderHostImpl : ProviderHost {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
 
-  // AllocatorManager
-  void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->InsertAllocator(allocator); }
-  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) override { return p->GetAllocator(id, mem_type); };
-
   std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info) override { return onnxruntime::make_unique<If>(info); }
   std::unique_ptr<OpKernel> CreateOpKernel_CPU_Loop(const OpKernelInfo& info, const void* concat_output_func, void* stream) override { return Loop::Create(info, *reinterpret_cast<const Loop::ConcatOutput*>(concat_output_func), stream); }
   std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) override { return onnxruntime::make_unique<Scan<8>>(info); }
@@ -825,9 +826,7 @@ struct ProviderHostImpl : ProviderHost {
 #ifndef DISABLE_CONTRIB_OPS
   Status embed_layer_norm__CheckInputs(const OpKernelContext* context) override { return contrib::embed_layer_norm::CheckInputs(context); }
   Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) override { return contrib::bias_gelu_helper::CheckInputs(context); }
-//  Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) override { return p->CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape); }
-  Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) override { return Status::OK(); }
-
+  Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) override { return p->CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape); }
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const int max_threads_per_block) override { return p->CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, max_threads_per_block); }
   Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) override { return p->GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length); }
 #endif
@@ -843,7 +842,7 @@ struct ProviderHostImpl : ProviderHost {
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->Compute(context); }
 #endif
-
+#endif
 } provider_host_;
 
 struct ProviderSharedLibrary {

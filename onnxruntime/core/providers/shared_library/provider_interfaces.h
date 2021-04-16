@@ -643,6 +643,11 @@ struct ProviderHost {
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
 
+  // AllocatorManager
+  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
+
+#ifdef USE_CUDA
   // GatherElements
   virtual Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) = 0;
 
@@ -728,10 +733,6 @@ struct ProviderHost {
   virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) = 0;
   virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) = 0;
 
-  // AllocatorManager
-  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
-  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
-
   virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info) = 0;
   virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_Loop(const OpKernelInfo& info, const void* concat_output_func, void* stream) = 0;
   virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) = 0;
@@ -742,7 +743,6 @@ struct ProviderHost {
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) = 0;
-
   virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const int max_threads_per_block) = 0;
   virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) = 0;
 #endif
@@ -757,6 +757,7 @@ struct ProviderHost {
   virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
+#endif
 #endif
 };
 
@@ -1612,18 +1613,7 @@ bool IsDataTypeString(MLDataType dt_type);
 
 }  // namespace utils
 
-#ifdef ENABLE_TRAINING
-namespace contrib {
-inline void record_event_in_tensor(const Tensor& event_id_tensor) { return g_host->contrib__record_event_in_tensor(event_id_tensor); }
-inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host->contrib__wait_event_in_tensor(event_id_tensor); }
-
-inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) { g_host->contrib__VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
-inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host->contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
-inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) { g_host->contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
-inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host->contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-}  // namespace contrib
-#endif
-
+#ifdef USE_CUDA
 namespace GatherElements {
 inline Status ValidateInputShapes(const TensorShape& input_data_shape,
                                   const TensorShape& indices_shape,
@@ -1676,6 +1666,18 @@ inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info)
 inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) { return g_host->CreateOpKernel_CPU_Scan_8(info); }
 inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_9(const OpKernelInfo& info) { return g_host->CreateOpKernel_CPU_Scan_9(info); }
 
-#endif
+#ifdef ENABLE_TRAINING
+namespace contrib {
+inline void record_event_in_tensor(const Tensor& event_id_tensor) { return g_host->contrib__record_event_in_tensor(event_id_tensor); }
+inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host->contrib__wait_event_in_tensor(event_id_tensor); }
+
+inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) { g_host->contrib__VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
+inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host->contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
+inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) { g_host->contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
+inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host->contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+}  // namespace contrib
+#endif  // ENABLE_TRAINING
+#endif  // USE_CUDA
+#endif  // SHARED_PROVIDER
 
 }  // namespace onnxruntime
