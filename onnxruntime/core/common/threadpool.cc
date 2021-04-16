@@ -249,12 +249,6 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
 #pragma warning(disable : 4324) /* Padding added to LoopCounterShard, LoopCounter for alignment */
 #endif
 
-// Temporary control over maximum DoP for experiments
-static constexpr auto MAX_DOP_ENV = "ORT_MAX_DOP";
-static bool checked_max_dop = false;
-static bool set_max_dop = false;
-static int max_dop = 0;
-  
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
@@ -632,24 +626,6 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
     } else {
       dop = ((tp->NumThreads() + 1));
     }
-  }
-  // Temporary external control over maximum DoP for experimenting
-  // with multiple concurrent requests.  If adopted, we should
-  // distinguish this control over the number of threads that will be
-  // used from the TaskGranularityFactor that controls the numbre of
-  // work items that will be created.
-  if (!checked_max_dop) {
-    if (IsEnvVarDefined(MAX_DOP_ENV)) {
-      auto e = GetEnv(MAX_DOP_ENV);
-      if ((max_dop = atoi(e.get())) != 0) {
-        ::std::cerr << "Setting max DoP " << max_dop << "\n";
-        set_max_dop = true;
-      }
-    }
-    checked_max_dop = true;
-  }
-  if (set_max_dop) {
-    dop = ::std::min(dop, max_dop);
   }
   return dop;    
 #endif
