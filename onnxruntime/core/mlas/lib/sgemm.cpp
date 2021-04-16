@@ -1597,10 +1597,7 @@ MlasGemmBatch(
     // works okay for operations involving skinny matrices.
     //
 
-    ptrdiff_t ThreadsPerGemm = 
-        (TargetThreadCount <= static_cast<ptrdiff_t>(BatchSize)) ?
-        1 : (TargetThreadCount / static_cast<ptrdiff_t>(BatchSize));
-
+    ptrdiff_t ThreadsPerGemm = (TargetThreadCount + BatchSize - 1) / BatchSize;
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
 

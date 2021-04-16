@@ -162,7 +162,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
     float* C = nullptr;       /**< Supplies the address of matrix C */
     size_t ldc = 0;           /**< Supplies the first dimension of matrix C. */
     float alpha = 1.0f;       /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
-    float beta = 1.0f;        /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+    float beta = 0.0f;        /**< Supplies the scalar beta multiplier (see SGEMM definition) */
     bool BIsPacked = false;   /**< Whether B is pre-packed */
 };
 
@@ -329,14 +329,14 @@ MlasGemm(
  * @brief Supply matrices data information to double precision gemm functions
  */
 struct MLAS_DGEMM_DATA_PARAMS {
-    const double* A; /**< Supplies the address of matrix A */
-    size_t lda;     /**< Supplies the first dimension of matrix A. */
-    const double* B; /**< Supplies the address of matrix B */
-    size_t ldb;     /**< Supplies the first dimension of matrix B. */
-    double* C;       /**< Supplies the address of matrix C */
-    size_t ldc;     /**< Supplies the first dimension of matrix C. */
-    double alpha;    /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
-    double beta;     /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+    const double* A = nullptr; /**< Supplies the address of matrix A */
+    size_t lda = 0;            /**< Supplies the first dimension of matrix A. */
+    const double* B = nullptr; /**< Supplies the address of matrix B */
+    size_t ldb = 0;            /**< Supplies the first dimension of matrix B. */
+    double* C = nullptr;       /**< Supplies the address of matrix C */
+    size_t ldc = 0;            /**< Supplies the first dimension of matrix C. */
+    double alpha = 1.0;        /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
+    double beta = 0.0;         /**< Supplies the scalar beta multiplier (see SGEMM definition) */
 };
 
 /**
