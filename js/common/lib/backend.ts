@@ -4,6 +4,12 @@
 import {InferenceSession} from './inference-session';
 import {OnnxValue} from './onnx-value';
 
+export declare namespace SessionHandler {
+  type FeedsType = {[name: string]: OnnxValue};
+  type FetchesType = {[name: string]: OnnxValue | null};
+  type ReturnType = {[name: string]: OnnxValue};
+}
+
 /**
  * Represent a handler instance of an inference session.
  */
@@ -15,12 +21,6 @@ export interface SessionHandler {
 
   run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
-}
-
-export declare namespace SessionHandler {
-  type FeedsType = {[name: string]: OnnxValue};
-  type FetchesType = {[name: string]: OnnxValue | null};
-  type ReturnType = {[name: string]: OnnxValue};
 }
 
 /**
