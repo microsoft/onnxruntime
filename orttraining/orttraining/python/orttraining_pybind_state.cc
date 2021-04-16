@@ -486,18 +486,16 @@ void addObjectMethodsForTraining(py::module& m) {
       }));
 
   py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
-      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
-      // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
                        const std::vector<OrtDevice>& bw_outputs_device_info) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
         agent->RunForward(feeds, fetches, *state);
       })
-      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
         agent->RunBackward(feeds, fetches, *state);
       });
 

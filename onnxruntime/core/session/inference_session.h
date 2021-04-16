@@ -28,7 +28,6 @@
 #include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
 #endif
-#include "core/framework/execution_frame.h"
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -304,9 +303,8 @@ class InferenceSession {
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
 #ifdef ENABLE_TRAINING
-  std::pair<size_t, size_t> GetBreakpointAndEndPoint();
-  common::Status Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                     PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
+  common::Status PartialRun(onnxruntime::RunOptions& run_options, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
 #endif
 
   /**

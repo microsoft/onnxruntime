@@ -14,7 +14,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   ORT_UNUSED_PARAMETER(ctx);
-  return Status::OK();
+  return Status(common::ONNXRUNTIME, common::FAIL, "This operator should not be executed.");
 }
 
 }  // namespace contrib

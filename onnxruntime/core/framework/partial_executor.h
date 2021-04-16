@@ -17,10 +17,10 @@
 #include "core/framework/sequential_executor.h"
 
 namespace onnxruntime {
-class PartialExecutor : public SequentialExecutor {
+class PartialExecutor : public IExecutor {
  public:
-  PartialExecutor(PartialGraphExecutionState& state, const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
-      : state_{&state}, terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
+  PartialExecutor(PartialGraphExecutionState& state, const bool& terminate_flag = false)
+      : state_{state}, terminate_flag_{terminate_flag} {}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -28,12 +28,10 @@ class PartialExecutor : public SequentialExecutor {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
 
-  PartialGraphExecutionState* state_;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PartialExecutor);
+  PartialGraphExecutionState& state_;
   const bool& terminate_flag_;
-  const bool only_execute_path_to_fetches_;
 };
 }  // namespace onnxruntime
 #endif

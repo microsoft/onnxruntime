@@ -55,11 +55,86 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
 namespace onnxruntime {
 
+static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
+                                      size_t& total_output_sizes, const std::string& node_name) {
+  // Calculate total output sizes for this operation.
+  total_output_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
+    const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
+    if (p_output != nullptr && p_output->IsTensor()) {
+      const auto& tensor = p_output->Get<Tensor>();
+      size_t tensor_size = tensor.SizeInBytes();
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = tensor.Shape();
+      std::cout << node_name << " output[" << i << "]"
+                         << " size=" << tensor_size
+                         << " shape=" << tensor_shape.ToString()
+                         << " element_size=" << tensor.DataType()->Size()
+                         << "\n";
+#endif
+      total_output_sizes += tensor_size;
+    }
+  }
+}
+
+static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
+                                     const onnxruntime::OpKernel* p_op_kernel,
+                                     size_t& input_activation_sizes, size_t& input_parameter_sizes,
+                                     const std::string& node_name) {
+  // Calculate total input sizes for this operation.
+  input_activation_sizes = 0;
+  input_parameter_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  const int input_count = op_kernel_context->InputCount();
+  for (auto i = 0; i < input_count; i++) {
+    const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
+    if (p_input != nullptr && p_input->IsTensor()) {
+      const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
+      const Tensor* p_tensor = nullptr;
+      bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+      if (!is_param) {
+        p_tensor = &(p_input->Get<Tensor>());
+      }
+      size_t tensor_size = p_tensor->SizeInBytes();
+
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = p_tensor->Shape();
+      size_t element_size = p_tensor->DataType()->Size();
+      LOGS(logger, INFO) << node_name << " input[" << i << "]"
+                         << " is_param=" << is_param
+                         << " size=" << tensor_size
+                         << " shape=" << tensor_shape.ToString()
+                         << " element_size=" << element_size
+                         << "\n";
+#endif
+      if (is_param) {
+        input_parameter_sizes += tensor_size;
+      } else {
+        input_activation_sizes += tensor_size;
+      }
+    }
+  }
+}
+
+static Status ReleaseNodeMLValues(ExecutionFrame& frame,
+                                  const SequentialExecutionPlan& seq_exec_plan,
+                                  const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
+                                  const logging::Logger& logger) {
+  for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
+    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
+  }
+
+  return Status::OK();
+}
+
 Status PartialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
-                                   std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                   const logging::Logger& logger) {
+                                const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                std::vector<OrtValue>& fetches,
+                                const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
+                                const logging::Logger& logger) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -72,28 +147,14 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     tp = session_state.Profiler().Now();
   }
 
-  if (state_->GetExecutionFrame() == nullptr) {
-    state_->GetExecutionFrame() = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
+  if (state_.GetExecutionFrame() == nullptr) {
+    state_.GetExecutionFrame() = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
   } else {
-    state_->GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
+    state_.GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
+    state_.GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
   }
 
-  ExecutionFrame& frame = *(state_->GetExecutionFrame());
-
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
-  const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
-
-  if (only_execute_path_to_fetches) {
-    VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
-  }
-#else
-  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
-  const bool only_execute_path_to_fetches = false;
-#endif
-
+  ExecutionFrame& frame = *(state_.GetExecutionFrame());
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
@@ -128,7 +189,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       profile::Color::Black);
 #endif
 
-  for (size_t program_counter = state_->GetProgramCounterStart(); program_counter <= state_->GetProgramCounterEnd(); program_counter += 1) {
+  for (size_t program_counter = state_.GetProgramCounterStart(); program_counter <= state_.GetProgramCounterEnd(); program_counter += 1) {
     const auto& node_exec_plan = exec_plan_vec[program_counter];
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -136,12 +197,6 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     }
 
     auto node_index = node_exec_plan.node_index;
-
-    // If it is not necessary to execute the node.
-    if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
-      continue;
-    }
-
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -161,7 +216,16 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
-
+    if (p_op_kernel->KernelDef().OpName() == "YieldOp") {
+      // Do not execute YieldOp (it is an no-op anyways).
+      // Decrement the reference count of tensors that are not needed beyond this point.
+      // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+      // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor 
+      // memory lingers while the tensor is used downstream after the export.
+      VLOGS(logger, 1) << "Releasing node ML values.";
+      ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
+      continue;
+    }
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
@@ -253,7 +317,6 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {
@@ -271,7 +334,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       std::ostringstream ss;
       ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
          << "' Status Message: " << compute_status.ErrorMessage();
-      //If the computation failed, we still can record the memory consumption
+//If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
                                                   MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);

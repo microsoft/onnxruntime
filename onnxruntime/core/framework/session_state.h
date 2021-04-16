@@ -35,7 +35,7 @@
 #include "core/framework/memory_info.h"
 #endif
 #include "core/framework/execution_frame.h"
-
+#include <execinfo.h>
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -67,9 +67,7 @@ struct PartialGraphExecutionState {
     execution_frame_ = nullptr;
   }
 
-  ~PartialGraphExecutionState() {
-    execution_frame_.~unique_ptr<ExecutionFrame>();
-  }
+  ~PartialGraphExecutionState() = default;
 
   void SetProgramCounterStart(size_t start) { program_counter_start_ = start; }
   void SetProgramCounterEnd(size_t end) { program_counter_end_ = end; }

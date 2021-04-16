@@ -27,19 +27,6 @@ class SequentialExecutor : public IExecutor {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
 
-  void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                 size_t& total_output_sizes, const std::string& node_name);
-
-  void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
-                                const onnxruntime::OpKernel* p_op_kernel,
-                                size_t& input_activation_sizes, size_t& input_parameter_sizes,
-                                const std::string& node_name);
-
-  common::Status ReleaseNodeMLValues(ExecutionFrame& frame,
-                                     const SequentialExecutionPlan& seq_exec_plan,
-                                     const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
-                                     const logging::Logger& logger);
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
   const bool& terminate_flag_;

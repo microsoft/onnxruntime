@@ -35,7 +35,7 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
-#ifdef ENABLE_TRAINING 
+#ifdef ENABLE_TRAINING
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
@@ -44,6 +44,38 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
     ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
 
     all_values_[ort_value_idx] = feeds[idx];
+  }
+}
+
+void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
+  if (!fetches.empty()) {
+    fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
+
+    auto num_fetches = fetch_mlvalue_idxs_.size();
+
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      int ort_value_idx = fetch_mlvalue_idxs_[idx];
+
+      ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
+      all_values_[ort_value_idx] = fetches[idx];
+
+      // Copy the initializer if it is a fetch entry.
+      auto entry = initializers.find(ort_value_idx);
+      if (entry != initializers.end()) {
+        const Tensor& src = entry->second.Get<Tensor>();
+        OrtValue& dest = all_values_[ort_value_idx];
+
+        if (!dest.IsAllocated()) {
+          AllocatorPtr allocator = GetAllocator(src.Location());
+          auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+          dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+        }
+
+        ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+      }
+    }
   }
 }
 
@@ -655,11 +687,6 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
   return alloc_plan[ort_value_idx];
-}
-
-bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
-  const auto& allocation_plan = GetAllocationPlan(ort_value_idx);
-  return allocation_plan.alloc_kind == AllocKind::kAllocatedExternally;
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {

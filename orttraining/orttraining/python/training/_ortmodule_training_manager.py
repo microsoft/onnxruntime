@@ -129,15 +129,13 @@ class TrainingManager(GraphExecutionManager):
 
                 # Run and get results
                 backward_inputs = C.OrtValueVector()
-                for idx, input in enumerate(contiguous_grad_outputs):
+                for input in contiguous_grad_outputs:
                     backward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
 
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
-
                 # Return input and initializer gradients
                 num_user_input_grads = len(self._input_info.require_grad_names)
-
                 results = []
                 require_grad_names_set = set(self._input_info.require_grad_names)
                 require_grad_names_index = 0
@@ -161,7 +159,7 @@ class TrainingManager(GraphExecutionManager):
                         initializer_index += 1
                     else:
                         results.append(None)
-
+                
                 return tuple(results)
 
         return _io.populate_user_output_from_schema_and_outputs(self._module_output_schema,
@@ -190,26 +188,26 @@ class TrainingManager(GraphExecutionManager):
         session_options, providers, provider_options = self._get_session_config()
 
         fw_feed_names = []
-        for idx, value_info in enumerate(self._optimized_onnx_model.graph.input):
-            fw_feed_names.append(value_info.name)
+        for input in self._optimized_onnx_model.graph.input:
+            fw_feed_names.append(input.name)
         fw_outputs_device_info = []
         for idx in range(len(self._graph_info.user_output_names)):
             fw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
             C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         bw_fetches_names = []
-        for idx, value_info in enumerate(self._optimized_onnx_model.graph.output):
-            bw_fetches_names.append(value_info.name)
+        for output in self._optimized_onnx_model.graph.output:
+            bw_fetches_names.append(output.name)
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
             bw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
             C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),
-                                                                    session_options, providers, provider_options,
                                                                     fw_feed_names, self._graph_info.user_output_names,
                                                                     fw_outputs_device_info, self._graph_info.loss_gradient_names,
-                                                                    bw_fetches_names, bw_outputs_device_info)
+                                                                    bw_fetches_names, bw_outputs_device_info,
+                                                                    session_options, providers, provider_options,)
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

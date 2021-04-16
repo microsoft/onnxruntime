@@ -55,7 +55,7 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
 namespace onnxruntime {
 
-void SequentialExecutor::CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
+static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
                                       size_t& total_output_sizes, const std::string& node_name) {
   // Calculate total output sizes for this operation.
   total_output_sizes = 0;
@@ -68,17 +68,17 @@ void SequentialExecutor::CalculateTotalOutputSizes(OpKernelContextInternal* op_k
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                << " size=" << tensor_size
-                << " shape=" << tensor_shape.ToString()
-                << " element_size=" << tensor.DataType()->Size()
-                << "\n";
+                         << " size=" << tensor_size
+                         << " shape=" << tensor_shape.ToString()
+                         << " element_size=" << tensor.DataType()->Size()
+                         << "\n";
 #endif
       total_output_sizes += tensor_size;
     }
   }
 }
 
-void SequentialExecutor::CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
+static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
                                      size_t& input_activation_sizes, size_t& input_parameter_sizes,
                                      const std::string& node_name) {
@@ -117,18 +117,10 @@ void SequentialExecutor::CalculateTotalInputSizes(const OpKernelContextInternal*
   }
 }
 
-Status SequentialExecutor::ReleaseNodeMLValues(ExecutionFrame& frame,
+static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
-                                  const logging::Logger& logger) {
-  for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
-    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
-    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
-  }
-
-  return Status::OK();
-}
+                                  const logging::Logger& logger);
 
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -497,4 +489,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   return Status::OK();
 }
 
+static Status ReleaseNodeMLValues(ExecutionFrame& frame,
+                                  const SequentialExecutionPlan& seq_exec_plan,
+                                  const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
+                                  const logging::Logger& logger) {
+  for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
+    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
+  }
+
+  return Status::OK();
+}
 }  // namespace onnxruntime

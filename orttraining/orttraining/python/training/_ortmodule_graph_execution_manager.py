@@ -37,17 +37,17 @@ def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
         run_options = C.RunOptions()
 
         # Use IO binding
-        _utils._create_iobinding(io_binding, inputs, onnx_model, device, True)
+        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
 
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
         forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output, True) for forward_output in forward_outputs)
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output._ortvalue) for forward_output in forward_outputs)
         state = None
     else:
         state = C.PartialGraphExecutionState()
         forward_inputs = C.OrtValueVector()
-        for idx, input in enumerate(inputs):
+        for input in inputs:
             forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
 
         forward_outputs = C.OrtValueVector()
@@ -62,6 +62,7 @@ def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
     run_info = onnxruntime.training.RunStateInfo(state, output_info)
     # Return user outputs and forward run information
     return user_outputs, run_info
+
 class GraphExecutionManager(ABC):
     def __init__(self, module):
         """Manages building and execution of onnx graphs

@@ -530,16 +530,30 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   return Status::OK();
 }
 
-#ifdef ENABLE_TRAINING
-static common::Status ExecuteGraphImpl(const SessionState& session_state,
-                                       const FeedsFetchesManager& feeds_fetches_manager,
-                                       const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                       const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, PartialGraphExecutionState& state, const bool only_execute_path_to_fetches = false) {
-  ORT_ENFORCE(execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+common::Status ExecuteGraph(const SessionState& session_state,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const bool& terminate_flag,
+                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
+  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
-  PartialExecutor executor{state, terminate_flag, only_execute_path_to_fetches};
+  // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
+  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
+
+  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
+
+  return status;
+}
+
+#ifdef ENABLE_TRAINING
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, const bool& terminate_flag,
+                                   const logging::Logger& logger, PartialGraphExecutionState& state) {
+
+  // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
+  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
+  PartialExecutor executor{state, terminate_flag};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
@@ -548,7 +562,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     // no device copies are needed so simple execute
     ORT_RETURN_IF_ERROR(executor.Execute(session_state,
                                          feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
+                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                          logger));
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
@@ -583,7 +597,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     ORT_RETURN_IF_ERROR(executor.Execute(session_state,
                                          feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
-                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                          logger));
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
@@ -592,39 +606,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   }
 
   return Status::OK();
-}
-#endif
-
-common::Status ExecuteGraph(const SessionState& session_state,
-                            FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
-  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
-
-  // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
-  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-
-  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
-
-  return status;
-}
-
-#ifdef ENABLE_TRAINING
-common::Status ExecuteGraph(const SessionState& session_state,
-                            FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches,
-                            PartialGraphExecutionState& state) {
-  // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
-  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-
-  auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, state, only_execute_path_to_fetches);
-
-  return status;
 }
 #endif
 

@@ -32,26 +32,39 @@ TrainingAgent::TrainingAgent(InferenceSession& session, const std::vector<std::s
     ORT_ENFORCE(utils::InitializeFeedFetchCopyInfo(session_state, *bw_feeds_fetches_manager_) == Status::OK());
   }
 
-  auto bp = inference_session_.GetBreakpointAndEndPoint();
-  fw_program_counter_end_ = bp.first - 1;
-  bw_program_counter_end_ = bp.second;
+  size_t end_point;
+  size_t break_point = 0;
+  const SequentialExecutionPlan& seq_exec_plan = *(session_state.GetExecutionPlan());
+  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+  end_point = exec_plan_vec.size() - 1;
+  for (size_t program_counter = 0; program_counter < exec_plan_vec.size(); program_counter += 1) {
+    const auto& node_exec_plan = exec_plan_vec[program_counter];
+    auto node_index = node_exec_plan.node_index;
+    if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
+      break;
+    }
+    break_point += 1;
+  }
+
+  fw_program_counter_end_ = break_point - 1;
+  bw_program_counter_end_ = end_point;
 }
 
 TrainingAgent::~TrainingAgent(){};
 
-void TrainingAgent::RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
+void TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(0);
   state.SetProgramCounterEnd(fw_program_counter_end_);
   RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_);
 }
 
-void TrainingAgent::RunBackward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
+void TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_ + 1);
   state.SetProgramCounterEnd(bw_program_counter_end_);
   RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_);
 }
 
-void TrainingAgent::RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
+void TrainingAgent::RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
   fetches.resize(fetches_size);
   for (size_t index = 0; index < fetches_size; index += 1) {
@@ -59,7 +72,7 @@ void TrainingAgent::RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>&
   }
 
   RunOptions run_options;
-  auto status = inference_session_.Run(run_options, feeds, fetches, state, feeds_fetches_manager);
+  auto status = inference_session_.PartialRun(run_options, feeds, fetches, state, feeds_fetches_manager);
   if (!status.IsOK()) {
     throw std::runtime_error("Error in execution: " + status.ErrorMessage());
   }

@@ -23,11 +23,11 @@ class TrainingAgent {
                          const std::vector<OrtDevice>& bw_outputs_device_info);
   ~TrainingAgent();
   // For ORTModule.forward()
-  void RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
+  void RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
   // For ORTModule.backward()
-  void RunBackward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
+  void RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
 
-  void RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
+  void RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

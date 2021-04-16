@@ -1506,25 +1506,8 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 }
 
 #ifdef ENABLE_TRAINING
-std::pair<size_t, size_t> InferenceSession::GetBreakpointAndEndPoint() {
-  size_t end_point;
-  size_t break_point = 0;
-  const SequentialExecutionPlan& seq_exec_plan = *(session_state_->GetExecutionPlan());
-  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
-  end_point = exec_plan_vec.size() - 1;
-  for (size_t program_counter = 0; program_counter < exec_plan_vec.size(); program_counter += 1) {
-    const auto& node_exec_plan = exec_plan_vec[program_counter];
-    auto node_index = node_exec_plan.node_index;
-    if (session_state_->GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
-      break;
-    }
-    break_point += 1;
-  }
-  return std::make_pair(break_point, end_point);
-}
-
-Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                             PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
+Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                    PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Now();
@@ -1576,16 +1559,13 @@ Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<O
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
-#if !defined(ORT_MINIMAL_BUILD)
-    if (run_options.only_execute_path_to_fetches) {
-      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-    }
-#endif
+    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
 
+    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+    
     // execute the graph
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches, state));
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
+                                                        run_options.terminate, run_logger, state));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1631,7 +1611,7 @@ Status InferenceSession::Run(onnxruntime::RunOptions& run_options, std::vector<O
 #endif
   return retval;
 }
-#endif 
+#endif
 
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
