@@ -16,8 +16,6 @@ MyExecutionProvider::GetKernelRegistry() const {
 MyExecutionProvider::MyExecutionProvider(const MyProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMyProvider}, device_id_(info.device_id) {
   
-  // Athena emulator currently has ~1.2 GB of HBM for user data.  Reserve 1 GB for now.
-  const size_t max_mem = 1 * 1024 * 1024 * 1024;
   AllocatorCreationInfo device_info{
       [](OrtDevice::DeviceId device_id) { return std::make_unique<MyEPAllocator>(device_id); },
       device_id_,
