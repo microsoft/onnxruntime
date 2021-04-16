@@ -67,7 +67,7 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
 
   // relax the condition if Identity is connecting to graph output
   if (node.GetOutputEdgesCount() != 0 || node.OutputDefs().size() != 1 ||
-    graph.GetNodeOutputsInGraphOutputs(node).empty() == true)
+    graph.GetNodeOutputsInGraphOutputs(node).empty())
     return false;
 
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
