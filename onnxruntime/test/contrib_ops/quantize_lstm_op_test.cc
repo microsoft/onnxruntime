@@ -24,9 +24,9 @@ static std::vector<float> ApplyQDQ(const std::vector<float>& data, size_t channe
     float scale = 1.0f;
     const float* data_buf = data.data() + size_per_dir * dir_idx;
     if (per_channel) {
-      GetQuantizationParameter<QType, true, true>(data_buf, size_per_dir, scale, zp);
+      GetQuantizationParameter<QType, true, true>(data_buf, size_per_dir, scale, zp, nullptr);
     } else {
-      GetQuantizationParameter<QType, true, false>(data_buf, size_per_dir, scale, zp);
+      GetQuantizationParameter<QType, true, false>(data_buf, size_per_dir, scale, zp, nullptr);
     }
 
     std::vector<QType> quant_data(size_per_dir);
@@ -62,9 +62,9 @@ void QuantizeWeight(std::vector<QType>& w_quant,
 
   for (size_t quant_param_idx = 0; quant_param_idx < quant_param_size; quant_param_idx++) {
     if (per_channel) {
-      GetQuantizationParameter<QType, true, true>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx]);
+      GetQuantizationParameter<QType, true, true>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx], nullptr);
     } else {
-      GetQuantizationParameter<QType, true, false>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx]);
+      GetQuantizationParameter<QType, true, false>(w.data() + quant_param_idx * quant_span, quant_span, scale[quant_param_idx], zp[quant_param_idx], nullptr);
     }
 
     MlasQuantizeLinear(w.data() + quant_param_idx * quant_span,

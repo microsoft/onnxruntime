@@ -524,20 +524,14 @@ class DnnlConv : public DnnlKernel {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
     } else {  // gpu_available_
-#ifdef USE_DNNL_GPU_OCL
-      std::lock_guard<OrtMutex> lock(provider_->GetMutex());
-      filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
-#endif  // USE_DNNL_GPU_OCL
+      filter_mem_gpu_->set_data_handle(filter_dst_mem->get_data_handle());
     }
 #else  // ENABLE_TRAINING
     if (!gpu_available_) {
       filter_data = static_cast<T*>(filter_dst_mem_->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
     } else if (gpu_available_) {
-#ifdef USE_DNNL_GPU_OCL
-      std::lock_guard<OrtMutex> lock(provider_->GetMutex());
-      filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem_->get_ocl_mem_object());
-#endif  // USE_DNNL_GPU_OCL
+      filter_mem_gpu_->set_data_handle(filter_dst_mem_->get_data_handle());
     }
 #endif  // ENABLE_TRAINING
 

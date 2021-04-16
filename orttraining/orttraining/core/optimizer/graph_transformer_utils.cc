@@ -39,6 +39,8 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -93,6 +95,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
@@ -113,6 +116,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.transformer_layer_recompute) {
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
+      }
+      if (config.propagate_cast_ops_level >= 0) {
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
+        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
+                                                                             config.propagate_cast_ops_allow,
+                                                                             cuda_execution_provider));
       }
     } break;
 

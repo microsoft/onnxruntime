@@ -226,6 +226,8 @@ public:
         size_t,         // Supplies the element count per col to process
         size_t          // Supplies the leading dimension of matrix
         ) const = 0;
+
+    virtual ~MLAS_QGEMM_OUTPUT_PROCESSOR() {}
 };
 
 class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
@@ -278,10 +280,14 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-struct MLAS_GEMM_U8X8_PARAMETERS {
+struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t M = 0;
     size_t N = 0;
     size_t K = 0;
+    bool BIsSigned = false;
+};
+
+struct MLAS_GEMM_U8X8_DATA_PARAMS {
     const uint8_t* A = nullptr;
     size_t lda = 0;
     uint8_t ZeroPointA = 0;
@@ -289,17 +295,38 @@ struct MLAS_GEMM_U8X8_PARAMETERS {
     size_t ldb = 0;
     const uint8_t* ZeroPointB = nullptr;
     bool BIsPacked = false;
-    bool BIsSigned = false;
     bool PerColumnZeroPoints = false;
     int32_t* C = nullptr;
     size_t ldc = 0;
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
+
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/** 
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices. 
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same: M, N, K, BIsSigned must be the
+ *        same across all parameter blocks. 
+ * 
+ * @param [IN]  Shape        A single shape descriptor for all the multiplications
+ * @param [IN]  DataParams   Array of data descriptors for the matrices.
+ * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
+ * @param [IN]  ThreadPool   optional thread pool for parallel processing
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
 
