@@ -5,7 +5,6 @@
 
 @interface ORTEnv : NSObject
 
--(instancetype) init:(NSError **)error;
--(void*) handle;
+- (instancetype)initWithError:(NSError **)error;
 
 @end

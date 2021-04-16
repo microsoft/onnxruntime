@@ -70,6 +70,11 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
     set_target_properties(onnxruntime_objc_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${REPO_ROOT}/objc/test/testdata"
+            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources/testdata")
+
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
 
     set_property(TEST XCTest.onnxruntime_objc_test APPEND PROPERTY

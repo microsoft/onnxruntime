@@ -1,17 +1,18 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #import <XCTest/XCTest.h>
 
 #import "onnxruntime/ort_env.h"
 
-@interface ORTAPITest : XCTestCase
+@interface ORTEnvTest : XCTestCase
 @end
 
-@implementation ORTAPITest
+@implementation ORTEnvTest
 
 - (void)testCreateEnv {
-    NSError* error;
-    ORTEnv* env = [[ORTEnv alloc] init:&error];
+    ORTEnv* env = [[ORTEnv alloc] initWithError:nil];
     XCTAssertNotNil(env);
-    XCTAssertNil(error);
 }
 
 @end

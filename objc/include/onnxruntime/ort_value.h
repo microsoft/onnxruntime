@@ -3,9 +3,18 @@
 
 #import <Foundation/Foundation.h>
 
-@interface OrtValue : NSObject
+typedef NS_ENUM(NSUInteger, ORTElementDataType) {
+    ORTElementDataTypeUndefined,
+    ORTElementDataTypeFloat,
+    ORTElementDataTypeInt32,
+};
 
--(instancetype) init;
--(nullable NSData *)tensorData;
+@interface ORTValue : NSObject
+
+-(instancetype) initTensorWithData:(NSMutableData*) data
+                       elementType:(ORTElementDataType) type
+                             shape:(const int64_t*)shape
+                          shapeLen:(size_t)shapeLen
+                             error:(NSError**) error;
 
 @end

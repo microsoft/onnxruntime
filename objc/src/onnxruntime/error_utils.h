@@ -3,6 +3,8 @@
 
 #import <Foundation/Foundation.h>
 
+#include "core/session/onnxruntime_cxx_api.h"
+
 @interface ORTErrorUtils : NSObject
 + (void)saveErrorCode:(int)code
           description:(const char*)description_cstr

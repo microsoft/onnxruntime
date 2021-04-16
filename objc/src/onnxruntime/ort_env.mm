@@ -2,20 +2,22 @@
 // Licensed under the MIT License.
 
 #import "onnxruntime/ort_env.h"
+#import "onnxruntime/ort_env_internal.h"
+
+#import "onnxruntime/error_utils.h"
 
 #include "core/common/optional.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "onnxruntime/error_utils.h"
 
 @implementation ORTEnv {
     onnxruntime::optional<Ort::Env> _env;
 }
 
-- (instancetype) init:(NSError **)error {
+- (instancetype) initWithError:(NSError **)error {
     self = [super init];
     if (self) {
         try {
-            _env.emplace();
+            _env = Ort::Env{};
         } catch (const Ort::Exception& e) {
             [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
                              description:e.what()
@@ -26,8 +28,8 @@
     return self;
 }
 
-- (void*) handle {
-    return static_cast<Ort::Env::contained_type*>(*_env);
+- (Ort::Env*) handle {
+    return &(*_env);
 }
 
 @end
