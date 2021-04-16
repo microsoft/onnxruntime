@@ -1,8 +1,9 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "module": "CommonJS",
     "declarationDir": "./types",
     "lib": ["DOM"]
   },
-  "include": ["lib/", "script"]
+  "include": ["lib/", "script/", "test/"]
 }

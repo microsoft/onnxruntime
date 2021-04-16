@@ -1,4 +1,5 @@
-import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
+import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
+
 import {init, OnnxruntimeWebAssemblySessionHandler} from './wasm';
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
@@ -25,3 +26,22 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
 }
 
 export const wasmBackend = new OnnxruntimeWebAssemblyBackend();
+
+export interface WebAssemblyFlags {
+  /**
+   * set or get number of worker(s)
+   *
+   * This setting is available only when WebAssembly multithread feature is available in current context.
+   */
+  worker?: number;
+
+  /**
+   * set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds.
+   */
+  initTimeout?: number;
+}
+
+/**
+ * Represent a set of flags for WebAssembly backend.
+ */
+export const flags: WebAssemblyFlags = env.wasm = env.wasm as WebAssemblyFlags || {};

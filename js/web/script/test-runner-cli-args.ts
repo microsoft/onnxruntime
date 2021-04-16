@@ -3,8 +3,10 @@
 
 import minimist from 'minimist';
 import npmlog from 'npmlog';
+import {InferenceSession} from 'onnxruntime-common';
 
-import {Backend} from '../lib/api';
+import {WebGLFlags} from '../lib/backend-onnxjs';
+import {WebAssemblyFlags} from '../lib/backend-wasm';
 import {Logger} from '../lib/instrument';
 import {Test} from '../test/test-types';
 
@@ -33,10 +35,8 @@ Options:
                                  Debug mode outputs verbose log for test runner, sets up ONNX.js environment debug flag, and keeps karma not to exit after tests completed.
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
-                                   cpu
                                    webgl
                                    wasm
-                                   onnxruntime  (only works in Node.js)
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
                                  chrome     (default)
                                  edge       (Windows only)
@@ -62,7 +62,6 @@ Options:
 *** Backend Options ***
 
  --wasm-worker                 Set the WebAssembly worker number
- --wasm-cpu-fallback           Set whether to allow WebAssembly backend to fallback to CPU
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
@@ -148,11 +147,141 @@ export interface TestRunnerCliArgs {
    */
   times?: number;
 
-  cpuOptions?: Backend.CpuOptions;
-  wasmOptions?: Backend.WasmOptions;
-  webglOptions?: Backend.WebGLOptions;
+  cpuOptions?: InferenceSession.CpuExecutionProviderOption;
+  cpuFlags?: Record<string, unknown>;
+  cudaOptions?: InferenceSession.CudaExecutionProviderOption;
+  cudaFlags?: Record<string, unknown>;
+  wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
+  wasmFlags?: WebAssemblyFlags;
+  webglOptions?: InferenceSession.WebGLExecutionProviderOption;
+  webglFlags?: WebGLFlags;
 
   noSandbox?: boolean;
+}
+
+
+function parseBooleanArg(arg: unknown, defaultValue: boolean): boolean;
+function parseBooleanArg(arg: unknown): boolean|undefined;
+function parseBooleanArg(arg: unknown, defaultValue?: boolean): boolean|undefined {
+  if (typeof arg === 'undefined') {
+    return defaultValue;
+  }
+
+  if (typeof arg === 'boolean') {
+    return arg;
+  }
+
+  if (typeof arg === 'number') {
+    return arg !== 0;
+  }
+
+  if (typeof arg === 'string') {
+    if (arg.toLowerCase() === 'true') {
+      return true;
+    }
+    if (arg.toLowerCase() === 'false') {
+      return false;
+    }
+  }
+
+  throw new TypeError(`invalid boolean arg: ${arg}`);
+}
+
+function parseLogLevel<T>(arg: T) {
+  let v: string[]|boolean;
+  if (typeof arg === 'string') {
+    v = arg.split(',');
+  } else if (Array.isArray(arg)) {
+    v = [];
+    for (const e of arg) {
+      v.push(...e.split(','));
+    }
+  } else {
+    v = arg ? true : false;
+  }
+  return v;
+}
+
+function parseLogConfig(args: minimist.ParsedArgs) {
+  const config: Array<{category: string; config: Logger.Config}> = [];
+  const verbose = parseLogLevel(args['log-verbose']);
+  const info = parseLogLevel(args['log-info']);
+  const warning = parseLogLevel(args['log-warning']);
+  const error = parseLogLevel(args['log-error']);
+
+  if (typeof error === 'boolean' && error) {
+    config.push({category: '*', config: {minimalSeverity: 'error'}});
+  } else if (typeof warning === 'boolean' && warning) {
+    config.push({category: '*', config: {minimalSeverity: 'warning'}});
+  } else if (typeof info === 'boolean' && info) {
+    config.push({category: '*', config: {minimalSeverity: 'info'}});
+  } else if (typeof verbose === 'boolean' && verbose) {
+    config.push({category: '*', config: {minimalSeverity: 'verbose'}});
+  }
+
+  if (Array.isArray(error)) {
+    config.push(...error.map(i => ({category: i, config: {minimalSeverity: 'error' as Logger.Severity}})));
+  }
+  if (Array.isArray(warning)) {
+    config.push(...warning.map(i => ({category: i, config: {minimalSeverity: 'warning' as Logger.Severity}})));
+  }
+  if (Array.isArray(info)) {
+    config.push(...info.map(i => ({category: i, config: {minimalSeverity: 'info' as Logger.Severity}})));
+  }
+  if (Array.isArray(verbose)) {
+    config.push(...verbose.map(i => ({category: i, config: {minimalSeverity: 'verbose' as Logger.Severity}})));
+  }
+
+  return config;
+}
+
+function parseCpuOptions(_args: minimist.ParsedArgs): InferenceSession.CpuExecutionProviderOption {
+  return {name: 'cpu'};
+}
+
+function parseCpuFlags(_args: minimist.ParsedArgs): Record<string, unknown> {
+  return {};
+}
+
+function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssemblyExecutionProviderOption {
+  return {name: 'wasm'};
+}
+
+function parseWasmFlags(args: minimist.ParsedArgs): WebAssemblyFlags {
+  const worker = args['wasm-worker'];
+  if (typeof worker !== 'undefined' && typeof worker !== 'number') {
+    throw new Error('Flag "wasm-worker" must be a number value');
+  }
+  const initTimeout = args['wasm-init-timeout'];
+  if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
+    throw new Error('Flag "wasm-init-timeout" must be a number value');
+  }
+  return {worker, initTimeout};
+}
+
+function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
+  return {name: 'webgl'};
+}
+
+function parseWebglFlags(args: minimist.ParsedArgs): WebGLFlags {
+  const contextId = args['webgl-context-id'];
+  if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
+    throw new Error('Flag "webgl-context-id" is invalid');
+  }
+  const matmulMaxBatchSize = args['webgl-matmul-max-batch-size'];
+  if (matmulMaxBatchSize !== undefined && typeof matmulMaxBatchSize !== 'number') {
+    throw new Error('Flag "webgl-matmul-max-batch-size" must be a number value');
+  }
+  const textureCacheMode = args['webgl-texture-cache-mode'];
+  if (textureCacheMode !== undefined && textureCacheMode !== 'initializerOnly' && textureCacheMode !== 'full') {
+    throw new Error('Flag "webgl-texture-cache-mode" is invalid');
+  }
+  const pack = args['webgl-texture-pack-mode'];
+  if (pack !== undefined && typeof pack !== 'boolean') {
+    throw new Error('Flag "webgl-texture-pack-mode" is invalid');
+  }
+
+  return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -174,9 +303,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   // Option: -b=<...>, --backend=<...>
   const backendArgs = args.backend || args.b;
-  const backend = (typeof backendArgs !== 'string') ? ['cpu', 'webgl', 'wasm'] : backendArgs.split(',');
+  const backend = (typeof backendArgs !== 'string') ? ['webgl', 'wasm'] : backendArgs.split(',');
   for (const b of backend) {
-    if (b !== 'cpu' && b !== 'webgl' && b !== 'wasm' && b !== 'onnxruntime') {
+    if (b !== 'webgl' && b !== 'wasm') {
       throw new Error(`not supported backend ${b}`);
     }
   }
@@ -187,8 +316,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs'].indexOf(env) === -1) {
     throw new Error(`not supported env ${env}`);
   }
-  if (env !== 'node' && backend.indexOf('onnxruntime') !== -1) {
-    throw new Error(`backend onnxruntime is not supported in env ${env}`);
+  if (env === 'node') {
+    // TODO: support node
+    throw new Error('node is currently not supported.');
   }
 
   // Options:
@@ -225,14 +355,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
   const cpuOptions = parseCpuOptions(args);
+  const cpuFlags = parseCpuFlags(args);
   const wasmOptions = parseWasmOptions(args);
-  if (backend.indexOf('wasm') === -1) {
-    wasmOptions.disabled = true;
-  }
+  const wasmFlags = parseWasmFlags(args);
   const webglOptions = parseWebglOptions(args);
-  if (backend.indexOf('webgl') === -1) {
-    webglOptions.disabled = true;
-  }
+  const webglFlags = parseWebglFlags(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -255,123 +382,11 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     times: perf ? times : undefined,
     fileCache,
     cpuOptions,
+    cpuFlags,
     webglOptions,
+    webglFlags,
     wasmOptions,
+    wasmFlags,
     noSandbox
   };
-}
-
-function parseLogLevel<T>(arg: T) {
-  let v: string[]|boolean;
-  if (typeof arg === 'string') {
-    v = arg.split(',');
-  } else if (Array.isArray(arg)) {
-    v = [];
-    for (const e of arg) {
-      v.push(...e.split(','));
-    }
-  } else {
-    v = arg ? true : false;
-  }
-  return v;
-}
-function parseLogConfig(args: minimist.ParsedArgs) {
-  const config: Array<{category: string; config: Logger.Config}> = [];
-  const verbose = parseLogLevel(args['log-verbose']);
-  const info = parseLogLevel(args['log-info']);
-  const warning = parseLogLevel(args['log-warning']);
-  const error = parseLogLevel(args['log-error']);
-
-  if (typeof error === 'boolean' && error) {
-    config.push({category: '*', config: {minimalSeverity: 'error'}});
-  } else if (typeof warning === 'boolean' && warning) {
-    config.push({category: '*', config: {minimalSeverity: 'warning'}});
-  } else if (typeof info === 'boolean' && info) {
-    config.push({category: '*', config: {minimalSeverity: 'info'}});
-  } else if (typeof verbose === 'boolean' && verbose) {
-    config.push({category: '*', config: {minimalSeverity: 'verbose'}});
-  }
-
-  if (Array.isArray(error)) {
-    config.push(...error.map(i => ({category: i, config: {minimalSeverity: 'error' as Logger.Severity}})));
-  }
-  if (Array.isArray(warning)) {
-    config.push(...warning.map(i => ({category: i, config: {minimalSeverity: 'warning' as Logger.Severity}})));
-  }
-  if (Array.isArray(info)) {
-    config.push(...info.map(i => ({category: i, config: {minimalSeverity: 'info' as Logger.Severity}})));
-  }
-  if (Array.isArray(verbose)) {
-    config.push(...verbose.map(i => ({category: i, config: {minimalSeverity: 'verbose' as Logger.Severity}})));
-  }
-
-  return config;
-}
-
-function parseCpuOptions(_args: minimist.ParsedArgs): Backend.CpuOptions {
-  return {};
-}
-
-function parseWasmOptions(args: minimist.ParsedArgs): Backend.WasmOptions {
-  const worker = args['wasm-worker'];
-  if (typeof worker !== 'undefined' && typeof worker !== 'number') {
-    throw new Error('Flag "wasm-worker" must be a number value');
-  }
-  const cpuFallback = parseBooleanArg(args['wasm-cpu-fallback']);
-  if (typeof cpuFallback !== 'undefined' && typeof cpuFallback !== 'boolean') {
-    throw new Error('Flag "wasm-cpu-fallback" must be a boolean value');
-  }
-  const initTimeout = args['wasm-init-timeout'];
-  if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
-    throw new Error('Flag "wasm-init-timeout" must be a number value');
-  }
-  return {worker, cpuFallback, initTimeout};
-}
-
-function parseWebglOptions(args: minimist.ParsedArgs): Backend.WebGLOptions {
-  const contextId = args['webgl-context-id'];
-  if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
-    throw new Error('Flag "webgl-context-id" is invalid');
-  }
-  const matmulMaxBatchSize = args['webgl-matmul-max-batch-size'];
-  if (matmulMaxBatchSize !== undefined && typeof matmulMaxBatchSize !== 'number') {
-    throw new Error('Flag "webgl-matmul-max-batch-size" must be a number value');
-  }
-  const textureCacheMode = args['webgl-texture-cache-mode'];
-  if (textureCacheMode !== undefined && textureCacheMode !== 'initializerOnly' && textureCacheMode !== 'full') {
-    throw new Error('Flag "webgl-texture-cache-mode" is invalid');
-  }
-  const pack = args['webgl-texture-pack-mode'];
-  if (pack !== undefined && typeof pack !== 'boolean') {
-    throw new Error('Flag "webgl-texture-pack-mode" is invalid');
-  }
-
-  return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
-}
-
-function parseBooleanArg(arg: unknown, defaultValue: boolean): boolean;
-function parseBooleanArg(arg: unknown): boolean|undefined;
-function parseBooleanArg(arg: unknown, defaultValue?: boolean): boolean|undefined {
-  if (typeof arg === 'undefined') {
-    return defaultValue;
-  }
-
-  if (typeof arg === 'boolean') {
-    return arg;
-  }
-
-  if (typeof arg === 'number') {
-    return arg !== 0;
-  }
-
-  if (typeof arg === 'string') {
-    if (arg.toLowerCase() === 'true') {
-      return true;
-    }
-    if (arg.toLowerCase() === 'false') {
-      return false;
-    }
-  }
-
-  throw new TypeError(`invalid boolean arg: ${arg}`);
 }

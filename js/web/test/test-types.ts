@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import * as api from '../lib/api';
-import {Backend} from '../lib/api';
+import {InferenceSession, Tensor} from '..';
 import {Attribute} from '../lib/attribute';
 import {Logger} from '../lib/instrument';
-import {Tensor} from '../lib/tensor';
 
 export declare namespace Test {
-  export interface NamedTensor extends api.Tensor {
+  export interface NamedTensor extends Tensor {
     name: string;
   }
 
@@ -38,7 +36,7 @@ export declare namespace Test {
 
   export interface ModelTestCase {
     name: string;
-    dataFiles: ReadonlyArray<string>;
+    dataFiles: readonly string[];
     inputs?: NamedTensor[];   // value should be populated at runtime
     outputs?: NamedTensor[];  // value should be populated at runtime
   }
@@ -48,18 +46,18 @@ export declare namespace Test {
     modelUrl: string;
     backend?: string;  // value should be populated at build time
     condition?: Condition;
-    cases: ReadonlyArray<ModelTestCase>;
+    cases: readonly ModelTestCase[];
   }
 
   export interface ModelTestGroup {
     name: string;
-    tests: ReadonlyArray<ModelTest>;
+    tests: readonly ModelTest[];
   }
 
   export interface OperatorTestCase {
     name: string;
-    inputs: ReadonlyArray<TensorValue>;
-    outputs: ReadonlyArray<TensorValue>;
+    inputs: readonly TensorValue[];
+    outputs: readonly TensorValue[];
   }
 
   export interface OperatorTestOpsetImport {
@@ -70,18 +68,19 @@ export declare namespace Test {
   export interface OperatorTest {
     name: string;
     operator: string;
-    opsets?: ReadonlyArray<OperatorTestOpsetImport>;
+    opsets?: readonly OperatorTestOpsetImport[];
     backend?: string;  // value should be populated at build time
     condition?: Condition;
-    attributes: ReadonlyArray<AttributeValue>;
-    cases: ReadonlyArray<OperatorTestCase>;
+    attributes: readonly AttributeValue[];
+    cases: readonly OperatorTestCase[];
   }
 
   export interface OperatorTestGroup {
     name: string;
-    tests: ReadonlyArray<OperatorTest>;
+    tests: readonly OperatorTest[];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   export namespace WhiteList {
     export type TestName = string;
     export interface TestDescription {
@@ -96,7 +95,7 @@ export declare namespace Test {
    * A whitelist should only be applied when running suite test cases (suite0, suite1)
    */
   export interface WhiteList {
-    [backend: string]: {[group: string]: ReadonlyArray<WhiteList.Test>;};
+    [backend: string]: {[group: string]: readonly WhiteList.Test[]};
   }
 
   /**
@@ -104,9 +103,9 @@ export declare namespace Test {
    */
   export interface Options {
     debug?: boolean;
-    cpu?: Backend.CpuOptions;
-    webgl?: Backend.WebGLOptions;
-    wasm?: Backend.WasmOptions;
+    cpu?: InferenceSession.CpuExecutionProviderOption;
+    webgl?: InferenceSession.WebGLExecutionProviderOption;
+    wasm?: InferenceSession.WebAssemblyExecutionProviderOption;
   }
 
   /**
@@ -122,12 +121,12 @@ export declare namespace Test {
    */
   export interface Config {
     unittest: boolean;
-    op: ReadonlyArray<OperatorTestGroup>;
-    model: ReadonlyArray<ModelTestGroup>;
+    op: readonly OperatorTestGroup[];
+    model: readonly ModelTestGroup[];
 
-    fileCacheUrls?: ReadonlyArray<string>;
+    fileCacheUrls?: readonly string[];
 
-    log: ReadonlyArray<{category: string, config: Logger.Config}>;
+    log: ReadonlyArray<{category: string; config: Logger.Config}>;
     profile: boolean;
     options: Options;
   }

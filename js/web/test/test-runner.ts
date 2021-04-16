@@ -285,7 +285,7 @@ export class OpTestContext {
         this.opTest.opsets ?? [{domain: '', version: 7}]);
   }
 
-  dispose():void {
+  dispose(): void {
     this.inferenceHandler.dispose();
     this.sessionHandler.dispose();
   }

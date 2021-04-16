@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
+/* eslint-disable guard-for-in */
+/* eslint-disable @typescript-eslint/no-use-before-define */
+
 import {execSync, spawnSync} from 'child_process';
 import * as fs from 'fs';
 import * as globby from 'globby';
@@ -40,7 +43,7 @@ npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
 
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-    args.env === 'node' ? ['cpu', 'wasm'] : ['cpu', 'wasm', 'webgl'];
+    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl'];
 const DEFAULT_OPSET_VERSIONS: readonly number[] = [12, 11, 10, 9, 8, 7];
 
 const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
@@ -52,7 +55,7 @@ const nodeTests = new Map<string, Test.ModelTestGroup[]>();
 const onnxTests = new Map<string, Test.ModelTestGroup>();
 const opTests = new Map<string, Test.OperatorTestGroup[]>();
 
-const shouldLoadSuiteTestData = (args.mode === 'suite0' || args.mode === 'suite1');
+const shouldLoadSuiteTestData = (args.mode === 'suite0');
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test...');
 
@@ -64,9 +67,6 @@ if (shouldLoadSuiteTestData) {
         nodeTests.set(backend, nodeTest);
       }
       nodeTest.push(loadNodeTests(backend, version));
-    }
-    if (args.mode === 'suite1') {
-      onnxTests.set(backend, loadOnnxTests(backend));
     }
     opTests.set(backend, loadOpTests(backend));
   }
@@ -86,14 +86,6 @@ let unittest = false;
 
 npmlog.verbose('TestRunnerCli.Init', 'Preparing test config...');
 switch (args.mode) {
-  case 'suite1':
-    for (const backend of DEFAULT_BACKENDS) {
-      if (args.backends.indexOf(backend) !== -1) {
-        modelTestGroups.push(onnxTests.get(backend)!);  // model test : ONNX model
-      }
-    }
-
-  // eslint-disable-next-line no-fallthrough
   case 'suite0':
     for (const backend of DEFAULT_BACKENDS) {
       if (args.backends.indexOf(backend) !== -1) {
@@ -195,10 +187,6 @@ function loadNodeTests(backend: string, version: number): Test.ModelTestGroup {
   return suiteFromFolder(
       `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `v${version}`), backend,
       whitelist[backend].node);
-}
-
-function loadOnnxTests(backend: string): Test.ModelTestGroup {
-  return suiteFromFolder(`onnx-${backend}`, TEST_DATA_MODEL_ONNX_ROOT, backend, whitelist[backend].onnx);
 }
 
 function suiteFromFolder(
@@ -437,7 +425,7 @@ function run(config: Test.Config) {
     // STEP 4. use webpack to generate ONNX.js
     npmlog.info('TestRunnerCli.Run', '(4/5) Running webpack to generate ONNX.js...');
     const webpackCommand = path.join(npmBin, 'webpack');
-    const webpackArgs = [`--bundle-mode=${args.bundleMode}`];
+    const webpackArgs = ['--env', `--bundle-mode=${args.bundleMode}`];
     npmlog.info('TestRunnerCli.Run', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
     const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
     if (webpack.status !== 0) {
@@ -489,7 +477,8 @@ function run(config: Test.Config) {
         //
         // == Edge's Auto Recovery Feature ==
         // when Edge starts, if it found itself was terminated forcely last time, it always recovers all previous pages.
-        // this always happen in Karma because `karma-edge-launcher` uses `taskkill` command to kill Edge every time.
+        // this always happen in Karma because `karma-edge-launcher` uses `taskkill` command to kill Edge every
+        // time.
         //
         // == The Problem ==
         // every time when a test is completed, it will be added to the recovery page list.
@@ -504,7 +493,7 @@ function run(config: Test.Config) {
         // see also: https://www.laptopmag.com/articles/edge-browser-stop-tab-restore
         const deleteEdgeActiveRecoveryCommand =
             // eslint-disable-next-line max-len
-            'del /F /Q %LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
+            'del /F /Q % LOCALAPPDATA %\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
         npmlog.info('TestRunnerCli.Run', `CMD: ${deleteEdgeActiveRecoveryCommand}`);
         spawnSync(deleteEdgeActiveRecoveryCommand, {shell: true, stdio: 'inherit'});
       }
@@ -549,7 +538,7 @@ function saveOneFileCache(index: number, fileCache: Test.FileCache) {
 function saveConfig(config: Test.Config) {
   let setOptions = '';
   if (config.options.debug !== undefined) {
-    setOptions += `onnx.ENV.debug = ${config.options.debug};`;
+    setOptions += `ort.env.debug = ${config.options.debug};`;
   }
   if (config.options.webgl && config.options.webgl.disabled !== undefined) {
     setOptions += `onnx.backend.webgl.disabled = ${config.options.webgl.disabled};`;
