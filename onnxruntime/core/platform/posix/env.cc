@@ -134,24 +134,9 @@ class PosixThread : public EnvThread {
       ORT_THROW("pthread_create failed");
 #if !defined(__APPLE__) && !defined(__ANDROID__)
     if (!thread_options.affinity.empty()) {
-      //......................................................................
-      //
-      // HACK: this is a quick test to force the main thread to bind
-      // to affinity[0], and for the workers to bind to affinity[1]
-      // upwards.  The format of the affinity vectors comes from when
-      // ORT would create the entire thread pool (N) rather than the
-      // current approach (N-1)
-      {
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(thread_options.affinity[0], &cpuset);
-        s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-        if (s != 0)
-          ORT_THROW("pthread_setaffinity_np failed");
-      }
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
-      CPU_SET(thread_options.affinity[index+1], &cpuset);
+      CPU_SET(thread_options.affinity[index], &cpuset);
       s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
       if (s != 0)
         ORT_THROW("pthread_setaffinity_np failed");
