@@ -1,16 +1,17 @@
-cerberus
-codecov
-flatbuffers
-jinja2
-numpy
-onnx
-onnxmltools
-packaging
-pandas
-protobuf
-pytest
-pytest-cov
-scikit-learn
-scipy
-sympy
-wheel
+cerberus eol - lf 
+codecov eol - lf
+flatbuffers eol - lf
+jinja2 eol - lf
+numpy eol - lf
+onnx eol - lf
+onnxmltools eol - lf
+packaging eol - lf
+pandas eol -  lf
+protobuf eol - lf
+pytest eol - lf
+pytest-cov eol - lf
+scikit-learn eol - lf 
+scipy eol - lf 
+sympy eol - lf 
+wheel eol - lf
+ 
