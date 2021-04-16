@@ -47,24 +47,6 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   return Status::OK();
 }
 
-template <>
-Status MatMul<float>(const float* input_1_data, const float* input_2_data, float* output_data,
-                     size_t left_stride, size_t right_stride, size_t output_stride,
-                     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-                     void* /*einsum_cuda_assets*/) {
-  for (size_t i = 0; i < num_batches; ++i) {
-    math::MatMul<float>(
-        static_cast<int>(M),
-        static_cast<int>(N),
-        static_cast<int>(K),
-        input_1_data + i * left_stride,
-        input_2_data + i * right_stride,
-        output_data + i * output_stride, tp);
-  }
-
-  return Status::OK();
-}
-
 // CPU specific ReduceSum helper
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
