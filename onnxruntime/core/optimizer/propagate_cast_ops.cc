@@ -709,6 +709,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   // Generate summary if the graph is modified
   if (modified) {
     LOGS(logger, INFO) << "Propagate Cast operations summary:";
+    LOGS(logger, INFO) << "Number of passes = " << pass;
     LOGS(logger, INFO) << "Nodes Inserted:";
     std::for_each(inserted_node_names.begin(), inserted_node_names.end(), [removed_node_names, logger](std::string name) {
       if (removed_node_names.find(name) == removed_node_names.end()) { LOGS(logger, INFO) << name; } });
