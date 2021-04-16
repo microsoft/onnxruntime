@@ -34,7 +34,9 @@
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
+#ifdef ENABLE_TRAINING
 #include "core/framework/execution_frame.h"
+#endif
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
