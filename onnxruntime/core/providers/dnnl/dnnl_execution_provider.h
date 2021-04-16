@@ -224,7 +224,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
 #else
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN", "MatMul"};
 #endif  // ENABLE_TRAINING
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;

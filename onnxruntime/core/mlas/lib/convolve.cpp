@@ -902,10 +902,19 @@ Return Value:
         return;
     }
 
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+    if (Algorithm == MlasConvAlgorithmDepthwise) {
+        // Fill the Working Buffer with Zero for use by the depthwise kernel.
+        // The length for the zeros are input image wide + 2 currently.
+        std::fill_n(WorkingBuffer, Parameters->InputShape[1] + 2, 0.0f);
+    }
+
+#endif
+
     //
     // Iterate over each batch and group.
     //
-
     for (size_t batch = 0; batch < BatchCount; batch++) {
 
         const float* filter = Filter;
@@ -964,6 +973,17 @@ Return Value:
 
                     break;
                 }
+
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+                case MlasConvAlgorithmDepthwise:
+                {
+                    MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                    break;
+                }
+
+#endif
 
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
@@ -1195,6 +1215,26 @@ Return Value:
         *WorkingBufferSize = OutputSize * K;
 
     } else {
+
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+        // Scalar direct conv for depthwise convolution.
+        // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
+        // TODO: support more general depthwise convolution.
+
+        if (Dimensions == 2
+                && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
+                && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
+                && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
+                && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+                && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+
+            *WorkingBufferSize = Parameters->InputShape[1] + 2;
+            Parameters->Algorithm = MlasConvAlgorithmDepthwise;
+            return;
+        }
+
+#endif
 
         //
         // Segment the operation across multiple threads by slicing the N

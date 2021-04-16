@@ -37,6 +37,7 @@ class BasicBackend : public IBackend {
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
+  InferenceEngine::ExecutableNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
 };
