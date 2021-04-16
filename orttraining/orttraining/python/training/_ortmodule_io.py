@@ -332,7 +332,6 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
             # **kwargs is always the last argument of forward()
             for name,inp in kwargs.items():
                 if name not in input_names:
-                    print(f'{input_idx} VAR_KEYWORD {input_parameter.kind} including as keyword/kwargs {name}********************************************************************************************************************')
                     if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
                         if inp.requires_grad:
                             # input_names_require_grad holds all input tensors that have requires_grad
