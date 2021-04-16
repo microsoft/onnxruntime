@@ -60,10 +60,10 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
     for (int64_t pw = 0; pw < pooled_width; pw++) {
       for (int64_t iy = 0; iy < iy_upper; iy++) {
         const T yy = roi_start_h + ph * bin_size_h +
-                     static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h);  // e.g., 0.5, 1.5
+                     static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h) - 0.5f;  // e.g., 0.5, 1.5
         for (int64_t ix = 0; ix < ix_upper; ix++) {
           const T xx =
-              roi_start_w + pw * bin_size_w + static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w);
+              roi_start_w + pw * bin_size_w + static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w) - 0.5f;
 
           T x = xx;
           T y = yy;
@@ -161,9 +161,9 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       T roi_end_w = offset_bottom_rois[2] * spatial_scale;
       T roi_end_h = offset_bottom_rois[3] * spatial_scale;
 
-      // Force malformed ROIs to be 1x1
-      T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
-      T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
+      // Note that 0 size ROI's are legal, meaning the sample a single point in the input.
+      T roi_width = roi_end_w - roi_start_w;
+      T roi_height = roi_end_h - roi_start_h;
       T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
@@ -209,10 +209,8 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
                   const auto& pc = pre_calc[pre_calc_index];
-                  T val = std::max(
-                      std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
-                               pc.w3 * offset_bottom_data[pc.pos3]),
-                      pc.w4 * offset_bottom_data[pc.pos4]);
+                  T val = pc.w1 * offset_bottom_data[pc.pos1] + pc.w2 * offset_bottom_data[pc.pos2] +
+                          pc.w3 * offset_bottom_data[pc.pos3] + pc.w4 * offset_bottom_data[pc.pos4];
                   if (!max_flag) {
                     output_val = val;
                     max_flag = true;
