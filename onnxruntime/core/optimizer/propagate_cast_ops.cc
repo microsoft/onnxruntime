@@ -199,7 +199,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
                            std::deque<NodeIndex>& removed_nodes,
                            size_t level) {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
-  if (node == nullptr) {
+  if (graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
+        require_cast.insert(node_arg);
+  } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
     if (IsType(*node_arg, TensorProto_DataType_FLOAT)) {
       require_cast.insert(node_arg);
@@ -267,7 +269,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
         } else {
           // If the node has other float32 inputs then stop the search
           for (const auto* input_def : node->InputDefs()) {
-            // TODO: If the secified level of the optimization is greater than 1 then
+            // TODO: If the specified level of the optimization is greater than 1 then
             // convert initializers if any from float to float16.
             if (input_def != node_arg) {
               if (IsType(*input_def, TensorProto_DataType_FLOAT)) {
