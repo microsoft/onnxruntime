@@ -6,9 +6,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-void LinkerTest() {
-}
-
 Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
                                             const TensorShape& weights_shape,
                                             const TensorShape& bias_shape,
