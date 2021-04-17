@@ -65,13 +65,14 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         self.n_layer = num_layer
         self.beam_size = beam_size
 
-        self.beam_select_idx = beam_select_idx
+        self.beam_select_idx = beam_select_idx.to(device)
 
-        self.input_log_probs = input_log_probs
-        self.input_unfinished_sents = input_unfinished_sents
+        float_type = torch.float16 if is_fp16 else torch.float32
+        self.input_log_probs = input_log_probs.type(float_type).to(device)
+        self.input_unfinished_sents = input_unfinished_sents.to(device)
 
-        self.prev_step_results = prev_step_results
-        self.prev_step_scores = prev_step_scores
+        self.prev_step_results = prev_step_results.to(device)
+        self.prev_step_scores = prev_step_scores.type(float_type).to(device)
 
         self.last_state = None
 
@@ -93,37 +94,37 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         Update the inputs for next inference.
         """
         self.last_state = (
-            torch.from_numpy(output[0])
+            torch.from_numpy(output[0]).to(device)
             if isinstance(output[0], numpy.ndarray)
             else output[0].clone().detach().cpu()
         )
 
-        self.input_ids = self.last_state.view(self.batch_size * self.beam_size, -1)
+        self.input_ids = self.last_state.view(self.batch_size * self.beam_size, -1).to(device)
 
         self.beam_select_idx = (
             torch.from_numpy(output[-5]).to(device)
             if isinstance(output[-5], numpy.ndarray)
-            else output[-5].clone().detach().cpu()
+            else output[-5].clone().detach().to(device)
         )
         self.input_log_probs = (
             torch.from_numpy(output[-4]).to(device)
             if isinstance(output[-4], numpy.ndarray)
-            else output[-4].clone().detach().cpu()
+            else output[-4].clone().detach().to(device)
         )
         self.input_unfinished_sents = (
             torch.from_numpy(output[-3]).to(device)
             if isinstance(output[-3], numpy.ndarray)
-            else output[-3].clone().detach().cpu()
+            else output[-3].clone().detach().to(device)
         )
         self.prev_step_results = (
             torch.from_numpy(output[-2]).to(device)
             if isinstance(output[-2], numpy.ndarray)
-            else output[-2].clone().detach().cpu()
+            else output[-2].clone().detach().to(device)
         )
         self.prev_step_scores = (
             torch.from_numpy(output[-1]).to(device)
             if isinstance(output[-1], numpy.ndarray)
-            else output[-1].clone().detach().cpu()
+            else output[-1].clone().detach().to(device)
         )
         self.top_1_tokens = self.input_ids[0]
         self.top_k_tokens = self.last_state
@@ -191,8 +192,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         test_data_saved = 0
 
         is_float16 = precision == Precision.FLOAT16
-        if is_float16:
-            assert "float16" in session.get_outputs()[0].type
 
         # We will still use fp32 torch model as baseline when onnx model if fp16
         model.eval().to(device)

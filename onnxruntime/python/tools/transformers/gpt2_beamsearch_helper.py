@@ -155,14 +155,14 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
     ):
         super().__init__(input_ids, position_ids, attention_mask, past)
         self.prev_step_results: torch.LongTensor = prev_step_results
-        self.prev_step_scores: Union[torch.FloatTensor, torch.HalfTensor] = prev_step_scores
+        self.prev_step_scores: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = prev_step_scores
         if beam_select_idx is None:
             self.beam_select_idx: torch.LongTensor = torch.zeros(
                 [1, len(input_ids)]
             ).long()
         else:
             self.beam_select_idx: torch.LongTensor = beam_select_idx
-        self.input_log_probs: Union[torch.FloatTensor, torch.HalfTensor] = input_log_probs
+        self.input_log_probs: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = input_log_probs
         self.input_unfinished_sents: torch.ByteTensor = input_unfinished_sents
 
     def to_list(self) -> List:
@@ -192,10 +192,10 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
             gpt2_inputs.attention_mask,
             gpt2_inputs.past,
             self.beam_select_idx,
-            self.input_log_probs,
+            self.input_log_probs.to(dtype=torch.float32),
             self.input_unfinished_sents,
             self.prev_step_results,
-            self.prev_step_scores,
+            self.prev_step_scores.to(dtype=torch.float32),
         )
 
 
@@ -232,7 +232,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         )
         float_type = torch.float16 if float16 else torch.float32
 
-        beam_select_idx = torch.zeros([1, batch_size]).long()
+        beam_select_idx = torch.zeros([1, batch_size], device=device).long()
         input_log_probs = torch.zeros([batch_size, 1], dtype=float_type, device=device)
         input_unfinished_sents = torch.ones(
             [batch_size, 1], dtype=torch.bool, device=device
@@ -535,8 +535,24 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         io_binding = Gpt2Helper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes)
 
         # Bind inputs
-        data_type = output_buffers[ort_session.get_outputs()[0].name].dtype
+        data_type = output_buffers[ort_session.get_outputs()[1].name].dtype
         float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
+        if past is not None:
+            for i, past_i in enumerate(past):
+                assert past_i.is_contiguous()
+
+                data_ptr = past_i.data_ptr()
+                if data_ptr == 0:
+                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
+                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
+                    data_ptr = input_ids.data_ptr()
+
+                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
+
+        if attention_mask is not None:
+            assert attention_mask.is_contiguous()
+            io_binding.bind_input('attention_mask', attention_mask.device.type, 0, float_type,
+                                  list(attention_mask.size()), attention_mask.data_ptr())
 
         if beam_select_idx is not None:
             assert beam_select_idx.is_contiguous()
