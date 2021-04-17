@@ -1,8 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (${CMAKE_VERSION} VERSION_LESS "3.16")
-    message(FATAL_ERROR "CMake 3.16+ is required when building the Objective-C API.")
+if (${CMAKE_VERSION} VERSION_LESS "3.18")
+    message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
 endif()
 
 check_language(OBJC)
@@ -36,8 +36,7 @@ set(onnxruntime_objc_headers
 file(GLOB onnxruntime_objc_srcs
     "${REPO_ROOT}/objc/src/*.h"
     "${REPO_ROOT}/objc/src/*.m"
-    "${REPO_ROOT}/objc/src/*.mm"
-    )
+    "${REPO_ROOT}/objc/src/*.mm")
 
 source_group(TREE "${REPO_ROOT}/objc"
     FILES ${onnxruntime_objc_headers} ${onnxruntime_objc_srcs})
@@ -51,7 +50,9 @@ target_include_directories(onnxruntime_objc
         "${OPTIONAL_LITE_INCLUDE_DIR}"
         "${REPO_ROOT}/objc")
 
-target_link_libraries(onnxruntime_objc PUBLIC onnxruntime)
+find_library(FOUNDATION_LIB Foundation REQUIRED)
+
+target_link_libraries(onnxruntime_objc PUBLIC onnxruntime ${FOUNDATION_LIB})
 
 set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK TRUE

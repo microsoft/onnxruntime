@@ -18,7 +18,7 @@
                                                       length:sizeof(int32_t)];
   const std::vector<int64_t> shape{1};
 
-  NSError* err;
+  NSError* err = nil;
   ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
                                                  elementType:ORTTensorElementDataTypeInt32
                                                        shape:shape.data()
@@ -34,7 +34,7 @@
                                                       length:values.size() * sizeof(int32_t)];
   const std::vector<int64_t> shape{2, 3};  // too large
 
-  NSError* err;
+  NSError* err = nil;
   ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
                                                  elementType:ORTTensorElementDataTypeInt32
                                                        shape:shape.data()

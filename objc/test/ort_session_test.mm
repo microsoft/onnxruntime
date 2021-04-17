@@ -15,14 +15,6 @@
 
 @end
 
-static NSString* kTestDataDir = [NSString stringWithFormat:@"%@/Contents/Resources/testdata",
-                                                           [[NSBundle bundleForClass:[ORTSessionTest class]] bundlePath]];
-
-// model with an Add op
-// inputs: A, B
-// output: C = A + B
-static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single_add.onnx"];
-
 @implementation ORTSessionTest
 
 - (BOOL)setUpWithError:(NSError**)error {
@@ -38,6 +30,19 @@ static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single
   return YES;
 }
 
++ (NSString*)getTestDataWithRelativePath:(NSString*)relativePath {
+  NSString* testDataDir = [NSString stringWithFormat:@"%@/Contents/Resources/testdata",
+                                                     [[NSBundle bundleForClass:[ORTSessionTest class]] bundlePath]];
+  return [testDataDir stringByAppendingString:relativePath];
+}
+
+// model with an Add op
+// inputs: A, B
+// output: C = A + B
++ (NSString*)getAddModelPath {
+  return [ORTSessionTest getTestDataWithRelativePath:@"/single_add.onnx"];
+}
+
 + (NSMutableData*)dataWithScalarFloat:(float)value {
   NSMutableData* data = [[NSMutableData alloc] initWithBytes:&value length:sizeof(value)];
   return data;
@@ -45,7 +50,7 @@ static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single
 
 + (ORTValue*)ortValueWithScalarFloatData:(NSMutableData*)data {
   const std::vector<int64_t> shape{1};
-  NSError* err;
+  NSError* err = nil;
   ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
                                                  elementType:ORTTensorElementDataTypeFloat
                                                        shape:shape.data()
@@ -65,9 +70,9 @@ static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single
   ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:b_data];
   ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:c_data];
 
-  NSError* err;
+  NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
-                                              modelPath:kAddModelPath
+                                              modelPath:[ORTSessionTest getAddModelPath]
                                                   error:&err];
   XCTAssertNotNil(session);
   XCTAssertNil(err);
@@ -85,8 +90,8 @@ static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single
 }
 
 - (void)testInitFailsWithInvalidPath {
-  NSString* invalid_model_path = [kTestDataDir stringByAppendingString:@"/invalid/path/to/model.onnx"];
-  NSError* err;
+  NSString* invalid_model_path = [ORTSessionTest getTestDataWithRelativePath:@"/invalid/path/to/model.onnx"];
+  NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:invalid_model_path
                                                   error:&err];
@@ -101,9 +106,9 @@ static NSString* kAddModelPath = [kTestDataDir stringByAppendingString:@"/single
   ORTValue* d = [ORTSessionTest ortValueWithScalarFloatData:d_data];
   ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:c_data];
 
-  NSError* err;
+  NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
-                                              modelPath:kAddModelPath
+                                              modelPath:[ORTSessionTest getAddModelPath]
                                                   error:&err];
   XCTAssertNotNil(session);
   XCTAssertNil(err);
