@@ -8,9 +8,8 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
-#include "core/util/math_cpuonly.h"
 #endif
-
+#include "core/util/math_cpuonly.h"
 #include "core/common/optional.h"
 #include "core/platform/threadpool.h"
 #include <cmath>
