@@ -9,6 +9,8 @@
 namespace onnxruntime {
 namespace contrib {
 
+void LinkerTest();
+
 class LongformerAttentionBase {
  public:
   Status CheckInputs(const TensorShape& input_shape,
