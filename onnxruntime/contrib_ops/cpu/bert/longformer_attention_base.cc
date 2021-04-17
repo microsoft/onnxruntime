@@ -1,12 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "longformer_attention_base.h"
-
 namespace onnxruntime {
 namespace contrib {
 
 void Link_longformer_attention_base() {}
+}  // namespace contrib
+}  // namespace onnxruntime
+
+#include "longformer_attention_base.h"
+
+namespace onnxruntime {
+namespace contrib {
 
 Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
                                             const TensorShape& weights_shape,
