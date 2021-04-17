@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "core/framework/feeds_fetches_manager.h"
-#ifndef SHARED_PROVIDER
+#ifdef SHARED_PROVIDER
+#include "core/framework/ml_value.h"
+#else
 #include "core/framework/op_kernel.h"
 #endif
 
