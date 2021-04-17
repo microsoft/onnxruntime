@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/framework/ml_value.h"
 #include "core/providers/cuda/controlflow/if.h"
 
 #include "core/providers/cuda/cuda_fwd.h"
