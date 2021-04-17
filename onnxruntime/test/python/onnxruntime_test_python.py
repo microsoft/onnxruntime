@@ -909,12 +909,12 @@ class TestInferenceSession(unittest.TestCase):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         elif sys.platform.startswith("darwin"):
-            shared_library = 'test_execution_provider.dylib'
+            shared_library = 'libtest_execution_provider.dylib'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         else:
-            shared_library = './test_execution_provider.so'
+            shared_library = './libtest_execution_provider.so'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 

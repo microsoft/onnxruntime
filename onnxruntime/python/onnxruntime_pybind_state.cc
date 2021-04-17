@@ -2004,7 +2004,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addObjectMethods(m, env);
 
   Ort::SessionOptions tmp_options;
-  ORT_UNUSED_PARAMETER(OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0));
+  //the return status doesn't matter;
+  if(!OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0)){
+    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+    LOGS(default_logger, INFO) << "This is a trick to initialize the shared provider bridge, it is safe to ignore.";
+  }
+  
 
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
