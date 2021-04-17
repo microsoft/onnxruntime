@@ -3,31 +3,47 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/data_transfer_manager.h"
 
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
 SparseTensor::SparseTensor(MLDataType elt_type,
-                           const TensorShape& shape,
+                           const TensorShape& dense_shape,
                            size_t nnz,
                            void* values_data,
-                           void* indices_data,
                            const OrtMemoryInfo& memory_info)
-    : values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, memory_info),
-      indices_(DataTypeImpl::GetType<int64_t>(),
-               TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
-               indices_data, memory_info, 0),
-      shape_(shape) {}
+    : format_flags_(SparseFormatFlags::kUndefined),
+      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, memory_info),
+      dense_shape_(dense_shape),
+      allocator_(),
+      rep_() {}
 
 SparseTensor::SparseTensor(MLDataType elt_type,
-                           const TensorShape& shape,
+                           const TensorShape& dense_shape,
                            size_t nnz,
                            std::shared_ptr<IAllocator> allocator)
-    : values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), allocator),
-      indices_(DataTypeImpl::GetType<int64_t>(),
-               TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
-               allocator),
-      shape_(shape) {}
+    : format_flags_(SparseFormatFlags::kUndefined),
+      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), allocator),
+      dense_shape_(dense_shape),
+      allocator_(std::move(allocator)),
+      rep_() {}
+
+SparseTensor::~SparseTensor() = default;
+
+SparseRep::~SparseRep() = default;
+
+Status onnxruntime::SparseTensor::Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) {
+  ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
+  ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have an allocator available");
+  std::unique_ptr<SparseRep> rep_copy;
+  ORT_RETURN_IF_ERROR(rep_->Copy(data_transfer_manager, dst_tensor.allocator_, exec_q_id, rep_copy));
+  ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(values_, dst_tensor.MutableValues(), exec_q_id));
+  dst_tensor.rep_ = std::move(rep_copy);
+  return Status::OK();
+}
 
 }  // namespace onnxruntime
