@@ -580,6 +580,8 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::refere
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
+bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
+
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
   // to handle a scenario where an input is required on different devices by different nodes. Validate that.
@@ -998,7 +1000,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
