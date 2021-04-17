@@ -32,6 +32,13 @@ if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
 
+# We export symbols using linker and the compiler does not know anything about it
+# There is a problem with classes that have pybind types as members.
+# See https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
+if (NOT MSVC)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-fvisibility=hidden")
+endif()
+
 if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()

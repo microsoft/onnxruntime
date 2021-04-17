@@ -134,10 +134,10 @@ void CustomOpLibrary::UnloadLibrary() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 template <typename T>
-static void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs,
+static py::object AddNonTensor(const OrtValue& val,
                          const DataTransferManager* /*data_transfer_manager*/,
                          const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
-  pyobjs.push_back(py::cast(val.Get<T>()));
+  return py::cast(val.Get<T>());
 }
 
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
@@ -215,8 +215,34 @@ const char* GetDeviceName(const OrtDevice& device) {
   }
 }
 
+py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager) {
+  if (!ort_value.IsSparseTensor()) {
+    ORT_THROW("Must be a sparse tensor");
+  }
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  const SparseTensor& src_sparse_tensor = ort_value.Get<SparseTensor>();
+  std::unique_ptr<PySparseTensor> py_sparse_tensor;
+  auto device_type = src_sparse_tensor.Location().device.Type();
+  if (device_type != OrtDevice::CPU) {
+    if (!data_transfer_manager) {
+      LOGS(logger, WARNING) << "Returned OrtValue with sparse tensor at position: " << pos << " is on GPU but no data_transfer_manager provided."
+                            << " Returned it will have its data on GPU, you can copy it using numpy_array_to_cpu()";
+      py_sparse_tensor.reset(new PySparseTensor(ort_value));
+    } else {
+      auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.Shape(), GetAllocator());
+      auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
+      OrtPybindThrowIfError(status);
+      py_sparse_tensor.reset(new PySparseTensor(std::move(dst_sparse_tensor)));
+    }
+  }
+
+  py::object result = py::cast(py_sparse_tensor.get(), py::return_value_policy::take_ownership);
+  py_sparse_tensor.release();
+  return result;
+}
+
 template <>
-void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs,
+py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                              const DataTransferManager* data_transfer_manager,
                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
@@ -226,43 +252,47 @@ void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobj
     GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
-  pyobjs.push_back(py_list);
+  // XToolChain kills the build
+  // local variable 'py_list' will be copied despite being returned by name [-Werror,-Wreturn-std-move]
+  // call 'std::move' explicitly to avoid copying
+  // We choose to cast it to object explicitly
+  return py::cast<py::object>(py_list);
 }
 
-void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
+py::object AddNonTensorAsPyObj(const OrtValue& val,
                          const DataTransferManager* data_transfer_manager,
                          const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+   return AddNonTensor<TensorSeq>(val, data_transfer_manager, mem_cpy_to_host_functions);
   } else {
 #if !defined(DISABLE_ML_OPS)
     utils::ContainerChecker c_checker(val_type);
     if (c_checker.IsMap()) {
       if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapStringToString>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapStringToInt64>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapStringToFloat>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapStringToDouble>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapInt64ToString>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapInt64ToInt64>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapInt64ToFloat>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<MapInt64ToDouble>(val, data_transfer_manager, mem_cpy_to_host_functions);
       }
 
     } else {
       if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<VectorMapStringToFloat>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager, mem_cpy_to_host_functions);
+        return AddNonTensor<VectorMapInt64ToFloat>(val, data_transfer_manager, mem_cpy_to_host_functions);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
       }
@@ -271,15 +301,15 @@ void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
     throw std::runtime_error("Map type is not supported in this build.");
 #endif
   }
+  throw std::runtime_error("Unsupported type");
 }
 
-void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs,
-                      const DataTransferManager* data_transfer_manager,
+py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
                       const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
-  pyobjs.push_back(obj);
+  return obj;
 }
 
 static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
@@ -809,6 +839,58 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+#ifdef USE_CUDA
+  m.def("numpy_array_to_cuda", [](const py::array& cpu_src, const OrtDevice& ort_device) -> py::array {
+        const auto dtype = cpu_src.dtype();
+        if (!IsNumericDType(dtype)) {
+          ORT_THROW("Supports only numeric datatypes");
+        }
+        if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
+          ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
+        }
+        auto allocator = GetCudaAllocator(ort_device.Id());
+        const auto alloc_size = cpu_src.nbytes();
+        struct ptr_cont {
+          IAllocatorUniquePtr<void> ptr;
+          explicit ptr_cont(IAllocatorUniquePtr<void>&& p_p) : ptr(std::move(p_p)) {}
+        };
+        auto alloc_ptr = IAllocator::MakeUniquePtr<void>(allocator, alloc_size);
+        void* array_ptr = alloc_ptr.get();
+        CpuToCudaMemCpy(array_ptr, cpu_src.data(), alloc_size);
+        auto cc = std::make_unique<ptr_cont>(std::move(alloc_ptr));
+        py::capsule cap(cc.get(), [](void* ptr) {
+          delete reinterpret_cast<ptr_cont*>(ptr);
+        });
+        auto shape_span = gsl::make_span(cpu_src.shape(), cpu_src.ndim());
+        py::array result(dtype, shape_span, array_ptr, cap);
+        cc.release();
+        return result;
+#else
+    m.def("numpy_array_to_cuda", [](const py::array&, const OrtDevice&){
+         ORT_THROW("CUDA is not available in this build.");
+#endif
+      },
+      "Copies numpy array to the specified CUDA device. Shape and type are preserved." \
+      "Only numeric types are supported. No attempt is made to verify source is on CPU.");
+#ifdef USE_CUDA
+    m.def("numpy_array_to_cpu", [](const py::array& cuda_src) -> py::array {
+        const auto dtype = cuda_src.dtype();
+        if (!IsNumericDType(dtype)) {
+          ORT_THROW("Supports only numeric datatypes");
+        }
+        auto shape_span = gsl::make_span(cuda_src.shape(), cuda_src.ndim());
+        py::array result(dtype, shape_span);
+        assert(result.nbytes() == cuda_src.nbytes());
+        CudaToCpuMemCpy(result.mutable_data(), cuda_src.data(), cuda_src.nbytes());
+        return result;
+#else
+  m.def("numpy_array_to_cpu", [](const py::array&) {
+        ORT_THROW("CUDA is not available in this build.");
+#endif
+    },
+    "Copies numpy array CPU/Host memory from the specified CUDA device. Shape and type are preserved." \
+    "Only numeric types are supported. No attempt is made to verify source is on GPU.");
+
 #ifdef ENABLE_TRAINING
   m.def(
       "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
@@ -1497,15 +1579,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
                -> std::vector<py::object> {
              NameMLValMap feeds;
-             for (auto _ : pyfeeds) {
+             for (auto feed : pyfeeds) {
                OrtValue ml_value;
                auto px = sess->GetSessionHandle()->GetModelInputs();
                if (!px.first.IsOK() || !px.second) {
                  throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                }
-               CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
+               CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                ThrowIfPyErrOccured();
-               feeds.insert(std::make_pair(_.first, ml_value));
+               feeds.insert(std::make_pair(feed.first, ml_value));
              }
 
              std::vector<OrtValue> fetches;
@@ -1523,15 +1605,47 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              std::vector<py::object> rfetch;
              rfetch.reserve(fetches.size());
-             for (auto _ : fetches) {
-               if (_.IsTensor()) {
-                 AddTensorAsPyObj(_, rfetch, nullptr, nullptr);
-               } else {
-                 AddNonTensorAsPyObj(_, rfetch, nullptr, nullptr);
+             size_t pos = 0;
+             for (auto fet : fetches) {
+               if (fet.IsTensor()) {
+                 rfetch.push_back(AddTensorAsPyObj(fet,nullptr, nullptr));
+               } else if (fet.IsSparseTensor()) {
+                 rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+               }  else {
+                 rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
                }
+               ++pos;
              }
              return rfetch;
            })
+       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
+       /// and returns a list of python objects representing OrtValues. Each name may represent either
+       /// a Tensor, SparseTensor or a TensorSequence.
+      .def("run_with_ort_values", [](PyInferenceSession* sess, 
+                                     const py::dict& feeds,
+                                     const std::vector<std::string>& output_names,
+                                     RunOptions* run_options = nullptr) ->  std::vector<OrtValue>{
+        NameMLValMap ort_feeds;
+        // item is always a copy since dict returns a value and not a ref
+        // and Apple XToolChain barks
+        for (const auto item : feeds) {
+          auto name = item.first.cast<std::string>();
+          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
+          ort_feeds.emplace(name, *ort_value);
+        }
+
+        std::vector<OrtValue> fetches;
+        {
+          // release GIL to allow multiple python threads to invoke Run() in parallel.
+          py::gil_scoped_release release;
+          if (run_options != nullptr) {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, ort_feeds, output_names, &fetches));
+          } else {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(ort_feeds, output_names, &fetches));
+          }
+        }
+        return fetches;
+      })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
@@ -1669,6 +1783,7 @@ void CreatePybindStateModule(py::module& m){
   addGlobalMethods(m, env);
   addObjectMethods(m, env);
   addOrtValueMethods(m);
+  addSparseTensorMethods(m);
   addIoBindingMethods(m);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

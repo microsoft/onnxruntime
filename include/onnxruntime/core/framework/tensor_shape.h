@@ -40,6 +40,9 @@ class TensorShape : private std::vector<int64_t> {
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 
+  template<typename Iter>
+  TensorShape(Iter begin, Iter end) : std::vector<int64_t>(begin, end) {}
+
   /**
      Return the dimension specified by <idx>.
   */
