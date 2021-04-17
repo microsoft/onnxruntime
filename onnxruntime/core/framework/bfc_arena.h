@@ -300,7 +300,7 @@ class BFCArena : public IArenaAllocator {
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
 
-      ORT_ENFORCE(entry != regions_.end(), "Could not find Region for: " << ptr);
+      ORT_ENFORCE(entry != regions_.end(), "Could not find Region for: ", ptr);
 
       regions_.erase(entry);
     }
