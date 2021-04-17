@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-void LinkerTest() {}
+void Link_embed_layer_norm() {}
 
 // These ops are internal-only, so register outside of onnx
 #define REGISTER_KERNEL_TYPED(T)                                  \
