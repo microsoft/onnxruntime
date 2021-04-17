@@ -39,10 +39,10 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool: 'Onnxruntime-Linux-GPU'
-  variables:    
+  variables:
     CUDA_VERSION: '11.0'
   steps:
-    - template: templates/set-version-number-variables-step.yml 
+    - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
@@ -99,6 +99,10 @@ jobs:
     buildJava: true
     java_artifact_id: onnxruntime_gpu
 
+- template: templates/android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
+
 - job: Jar_Packaging_GPU
   workspace:
     clean: all
@@ -110,7 +114,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Win x64'
@@ -155,7 +159,7 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-    
+
 
 - job: Final_Jar_Testing_Windows_GPU
   workspace:
@@ -168,7 +172,7 @@ jobs:
   dependsOn:
     Jar_Packaging_GPU
   steps:
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -187,7 +191,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        mkdir test 
+        mkdir test
         pushd test
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
@@ -216,7 +220,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Final Jar'
     inputs:

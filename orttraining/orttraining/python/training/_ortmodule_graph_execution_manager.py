@@ -82,6 +82,14 @@ class GraphExecutionManager(ABC):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+        # Graph transformer config
+        # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+        # Use predetermined list of opcodes considered safe to move before/after cast operation
+        # if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+        self._propagate_cast_ops_level = -1
+        # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        self._propagate_cast_ops_allow = []
+
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = None
@@ -160,6 +168,7 @@ class GraphExecutionManager(ABC):
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
+        session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = False
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
@@ -261,5 +270,8 @@ class GraphExecutionManager(ABC):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
+        grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)

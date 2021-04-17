@@ -150,7 +150,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
-  nvinfer1::IOptimizationProfile* trt_profile_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;

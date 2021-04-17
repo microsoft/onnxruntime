@@ -6,7 +6,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
-#include "orttraining/training_ops/cuda/math/isfinite.cuh"
+#include "contrib_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
@@ -56,7 +56,7 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   const T1 d_tmp = lambda * w + m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon);
 
   // Things are updated only if the direction is finite.
-  if (_IsFiniteScalar(d_tmp)) {
+  if (IsFiniteScalar(d_tmp)) {
     d = d_tmp;
     m1_new = m1_new_tmp;
     m2_new = m2_new_tmp;
@@ -204,7 +204,7 @@ __device__ __forceinline__ void _LambUpdateRule(
   const T2 delta = -ratio * T2(d);
   const T2 w_new_tmp = w + delta;
 
-  if (_IsFiniteScalar(w_new_tmp)) {
+  if (IsFiniteScalar(w_new_tmp)) {
     if (g_new) {
       *g_new = T3(delta);
     }
@@ -322,7 +322,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const float alpha,
     const float beta,
     const float epsilon,
-    const T1 max_norm,
+    const float max_norm,
     const float alpha_correction,
     const float beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
