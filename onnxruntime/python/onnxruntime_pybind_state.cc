@@ -208,7 +208,7 @@ const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecut2092ionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
@@ -2004,7 +2004,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addObjectMethods(m, env);
 
   Ort::SessionOptions tmp_options;
-  OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0);
+  ORT_UNUSED_PARAMETER(OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0));
 
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
