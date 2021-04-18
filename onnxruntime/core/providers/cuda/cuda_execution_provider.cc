@@ -316,14 +316,10 @@ Status CUDAExecutionProvider::OnRunEnd() {
     // We currently do not support shrinking other allocators this EP may hold (like CUDA_PINNED, CUDA_CPU).
     auto default_memory_alloc = GetAllocator(info_.device_id, OrtMemTypeDefault);
 
-    // Currently, we only support arena based allocators for usage in the CUDA EP.
-    // However, we do want to ensure that with the following sanity check
-    if (default_memory_alloc->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
-      // NOTE: Shrink is thread-safe
-      static_cast<IArenaAllocator*>(default_memory_alloc.get())->Shrink();
-    } else {
-      LOGS_DEFAULT(ERROR) << "The CUDA default memory allocator is not an arena-based allocator and hence cannot be shrunk";
-    }
+    // NOT 1: We have already ensured that the default memory allocator for the CUDA EP is an arena based allocator
+    // by this point if shrink_default_memory_allocator_on_every_run_end_ is set to true. o the following cast is safe.
+    // NOTE 2: Shrink is thread-safe and the call without any additional synchronization primitives is safe.
+    static_cast<IArenaAllocator*>(default_memory_alloc.get())->Shrink();
   }
 
   ReleasePerThreadContext();
@@ -2109,6 +2105,15 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     allocator_manager->InsertAllocator(cuda_alloc);
   }
   TryInsertAllocator(cuda_alloc);
+
+  // Currently, we only support arena based allocators for usage in the CUDA EP.
+  // However, we do want to ensure that with the following sanity check when
+  // shrink_default_memory_allocator_on_every_run_end_ is set to true
+  if (shrink_default_memory_allocator_on_every_run_end_ &&
+      GetAllocator(info_.device_id, OrtMemTypeDefault)->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
+    LOGS_DEFAULT(ERROR) << "The CUDA default memory allocator is not an arena-based allocator and hence cannot be shrunk";
+    shrink_default_memory_allocator_on_every_run_end_ = false;
+  }
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
