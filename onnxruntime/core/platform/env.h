@@ -68,6 +68,9 @@ struct ThreadOptions {
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
+
+  // Enable or disable good worker hints that help to determine which threads to dispatch tasks
+  bool enable_good_worker_hints = false;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

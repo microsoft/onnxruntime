@@ -8,12 +8,12 @@ parameters:
 - name: enable_linux_cpu
   displayName: 'Whether Linux CPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_gpu_training
   displayName: 'Whether Linux GPU package is built.'
@@ -28,17 +28,17 @@ parameters:
 - name: enable_windows_gpu
   displayName: 'Whether Windows GPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_mac_cpu
   displayName: 'Whether Mac CPU package is built.'
   type: boolean
-  default: true
+  default: false
 
 - name: enable_linux_arm
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
-  default: true
+  default: false
 
 stages:
 - stage: Python_Packaging
@@ -354,14 +354,8 @@ stages:
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
-          Python37:
-            PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
       variables:
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'

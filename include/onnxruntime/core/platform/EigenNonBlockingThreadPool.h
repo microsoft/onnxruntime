@@ -712,6 +712,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        enable_good_worker_hints_(thread_options.enable_good_worker_hints),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -987,9 +988,10 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    if (enable_good_worker_hints_) {
+      GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    }
     profiler_.LogStart();
-
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
@@ -1084,7 +1086,8 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
 
-  int dispatch_q_idx = -1;  // index of thread that dispatch work to all other threads
+  // index of thread that dispatch work to all other threads
+  int dispatch_q_idx = -1;
   int dispatch_w_idx = -1;  // index of enqueued work
   std::atomic<bool> dispatch_done{false};
   std::atomic<bool> dispatch_work_done{false};
@@ -1115,19 +1118,25 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   std::vector<unsigned> good_hints, alt_hints;
 
   Task dispatch_task = [&]() {  // dispatch work to other threads
-    for (auto i = 1u; i < extra_needed; i++) {
-      int q_idx;
-      if (i < good_hints.size()) {
-        q_idx = good_hints[i];
-      } else {
-        auto alt_i = i - static_cast<unsigned>(good_hints.size());
-        if (alt_i < alt_hints.size()) {
-          q_idx = alt_hints[alt_i];
+    int q_idx;
+    if (enable_good_worker_hints_) {
+      for (auto i = 1u; i < extra_needed; i++) {
+        if (i < good_hints.size()) {
+          q_idx = good_hints[i];
         } else {
-          q_idx = Rand(&pt->rand) % num_threads_;
-        }
-      }  // else
-      enqueue_fn(q_idx, worker_fn, true);
+          auto alt_i = i - static_cast<unsigned>(good_hints.size());
+          if (alt_i < alt_hints.size()) {
+            q_idx = alt_hints[alt_i];
+          } else {
+            q_idx = Rand(&pt->rand) % num_threads_;
+          }
+        }  // else
+        enqueue_fn(q_idx, worker_fn, true);
+      }
+    } else {
+      for (auto i = 1u; i < extra_needed; i++) {
+        enqueue_fn((dispatch_q_idx + i) % num_threads_, worker_fn, true);
+      }
     }
     dispatch_done.store(true, std::memory_order_release);  // dispatch complete
     fn(ps.worker_idx++);
@@ -1136,11 +1145,15 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
 
   if (extra_needed > 0) {
     profiler_.LogStart();
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    if (!good_hints.empty()) {
-      dispatch_q_idx = good_hints[0];
-    } else if (!alt_hints.empty()) {
-      dispatch_q_idx = alt_hints[0];
+    if (enable_good_worker_hints_) {
+      GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+      if (!good_hints.empty()) {
+        dispatch_q_idx = good_hints[0];
+      } else if (!alt_hints.empty()) {
+        dispatch_q_idx = alt_hints[0];
+      } else {
+        dispatch_q_idx = Rand(&pt->rand) % num_threads_;
+      }
     } else {
       dispatch_q_idx = Rand(&pt->rand) % num_threads_;
     }
@@ -1353,6 +1366,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   const int num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
+  const bool enable_good_worker_hints_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -1392,8 +1406,9 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->thread_id = thread_id;
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
-    SetGoodWorkerHint(thread_id, true /* Is good */);
-
+    if (enable_good_worker_hints_) {
+      SetGoodWorkerHint(thread_id, true /* Is good */);
+    }
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
     const int steal_count = spin_count/100;
@@ -1408,14 +1423,16 @@ int CurrentThreadId() const EIGEN_FINAL {
           // spinning.  This will bias other threads toward pushing work to our queue.
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
-
-          SetGoodWorkerHint(thread_id, true);
+          if (enable_good_worker_hints_) {
+            SetGoodWorkerHint(thread_id, true);
+          }
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
-          SetGoodWorkerHint(thread_id, false);
-
+          if (enable_good_worker_hints_) {
+            SetGoodWorkerHint(thread_id, false);
+          }
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.

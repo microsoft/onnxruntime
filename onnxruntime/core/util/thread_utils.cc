@@ -11,11 +11,14 @@
 namespace onnxruntime {
 namespace concurrency {
 static std::unique_ptr<ThreadPool>
-CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
+CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
   if (options.thread_pool_size == 1)
     return nullptr;
   std::vector<size_t> cpu_list;
   ThreadOptions to;
+  if (ThreadPoolType::INTER_OP == tpool_type) {
+    to.enable_good_worker_hints = true;
+  }
   if (options.affinity_vec_len != 0) {
     to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
   }
@@ -44,11 +47,10 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
   if (tpool_type != ThreadPoolType::INTER_OP) {
     return nullptr;
   } else {
-    return CreateThreadPoolHelper(env, options);
+    return CreateThreadPoolHelper(env, options, tpool_type);
   }
 #else
-  ORT_UNUSED_PARAMETER(tpool_type);
-  return CreateThreadPoolHelper(env, options);
+  return CreateThreadPoolHelper(env, options, tpool_type);
 #endif
 }
 
