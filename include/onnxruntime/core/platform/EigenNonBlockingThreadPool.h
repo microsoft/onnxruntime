@@ -923,7 +923,7 @@ void EndParallelSectionInternal(PerThread &pt,
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
-  while (ps.tasks_finished < tasks_to_wait_for) {
+  while (ps.tasks_finished.load(std::memory_order_acquire) < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
   // Clear status to allow the ThreadPoolParallelSection to be
@@ -1093,8 +1093,8 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   std::atomic<bool> dispatch_work_done{false};
 
   Task worker_fn = [&]() {
-    fn(ps.worker_idx++);
-    ps.tasks_finished++;
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
+    ps.tasks_finished.fetch_add(1, std::memory_order_release);
   };
 
   std::function<int(int, Task&, bool)> enqueue_fn = [&, this](int q_idx, Task& w, bool logging) {
@@ -1139,7 +1139,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
       }
     }
     dispatch_done.store(true, std::memory_order_release);  // dispatch complete
-    fn(ps.worker_idx++);
+    fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));
     dispatch_work_done.store(true, std::memory_order_release);  // work complete
   };
 
@@ -1162,7 +1162,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   }
 
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
-  fn(ps.worker_idx++);  // run work in the main thread
+  fn(ps.worker_idx.fetch_add(1, std::memory_order_relaxed));  // run work in the main thread
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   if (dispatch_w_idx != -1) {
