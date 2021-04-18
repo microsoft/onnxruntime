@@ -96,7 +96,8 @@ static void AssertEqual(const Tensor& tensor1, const Tensor& tensor2) {
   T threshold = T(0.001f);
 
   for (int i = 0; i < size; ++i) {
-    ASSERT_NEAR(data1[i], data2[i], threshold) << "as position i:" << i;
+    std::cout << i << " => " << data1[i] << " vs. " << data2[i] << std::endl;
+    ASSERT_NEAR(data1[i], data2[i], threshold) << "at position i:" << i;
   }
 }
 
@@ -131,7 +132,23 @@ std::vector<bool> random<bool>(std::vector<int64_t> shape) {
   return data;
 }
 
+template <>
+std::vector<BFloat16> random<BFloat16>(std::vector<int64_t> shape) {
+  auto floatdata = random<float>(shape);
+  std::vector<BFloat16> data(floatdata.size());
+  for (uint64_t i = 0; i < floatdata.size(); i++)
+    data[i] = BFloat16(floatdata[i]);
+  return data;
+}
+
+template <>
+std::vector<MLFloat16> random<MLFloat16>(std::vector<int64_t> shape) {
+  EXPECT_FALSE(true) << "Unimplemented.";
+  return std::vector<MLFloat16>();
+}
+
 struct FunctionTestCase {
+  const char* domain;
   const char* opname;
 
   std::vector<NodeArg> input_args;
@@ -146,7 +163,7 @@ struct FunctionTestCase {
 
   std::unordered_map<std::string, int> opsets;
 
-  FunctionTestCase(const char* _opname) : opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
+  FunctionTestCase(const char* _opname, const char* _domain = onnxruntime::kMSDomain) : domain(_domain), opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
   void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape = {}) {
     auto arg_type = (symshape.size() > 0) ? TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, symshape) : TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
@@ -158,21 +175,18 @@ struct FunctionTestCase {
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
 
-  template <typename T>
-  void AddInputType(std::string input_name, std::vector<int64_t> shape) {
+  template <typename T, bool GenData = true>
+  void AddInput(std::string input_name, std::vector<int64_t> shape) {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
-  }
 
-  template <typename T>
-  void AddInput(std::string input_name, std::vector<int64_t> shape) {
-    AddInputType<T>(input_name, shape);
-
-    std::vector<T> data = random<T>(shape);
-    OrtValue ort_value;
-    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
-    input_values.push_back(std::make_pair(input_name, ort_value));
-    input_value_map.insert(std::make_pair(input_name, ort_value));
+    if (GenData) {
+      std::vector<T> data = random<T>(shape);
+      OrtValue ort_value;
+      CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+      input_values.push_back(std::make_pair(input_name, ort_value));
+      input_value_map.insert(std::make_pair(input_name, ort_value));
+    }
   }
 
   void AddOutput(std::string output_name) {
@@ -198,7 +212,7 @@ struct FunctionTestCase {
     for (auto& arg : output_args)
       output_arg_ptrs.push_back(&arg);
 
-    return graph.AddNode("fncallnode", opname, "function call node", input_arg_ptrs, output_arg_ptrs, &attributes, onnxruntime::kMSDomain);
+    return graph.AddNode("fncallnode", opname, "function call node", input_arg_ptrs, output_arg_ptrs, &attributes, domain);
   }
 
   std::unique_ptr<Model> CreateModel(bool inline_call = false) {
@@ -347,8 +361,8 @@ template <typename T>
 void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInputType<T>("dY", shape);
-  testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput<T, false>("dY", shape);
+  testCase.AddInput<bool, false>("mask", shape);
   testCase.AddOutput("dX");
   auto model = testCase.CreateModel(inline_call);
   if (!inline_call) {
@@ -368,8 +382,8 @@ template <typename T>
 void CheckDropoutGradWithRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
   std::vector<int64_t> shape{16, 4, 4};
-  testCase.AddInputType<T>("dY", shape);
-  testCase.AddInput<bool>("mask", shape);
+  testCase.AddInput<T, false>("dY", shape);
+  testCase.AddInput<bool, false>("mask", shape);
   testCase.AddInput("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.CreateModel(inline_call);
@@ -395,8 +409,8 @@ void CheckGeluGrad() {
   // Tests only expanded model creation and checking.
   FunctionTestCase testCase("GeluGrad");
   std::vector<int64_t> shape{16, 4};
-  testCase.AddInputType<T>("dY", shape);
-  testCase.AddInputType<T>("X", shape);
+  testCase.AddInput<T, false>("dY", shape);
+  testCase.AddInput<T, false>("X", shape);
   testCase.AddOutput("dX");
   testCase.CreateModel(true);
 }
@@ -404,6 +418,32 @@ void CheckGeluGrad() {
 TEST(CheckGeluGradExpansionTest, HalfPrecision) {
   CheckGeluGrad<BFloat16>();
   CheckGeluGrad<MLFloat16>();
+}
+
+template <typename T, typename U, bool RunTest>
+void CheckLayerNorm() {
+  // Tests only expanded model creation and checking.
+  onnxruntime::contrib::RegisterContribSchemas();
+  FunctionTestCase testCase("LayerNormalization", kOnnxDomain);
+  std::vector<int64_t> shape1{8, 16};
+  std::vector<int64_t> shape2{16};
+
+  testCase.AddInput<T, RunTest>("x", shape1);
+  testCase.AddInput<T, RunTest>("scale", shape2);
+  testCase.AddInput<T, RunTest>("bias", shape2);
+  testCase.AddOutput("y");
+  testCase.AddOutput("mean");
+  testCase.AddOutput("invstddev");
+  testCase.AddAttribute("stash_type", data_types_internal::ToTensorDataType<U>());
+  if (RunTest)
+    testCase.RunTest();
+  else
+    testCase.CreateModel(true);
+}
+
+TEST(LayerNormTest, Test0) {
+  CheckLayerNorm<float, float, true>();
+  CheckLayerNorm<MLFloat16, BFloat16, false>();
 }
 
 }  // namespace test
