@@ -12,6 +12,7 @@
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/signal_ops/signal_defs.h"
+#include <iostream> //slx
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -2541,6 +2542,283 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputShape(ctx, 0, {});
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
+
+//slx
+/*
+#https://github.com/NVIDIA/TensorRT/tree/master/plugin/embLayerNormPlugin
+##inputs:
+#token_id, An input sequence containing token ids. token_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. Tokens typically identify words or word pieces that were obtained by preprocessing the input text.
+#segment_id, An input sequence containing segment ids. segment_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The segment id is used to distinguish between different parts of the input sequence that might serve different purposes. E.g. in a squad task, the input sequence might consist of a segment representing the knowledge base (i.e. a paragraph of text) and a segment representing the question.
+#input_mask, input_mask is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The input mask denotes valid elements in a sequence that was padded to the sequence length S.
+
+##outputs:
+#embedded_input, embedded_input is an floating point tensor with shape [S, B, E] where S is sequence length, B is batch size, and E is hidden size. The final output embedding is the sum of embeddings for the token, the segment and the position in the sequence.
+#maskIdx, embedded_input is an int32 tensor with shape [B,] where B is batch size. The maskIdx is a more compact representation of the input mask, consisting of the number of valid elements, assuming that the original mask was contiguous. For example, 111100 => 4, 110000 => 2, 110100: Invalid mask, because it is not contiguous
+
+##parameters:
+#Type	Parameter	                            Version	    Description
+#int	output_fp16	                            1, 2	    Integer encoding the DataType (0: FP32, 1: FP16)
+#int	full_mask	                            1	        Whether to output the full mask that works with the specialized multi-head-attention plugin kernels (this is deprecated, please use mha_type_id)
+#int	mha_type_id	                            1	        Integer encoding the multi-head-attention plugin DataType (0: FP32, 1: FP16, 2: INT8)
+#Weights	bert_embeddings_layernorm_beta	    1, 2	    Beta parameter for layer norm. Shape: [E,] where E is hidden size
+#Weights	bert_embeddings_layernorm_gamma	    1, 2	    Gamma parameter for layer norm. Shape: [E,] where E is hidden size
+#Weights	bert_embeddings_word_embeddings	    1, 2	    Token embedding matrix. Shape: [word_vocab_size, E] where E is hidden size
+#Weights	bert_embeddings_token_type_embeddings	1, 2	Token type embedding matrix. Shape: [type_vocab_size, E] where E is hidden size
+#Weights	bert_embeddings_position_embeddings	1, 2	    Positional embedding matrix. Shape: [S, E] where S is the maximum sequence length and E is hidden size
+*/
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EmbLayerNormPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT EmbLayerNormPluginDynamic plugin")
+      .Attr("output_fp16", "encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("full_mask", "to output the full mask that works with the specialized multi-head-attention plugin kernels (this is deprecated, please use mha_type_id)", AttributeProto::INT)
+      .Attr("mha_type_id", "encoding the multi-head-attention plugin DataType (0: FP32, 1: FP16, 2: INT8)", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING) 
+      .AllowUncheckedAttributes()
+      .Input(0, "token_id", "An input sequence containing token ids. token_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. Tokens typically identify words or word pieces that were obtained by preprocessing the input text", "T1")
+      .Input(1, "segment_id", "An input sequence containing segment ids. segment_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The segment id is used to distinguish between different parts of the input sequence that might serve different purposes. E.g. in a squad task, the input sequence might consist of a segment representing the knowledge base (i.e. a paragraph of text) and a segment representing the question", "T1")
+      .Input(2, "input_mask", "An input sequence containing segment ids. segment_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The segment id is used to distinguish between different parts of the input sequence that might serve different purposes. E.g. in a squad task, the input sequence might consist of a segment representing the knowledge base (i.e. a paragraph of text) and a segment representing the question", "T1")
+      .Input(3, "bert_embeddings_layernorm_beta", "parameter for layer norm. Shape: [E,] where E is hidden size", "T2")
+      .Input(4, "bert_embeddings_layernorm_gamma", "Gamma parameter for layer norm. Shape: [E,] where E is hidden size", "T2")
+      .Input(5, "bert_embeddings_word_embeddings", "Token embedding matrix. Shape: [word_vocab_size, E] where E is hidden size", "T2")
+      .Input(6, "bert_embeddings_token_type_embeddings", "Token type embedding matrix. Shape: [type_vocab_size, E] where E is hidden size", "T2")
+      .Input(7, "bert_embeddings_position_embeddings", "Positional embedding matrix. Shape: [S, E] where S is the maximum sequence length and E is hidden size", "T2")	  
+      .Output(0, "embedded_input", "embedded_input is an floating point tensor with shape [S, B, E] where S is sequence length, B is batch size, and E is hidden size. The final output embedding is the sum of embeddings for the token, the segment and the position in the sequence", "T2")
+      .Output(1, "maskIdx", " maskIdx is an int32 tensor with shape [B,] where B is batch size. The maskIdx is a more compact representation of the input mask, consisting of the number of valid elements, assuming that the original mask was contiguous. For example, 111100 => 4, 110000 => 2, 110100: Invalid mask, because it is not contiguous", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain input and output types to integer tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},//uint???
+          "Constrain input and output types to float tensors.")		  
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!
+	    std::cout << "ctx.getAttribute(output_fp16): " << ctx.getAttribute("output_fp16") << std::endl;
+        //propagateShapeAndTypeFromFirstInput(ctx);
+        //propagateElemTypeFromAttributeToOutput(ctx, "output_datatype", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CustomEmbLayerNormPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT EmbLayerNormPluginDynamic plugin")
+      .Attr("output_fp16", "encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("full_mask", "to output the full mask that works with the specialized multi-head-attention plugin kernels (this is deprecated, please use mha_type_id)", AttributeProto::INT)
+      .Attr("mha_type_id", "encoding the multi-head-attention plugin DataType (0: FP32, 1: FP16, 2: INT8)", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING) 
+      .AllowUncheckedAttributes()
+      .Input(0, "token_id", "An input sequence containing token ids. token_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. Tokens typically identify words or word pieces that were obtained by preprocessing the input text", "T1")
+      .Input(1, "segment_id", "An input sequence containing segment ids. segment_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The segment id is used to distinguish between different parts of the input sequence that might serve different purposes. E.g. in a squad task, the input sequence might consist of a segment representing the knowledge base (i.e. a paragraph of text) and a segment representing the question", "T1")
+      .Input(2, "input_mask", "An input sequence containing segment ids. segment_id is an int32 tensor with shape [S, B] where S is the sequence length and B is the batch size. The segment id is used to distinguish between different parts of the input sequence that might serve different purposes. E.g. in a squad task, the input sequence might consist of a segment representing the knowledge base (i.e. a paragraph of text) and a segment representing the question", "T1")
+      .Input(3, "bert_embeddings_layernorm_beta", "parameter for layer norm. Shape: [E,] where E is hidden size", "T2")
+      .Input(4, "bert_embeddings_layernorm_gamma", "Gamma parameter for layer norm. Shape: [E,] where E is hidden size", "T2")
+      .Input(5, "bert_embeddings_word_embeddings", "Token embedding matrix. Shape: [word_vocab_size, E] where E is hidden size", "T2")
+      .Input(6, "bert_embeddings_token_type_embeddings", "Token type embedding matrix. Shape: [type_vocab_size, E] where E is hidden size", "T2")
+      .Input(7, "bert_embeddings_position_embeddings", "Positional embedding matrix. Shape: [S, E] where S is the maximum sequence length and E is hidden size", "T2")	  
+      .Output(0, "embedded_input", "embedded_input is an floating point tensor with shape [S, B, E] where S is sequence length, B is batch size, and E is hidden size. The final output embedding is the sum of embeddings for the token, the segment and the position in the sequence", "T2")
+      .Output(1, "maskIdx", " maskIdx is an int32 tensor with shape [B,] where B is batch size. The maskIdx is a more compact representation of the input mask, consisting of the number of valid elements, assuming that the original mask was contiguous. For example, 111100 => 4, 110000 => 2, 110100: Invalid mask, because it is not contiguous", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain input and output types to integer tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},//uint???
+          "Constrain input and output types to float tensors.")		  
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!
+	    std::cout << "ctx.getAttribute(output_fp16): " << ctx.getAttribute("output_fp16") << std::endl;
+        //propagateShapeAndTypeFromFirstInput(ctx);
+        //propagateElemTypeFromAttributeToOutput(ctx, "output_datatype", 0);
+      });
+//https://github.com/NVIDIA/TensorRT/tree/master/plugin/bertQKVToContextPlugin
+//input:
+//input input is a tensor with shape [S, B, 3 * E] where B is the batch size and E is the hidden size. This plugin makes strong assumptions about its input: - The input tensor contains all 3 matrices Q, K, V - This input tensor is computed by multiplying a tensor of size [S, B, E] with the weights W_qkv of size [E, 3 * E] - The weight matrix W_qkv is NOT just the vertical concatenation of individual matrices W_tmp = [W_q', W_k', W_v']', but to start with W_tmp, reshaping it into [E, 3, N, H] (where N * H = E and N is number of heads, H is head size) transposing it into [E, N, 3, H] and reshaping it back to [E, 3 * E]. The interpretation is to layout the k-th heads of Q, K and V next to each other, instead of first all N heads of Q, then all N heads of K, then all heads of V
+//input_mask input_mask is a tensor of shape [B] where B is the batch size. The input mask is in the encoded in the format described in embLayerNormPlugin, and contains the number of valid elements from the start of the sequence. If provided, the attention scores, i.e. the softmax distribution, are only computed over the elements designated as valid by the input mask
+//output:
+//output output is a tensor with shape [S, B, E] where B is the batch size.
+//attributes:
+//int	type_id	1, 2	Integer encoding the DataType (0: FP32, 1: FP16)
+//int	hidden_size	1, 2, 3	The hidden size, denoted by E above.
+//int	num_heads	1, 2, 3	The number of self-attention heads.
+//bool	has_mask	1, 2	Whether to use the input_mask input.
+//float	dq_probs	1, 2, 3	inner layer scale factor when run in int8 precision, default 1.f/127.f.
+//int	var_seqlen	2	Whether to use variable sequence length (0: disable, 1: enable), default 0.
+// where to specify versions??
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CustomQKVToContextPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT CustomQKVToContextPluginDynamic plugin")
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("hidden_size", "The hidden size, denoted by E", AttributeProto::INT)
+      .Attr("num_heads", "The number of self-attention heads", AttributeProto::INT)
+      .Attr("has_mask", "Whether to use the input_mask input", AttributeProto::INT)
+      .Attr("dq_probs", "inner layer scale factor when run in int8 precision, default 1.f/127.f", AttributeProto::FLOAT)
+      .Attr("var_seqlen", "Whether to use variable sequence length (0: disable, 1: enable), default 0", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING)
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [S, B, 3 * E, 1, 1] where B is the batch size and E is the hidden size. This plugin makes strong assumptions about its input: - The input tensor contains all 3 matrices Q, K, V - This input tensor is computed by multiplying a tensor of size [S, B, E] with the weights W_qkv of size [E, 3 * E] - The weight matrix W_qkv is NOT just the vertical concatenation of individual matrices W_tmp = [W_q', W_k', W_v']', but to start with W_tmp, reshaping it into [E, 3, N, H] (where N * H = E and N is number of heads, H is head size) transposing it into [E, N, 3, H] and reshaping it back to [E, 3 * E]. The interpretation is to layout the k-th heads of Q, K and V next to each other, instead of first all N heads of Q, then all N heads of K, then all heads of V", "T1")
+      .Input(1, "input_mask", "It's optional. input_mask is a tensor of shape [B] where B is the batch size. The input mask is in the encoded in the format described in embLayerNormPlugin, and contains the number of valid elements from the start of the sequence. If provided, the attention scores, i.e. the softmax distribution, are only computed over the elements designated as valid by the input mask", "T2", OpSchema::Optional)
+      .Output(0, "output", "output is a tensor with shape [S, B, E, 1, 1] where B is the batch size", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},//uint8???
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain input and output types to integer tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!!
+        propagateShapeAndTypeFromFirstInput(ctx);//not right
+        //if (ctx.getNumOutputs() == 2) {
+          //updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          ///if (hasNInputShapes(ctx, 1)) {
+          ///  propagateShapeFromInputToOutput(ctx, 0, 1);
+          ///}
+        //}
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QKVToContextPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for QKVToContextPluginDynamic plugin")
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("hidden_size", "The hidden size, denoted by E", AttributeProto::INT)
+      .Attr("num_heads", "The number of self-attention heads", AttributeProto::INT)
+      .Attr("has_mask", "Whether to use the input_mask input", AttributeProto::INT)
+      .Attr("dq_probs", "inner layer scale factor when run in int8 precision, default 1.f/127.f", AttributeProto::FLOAT)
+      .Attr("var_seqlen", "Whether to use variable sequence length (0: disable, 1: enable), default 0", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING)
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [S, B, 3 * E, 1, 1] where B is the batch size and E is the hidden size. This plugin makes strong assumptions about its input: - The input tensor contains all 3 matrices Q, K, V - This input tensor is computed by multiplying a tensor of size [S, B, E] with the weights W_qkv of size [E, 3 * E] - The weight matrix W_qkv is NOT just the vertical concatenation of individual matrices W_tmp = [W_q', W_k', W_v']', but to start with W_tmp, reshaping it into [E, 3, N, H] (where N * H = E and N is number of heads, H is head size) transposing it into [E, N, 3, H] and reshaping it back to [E, 3 * E]. The interpretation is to layout the k-th heads of Q, K and V next to each other, instead of first all N heads of Q, then all N heads of K, then all heads of V", "T1")
+      .Input(1, "input_mask", "It's optional. input_mask is a tensor of shape [B] where B is the batch size. The input mask is in the encoded in the format described in embLayerNormPlugin, and contains the number of valid elements from the start of the sequence. If provided, the attention scores, i.e. the softmax distribution, are only computed over the elements designated as valid by the input mask", "T2", OpSchema::Optional)
+      .Output(0, "output", "output is a tensor with shape [S, B, E, 1, 1] where B is the batch size", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},//???
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain input and output types to integer tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!
+        propagateShapeAndTypeFromFirstInput(ctx);//not right
+        //if (ctx.getNumOutputs() == 2) {
+          //updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          ///if (hasNInputShapes(ctx, 1)) {
+          ///  propagateShapeFromInputToOutput(ctx, 0, 1);
+          ///}
+        //}
+      });
+
+//https://github.com/NVIDIA/TensorRT/tree/master/plugin/skipLayerNormPlugin
+//int	type_id	1, 2	Integer encoding the DataType (0: FP32, 1: FP16)
+//int	ld	2,	The leading dimension of the input tensor, corresponding to the hidden size, denoted by E above.
+//Weights	beta	1, 2, 3	The mean to normalize to. Shape: [1, 1, E]
+//Weights	gamma	1, 2, 3	The standard deviation to normalize to. Shape: [1, 1, E]
+//Weights	bias	1, 2	An optional bias vector to add before normalization. Shape: [1, 1, E]
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CustomSkipLayerNormPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT SkipLayerNormPluginDynamic plugin")
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("ld", "The leading dimension of the input tensor, corresponding to the hidden size E", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING)	  
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [S, B, E] where B is the batch size and E is the hidden size", "T")
+      .Input(1, "skip", "skip is a tensor with shape [S, B, E] where B is the batch size and E is the hidden size. The purpose of this input is to introduce skip (aka. residual) connections to previously computed tensors", "T")
+      .Input(2, "beta", "Weights. The mean to normalize to. Shape: [1, 1, E]", "T")
+      .Input(3, "gamma", "Weights. The standard deviation to normalize to. Shape: [1, 1, E]", "T")
+      .Input(4, "bias", "Weights. An optional bias vector to add before normalization. Shape: [1, 1, E]", "T")
+      .Output(0, "output", "output is a tensor with shape [S, B, E] where B is the batch size", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        //if (ctx.getNumOutputs() == 2) {
+          //updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          ///if (hasNInputShapes(ctx, 1)) {
+          ///  propagateShapeFromInputToOutput(ctx, 0, 1);
+          ///}
+        //}
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT SkipLayerNormPluginDynamic plugin")
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("ld", "The leading dimension of the input tensor, corresponding to the hidden size E", AttributeProto::INT)
+      .Attr("beta", "Weights. The mean to normalize to. Shape: [1, 1, E]", AttributeProto::FLOATS)
+      .Attr("gamma", "Weights. The standard deviation to normalize to. Shape: [1, 1, E]", AttributeProto::FLOATS)
+      .Attr("bias", "Weights. An optional bias vector to add before normalization. Shape: [1, 1, E]", AttributeProto::FLOATS)	  
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [S, B, E] where B is the batch size and E is the hidden size", "T")
+      .Input(1, "skip", "skip is a tensor with shape [S, B, E] where B is the batch size and E is the hidden size. The purpose of this input is to introduce skip (aka. residual) connections to previously computed tensors", "T")
+      .Input(2, "beta", "Weights. The mean to normalize to. Shape: [1, 1, E]", "T")
+      .Input(3, "gamma", "Weights. The standard deviation to normalize to. Shape: [1, 1, E]", "T")
+      .Input(4, "bias", "Weights. An optional bias vector to add before normalization. Shape: [1, 1, E]", "T")
+      .Output(0, "output", "output is a tensor with shape [S, B, E] where B is the batch size", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+//https://github.com/NVIDIA/TensorRT/tree/master/plugin/fcPlugin
+//input:
+//input, input is a tensor with shape [N, B, K, 1, 1] where B is the batch size.
+
+//output:
+//output, output is a tensor with shape [N, B, out_dims, 1, 1] where B is the batch size, and out_dims is specified as a plugin parameter. The trailing singleton dimensions in the input and output are added for compatibility with the default TRT FC layer.
+
+//Parameters
+//Type	Parameter	Description
+//int	out_dims	Integer specifying the length of the third dimension of the output.??????
+//int	type_id	    Integer encoding the DataType (0: FP32, 1: FP16)
+//Weights	W	    The weights to multiply with. Shape: [K, out_dims]
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CustomFCPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT CustomFCPluginDynamic plugin")
+      .Attr("out_dims", "Integer specifying the length of the third dimension of the output", AttributeProto::INT)	  
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING) 
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [N, B, K, 1, 1] where B is the batch size", "T")
+      .Input(1, "W", "The weights to multiply with. Shape: [K, out_dims]", "T")
+      .Output(0, "output", "output is a tensor with shape [N, B, out_dims, 1, 1] where B is the batch size, and out_dims is specified as a plugin parameter", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!
+        propagateShapeAndTypeFromFirstInput(ctx);//not right
+      });
+	  
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FCPluginDynamic)//this is op type. TensorRTSkipLayerNormPluginDynamicNode
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for TensorRT CustomFCPluginDynamic plugin")
+      .Attr("out_dims", "Integer specifying the length of the third dimension of the output", AttributeProto::INT)	  
+      .Attr("type_id", "Integer encoding the DataType (0: FP32, 1: FP16)", AttributeProto::INT)
+      .Attr("plugin_version", "Plugin version", AttributeProto::STRING)
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "input is a tensor with shape [N, B, K, 1, 1] where B is the batch size", "T")
+      .Input(1, "W", "The weights to multiply with. Shape: [K, out_dims]", "T")
+      .Output(0, "output", "output is a tensor with shape [N, B, out_dims, 1, 1] where B is the batch size, and out_dims is specified as a plugin parameter", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {//TODO!!!!!
+        propagateShapeAndTypeFromFirstInput(ctx);//not right
+      });	  
+//slx
 
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
