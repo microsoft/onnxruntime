@@ -236,11 +236,12 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
         nodes, inputs, outputs, [])
 
 def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second_matmul):
-    def do_transpose(output_0, output_1, nodes):
-        nodes.extend([helper.make_node("Transpose", [output_0], ["transpose_0_"+output_0], "Transpose_0"),
-            helper.make_node("Transpose", [output_1], ["transpose_1_"+output_1], "Transpose_1")])
+    def do_transpose(output_0, output_1, transpose, nodes):
+        nodes.append(helper.make_node("Transpose", [output_0], ["transpose_0_"+output_0], "Transpose_0"))
         output_0 = "transpose_0_"+output_0
-        output_1 ="transpose_1_"+output_1
+        if transpose > 1:
+            nodes.append(helper.make_node("Transpose", [output_1], ["transpose_1_"+output_1], "Transpose_1"))
+            output_1 ="transpose_1_"+output_1
         return output_0, output_1
     input_type = TensorProto.FLOAT
     input_0 = "input_0"
@@ -270,8 +271,8 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
         outputs.append(helper.make_tensor_value_info(
             "second_"+output,  input_type, ['M', 'N']))
 
-    if transpose and transpose_before_cast:
-        output_0, output_1 = do_transpose(output_0, output_1, nodes)
+    if transpose > 0 and transpose_before_cast:
+        output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
 
     nodes.append(helper.make_node(
         "Cast",
@@ -290,8 +291,8 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
             to = TensorProto.FLOAT16))
         output_1 = "cast_1_"+output_1
 
-    if transpose and not transpose_before_cast:
-        output_0, output_1 = do_transpose(output_0, output_1, nodes)
+    if transpose > 0 and not transpose_before_cast:
+        output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
 
     outputs.extend([
         helper.make_tensor_value_info(
@@ -299,7 +300,8 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
         helper.make_tensor_value_info(
             output_1,  flip_type(second_matmul, input_type), ['M', 'N'])
     ])
-    model_path += ("_transpose_before_cast" if transpose_before_cast else "_transpose_after_cast") if transpose else ""
+    model_path += ("_transpose_before_cast" if transpose_before_cast else "_transpose_after_cast") if transpose > 0 else ""
+    model_path += "_transpose" if transpose > 1 else ""
     model_path +=  "_second_matmul" if second_matmul else ""
     save(model_path, nodes, inputs, outputs, [])
 
@@ -312,7 +314,7 @@ for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add,
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")
 
-for (transpose, transpose_before_cast, second_matmul) in list(itertools.product([False, True], repeat=3)):
+for (transpose, transpose_before_cast, second_matmul) in list(itertools.product([0,1,2], [False, True], [False, True])):
     if not transpose and transpose_before_cast:
         continue
     gen_matmul_two_products("matmul_two_outputs", transpose, transpose_before_cast, second_matmul)
