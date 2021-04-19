@@ -9,6 +9,12 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
+// NodeArg to Select consumer node map.
+typedef std::unordered_map<NodeArg*, std::vector<Node*>> NodeArgToConsumerMap;
+static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& p) { 
+  return p.first->Name();
+};
+
 // The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that
 // the code is allowed to propage Cast operations cross. The user may specify a custom list of optypes using level 0.
 // The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
@@ -46,7 +52,7 @@ static bool IsType(const NodeArg& node_arg, TensorProto_DataType data_type) {
 // the NodeArg. The other consumers of the NodeArg will not be changed. The cast node is FLOAT16 if is_fp16 is True
 // and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
 static Status InsertCastNodes(Graph& graph,
-                              const std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
+                              const NodeArgToConsumerMap& require_cast,
                               bool is_fp16,
                               std::deque<NodeIndex>& removed_nodes) {
   //Create requirred new Cast nodes.
@@ -209,7 +215,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* node,
 // Visited float NodeArgs are either in require_cast or require_type_change so that the same
 // nodearg is traversed not more than once.
 static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
-                           std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
+                           NodeArgToConsumerMap& require_cast,
                            std::unordered_set<NodeArg*>& require_type_change,
                            std::deque<NodeIndex>& removed_nodes,
                            size_t level) {
@@ -265,7 +271,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
 // be converted from float to float16 along the way.
 // The recursion only traverses an
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
-                             std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
+                             NodeArgToConsumerMap& require_cast,
                              std::unordered_set<NodeArg*>& require_type_change,
                              std::deque<NodeIndex>& removed_nodes,
                              size_t level) {
@@ -361,7 +367,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
                               const logging::Logger& logger) {
   ORT_ENFORCE(nullptr != node);
   bool modified = false;
-  std::unordered_map<NodeArg*, std::vector<Node*>> require_cast;
+  NodeArgToConsumerMap require_cast;
   std::unordered_set<NodeArg*> require_type_change;
   NodeArg* cast_output = node->MutableOutputDefs()[0];
   SearchDownstream(graph, cast_output, require_cast, require_type_change, removed_nodes, level);
@@ -371,9 +377,8 @@ static bool PropagateForwards(Graph& graph, Node* node,
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, false, removed_nodes);
     ChangeTypeToFP16(graph, require_type_change, true, logger);
-    std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
     LOGS(logger, VERBOSE) << "PropagateForwwards: Inserted Cast nodes "
-                          << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(require_cast, func);
+                          << ConcatNames<NodeArgToConsumerMap>(require_cast, GetName);
     modified = true;
   }
   return modified;
@@ -395,12 +400,12 @@ static bool PropagateBackwards(Graph& graph, Node* node,
                                const logging::Logger& logger) {
   bool modified = false;
   ORT_ENFORCE(nullptr != node);
-  std::unordered_map<NodeArg*, std::vector<Node*>> require_cast;
+  NodeArgToConsumerMap require_cast;
   NodeArg* cast_input = node->MutableInputDefs()[0];
   const Node* cast_input_producer = graph.GetProducerNode(cast_input->Name());  // nullptr for graph outputs
   // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
   // node then it cannot propagate.
-  int consumer_node_count = graph.GetConsumerNodes(cast_input->Name()).size();
+  size_t consumer_node_count = graph.GetConsumerNodes(cast_input->Name()).size();
   if (consumer_node_count > 1 ||
       (nullptr != cast_input_producer && graph.GetNodeOutputsInGraphOutputs(*cast_input_producer).size() > 0 && consumer_node_count > 0)) {
     return modified;
@@ -413,9 +418,8 @@ static bool PropagateBackwards(Graph& graph, Node* node,
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, true, removed_nodes);
     ChangeTypeToFP16(graph, require_type_change, false, logger);
-    std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
     LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted Cast nodes "
-                          << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(require_cast, func);
+                          << ConcatNames<NodeArgToConsumerMap>(require_cast, GetName);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Changed the type from float to float16 : "
                           << ConcatNames<std::unordered_set<NodeArg*>>(require_type_change);
     modified = true;
@@ -549,7 +553,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
-      std::unordered_map<NodeArg*, std::vector<Node*>> node_args_map;
+      NodeArgToConsumerMap node_args_map;
       for (NodeArg* output : node->MutableOutputDefs()) {
         if (output->Exists() && IsType(*output, TensorProto::FLOAT)) {
           node_args_map.insert(std::make_pair(output, graph.GetMutableConsumerNodes(output->Name())));
@@ -557,10 +561,9 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       }
       InsertCastNodes(graph, node_args_map, false, removed_nodes);
       ChangeTypeToFP16(graph, require_type_change, true, logger);
-      std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
 
       LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Inserted Cast node to "
-                            << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(node_args_map, func);
+                            << ConcatNames<NodeArgToConsumerMap>(node_args_map, GetName);
       modified = true;
     }
   }
@@ -610,7 +613,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
-      std::unordered_map<NodeArg*, std::vector<Node*>> node_args_map;
+      NodeArgToConsumerMap node_args_map;
       for (NodeArg* input : node->MutableInputDefs()) {
         if (IsType(*input, TensorProto::FLOAT)) {
           node_args_map.insert(std::make_pair(input, std::vector<Node*>({node})));
@@ -618,9 +621,8 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
       InsertCastNodes(graph, node_args_map, true, removed_nodes);
       ChangeTypeToFP16(graph, require_type_change, false, logger);
-      std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
       LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted Cast node to "
-                            << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(node_args_map, func);
+                            << ConcatNames<NodeArgToConsumerMap>(node_args_map, GetName);
       modified = true;
     }
   }
