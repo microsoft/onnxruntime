@@ -327,6 +327,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
+          nullptr,
           nullptr};
 
       sf.AppendExecutionProvider_TensorRT(tensorrt_options);
@@ -355,6 +356,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
+          nullptr,
           nullptr};
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
