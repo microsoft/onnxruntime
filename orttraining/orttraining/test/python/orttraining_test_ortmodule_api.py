@@ -779,6 +779,30 @@ def test_mixed_nnmodule_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
 
+def test_identity_elimination():
+    class NeuralNetSimpleIdentity(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetSimpleIdentity, self).__init__()
+
+            self.fc = torch.nn.Linear(input_size, num_classes)
+
+        # Identity node will be created between ReduceSum and graph output
+        # and then eliminated after transformation
+        def forward(self, x):
+            y = self.fc(x)
+            z = y 
+            return z 
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSimpleIdentity(D_in, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    output = model(x)
+
+    # Make sure model runs OK
+    assert output is not None
+
 def test_ortmodule_inputs_with_dynamic_shape():
     D_in, H, D_out = 784, 500, 10
 
