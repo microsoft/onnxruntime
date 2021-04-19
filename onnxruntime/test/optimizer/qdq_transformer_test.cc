@@ -367,7 +367,7 @@ TEST(QDQTransformerTests, ConvRelu) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, false);
 }
 
-TEST(QDQTransformerTests, ConvAveragePoolPoolReshape_UInt8) {
+TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -426,7 +426,7 @@ TEST(QDQTransformerTests, ConvAveragePoolPoolReshape_UInt8) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
-TEST(QDQTransformerTests, ConvAveragePoolPoolReshape_Int8) {
+TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -483,6 +483,265 @@ TEST(QDQTransformerTests, ConvAveragePoolPoolReshape_Int8) {
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+}
+
+TEST(QDQTransformerTests, ConvTranspose_QBackward) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, 0, 255);
+
+      // add QDQ + Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {conv_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Q
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2});
+}
+
+TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, 0, 255);
+
+      // add QDQ + Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      auto* dq_conv_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(dq_conv_output, dq_w_output, conv_output);
+
+      // add MaxPool
+      auto* maxpool_output = builder.MakeIntermediate();
+      Node& pool_node = builder.AddNode("MaxPool", {conv_output}, {maxpool_output});
+      std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+
+      // Reshape
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
+      auto* reshape_output = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {reshape_output});
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {reshape_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", std::vector<int64_t>({1, 0}));
+
+      // add Q + DQ
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["MaxPool"], 1);
+      EXPECT_EQ(op_to_count["Reshape"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
+}
+
+TEST(QDQTransformerTests, ConvTranspose_DQForward) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, 0, 255);
+
+      // add QDQ
+      auto* dq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(transpose_output, dq_w_output, conv_output);
+
+      // add Q
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(conv_output, .0035f, 135, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
+}
+
+TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<uint8_t>(weights_shape, 0, 255);
+
+      // add Transpose
+      auto* qdq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {qdq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add MaxPool
+      auto* maxpool_output = builder.MakeIntermediate();
+      Node& pool_node = builder.AddNode("MaxPool", {transpose_output}, {maxpool_output});
+      std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+
+      // add Conv
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* conv_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(weight, .003f, 118, dq_w_output);
+      builder.AddConvNode(maxpool_output, dq_w_output, conv_output);
+
+      // Reshape
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
+      auto* reshape_output = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {conv_output, reshape_shape}, {reshape_output});
+
+      // add Q + DQ
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .0035f, 135, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["MaxPool"], 1);
+      EXPECT_EQ(op_to_count["Reshape"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
+}
+
+TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, size_t maxpool_dim, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+
+      // add QDQ
+      auto* qdq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {qdq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Q
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .004f, 129, q_output);
+
+      // add MaxPool
+      auto* maxpool_output = builder.MakeIntermediate();
+      Node& pool_node = builder.AddNode("MaxPool", {q_output}, {maxpool_output});
+      std::vector<int64_t> pads((maxpool_dim - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(maxpool_dim - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+
+      // Reshape
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
+      builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {output_arg});
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["MaxPool"], 1);
+      EXPECT_EQ(op_to_count["Reshape"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2});
 }
 
 #endif  // DISABLE_CONTRIB_OPS
