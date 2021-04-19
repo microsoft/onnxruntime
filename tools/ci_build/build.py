@@ -337,6 +337,9 @@ def parse_arguments():
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
+    parser.add_argument(
+        "--enable_wasm_threads", action='store_true',
+        help="Enable WebAssembly multi-threads support")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -727,6 +730,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -2027,7 +2031,7 @@ def main():
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:

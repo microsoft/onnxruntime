@@ -239,17 +239,17 @@ jobs:
           modifyEnvironment: true
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64'
+          FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
           DisplayName: 'ESRP - Sign Node.js binding binaries'
           DoEsrp: ${{ parameters.DoEsrp }}
           Pattern: '*.dll,*.node'
 
       - script: |
-         del /Q $(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+         del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
          call npm pack
-         copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         xcopy /E /I $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)\nodejs'
+         copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)\js\node'
         displayName: 'Create NPM Package'
 
       - task: PublishPipelineArtifact@0
