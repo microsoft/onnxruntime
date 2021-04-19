@@ -210,7 +210,16 @@ template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
+  ORT_ENFORCE(p_ml_value->IsTensor(), "Must be an existing tensor");
   return p_ml_value->GetMutable<Tensor>();
+}
+
+template <>
+inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
+  OrtValue* p_ml_value = GetOutputMLValue(index);
+  ORT_ENFORCE(p_ml_value, "Please fetch output sparse tensor with specified shape.");
+  ORT_ENFORCE(p_ml_value->IsSparseTensor(), "Must be an existing sparse tensor");
+  return p_ml_value->GetMutable<SparseTensor>();
 }
 
 }  // namespace onnxruntime

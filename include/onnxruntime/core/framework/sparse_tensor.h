@@ -11,19 +11,17 @@ namespace onnxruntime {
 
 class DataTransferManager;
 
-    /**
+/**
  * @brief This is a Sparse Format enumeration representing bitflags
  * 
  * 
  */
 enum class SparseFormatFlags : uint32_t {
-  kUndefined = 0x0U, // For completeness
-  kCoo = 0x1U,
-  kCsr = 0x1U << 1,
-  kBlockedEll = 0x1U << 2, // NVIDIA Blocked Ell
-  kBlockSparse = 0x1U << 3, // as in GPT-3
-  // Specific representation
-  kCooRawBuffer = 0x1U << 31 // Collection of buffers, no library handle
+  kUndefined = 0x0U,  // For completeness
+  kCoo = 0x1U,        // 1-D or 2-D indices
+  // kCsr = 0x1U << 1, // This may be represented in a variety of ways
+  // kBlockedEll = 0x1U << 2, // NVIDIA Blocked Ell
+  kBlockSparse = 0x1U << 3  // as in GPT-3
 };
 
 inline SparseFormatFlags operator|(SparseFormatFlags flags, SparseFormatFlags flag) {
@@ -53,9 +51,20 @@ inline SparseFormatFlags Set(SparseFormatFlags flags, SparseFormatFlags flag) {
 class SparseRep {
  protected:
   SparseRep() = default;
+
  public:
   virtual ~SparseRep();
-  virtual Status Copy(const DataTransferManager& data_transfer_manager, AllocatorPtr allocator, int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const = 0;
+  /// <summary>
+  ///  Copy the same format to a different destination.
+  /// </summary>
+  /// <param name="data_transfer_manager">manager</param>
+  /// <param name="allocator">allocator for the destination</param>
+  /// <param name="exec_q_id"></param>
+  /// <param name="dst_rep">[out] destination representation</param>
+  /// <returns></returns>
+  virtual Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
+                      int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const = 0;
+
  private:
 };
 
@@ -139,7 +148,7 @@ class SparseTensor final {
   /// Returns a would be dense_shape
   /// </summary>
   /// <returns></returns>
-  const TensorShape& DenseShape() const noexcept {
+  const TensorShape& Shape() const noexcept {
     return dense_shape_;
   }
 
@@ -177,7 +186,7 @@ class SparseTensor final {
   /// </summary>
   /// <typeparam name="Rep"></typeparam>
   /// <returns>Typed sparse format representation</returns>
-  template<typename Rep>
+  template <typename Rep>
   const Rep* GetRep() const;
 
   /// <summary>
@@ -187,7 +196,7 @@ class SparseTensor final {
   /// </summary>
   /// <param name="dense shape"></param>
   /// <returns></returns>
-  template<typename Rep>
+  template <typename Rep>
   Rep* MutableRep();
 
   const OrtMemoryInfo& Location() const { return values_.Location(); }
@@ -196,14 +205,13 @@ class SparseTensor final {
     return allocator_ != nullptr;
   }
 
-  Status Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor);
+  Status Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const;
 
  private:
   // New API members
   SparseFormatFlags format_flags_;
   Tensor values_;
   TensorShape dense_shape_;
-  // empty when MemoryInfo was passed. Use values.
   AllocatorPtr allocator_;
   std::unique_ptr<SparseRep> rep_;
 };

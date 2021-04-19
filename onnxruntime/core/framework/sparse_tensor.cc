@@ -34,7 +34,7 @@ SparseTensor::~SparseTensor() = default;
 
 SparseRep::~SparseRep() = default;
 
-Status onnxruntime::SparseTensor::Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) {
+Status onnxruntime::SparseTensor::Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const {
   ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
   ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
   ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
@@ -43,6 +43,7 @@ Status onnxruntime::SparseTensor::Copy(const DataTransferManager& data_transfer_
   ORT_RETURN_IF_ERROR(rep_->Copy(data_transfer_manager, dst_tensor.allocator_, exec_q_id, rep_copy));
   ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(values_, dst_tensor.MutableValues(), exec_q_id));
   dst_tensor.rep_ = std::move(rep_copy);
+  dst_tensor.format_flags_ = format_flags_;
   return Status::OK();
 }
 

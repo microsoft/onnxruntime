@@ -84,6 +84,14 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
         ORT_ENFORCE(shape && tensor.Shape() == *shape,
                     "OrtValue shape verification failed. Current shape:", tensor.Shape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
+      } else if (p_ort_value->IsSparseTensor()) {
+        const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
+        ORT_ENFORCE(shape && sp_tensor.Shape() == *shape,
+                    "OrtValue shape verification failed. Current shape:", sp_tensor.Shape(),
+                    " Requested shape:", shape ? shape->ToString() : "null");
+        ORT_ENFORCE(nnz == sp_tensor.NumValues(), 
+                    "OrtValues nnz verification failed. Current nnz:", sp_tensor.NumValues(),
+                    " Requested nnz:", nnz);
       }
     } else {
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);

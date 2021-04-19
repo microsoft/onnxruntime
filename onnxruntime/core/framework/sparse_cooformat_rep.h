@@ -14,43 +14,33 @@ namespace onnxruntime {
 /// </summary>
 class SparseCooFomatRep : public SparseRep {
  public:
-  SparseCooFomatRep() {
+  SparseCooFomatRep(const TensorShape& ind_shape, const AllocatorPtr& allocator) : 
+    indices_(DataTypeImpl::GetType<int64_t>(),
+    ind_shape,
+    allocator) {
   }
 
-  ~SparseCooFomatRep() = default;
+  ~SparseCooFomatRep() override;
 
-  const Tensor& Indicies() const {
+  const Tensor& Indices() const {
     return indices_;
   }
 
-  Tensor& MutableIndicies() {
-    indices_;
+  Tensor& MutableIndices() {
+    return indices_;
   }
 
-  Status Copy(const DataTransferManager& data_transfer_manager, AllocatorPtr allocator,
+  Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
               int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const override;
 
  private:
   Tensor indices_;  // may be 1-D or 2-D.
 };
 
-template <>
+template <> inline
 const SparseCooFomatRep* SparseTensor::GetRep<SparseCooFomatRep>() const {
   ORT_ENFORCE(IsSet(format_flags_, SparseFormatFlags::kCoo), "Expecting COO format");
   return static_cast<const SparseCooFomatRep*>(rep_.get());
 }
 
-template <>
-SparseCooFomatRep* SparseTensor::MutableRep<SparseCooFomatRep>() {
-  // There might different representations for the same format such as cuSparse
-  if (IsSet(format_flags_, SparseFormatFlags::kCoo) && IsSet(format_flags_, SparseFormatFlags::kCooRawBuffer)) {
-    return static_cast<SparseCooFomatRep*>(rep_.get());
-  } else if (format_flags_ == SparseFormatFlags::kUndefined) {
-    rep_.reset(new SparseCooFomatRep());
-    Set(format_flags_, SparseFormatFlags::kCoo | SparseFormatFlags::kCooRawBuffer);
-  } else {
-    ORT_ENFORCE(false, "Wrong format requested for modification");
-  }
-  return nullptr;
-}
 }  // namespace onnxruntime

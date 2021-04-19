@@ -8,6 +8,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/sparse_cooformat_rep.h"
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/graph/model.h"
@@ -117,9 +118,10 @@ This operator constructs a sparse tensor from three tensors that provide a COO
 
       SparseTensor* output = ctx->Output(0, static_cast<size_t>(nnz), shape);
       ORT_ENFORCE(output != nullptr);
+      auto* sparse_rep = output->MutableRep<SparseCooFomatRep>();
 
       memcpy(output->MutableValues().MutableData<int64_t>(), values.Data<int64_t>(), nnz * sizeof(int64_t));
-      memcpy(output->MutableIndices().MutableData<int64_t>(), indices.Data<int64_t>(), nnz * numdims * sizeof(int64_t));
+      memcpy(sparse_rep->MutableIndices().MutableData<int64_t>(), indices.Data<int64_t>(), nnz * numdims * sizeof(int64_t));
 
       return Status::OK();
     }
@@ -176,7 +178,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       const SparseTensor* input = ctx->Input<SparseTensor>(0);
       auto* input_values = input->Values().Data<int64_t>();
       auto nnz = input->NumValues();
-      auto& shape = input->Shape();
+      const auto& shape = input->Shape();
 
       // Allocate/get output-tensor:
       SparseTensor* output = ctx->Output(0, nnz, shape);
@@ -186,11 +188,14 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       for (size_t i = 0; i < nnz; ++i)
         output_values[i] = std::abs(input_values[i]);
 
+      const auto* input_rep = input->GetRep<SparseCooFomatRep>();
+      auto* output_rep = output->MutableRep<SparseCooFomatRep>();
+
       // Currently, there is no way to share the indices/shape between two sparse-tensors.
       // So, we copy indices/shape from input to output.
       // TODO: Extend allocation-planner to enable such sharing.
-      const auto& input_indices = input->Indices();
-      memcpy(output->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
+      const auto& input_indices = input_rep->Indices();
+      memcpy(output_rep->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
       return Status::OK();
     }
   };
