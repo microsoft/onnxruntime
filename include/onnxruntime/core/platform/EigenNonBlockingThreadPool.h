@@ -920,6 +920,23 @@ void SummonWorkers(PerThread &pt,
                    ThreadPoolParallelSection &ps,
                    unsigned n,
                    const std::function<void(unsigned)> &worker_fn) {
+  // Initialize the set of preferred worker threads we will use.  We
+  // do this once, covering the maximum num_threads_ items, in order
+  // to avoid resizing preferred_workers concurrent with access from
+  // worker threads.
+  if (!pt.preferred_init) {
+    for (auto idx = 0; idx < num_threads_; idx++) {
+      // Pick new hint, round-robin.  For simplicity we don't attempt
+      // to avoid duplicates.  These are just used as a starting
+      // point, and are updated by the worker thread that actually
+      // claims an item (e.g., if an item initially assigned to thread
+      // T1 is stolen and executed by T2, then T2 is assigned at the
+      // new preferred worker).
+      pt.preferred_workers.push_back(next_worker++ % num_threads_);
+    }
+    pt.preferred_init = true;
+  }
+  
   // Identify whether we need to create additional workers.
   // Throughout the threadpool implementation, degrees of parallelism
   // ("n" here) refer to the total parallelism including the main
@@ -927,33 +944,22 @@ void SummonWorkers(PerThread &pt,
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
 
   if (n > current_dop) {
+  std::vector<int> &preferred_workers = pt.preferred_workers;
     unsigned extra_needed = n - current_dop;
 
-    //......................................................................
-    // Re-use workers on which the prior loop's tasks ran.
-    std::vector<int> &preferred_workers = pt.preferred_workers;
-    unsigned num_preferred = (unsigned)preferred_workers.size();
+    // Create the additional tasks, and push them to workers.
 
     profiler_.LogStart();
-
-    // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       // Worker thread number in our team, starting from 0 (i.e., not
       // including the main thread).
-      unsigned idx = current_dop + i - 1;
+      int idx = current_dop + i - 1;
+      assert(idx >= 0 && idx < num_threads_);
       
       // Sticky worker assignment: use our own stats of which
       // workers previously started work without queuing.
-      int q_idx;
-      if (idx < num_preferred) {
-        // Re-use hint from preferred workers
-        q_idx = preferred_workers[idx];
-      } else {
-        // Pick new hint, round-robin.  For simplicity we don't
-        // attempt to avoid duplicates.
-        q_idx = (next_worker++ % num_threads_);
-        preferred_workers.push_back(q_idx);
-      }
+      int q_idx = preferred_workers[idx];
+      assert(q_idx >= 0 && q_idx < num_threads_);
 
       // If the worker's queue accepts the task, then record it in
       // the vector of tasks that we will need to synchronize with on
@@ -967,9 +973,12 @@ void SummonWorkers(PerThread &pt,
       bool enqueued;
       bool was_ready = true;
       enqueued = q.PushBackWithTag(
-          [&ps, idx, worker_fn]() {
+          [&ps, preferred_workers, idx, worker_fn]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
+            assert(idx >= 0 &&
+                   ((PerThread*)ps.submitter_pt) &&
+                   idx < (int)((PerThread*)ps.submitter_pt)->preferred_workers.size());
             ((PerThread*)ps.submitter_pt)->preferred_workers[idx] = GetPerThread()->thread_id;
             // Run the work
             worker_fn(idx+1);
@@ -1154,6 +1163,8 @@ int CurrentThreadId() const EIGEN_FINAL {
     // retain cache state within the workers, and to reduce the number
     // of times that the work-stealing code paths are used for
     // rebalancing.
+    int num_preferred{0};
+    bool preferred_init{false};
     std::vector<int> preferred_workers;
     PaddingToAvoidFalseSharing padding_2;
   };
