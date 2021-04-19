@@ -42,14 +42,17 @@ static bool IsType(const NodeArg& node_arg, TensorProto_DataType data_type) {
 }
 
 // InsertCastNodes
-// Insert a new Cast node after each NodeArg in the require_cast vector. The cast node is FLOAT16 if is_fp16 is True
+// Insert a new Cast node after each NodeArg in the require_cast map, feeding the nodes in the vector mapped to
+// the NodeArg. The other consumers of the NodeArg will not be changed. The cast node is FLOAT16 if is_fp16 is True
 // and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
 static Status InsertCastNodes(Graph& graph,
-                              const std::unordered_set<NodeArg*>& require_cast,
+                              const std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
                               bool is_fp16,
                               std::deque<NodeIndex>& removed_nodes) {
   //Create requirred new Cast nodes.
-  for (NodeArg* node_arg : require_cast) {
+  for (std::pair<NodeArg*, std::vector<Node*>> element : require_cast) {
+    NodeArg* node_arg = element.first;
+    std::vector<Node*> nodes = element.second;
     if (!node_arg->Exists()) {
       continue;
     }
@@ -89,7 +92,7 @@ static Status InsertCastNodes(Graph& graph,
     // Update consumers of node_arg to use the output of the cast node
     int cast_output_index = optimizer_utils::IndexOfNodeOutput(cast, cast_output);
     for (Node* consumer : graph.GetMutableConsumerNodes(node_arg->Name())) {
-      if (nullptr != consumer &&
+      if (nullptr != consumer && std::find(nodes.begin(), nodes.end(), consumer) != nodes.end() &&
           std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
         auto& consumer_inputs = consumer->MutableInputDefs();
         int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
@@ -102,6 +105,8 @@ static Status InsertCastNodes(Graph& graph,
     }
     if (nullptr != producer) {
       auto& producer_outputs = producer->MutableOutputDefs();
+      // The following replacement is necessary in case where the output of the cast node is original
+      // output of the producer, for example the original output of the producer may be the graph output.
       std::replace(producer_outputs.begin(), producer_outputs.end(), &cast_output, &cast_input);
       graph.UpdateProducerNode(cast_input.Name(), producer->Index());
       int input_index = optimizer_utils::IndexOfNodeInput(cast, cast_input);
@@ -193,29 +198,29 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* node,
 // inorder to move an FP16 Cast operation up the graph.
 // Visited float NodeArgs are either in require_cast or require_type_change so that the same
 // nodearg is traversed not more than once.
-static void SearchUpstream(Graph& graph, NodeArg* node_arg,
-                           std::unordered_set<NodeArg*>& require_cast,
+static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
+                           std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
                            std::unordered_set<NodeArg*>& require_type_change,
                            std::deque<NodeIndex>& removed_nodes,
                            size_t level) {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
   if (graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
-        require_cast.insert(node_arg);
+    require_cast[node_arg].push_back(dst_node);
   } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
     if (IsType(*node_arg, TensorProto_DataType_FLOAT)) {
-      require_cast.insert(node_arg);
+      require_cast[node_arg].push_back(dst_node);
     }
   } else if (std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
     if (IsCastTo(node, TensorProto_DataType_FLOAT)) {
       // This Cast node and the Cast node that will be created later will cancel out
-      require_cast.insert(node_arg);
+      require_cast[node_arg].push_back(dst_node);
     } else {
       std::string op_type = node->OpType();
       if (!IsFP16Allow(op_type, level)) {
         // Cannot traverse-up beyond this point
         if (node_arg->Exists() && IsType(*node_arg, TensorProto_DataType_FLOAT)) {
-          require_cast.insert(node_arg);
+          require_cast[node_arg].push_back(dst_node);
         }
       } else {
         // If the node has other float32 output(s) then stop the search.
@@ -224,7 +229,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
           // other output_def and still propagate FP16 cast up the graph.
           if (output_def != node_arg) {
             if (IsType(*output_def, TensorProto_DataType_FLOAT)) {
-              require_cast.insert(node_arg);
+              require_cast[node_arg].push_back(dst_node);
               return;
             }
           }
@@ -233,7 +238,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
           if (IsType(*node_input, TensorProto_DataType_FLOAT) &&
               require_cast.find(node_input) == require_cast.end() &&
               require_type_change.find(node_input) == require_type_change.end()) {
-            SearchUpstream(graph, node_input, require_cast, require_type_change, removed_nodes, level);
+            SearchUpstream(graph, node_input, node, require_cast, require_type_change, removed_nodes, level);
             if (require_cast.find(node_input) == require_cast.end()) {
               require_type_change.insert(node_input);
             }
@@ -250,7 +255,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg,
 // be converted from float to float16 along the way.
 // The recursion only traverses an
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
-                             std::unordered_set<NodeArg*>& require_cast,
+                             std::unordered_map<NodeArg*, std::vector<Node*>>& require_cast,
                              std::unordered_set<NodeArg*>& require_type_change,
                              std::deque<NodeIndex>& removed_nodes,
                              size_t level) {
@@ -259,12 +264,12 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
       std::string op_type = node->OpType();
       if (IsCastTo(node, TensorProto_DataType_FLOAT)) {
         // This Cast node and the Cast node that will be created later will cancel out
-        require_cast.insert(node_arg);
+        require_cast[node_arg].push_back(node);
       } else {
         if (!IsFP16Allow(op_type, level)) {
           if (node_arg->Exists() &&
               IsType(*node_arg, TensorProto_DataType_FLOAT)) {
-            require_cast.insert(node_arg);
+            require_cast[node_arg].push_back(node);
           }
         } else {
           // If the node has other float32 inputs then stop the search
@@ -273,7 +278,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
             // convert initializers if any from float to float16.
             if (input_def != node_arg) {
               if (IsType(*input_def, TensorProto_DataType_FLOAT)) {
-                require_cast.insert(node_arg);
+                require_cast[node_arg].push_back(node);
                 return;
               }
             }
@@ -292,8 +297,8 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
       }
     }
   }
-  if (graph.IsOutput(node_arg)) {
-    require_cast.insert(node_arg);
+  if (graph.IsOutput(node_arg) && require_cast.find(node_arg) == require_cast.end()) {
+    require_cast.insert(std::make_pair(node_arg, std::vector<Node*>()));
   }
 }
 
@@ -301,9 +306,10 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
 // Collects all the names from the pointers of the objects stores in the container class C
 // the class should have a member functions returning a string (or a ref).
 template <typename C, typename T = typename C::value_type>
-static std::string ConcatNames(C const& items) {
+static std::string ConcatNames(
+    C const& items, std::string (*f)(const T& n) = [](const T& n) { return n->Name(); }) {
   std::vector<std::string> names;
-  std::transform(items.begin(), items.end(), back_inserter(names), [](T n) { return n->Name(); });
+  std::transform(items.begin(), items.end(), back_inserter(names), f);
   return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; });
 }
 
@@ -345,7 +351,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
                               const logging::Logger& logger) {
   ORT_ENFORCE(nullptr != node);
   bool modified = false;
-  std::unordered_set<NodeArg*> require_cast;
+  std::unordered_map<NodeArg*, std::vector<Node*>> require_cast;
   std::unordered_set<NodeArg*> require_type_change;
   NodeArg* cast_output = node->MutableOutputDefs()[0];
   SearchDownstream(graph, cast_output, require_cast, require_type_change, removed_nodes, level);
@@ -355,7 +361,9 @@ static bool PropagateForwards(Graph& graph, Node* node,
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, false, removed_nodes);
     ChangeTypeToFP16(graph, require_type_change, true, logger);
-    LOGS(logger, VERBOSE) << "PropagateForwwards: Inserted Cast nodes " << ConcatNames<std::unordered_set<NodeArg*>>(require_cast);
+    std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
+    LOGS(logger, VERBOSE) << "PropagateForwwards: Inserted Cast nodes "
+                          << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(require_cast, func);
     modified = true;
   }
   return modified;
@@ -377,18 +385,19 @@ static bool PropagateBackwards(Graph& graph, Node* node,
                                const logging::Logger& logger) {
   bool modified = false;
   ORT_ENFORCE(nullptr != node);
-  std::unordered_set<NodeArg*> require_cast;
+  std::unordered_map<NodeArg*, std::vector<Node*>> require_cast;
   NodeArg* cast_input = node->MutableInputDefs()[0];
   std::unordered_set<NodeArg*> require_type_change = {cast_input};
-  SearchUpstream(graph, cast_input, require_cast, require_type_change, removed_nodes, level);
+  SearchUpstream(graph, cast_input, node, require_cast, require_type_change, removed_nodes, level);
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
     // Remove Cast operation
     LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, true, removed_nodes);
     ChangeTypeToFP16(graph, require_type_change, false, logger);
+    std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
     LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted Cast nodes "
-                          << ConcatNames<std::unordered_set<NodeArg*>>(require_cast);
+                          << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(require_cast, func);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Changed the type from float to float16 : "
                           << ConcatNames<std::unordered_set<NodeArg*>>(require_type_change);
     modified = true;
@@ -522,16 +531,18 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
-      std::unordered_set<NodeArg*> node_args;
+      std::unordered_map<NodeArg*, std::vector<Node*>> node_args_map;
       for (NodeArg* output : node->MutableOutputDefs()) {
         if (output->Exists() && IsType(*output, TensorProto::FLOAT)) {
-          node_args.insert(output);
+          node_args_map.insert(std::make_pair(output, graph.GetMutableConsumerNodes(output->Name())));
         }
       }
-      InsertCastNodes(graph, node_args, false, removed_nodes);
+      InsertCastNodes(graph, node_args_map, false, removed_nodes);
       ChangeTypeToFP16(graph, require_type_change, true, logger);
+      std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
+
       LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Inserted Cast node to "
-                            << ConcatNames(node_args);
+                            << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(node_args_map, func);
       modified = true;
     }
   }
@@ -581,15 +592,17 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
-      std::unordered_set<NodeArg*> node_args;
+      std::unordered_map<NodeArg*, std::vector<Node*>> node_args_map;
       for (NodeArg* input : node->MutableInputDefs()) {
         if (IsType(*input, TensorProto::FLOAT)) {
-          node_args.insert(input);
+          node_args_map.insert(std::make_pair(input, std::vector<Node*>({node})));
         }
       }
-      InsertCastNodes(graph, node_args, true, removed_nodes);
+      InsertCastNodes(graph, node_args_map, true, removed_nodes);
       ChangeTypeToFP16(graph, require_type_change, false, logger);
-      LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted Cast node to " << ConcatNames(node_args);
+      std::string (*func)(const std::pair<const NodeArg*, std::vector<Node*>>& p) = [](const std::pair<const NodeArg*, std::vector<Node*>>& p) { return p.first->Name(); };
+      LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted Cast node to "
+                            << ConcatNames<std::unordered_map<NodeArg*, std::vector<Node*>>>(node_args_map, func);
       modified = true;
     }
   }
