@@ -43,8 +43,9 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-              void* einsum_cuda_assets);
+              size_t num_batches, size_t M, size_t K, size_t N,
+              bool trans_a, bool train_b, bool cst_b,
+              concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
