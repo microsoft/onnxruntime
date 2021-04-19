@@ -186,8 +186,7 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
-    nodes.insert(0,
-        helper.make_node(
+    nodes.append(helper.make_node(
             "MatMul",
             [input_0,
             input_1],
@@ -211,21 +210,18 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             "input_1", input_type, ['N', 'N'])
     ]
     if insert_add:
-        nodes2=[]
+
         input_2 = "input_2"
         add_input_type = flip_type(True, input_type) if cast_inputs != cast_product else input_type
         add_input_type = flip_type(cast_input2, add_input_type)
         inputs.append(helper.make_tensor_value_info(input_2, add_input_type, ['N', 'N']))
         add_output = "sum"
-        nodes3=[]
         if cast_input2:
-            input_2 = do_cast_input2(input_2, nodes3, flip_type(True, add_input_type))
-        nodes2.insert(0, helper.make_node("Add", [product, input_2], [add_output], "Add_0"))
+            input_2 = do_cast_input2(input_2, nodes, flip_type(True, add_input_type))
+        nodes.append(helper.make_node("Add", [product, input_2], [add_output], "Add_0"))
         if cast_sum:
-            add_output = do_cast_sum(add_output, nodes2, flip_type(not cast_input2, add_input_type))
+            add_output = do_cast_sum(add_output, nodes, flip_type(not cast_input2, add_input_type))
         output = add_output
-        nodes2.extend(nodes3)
-        nodes.extend(nodes2)
     outputs = [
         helper.make_tensor_value_info(
             output, output_type, ['N', 'N'])
