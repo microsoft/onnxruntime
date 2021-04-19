@@ -32,7 +32,12 @@ jobs:
       inputs:
         versionSpec: '12.x'
     - script: |
+        sudo mkdir -p /cores
+        sudo chmod a+w /cores
+      displayName: "Prepare /cores directory"
+    - script: |
         set -e
+        ulimit -c unlimited
         pushd .
         brew install libomp ninja
         export CMAKE_GENERATOR=Ninja
@@ -48,6 +53,10 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
+    - script: |
+        find /cores -type f -exec lldb --core {} -o bt -b \;
+      displayName: "Print core file backtraces"
+      condition: succeededOrFailed()
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
       inputs:
