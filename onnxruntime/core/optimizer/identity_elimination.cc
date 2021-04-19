@@ -74,16 +74,8 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   if (p_input_node == nullptr)
     return false;
     
-  // find the edge between input node and this Identity node, and then get its src arg from input node
-  int src_arg_index = -1;
-  for (auto it = p_input_node->OutputEdgesBegin(), end = p_input_node->OutputEdgesEnd(); it != end; ++it) {
-    if (it->GetNode().Index() == node.Index()) {
-      src_arg_index = it->GetSrcArgIndex();
-      break;
-    }
-  }
-
   // skip if the src arg is also a graph output
+  int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());  
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
     return false;
 
