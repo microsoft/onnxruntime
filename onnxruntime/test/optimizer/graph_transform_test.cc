@@ -2915,7 +2915,6 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  Model::Save(*p_model, "t5_fused.onnx");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);

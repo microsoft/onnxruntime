@@ -346,15 +346,18 @@ X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                                              |
 +----------------------------------------------+
 Additional FP16 patterns supported if allow_precision_change_ is true:
+
 X --> Cast1 --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast2 --> Mul
         |                                               ^                  ^
         |                                               |                  |
-        |-----------------------------------------------+                Scale
+        +-----------------------------------------------+                Scale
+
 In this pattern, we change the Mul to compute in the same type as Cast1 instead of Cast2,
 and are able to fuse the graph. We might need to add a Cast to the Scale input 
 of Mul to match the type of Cast1. We add the Cast2 after the fused Layer Norm node.
 This results in the graph:
-X ------> Cast1 --> SimplifiedLayerNormalization --> Cast2
+
+X ------> Cast1 --> SimplifiedLayerNormalization --> Cast
                               ^
 Scale --> Cast ---------------|
 */
