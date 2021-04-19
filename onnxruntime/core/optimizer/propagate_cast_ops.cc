@@ -220,7 +220,13 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
                            std::deque<NodeIndex>& removed_nodes,
                            size_t level) {
   Node* node = graph.GetMutableProducerNode(node_arg->Name());
-  if (graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
+  // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
+  // node then it cannot propagate.
+  size_t consumer_node_count = graph.GetConsumerNodes(node_arg->Name()).size();
+  if (consumer_node_count > 1 ||
+      (nullptr != node &&
+       consumer_node_count > 0 &&
+       graph.GetNodeOutputsInGraphOutputs(*node).size() > 0)) {
     require_cast[node_arg].push_back(dst_node);
   } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
@@ -402,14 +408,6 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   ORT_ENFORCE(nullptr != node);
   NodeArgToConsumerMap require_cast;
   NodeArg* cast_input = node->MutableInputDefs()[0];
-  const Node* cast_input_producer = graph.GetProducerNode(cast_input->Name());  // nullptr for graph outputs
-  // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
-  // node then it cannot propagate.
-  size_t consumer_node_count = graph.GetConsumerNodes(cast_input->Name()).size();
-  if (consumer_node_count > 1 ||
-      (nullptr != cast_input_producer && graph.GetNodeOutputsInGraphOutputs(*cast_input_producer).size() > 0 && consumer_node_count > 0)) {
-    return modified;
-  }
   std::unordered_set<NodeArg*> require_type_change = {cast_input};
   SearchUpstream(graph, cast_input, node, require_cast, require_type_change, removed_nodes, level);
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
