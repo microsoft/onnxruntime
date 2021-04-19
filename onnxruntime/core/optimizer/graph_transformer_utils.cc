@@ -167,7 +167,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(onnxruntime::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+      //transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));
