@@ -920,6 +920,8 @@ void SummonWorkers(PerThread &pt,
                    ThreadPoolParallelSection &ps,
                    unsigned n,
                    const std::function<void(unsigned)> &worker_fn) {
+  assert(n <= num_threads_);
+
   // Initialize the set of preferred worker threads we will use.  We
   // do this once, covering the maximum num_threads_ items, in order
   // to avoid resizing preferred_workers concurrent with access from
