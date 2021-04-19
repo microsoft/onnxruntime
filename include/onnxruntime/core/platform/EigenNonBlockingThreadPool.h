@@ -1410,7 +1410,7 @@ int CurrentThreadId() const EIGEN_FINAL {
       SetGoodWorkerHint(thread_id, true /* Is good */);
     }
     const int log2_spin = 20;
-    const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
+    const int spin_count = 0;//allow_spinning_ ? (1ull<<log2_spin) : 0;
     const int steal_count = spin_count/100;
 
     SetDenormalAsZero(set_denormal_as_zero_);
