@@ -1156,8 +1156,16 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
       }
     } else {
       dispatch_q_idx = Rand(&pt->rand) % num_threads_;
+      unsigned ii = 0;
+      for (; ii < std::min(extra_needed, 4U); ++ii) {
+        enqueue_fn(dispatch_q_idx, worker_fn, true);
+        dispatch_q_idx = (dispatch_q_idx + 1) % num_threads_;
+      }
+      extra_needed -= ii;
     }
-    dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
+    if (extra_needed > 0) {
+      dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
+    }
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
 
