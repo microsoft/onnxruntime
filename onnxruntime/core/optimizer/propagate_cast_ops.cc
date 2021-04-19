@@ -130,12 +130,22 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
   auto consumers = graph.GetMutableConsumerNodes(cast_output->Name());
   int output_index = (nullptr != producer) ? optimizer_utils::IndexOfNodeOutput(*producer, *cast_input) : -1;
   if (producer) {
-    int input_index = optimizer_utils::IndexOfNodeInput(*lead_cast, *cast_input);
-    graph.RemoveEdge(producer->Index(), lead_cast->Index(), output_index, input_index);
-    if (consumers.empty()) {
-      auto& outputs = producer->MutableOutputDefs();
-      std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
-      graph.UpdateProducerNode(cast_output->Name(), producer->Index());
+    if (graph.IsOutput(cast_output)) {
+      // cast_output is a graph output. Replace the cast node with an Identity operator unless node
+      // has other outputs.
+      if (producer->GetOutputEdgesCount() == 1) {
+        int input_index = optimizer_utils::IndexOfNodeInput(*lead_cast, *cast_input);
+        graph.RemoveEdge(producer->Index(), lead_cast->Index(), output_index, input_index);
+        auto& outputs = producer->MutableOutputDefs();
+        std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
+        graph.UpdateProducerNode(cast_output->Name(), producer->Index());
+      } else {
+        (void) graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
+                             "Identity",
+                             "Created as a place-holder for a graph output",
+                             {cast_input},
+                             {cast_output});
+      }
     }
   }
   // Update consumer nodes
