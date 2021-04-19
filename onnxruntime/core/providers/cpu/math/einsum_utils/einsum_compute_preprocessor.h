@@ -97,6 +97,14 @@ struct EinsumEquationPreprocessor {
   bool is_explicit_ = false;
 };
 
+struct DelayedTransposedInfo {
+  onnxruntime::VectorInt64 input_shape;
+  TensorShape output_shape;
+  std::vector<size_t> permutation;
+  inline bool transposed() const { return permutation.size() > 0; }
+  void clear() { permutation.clear(); }
+};
+
 // Prologue:
 // In the sample Einsum string: 'ij, jk'
 // Subscripts are 'ij' and 'jk'
@@ -125,6 +133,7 @@ class EinsumComputePreprocessor final {
   // (returned by GetHomogenizedInputDims()).
   // If a particular entry is null, use raw inputs in conjunction with homogenized_input_dims_.
   std::vector<std::unique_ptr<Tensor>>& GetPreprocessedInputTensors();
+  std::vector<DelayedTransposedInfo>& GetDelayedTransposedInfo();
 
   // Get raw inputs to the op
   const std::vector<const Tensor*>& GetRawInputTensors();
@@ -175,6 +184,7 @@ class EinsumComputePreprocessor final {
 
   // All preprocessed inputs
   std::vector<std::unique_ptr<Tensor>> preprocessed_inputs_;
+  std::vector<DelayedTransposedInfo> preprocessed_delayed_transposed_;
 
   // Holds the preprocessed inputs' homogenized dims
   std::vector<TensorShape> homogenized_input_dims_;

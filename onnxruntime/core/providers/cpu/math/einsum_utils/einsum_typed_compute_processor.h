@@ -46,13 +46,16 @@ class EinsumTypedComputeProcessor {
                                                  const Tensor& right,
                                                  const TensorShape& right_shape_override,
                                                  const std::vector<int64_t>& reduce_dims,
-                                                 bool is_final_pair);
+                                                 bool is_final_pair,
+                                                 DelayedTransposedInfo& info_left,
+                                                 DelayedTransposedInfo& info_right);
 
   // Here we take a "candidate output"(candidate output is a tensor that is a permutation and / or a reshape away from the final output),
   // and after a few operations to get it to the required output structure, copy it to the op's output
   // The candidate output might contain dims that may not be part of the op's output (i.e.) the dims will have to be unsqueezed
   void FinalizeOutput(const Tensor& candidate_output,
-                      const std::vector<int64_t>& ordered_subscript_indices_in_candidate);
+                      const std::vector<int64_t>& ordered_subscript_indices_in_candidate,
+                      DelayedTransposedInfo& info);
 
   // Private members -
   OpKernelContext* context_;

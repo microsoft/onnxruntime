@@ -40,6 +40,10 @@ std::vector<std::unique_ptr<Tensor>>& EinsumComputePreprocessor::GetPreprocessed
   return preprocessed_inputs_;
 }
 
+std::vector<DelayedTransposedInfo>& EinsumComputePreprocessor::GetDelayedTransposedInfo() {
+  return preprocessed_delayed_transposed_;
+}
+
 const std::vector<const Tensor*>& EinsumComputePreprocessor::GetRawInputTensors() {
   return inputs_;
 }
@@ -372,8 +376,8 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
       auto letter_index = EinsumOp::LetterToIndex(subscript_label);
       if (letter_index == -1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "The only subscript labels allowed are lower-cased letters (a-z) and "
-                              "upper-cased letters (A-Z)");
+                               "The only subscript labels allowed are lower-cased letters (a-z) and "
+                               "upper-cased letters (A-Z)");
       }
 
       if (output_letter_to_count[letter_index] != 0) {
@@ -404,6 +408,7 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
 Status EinsumComputePreprocessor::PreprocessInputs() {
   preprocessed_inputs_.reserve(inputs_.size());
   homogenized_input_dims_.reserve(inputs_.size());
+  preprocessed_delayed_transposed_.resize(inputs_.size());
   // As part of input preprocessing we "homogenize" them by
   // 1) Making them all of the same rank
   // 2) The axes order in all the inputs are to be made the same
@@ -456,17 +461,24 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
     // (Identify no-op transpose and prevent triggering the transpose)
     if (EinsumOp::IsTransposeRequired(preprocessed ? preprocessed->Shape().GetDims().size() : inputs_[input_iter]->Shape().GetDims().size(),
                                       permutation)) {
+      /*
       preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
                                          preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims(),
                                          permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
+                                         */
+      size_t i = preprocessed_inputs_.size();
+      preprocessed_delayed_transposed_[i].input_shape = preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims();
+      preprocessed_delayed_transposed_[i].output_shape = homogenized_input_dims;
+      preprocessed_delayed_transposed_[i].permutation = permutation;
+    } else {
+      // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing
+      // If the pre-processed inputs are null, we will use raw inputs in conjunction with "homogenized_input_dims" for
+      // downstream compute
+      if (preprocessed) {  // If the pre-processed version of the operand exists, reshape it to homogenized_input_dims
+        preprocessed->Reshape(homogenized_input_dims);
+      }
     }
 
-    // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing
-    // If the pre-processed inputs are null, we will use raw inputs in conjunction with "homogenized_input_dims" for
-    // downstream compute
-    if (preprocessed) {  // If the pre-processed version of the operand exists, reshape it to homogenized_input_dims
-      preprocessed->Reshape(homogenized_input_dims);
-    }
     preprocessed_inputs_.push_back(std::move(preprocessed));
     homogenized_input_dims_.emplace_back(homogenized_input_dims);
 

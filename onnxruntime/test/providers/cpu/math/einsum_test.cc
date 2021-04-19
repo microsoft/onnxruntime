@@ -713,5 +713,29 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
   test.Run();
 }
 
+TEST(Einsum, EinsumTransposeMatMul1) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bid,nd->bin");
+  std::vector<float> values(30);
+  for (size_t i = 0; i < values.size(); ++i)
+    values[i] = (float)i;
+  test.AddInput<float>("x", {3, 2, 5}, values);
+  test.AddInput<float>("y", {2, 5}, std::vector<float>(values.begin(), values.begin() + 10));
+  test.AddOutput<float>("o", {3, 2, 2}, {30.f, 80.f, 80.f, 255.f, 130.f, 430.f, 180.f, 605.f, 230.f, 780.f, 280.f, 955.f});
+  test.Run();
+}
+
+TEST(Einsum, EinsumTransposeMatMul2) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bid,dn->bin");
+  std::vector<float> values(30);
+  for (size_t i = 0; i < values.size(); ++i)
+    values[i] = (float)i;
+  test.AddInput<float>("x", {3, 2, 5}, values);
+  test.AddInput<float>("y", {5, 2}, std::vector<float>(values.begin(), values.begin() + 10));
+  test.AddOutput<float>("o", {3, 2, 2}, {60.f, 70.f, 160.f, 195.f, 260.f, 320.f, 360.f, 445.f, 460.f, 570.f, 560.f, 695.f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

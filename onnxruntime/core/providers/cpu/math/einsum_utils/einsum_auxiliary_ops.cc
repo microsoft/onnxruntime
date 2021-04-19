@@ -32,8 +32,13 @@ Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+              size_t num_batches, size_t M, size_t K, size_t N,
+              bool trans_a, bool trans_b, bool cst_b,
+              concurrency::ThreadPool* tp,
               void* /*einsum_cuda_assets*/) {
+  if (trans_a || trans_b || cst_b) {
+    throw std::runtime_error("case trans_a || trans_b || cst_b not implemented yet.");
+  }
   for (size_t i = 0; i < num_batches; ++i) {
     math::MatMul<T>(
         static_cast<int>(M),
@@ -303,6 +308,7 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
 template <typename T>
 std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
                                const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                               bool trans_a, bool trans_b, bool cst_b,
                                AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func) {
   // Sanity checks before the actual MatMul
@@ -335,7 +341,9 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
   T* output_data = output->template MutableData<T>();
 
   auto status = device_matmul_func(input_1_data, input_2_data, output_data,
-                                   left_offset, right_offset, output_offset, batches, M, K, N, tp, einsum_cuda_assets);
+                                   left_offset, right_offset, output_offset, batches, M, K, N,
+                                   trans_a, trans_b, cst_b,
+                                   tp, einsum_cuda_assets);
 
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Einsum op: Exception during MatMul operation: ",
@@ -361,12 +369,14 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t
 template Status DeviceHelpers::CpuDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    size_t num_batches, size_t M, size_t K, size_t N,
+    bool trans_a, bool trans_b, bool cst_b,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<float>(
     const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
     const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    bool trans_a, bool trans_b, bool cst_b,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<float>& device_matmul_func);
 
@@ -385,12 +395,14 @@ template std::unique_ptr<Tensor> ReduceSum<float>(
 template Status DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>(
     const int32_t* input_1_data, const int32_t* input_2_data, int32_t* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    size_t num_batches, size_t M, size_t K, size_t N,
+    bool trans_a, bool trans_b, bool cst_b,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<int32_t>(
     const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
     const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    bool trans_a, bool trans_b, bool cst_b,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<int32_t>& device_matmul_func);
 
@@ -410,12 +422,14 @@ template std::unique_ptr<Tensor> ReduceSum<int32_t>(
 template Status DeviceHelpers::CpuDeviceHelpers::MatMul<double>(
     const double* input_1_data, const double* input_2_data, double* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    size_t num_batches, size_t M, size_t K, size_t N,
+    bool trans_a, bool trans_b, bool cst_b, concurrency::ThreadPool* tp,
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<double>(
     const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
     const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    bool trans_a, bool trans_b, bool cst_b,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<double>& device_matmul_func);
 
@@ -435,8 +449,9 @@ template std::unique_ptr<Tensor> ReduceSum<double>(
 template Status DeviceHelpers::CpuDeviceHelpers::MatMul<int64_t>(
     const int64_t* input_1_data, const int64_t* input_2_data, int64_t* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
-    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    size_t num_batches, size_t M, size_t K, size_t N,
+    bool trans_a, bool trans_b, bool cst_b,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template Tensor DeviceHelpers::CpuDeviceHelpers::ReduceSum<int64_t>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
@@ -447,6 +462,7 @@ template Tensor DeviceHelpers::CpuDeviceHelpers::ReduceSum<int64_t>(
 template std::unique_ptr<Tensor> MatMul<int64_t>(
     const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
     const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    bool trans_a, bool trans_b, bool cst_b,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<int64_t>& device_matmul_func);
 
@@ -459,6 +475,7 @@ template std::unique_ptr<Tensor> ReduceSum<int64_t>(
 template std::unique_ptr<Tensor> MatMul<MLFloat16>(
     const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
     const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    bool trans_a, bool trans_b, bool cst_b,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<MLFloat16>& device_matmul_func);
 
