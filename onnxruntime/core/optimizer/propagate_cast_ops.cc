@@ -397,6 +397,14 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   ORT_ENFORCE(nullptr != node);
   std::unordered_map<NodeArg*, std::vector<Node*>> require_cast;
   NodeArg* cast_input = node->MutableInputDefs()[0];
+  const Node* cast_input_producer = graph.GetProducerNode(cast_input->Name());  // nullptr for graph outputs
+  // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
+  // node then it cannot propagate.
+  int consumer_node_count = graph.GetConsumerNodes(cast_input->Name()).size();
+  if (consumer_node_count > 1 ||
+      (nullptr != cast_input_producer && graph.GetNodeOutputsInGraphOutputs(*cast_input_producer).size() > 0 && consumer_node_count > 0)) {
+    return modified;
+  }
   std::unordered_set<NodeArg*> require_type_change = {cast_input};
   SearchUpstream(graph, cast_input, node, require_cast, require_type_change, removed_nodes, level);
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
