@@ -135,57 +135,72 @@ def do_cast_inputs(input_0, input_1, nodes):
         to = input_cast_type)])
     return "cast_"+input_0, "cast_"+input_1
 def do_transpose_inputs(input_0, input_1, nodes):
-    nodes.extend([helper.make_node("Transpose", [input_0], ["transpose_"+input_0], "Transpose_0"),
-                    helper.make_node("Transpose", [input_1], ["transpose_"+input_1], "Transpose_1")])
-    return "transpose_"+input_0, "transpose_"+input_1
+    nodes.extend([helper.make_node("Transpose", [input_0], ["input_transpose_0"], "Transpose_0"),
+                    helper.make_node("Transpose", [input_1], ["input_transpose_1"], "Transpose_1")])
+    return "input_transpose_0", "input_transpose_1"
+
 def do_cast_product(product, nodes):
-    nodes.append(helper.make_node(
+    nodes.insert(1,helper.make_node(
         "Cast",
         [product],
-        ["cast" + product],
+        ["product_cast"],
         "Cast_2",
         to = TensorProto.FLOAT16))
-    return "cast_"+product
+    return "product_cast"
 
-def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2):
-    nodes = [
+def do_transpose_product(product, nodes):
+    if transpose_product:
+        nodes.append(helper.make_node("Transpose", [product], ["product_transpose"], "Transpose_2"))
+    return "product_transpose"
+
+def do_cast_sum(sum, nodes, type):
+    nodes.append(helper.make_node(
+        "Cast",
+        [sum],
+        ["cast_sum"],
+        "Cast_3",
+        to = type))
+    return "cast_sum"
+
+def do_cast_input2(input_2, nodes, type):
+    nodes.append(helper.make_node(
+        "Cast",
+        [input_2],
+        ["cast_"+input_2],
+        "Cast_4",
+        to = type))
+    return "cast_"+input_2
+
+def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2, transpose_inputs_before_cast=False):
+    input_0 = "input_0"
+    input_1 = "input_1"
+    product = "product"
+    nodes = []
+    if transpose_inputs_before_cast:
+        if transpose_inputs:
+            input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
+        if cast_inputs:
+            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+    else:
+        if cast_inputs:
+            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+        if transpose_inputs:
+            input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
+    nodes.insert(0,
         helper.make_node(
             "MatMul",
-            ["input_transpose_0" if transpose_inputs else ("cast_input_0" if cast_inputs else "input_0"),
-             "input_transpose_1" if transpose_inputs else ("cast_input_1" if cast_inputs else "input_1")],
-            ["product"],
+            [input_0,
+            input_1],
+            [product],
             "MatMul_0")
-    ]
+    )
+    if transpose_product:
+        product = do_transpose_product(product, nodes)
 
     if cast_product:
-        nodes.append(helper.make_node(
-            "Cast",
-             ["product_transpose" if transpose_product else "product"],
-             ["product_cast"],
-             "Cast_2",
-             to = TensorProto.FLOAT16))
+        product = do_cast_product(product, nodes)
 
-    if cast_inputs:
-        input_cast_type = TensorProto.FLOAT
-        nodes.extend([helper.make_node(
-            "Cast",
-            ["input_0"],
-            ["cast_input_0"],
-            "Cast_0",
-            to = TensorProto.FLOAT),
-        helper.make_node(
-            "Cast",
-            ["input_1"],
-            ["cast_input_1"],
-            "Cast_1",
-            to = TensorProto.FLOAT)])
-
-    if transpose_inputs:
-        nodes.extend([helper.make_node("Transpose", ["cast_input_0" if cast_inputs else "input_0"], ["input_transpose_0"], "Transpose_0"),
-                      helper.make_node("Transpose", ["cast_input_1" if cast_inputs else "input_1"], ["input_transpose_1"], "Transpose_1")])
-
-    if transpose_product:
-        nodes.append(helper.make_node("Transpose", ["product"], ["product_transpose"], "Transpose_2"))
+    output = product
 
     input_type = TensorProto.FLOAT16 if cast_inputs else TensorProto.FLOAT
     output_type = flip_type(cast_sum, flip_type(cast_product, flip_type(cast_inputs, input_type)))
@@ -196,28 +211,24 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             "input_1", input_type, ['N', 'N'])
     ]
     if insert_add:
+        nodes2=[]
+        input_2 = "input_2"
         add_input_type = flip_type(True, input_type) if cast_inputs != cast_product else input_type
         add_input_type = flip_type(cast_input2, add_input_type)
-        inputs.append(helper.make_tensor_value_info("input_2", add_input_type, ['N', 'N']))
-        nodes.append(helper.make_node("Add", ["product_cast" if cast_product else ("product_transpose" if transpose_product else "product"), "cast_input_2" if cast_input2 else "input_2"], ["sum"], "Add_0"))
-        if cast_sum:
-            input2_cast_type = flip_type(True, flip_type(cast_input2, add_input_type))
-            nodes.append(helper.make_node(
-                "Cast",
-                ["sum"],
-                ["cast_sum"],
-                "Cast_3",
-                to = input2_cast_type))
+        inputs.append(helper.make_tensor_value_info(input_2, add_input_type, ['N', 'N']))
+        add_output = "sum"
+        nodes3=[]
         if cast_input2:
-            nodes.append(helper.make_node(
-                "Cast",
-                ["input_2"],
-                ["cast_input_2"],
-                "Cast_4",
-                to = flip_type(True, add_input_type)))
+            input_2 = do_cast_input2(input_2, nodes3, flip_type(True, add_input_type))
+        nodes2.insert(0, helper.make_node("Add", [product, input_2], [add_output], "Add_0"))
+        if cast_sum:
+            add_output = do_cast_sum(add_output, nodes2, flip_type(not cast_input2, add_input_type))
+        output = add_output
+        nodes2.extend(nodes3)
+        nodes.extend(nodes2)
     outputs = [
         helper.make_tensor_value_info(
-            "cast_sum" if cast_sum else "sum" if insert_add else ("product_cast" if cast_product else ("product_transpose" if transpose_product else "product")), output_type, ['N', 'N'])
+            output, output_type, ['N', 'N'])
     ]
 
     save(model_path + ("_transpose_inputs" if transpose_inputs else "")  +
