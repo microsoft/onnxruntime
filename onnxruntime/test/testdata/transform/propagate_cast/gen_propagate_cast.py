@@ -290,7 +290,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
         helper.make_tensor_value_info(
             output_0,  flip_type(True, input_type), ['M', 'N']),
         helper.make_tensor_value_info(
-            output_1,  flip_type(second_matmul, input_type)git reset, ['M', 'N'])
+            output_1,  flip_type(second_matmul, input_type), ['M', 'N'])
     ])
     model_path += ("_transpose_before_cast" if transpose_before_cast else "_transpose_after_cast") if transpose else ""
     model_path +=  "_second_matmul" if second_matmul else ""
