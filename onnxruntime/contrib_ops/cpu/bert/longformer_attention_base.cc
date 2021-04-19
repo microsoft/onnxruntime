@@ -1,13 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime {
-namespace contrib {
-
-void Link_longformer_attention_base() {}
-}  // namespace contrib
-}  // namespace onnxruntime
-
 #include "longformer_attention_base.h"
 
 namespace onnxruntime {
