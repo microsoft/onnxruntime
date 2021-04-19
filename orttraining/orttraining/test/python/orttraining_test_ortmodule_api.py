@@ -1943,7 +1943,8 @@ def test_forward_dynamic_kwargs():
                           # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_0)
                           "model(pos_0, pos_1, *args, kw_1=kw_1, **kwargs)",
                           # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_1)
-                          "model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs)",])
+                          "model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs)",
+                          ])
 def test_forward_call_kwargs_input(forward_statement):
     class KwargsNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
@@ -1976,7 +1977,7 @@ def test_forward_call_kwargs_input(forward_statement):
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
     model = KwargsNet(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-    ort_model = ORTModule(model)
+    model = ORTModule(model)
 
     # Dummy inputs used
     pos_0 = torch.randn(N, D_in, device=device)

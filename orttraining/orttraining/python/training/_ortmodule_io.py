@@ -33,15 +33,12 @@ class _InputInfo(object):
             \tKeyword names:    {self.keyword_names}'''
 
     def flatten(self, args, kwargs):
-        assert len(args) == self.num_positionals
-        assert set(kwargs.keys()) == set(self.keyword_names)
         ret = list(args)
-        for _, kwarg in sorted(kwargs.items()):
+        for _, kwarg in kwargs.items():
             ret.append(kwarg)
         return tuple(ret)
 
     def unflatten(self, flat_args):
-        assert len(flat_args) == self.num_positionals + len(self.keyword_names)
         args = tuple(flat_args[:self.num_positionals])
         kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
         return args, kwargs
@@ -281,6 +278,21 @@ class _FlattenedModule(torch.nn.Module):
 
 
 def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwargs):
+
+    def _add_dynamic_shape(name, input):
+        dynamic_axes[name] = {}
+        for dim_idx in range(len(input.shape)):
+            dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
+        return dynamic_axes
+
+    def _add_input(name, input, onnx_graph, onnx_graph_input_names):
+        if input is not None and (onnx_graph is None or name in onnx_graph_input_names):
+            if input.requires_grad:
+                input_names_require_grad.append(name)
+            input_names.append(name)
+            dynamic_axes.update(_add_dynamic_shape(name, input))
+            input_shape.append(list(input.size()))
+
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
@@ -291,56 +303,34 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     dynamic_axes = {}
     input_names_require_grad = []
     input_shape = []
+    var_positional_idx = 0
 
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
             # VAR_POSITIONAL parameter carries all *args parameters from original forward method
-            var_positional_idx = 0
+
             for args_i in range(input_idx, len(inputs)):
                 name = f'{input_parameter.name}_{var_positional_idx}'
                 var_positional_idx += 1
                 inp = inputs[args_i]
-                if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-                    if inp.requires_grad:
-                        # input_names_require_grad holds all input tensors that have requires_grad
-                        input_names_require_grad.append(name)
-                    input_names.append(name)
-                    dynamic_axes[name] = {}
-                    for dim_idx in range(len(inp.shape)):
-                        dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
-                    input_shape.append(list(inp.size()))
+                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
         elif input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY or\
              input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or\
              input_parameter.kind == inspect.Parameter.KEYWORD_ONLY:
             # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
+            input_idx += var_positional_idx
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-            if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-                if inp.requires_grad:
-                    # input_names_require_grad holds all input tensors that have requires_grad
-                    input_names_require_grad.append(name)
-                input_names.append(name)
-                dynamic_axes[name] = {}
-                for dim_idx in range(len(inp.shape)):
-                    dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
-                input_shape.append(list(inp.size()))
+            _add_input(name, inp, onnx_graph, onnx_graph_input_names)
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name,inp in kwargs.items():
                 if name not in input_names:
-                    if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-                        if inp.requires_grad:
-                            # input_names_require_grad holds all input tensors that have requires_grad
-                            input_names_require_grad.append(name)
-                        input_names.append(name)
-                        dynamic_axes[name] = {}
-                        for dim_idx in range(len(inp.shape)):
-                            dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
-                        input_shape.append(list(inp.size()))
+                    _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
     # Shallow copy is ok as we need the data structure, not the content
     schema = _extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
@@ -351,7 +341,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       dynamic_axes=dynamic_axes,
                       schema=schema,
                       num_positionals=len(inputs),
-                      keyword_names=sorted(kwargs.keys()))
+                      keyword_names=kwargs.keys())
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
