@@ -273,5 +273,10 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
         grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
         grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
+        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
+                                        _logger.LogLevel.INFO : C.Severity.INFO,
+                                        _logger.LogLevel.WARNING : C.Severity.WARNING,
+                                        _logger.LogLevel.ERROR : C.Severity.ERROR,
+                                        _logger.LogLevel.FATAL : C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
