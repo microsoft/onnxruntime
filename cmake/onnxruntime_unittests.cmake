@@ -1014,27 +1014,29 @@ if (onnxruntime_BUILD_JAVA)
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
 
-file(GLOB_RECURSE test_execution_provider_srcs
-  "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
-  "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
-  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-)
+if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+  file(GLOB_RECURSE test_execution_provider_srcs
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
 
-add_library(test_execution_provider SHARED ${test_execution_provider_srcs})
-add_dependencies(test_execution_provider onnxruntime_providers_shared)
-target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
-target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
-target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
-if(APPLE)
-  set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
-elseif(UNIX)
-  set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections")
-elseif(WIN32)
-  set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
-else()
-  message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
+  add_library(test_execution_provider SHARED ${test_execution_provider_srcs})
+  add_dependencies(test_execution_provider onnxruntime_providers_shared)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+  if(APPLE)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
+  elseif(UNIX)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections")
+  elseif(WIN32)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
+  else()
+    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
+  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
