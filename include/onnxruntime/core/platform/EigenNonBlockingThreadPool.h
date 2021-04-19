@@ -920,7 +920,7 @@ void SummonWorkers(PerThread &pt,
                    ThreadPoolParallelSection &ps,
                    unsigned n,
                    const std::function<void(unsigned)> &worker_fn) {
-  assert(n <= num_threads_);
+  assert(n <= (unsigned)(num_threads_+1));
 
   // Initialize the set of preferred worker threads we will use.  We
   // do this once, covering the maximum num_threads_ items, in order
@@ -981,7 +981,9 @@ void SummonWorkers(PerThread &pt,
             assert(idx >= 0 &&
                    ((PerThread*)ps.submitter_pt) &&
                    idx < (int)((PerThread*)ps.submitter_pt)->preferred_workers.size());
-            ((PerThread*)ps.submitter_pt)->preferred_workers[idx] = GetPerThread()->thread_id;
+            int my_idx = GetPerThread()->thread_id;
+            assert(my_idx >= 0 && my_idx < (int)((PerThread*)ps.submitter_pt)->preferred_workers.size());
+            ((PerThread*)ps.submitter_pt)->preferred_workers[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
