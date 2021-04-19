@@ -19,6 +19,8 @@ else()
     message(FATAL_ERROR "Objective-C++ is not supported.")
 endif()
 
+set(OBJC_ROOT "${REPO_ROOT}/objc")
+
 set(OBJC_ARC_COMPILE_OPTIONS
     "-fobjc-arc"
     "-fobjc-arc-exceptions")
@@ -28,28 +30,37 @@ set(OBJC_ARC_COMPILE_OPTIONS
 # these headers are the public interface
 # explicitly list them here so it is easy to see what is included
 set(onnxruntime_objc_headers
-    "${REPO_ROOT}/objc/include/onnxruntime.h"
-    "${REPO_ROOT}/objc/include/onnxruntime/ort_env.h"
-    "${REPO_ROOT}/objc/include/onnxruntime/ort_session.h"
-    "${REPO_ROOT}/objc/include/onnxruntime/ort_value.h"
-    )
+    "${OBJC_ROOT}/include/onnxruntime.h"
+    "${OBJC_ROOT}/include/onnxruntime/ort_env.h"
+    "${OBJC_ROOT}/include/onnxruntime/ort_session.h"
+    "${OBJC_ROOT}/include/onnxruntime/ort_value.h")
 
 file(GLOB onnxruntime_objc_srcs
-    "${REPO_ROOT}/objc/src/*.h"
-    "${REPO_ROOT}/objc/src/*.m"
-    "${REPO_ROOT}/objc/src/*.mm")
+    "${OBJC_ROOT}/src/*.h"
+    "${OBJC_ROOT}/src/*.m"
+    "${OBJC_ROOT}/src/*.mm")
 
-source_group(TREE "${REPO_ROOT}/objc"
-    FILES ${onnxruntime_objc_headers} ${onnxruntime_objc_srcs})
+# files common to implementation and test targets
+set(onnxruntime_objc_common_srcs
+    "${OBJC_ROOT}/common/assert_arc_enabled.mm")
 
-add_library(onnxruntime_objc SHARED ${onnxruntime_objc_headers} ${onnxruntime_objc_srcs})
+source_group(TREE "${OBJC_ROOT}"
+    FILES
+        ${onnxruntime_objc_headers}
+        ${onnxruntime_objc_srcs}
+        ${onnxruntime_objc_common_srcs})
+
+add_library(onnxruntime_objc SHARED
+    ${onnxruntime_objc_headers}
+    ${onnxruntime_objc_srcs}
+    ${onnxruntime_objc_common_srcs})
 
 target_include_directories(onnxruntime_objc
     PUBLIC
-        "${REPO_ROOT}/objc/include"
+        "${OBJC_ROOT}/include"
     PRIVATE
         "${OPTIONAL_LITE_INCLUDE_DIR}"
-        "${REPO_ROOT}/objc")
+        "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
@@ -71,19 +82,21 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     # onnxruntime_test_objc target
 
     file(GLOB onnxruntime_objc_test_srcs
-        "${REPO_ROOT}/objc/test/*.h"
-        "${REPO_ROOT}/objc/test/*.m"
-        "${REPO_ROOT}/objc/test/*.mm")
+        "${OBJC_ROOT}/test/*.h"
+        "${OBJC_ROOT}/test/*.m"
+        "${OBJC_ROOT}/test/*.mm")
 
-    source_group(TREE "${REPO_ROOT}/objc"
+    source_group(TREE "${OBJC_ROOT}"
         FILES ${onnxruntime_objc_test_srcs})
 
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
-        ${onnxruntime_objc_test_srcs})
+        ${onnxruntime_objc_headers}
+        ${onnxruntime_objc_test_srcs}
+        ${onnxruntime_objc_common_srcs})
 
     target_include_directories(onnxruntime_objc_test
         PRIVATE
-            "${REPO_ROOT}/objc")
+            "${OBJC_ROOT}")
 
     target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
@@ -92,7 +105,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${REPO_ROOT}/objc/test/testdata"
+            "${OBJC_ROOT}/test/testdata"
             "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources/testdata")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
