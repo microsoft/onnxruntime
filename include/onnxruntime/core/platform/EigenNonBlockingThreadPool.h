@@ -1157,7 +1157,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
     } else {
       dispatch_q_idx = Rand(&pt->rand) % num_threads_;
       unsigned ii = 0;
-      for (; ii < std::min(extra_needed, 4U); ++ii) {
+      for (; ii < std::min(extra_needed, 8U); ++ii) {
         enqueue_fn(dispatch_q_idx, worker_fn, true);
         dispatch_q_idx = (dispatch_q_idx + 1) % num_threads_;
       }
