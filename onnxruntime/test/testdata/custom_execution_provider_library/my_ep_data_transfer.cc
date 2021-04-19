@@ -1,4 +1,5 @@
-
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "my_ep_data_transfer.h"
 
 namespace onnxruntime {

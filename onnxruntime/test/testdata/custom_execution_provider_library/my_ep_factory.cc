@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "my_ep_factory.h"
 #include "my_execution_provider.h"
 #include "core/providers/shared/common.h"
