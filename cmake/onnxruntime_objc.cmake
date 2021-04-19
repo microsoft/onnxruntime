@@ -19,8 +19,9 @@ else()
     message(FATAL_ERROR "Objective-C++ is not supported.")
 endif()
 
-SET(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
-SET(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES")
+set(OBJC_ARC_COMPILE_OPTIONS
+    "-fobjc-arc"
+    "-fobjc-arc-exceptions")
 
 # onnxruntime_objc target
 
@@ -54,6 +55,8 @@ find_library(FOUNDATION_LIB Foundation REQUIRED)
 
 target_link_libraries(onnxruntime_objc PUBLIC onnxruntime ${FOUNDATION_LIB})
 
+target_compile_options(onnxruntime_objc PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
+
 set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK TRUE
     VERSION "1.0.0"
@@ -81,6 +84,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     target_include_directories(onnxruntime_objc_test
         PRIVATE
             "${REPO_ROOT}/objc")
+
+    target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
     set_target_properties(onnxruntime_objc_test PROPERTIES
         FOLDER "ONNXRuntimeTest")
