@@ -67,7 +67,7 @@ struct TrainingParameters {
   bool enable_adasum = false;
 
   // transformation
-  int propagate_cast_ops_level = 1;
+  int propagate_cast_ops_level = -1;
   std::vector<std::string> propagate_cast_ops_allow;
   bool allow_layer_norm_mod_precision = false;
 
@@ -524,6 +524,14 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",
       R"pbdoc(Configuration information for module graph builder.)pbdoc");
+
+  py::enum_<Severity>(m, "Severity", py::arithmetic(), py::module_local())
+      .value("VERBOSE", logging::Severity::kVERBOSE)
+      .value("INFO", logging::Severity::kINFO)
+      .value("WARNING", logging::Severity::kWARNING)
+      .value("ERROR", logging::Severity::kERROR)
+      .value("FATAL", logging::Severity::kFATAL);
+
   module_graph_builder_config.def(py::init())
       .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
@@ -531,7 +539,8 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("use_invertible_layernorm_grad",
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
-      .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config);
+      .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
+      .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
                                       R"pbdoc(The information of split graphs for frontend.)pbdoc");
