@@ -381,7 +381,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
 
-  if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
+  if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput &&
+      per_alloc_plan.alloc_kind != AllocKind::kAllocatedExternally) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
       auto block = pattern->GetBlock(ort_value_index);
@@ -646,9 +647,13 @@ bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   if (planner_) {
-    // don't trace the output tensors.
+    // don't trace the output tensors or external outputs.
     auto& allocation_plan = GetAllocationPlan(ort_value_idx);
-    if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput) return;
+    if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput ||
+        allocation_plan.alloc_kind == AllocKind::kAllocatedExternally) {
+      return;
+    }
+
     auto status = planner_->TraceAllocation(ort_value_idx, size);
     if (!status.IsOK())
       LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for ort_value_idx=" << ort_value_idx

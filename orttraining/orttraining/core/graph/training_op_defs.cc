@@ -2313,6 +2313,79 @@ Return true if all elements are true and false otherwise.
           j++;
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ExternalFunctionOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ExternalFunctionOp")
+      .Input(0, "inputs", "External function inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "External function outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of external function.", AttributeProto::STRING)
+      .Attr("output_types_propagation",
+            "The input indices from which to propagate output types. "
+            "If it's negative number x, it means the output type is -x.",
+            AttributeProto::INTS)
+      .Attr("grad_output_indices_as_backward_inputs", "grad output indices as backward inputs.", AttributeProto::INTS,
+            false)
+      .Attr("input_indices_as_backward_inputs", "input indices as backward inputs.", AttributeProto::INTS, false)
+      .Attr("output_indices_as_backward_inputs", "output indices as backward inputs.", AttributeProto::INTS, false)
+      .Attr("grad_input_indices_as_backward_outputs", "grad input indices as backward outputs.", AttributeProto::INTS,
+            false)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected output types.
+        const auto output_types_propagation_proto = ctx.getAttribute("output_types_propagation");
+        // This is a required field.
+        ORT_ENFORCE(output_types_propagation_proto,
+                    "ExternalFunctionOp's must have \"output_types_propagation\" attribute.");
+        ORT_ENFORCE(
+            static_cast<size_t>(output_types_propagation_proto->ints_size()) == ctx.getNumOutputs(),
+            "ExternalFunctionOp's output list and \"output_types_propagation\" attribute should have same length.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          int64_t value = output_types_propagation_proto->ints().at(i);
+          if (value >= 0) {
+            propagateElemTypeFromInputToOutput(ctx, value, i);
+          } else {
+            updateOutputElemType(ctx, i, -value);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ExternalFunctionOpGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Wrapper of Pytorch's autograd.Function's backward implementaiton.")
+      .Input(0, "inputs", "Inputs of external function's gradient op.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "Outputs of external function's gradient op.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of external function, should be same as its corresponding forward op.",
+            AttributeProto::STRING)
+      .Attr("output_types", "Output types of external function's gradient op.", AttributeProto::INTS)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "ExternalFunctionOpGrad's must have \"output_types\" attribute.");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
+                    "ExternalFunctionOpGrad's output list and \"output_types\" attribute should have same length.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, output_types_proto->ints().at(i));
+        }
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

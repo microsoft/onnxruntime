@@ -122,6 +122,9 @@ class GraphExecutionManager(ABC):
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
+        _utils._load_aten_functions_cpp_extension(self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
+
+
     @abstractmethod
     def forward(self):
         """Executes the forward method for ORTModule
@@ -232,7 +235,8 @@ class GraphExecutionManager(ABC):
                                   dynamic_axes=self._input_info.dynamic_axes,
                                   verbose=self._loglevel < _logger.LogLevel.WARNING,
                                   export_params=False,
-                                  keep_initializers_as_inputs=True)
+                                  keep_initializers_as_inputs=True,
+                                  custom_opsets={'com.microsoft': 1})
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 

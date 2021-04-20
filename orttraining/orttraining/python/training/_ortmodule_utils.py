@@ -9,6 +9,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
 import torch
+import onnxruntime
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
@@ -77,3 +78,35 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=_utils.get_device_index(device))
+
+
+def _load_aten_functions_cpp_extension(verbosity, is_rocm_pytorch):
+    aten_functions_cpp_source = """
+#include <torch/torch.h>
+#include <ATen/DLConvertor.h>
+
+DLManagedTensor* aten_embedding(const DLManagedTensor* weight, const DLManagedTensor* indices, int64_t padding_idx,
+                                bool scale_grad_by_freq) {
+  return at::toDLPack(
+      at::embedding(at::fromDLPack(weight), at::fromDLPack(indices), padding_idx, scale_grad_by_freq, false));
+}
+
+DLManagedTensor* aten_embedding_backward(const DLManagedTensor* grad, const DLManagedTensor* weight,
+                                         const DLManagedTensor* indices, int64_t padding_idx, bool scale_grad_by_freq) {
+  return at::toDLPack(at::embedding_backward(at::fromDLPack(grad), at::fromDLPack(indices),
+                                             at::fromDLPack(weight).size(0), padding_idx, scale_grad_by_freq, false));
+}
+
+size_t aten_embedding_address() { return reinterpret_cast<size_t>(&aten_embedding); }
+size_t aten_embedding_backward_address() { return reinterpret_cast<size_t>(&aten_embedding_backward); }
+    """
+
+    aten_functions_cpp_extension = load_inline(name='inline_extension_aten_functions', cpp_sources=[aten_functions_cpp_source],
+                                               extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
+                                               functions=['aten_embedding_address',
+                                                          'aten_embedding_backward_address'],
+                                               verbose=verbosity, with_cuda=True)
+
+    onnxruntime.register_external_function("aten::embedding",
+                                           str(aten_functions_cpp_extension.aten_embedding_address()),
+                                           str(aten_functions_cpp_extension.aten_embedding_backward_address()))

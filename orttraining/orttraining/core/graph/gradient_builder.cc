@@ -1553,5 +1553,73 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetExternalFunctionOpGradient) {
+  const auto& src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  attrs.emplace_back(MakeAttribute("name", src_attrs.at("name").s()));
+  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
+    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
+  }
+
+  std::vector<int64_t> grad_output_indices_as_backward_inputs;
+  if (src_attrs.find("grad_output_indices_as_backward_inputs") != src_attrs.end()) {
+    for (const auto value : src_attrs.at("grad_output_indices_as_backward_inputs").ints()) {
+      grad_output_indices_as_backward_inputs.emplace_back(value);
+    }
+  }
+
+  std::vector<int64_t> input_indices_as_backward_inputs;
+  if (src_attrs.find("input_indices_as_backward_inputs") != src_attrs.end()) {
+    for (const auto value : src_attrs.at("input_indices_as_backward_inputs").ints()) {
+      input_indices_as_backward_inputs.emplace_back(value);
+    }
+  }
+
+  std::vector<int64_t> output_indices_as_backward_inputs;
+  if (src_attrs.find("output_indices_as_backward_inputs") != src_attrs.end()) {
+    for (const auto value : src_attrs.at("output_indices_as_backward_inputs").ints()) {
+      output_indices_as_backward_inputs.emplace_back(value);
+    }
+  }
+
+  std::vector<int64_t> grad_input_indices_as_backward_outputs;
+  if (src_attrs.find("grad_input_indices_as_backward_outputs") != src_attrs.end()) {
+    for (const auto value : src_attrs.at("grad_input_indices_as_backward_outputs").ints()) {
+      grad_input_indices_as_backward_outputs.emplace_back(value);
+    }
+  }
+
+  std::vector<int64_t> grad_output_types;
+  std::vector<ArgDef> input_args;
+  std::vector<ArgDef> output_args;
+
+  for (const auto value : grad_output_indices_as_backward_inputs) {
+    input_args.emplace_back(GO(static_cast<size_t>(value)));
+  }
+
+  for (const auto value : input_indices_as_backward_inputs) {
+    input_args.emplace_back(I(static_cast<size_t>(value)));
+  }
+
+  for (const auto value : output_indices_as_backward_inputs) {
+    input_args.emplace_back(O(static_cast<size_t>(value)));
+  }
+
+  for (const auto value : grad_input_indices_as_backward_outputs) {
+    size_t idx = static_cast<size_t>(value);
+    if (IsGradientRequiredForSrcNodeInput(idx)) {
+      output_args.emplace_back(GI(idx));
+    } else {
+      output_args.emplace_back(ArgDef("", nullptr));
+    }
+
+    grad_output_types.emplace_back(IElemType(idx));
+  }
+
+  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+  return std::vector<NodeDef>{NodeDef(OpDef{"ExternalFunctionOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

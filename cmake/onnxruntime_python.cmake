@@ -38,8 +38,6 @@ set(onnxruntime_pybind_srcs_pattern
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind_srcs_pattern
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.h"
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
   )
