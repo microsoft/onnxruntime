@@ -2004,11 +2004,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addGlobalMethods(m, env);
   addObjectMethods(m, env);
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  //the return status doesn't matter;
   if(!InitProvidersSharedLibrary()){
-    throw std::runtime_error("Init providers shared library failed!");
+    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
+#endif
   
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);

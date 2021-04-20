@@ -1014,7 +1014,8 @@ if (onnxruntime_BUILD_JAVA)
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
 
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
   file(GLOB_RECURSE test_execution_provider_srcs
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
