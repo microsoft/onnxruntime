@@ -258,16 +258,16 @@ stages:
         condition: eq(${{ parameters.cuda_version}}, '10.2')
         displayName: 'Set variables for Cuda10.2'
 
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            variables = {
-              "DockerFile": "Dockerfile.manylinux2014_training_cuda11_1",
-              "CudaVersion": "11.1",
-            }
-        condition: eq(parameters.cuda_version, '11.1')
-        displayName: 'Set variables for Cuda11.1'
+      # - task: PythonScript@0
+      #   inputs:
+      #     scriptSource: inline
+      #     script: |
+      #       variables = {
+      #         "DockerFile": "Dockerfile.manylinux2014_training_cuda11_1",
+      #         "CudaVersion": "11.1",
+      #       }
+      #   condition: eq(parameters.cuda_version, '11.1')
+      #   displayName: 'Set variables for Cuda11.1'
 
       - template: get-docker-image-steps.yml
         parameters:
