@@ -1,22 +1,27 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if (${CMAKE_VERSION} VERSION_LESS "3.18")
+if(${CMAKE_VERSION} VERSION_LESS "3.18")
     message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
 endif()
 
 check_language(OBJC)
-if (CMAKE_OBJC_COMPILER)
+if(CMAKE_OBJC_COMPILER)
     enable_language(OBJC)
 else()
     message(FATAL_ERROR "Objective-C is not supported.")
 endif()
 
 check_language(OBJCXX)
-if (CMAKE_OBJCXX_COMPILER)
+if(CMAKE_OBJCXX_COMPILER)
     enable_language(OBJCXX)
 else()
     message(FATAL_ERROR "Objective-C++ is not supported.")
+endif()
+
+if(onnxruntime_DEV_MODE)
+    string(APPEND CMAKE_OBJC_FLAGS " -Werror")
+    string(APPEND CMAKE_OBJCXX_FLAGS " -Werror")
 endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objc")
@@ -76,7 +81,7 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FOLDER "ONNXRuntime"
     CXX_STANDARD 17) # TODO remove when everything else moves to 17
 
-if (onnxruntime_BUILD_UNIT_TESTS)
+if(onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)
 
     # onnxruntime_test_objc target
