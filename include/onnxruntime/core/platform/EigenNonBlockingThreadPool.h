@@ -927,22 +927,23 @@ void SummonWorkers(PerThread &pt,
   // the worker thread that actually claims an item (e.g., if an item
   // initially assigned to thread T1 is stolen and executed by T2,
   // then T2 is assigned at the new preferred worker).
-  auto preferred_workers = &(pt.preferred_workers);
+  //
+  // Note that the hints are held in the _main_ thread that submits
+  // work to the pool.  We assume that a thread is primarily
+  // submitting work to just one pool, but allow for the pool to
+  // change over time.  Hence we allow the hints vector to grow over
+  // time.
+  std::vector<int> &preferred_workers = pt.preferred_workers;
   static std::atomic<unsigned> next_worker;
-  while ((int)preferred_workers->size() < num_threads_) {
-    preferred_workers->push_back(next_worker++ % num_threads_);
+  while ((int)preferred_workers.size() < num_threads_) {
+    preferred_workers.push_back(next_worker++ % num_threads_);
   }
-  if (!((int)preferred_workers->size() >= (int)num_threads_)) {
-    ::std::cerr << preferred_workers->size() << " -- " << num_threads_ << std::endl;
-  }
-  assert((int)preferred_workers->size() >= (int)num_threads_);
   
   // Identify whether we need to create additional workers.
   // Throughout the threadpool implementation, degrees of parallelism
   // ("n" here) refer to the total parallelism including the main
   // thread.  Hence we consider the number of existing tasks + 1.
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
-
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
 
@@ -955,9 +956,11 @@ void SummonWorkers(PerThread &pt,
       int idx = current_dop + i - 1;
       assert(idx >= 0 && idx < num_threads_);
       
-      // Sticky worker assignment: use our own stats of which
-      // workers previously started work without queuing.
-      int q_idx = (*preferred_workers)[idx] % num_threads_;
+      // Use preferred hints from the worker threads that ran the
+      // previous loop from this thread.  Note that the hints may have
+      // been from a different thread pool, hence we keep within the
+      // current range [0,num_threads_).
+      int q_idx = preferred_workers[idx] % num_threads_;
       if (!(q_idx >= 0 && q_idx < num_threads_)) {
         ::std::cerr << "!!1 " << q_idx << " " << idx << " " << num_threads_ << ::std::endl;
       }
@@ -973,22 +976,22 @@ void SummonWorkers(PerThread &pt,
       Queue& q = td.queue;
       unsigned w_idx;
       auto pr = q.PushBackWithTag([&ps,
-                                   preferred_workers,
+                                   &preferred_workers,
                                    idx,
                                    worker_fn,
                                    this]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
                                     if (!(idx >= 0 && idx < num_threads_)) {
-                                      ::std::cerr << "!!2 " << idx << " " << preferred_workers->size() << " " << num_threads_ << ::std::endl;
+                                      ::std::cerr << "!!2 " << idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
                                     }
-            assert(idx >= 0 && idx < (int)preferred_workers->size());
+            assert(idx >= 0 && idx < (int)preferred_workers.size());
             int my_idx = GetPerThread()->thread_id;
-                                    if (!(my_idx >= 0 && my_idx < (int)preferred_workers->size())) {
-                                      ::std::cerr << "!!3 " << my_idx << " " << preferred_workers->size() << " " << num_threads_ << ::std::endl;
+                                    if (!(my_idx >= 0 && my_idx < (int)preferred_workers.size())) {
+                                      ::std::cerr << "!!3 " << my_idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
                                     }
-            assert(my_idx >= 0 && my_idx < (int)preferred_workers->size());
-            (*preferred_workers)[idx] = my_idx;
+            assert(my_idx >= 0 && my_idx < (int)preferred_workers.size());
+                                    preferred_workers[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
