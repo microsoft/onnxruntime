@@ -4,9 +4,10 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io
-from ._graph_execution_manager import GraphExecutionManager, _run_forward
-from onnxruntime.capi import _pybind_state as C
+from ._graph_execution_manager import GraphExecutionManager, RunStateInfo\
 from ._execution_agent import TrainingAgent
+
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
 import onnx
@@ -22,6 +23,35 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model):
         super().__init__(model)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
+
+    @staticmethod
+    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
+        """Runs the forward graph on execution_session with given model inputs and device"""
+
+        # Assert that the input and model device match
+        _utils._check_same_device(device, "Input argument to forward", *inputs)
+
+        # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
+        #   especially the backward graph outputs.
+        # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
+        # have the need for passing IOBinding.
+        state = C.PartialGraphExecutionState()
+        forward_inputs = C.OrtValueVector()
+        for input in inputs:
+            forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
+
+        forward_outputs = C.OrtValueVector()
+        # Run and return module outputs.
+        execution_session.run_forward(forward_inputs, forward_outputs, state)
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+
+        # Assert that the outputs and model device match
+        _utils._check_same_device(device, "Output argument from forward", *user_outputs)
+
+        output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+        run_info = RunStateInfo(state, output_info)
+        # Return user outputs and forward run information
+        return user_outputs, run_info
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -64,21 +94,20 @@ class TrainingManager(GraphExecutionManager):
             gradient implementation for self.forward_graph.'''
 
             @staticmethod
-            def forward(ctx, *inputs, **kwargs):
+            def forward(ctx, *inputs):
                 '''Performs forward pass based on user input and PyTorch initializer
 
                 Autograd Function's apply() doesn't support keyword arguments,
                 so `*inputs` has all the arguments - keyword arguments converted
-                to positional by the caller.
+                to positional/keywords during `TrainingManager.forward`.
 
                 Module outputs are returned to the user
                 '''
 
-                user_outputs, ctx.run_info = _run_forward(self._execution_agent,
-                                                          self._optimized_onnx_model,
-                                                          self._device,
-                                                          *inputs,
-                                                          **kwargs)
+                user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
+                                                                                           self._optimized_onnx_model,
+                                                                                           self._device,
+                                                                                           *inputs)
 
                 # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                 # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.

@@ -3,14 +3,16 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._execution_agent import InferenceAgent, TrainingAgent
+from packaging import version
+
+# All global constant goes here, before ORTModule is imported
+ONNX_OPSET_VERSION = 12
+MINIMUM_TORCH_VERSION_STR = '1.8.1'
+
 from .ortmodule import ORTModule
-from ._runstateinfo import RunStateInfo
 
 
 # Verify proper PyTorch is installed before proceding to ONNX Runtime initializetion
-from packaging import version
-MINIMUM_TORCH_VERSION_STR = '1.8.1'
 try:
     import torch
     torch_version = version.parse(torch.__version__.split('+')[0])
