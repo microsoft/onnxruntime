@@ -4,18 +4,17 @@
 import {expect} from 'chai';
 import {readFile} from 'fs';
 import {onnx as onnxProto} from 'onnx-proto';
-import {InferenceSession} from 'onnxruntime-common';
+import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect, promisify} from 'util';
+import {flags as webglFlags} from '../lib/backend-onnxjs';
 
-import * as api from '../lib/api';
-import {fromInternalTensor, toInternalTensor} from '../lib/api/tensor-impl-utils';
-import {Attribute} from '../lib/attribute';
-import {Backend, InferenceHandler, SessionHandler} from '../lib/backend';
-import {createWebGLContext} from '../lib/backends/webgl/webgl-context-factory';
-import {Logger, Profiler} from '../lib/instrument';
-import {Operator} from '../lib/operators';
-import {Tensor} from '../lib/tensor';
+import {Attribute} from '../lib/onnxjs/attribute';
+import {InferenceHandler, resolveBackend, SessionHandler} from '../lib/onnxjs/backend';
+import {createWebGLContext} from '../lib/onnxjs/backends/webgl/webgl-context-factory';
+import {Logger, Profiler} from '../lib/onnxjs/instrument';
+import {Operator} from '../lib/onnxjs/operators';
+import {Tensor} from '../lib/onnxjs/tensor';
 
 import {base64toBuffer, createMockGraph} from './test-shared';
 import {Test} from './test-types';
@@ -37,6 +36,108 @@ const ONNXRUNTIME_THRESHOLD_RELATIVE_ERROR = 1.00001;
  */
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
 
+function toInternalTensor(tensor: ort.Tensor): Tensor {
+  return new Tensor(
+      tensor.dims, tensor.type as Tensor.DataType, undefined, undefined, tensor.data as Tensor.NumberType);
+}
+function fromInternalTensor(tensor: Tensor): ort.Tensor {
+  return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
+}
+
+async function loadFile(uri: string): Promise<Uint8Array|ArrayBuffer> {
+  if (typeof fetch === 'undefined') {
+    // node
+    return promisify(readFile)(uri);
+  } else {
+    // browser
+    const response = await fetch(uri);
+    return response.arrayBuffer();
+  }
+}
+
+async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
+  const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
+  const tensorProto = onnxProto.TensorProto.decode(Buffer.from(buf));
+  const tensor = Tensor.fromProto(tensorProto);
+  // add property 'name' to the tensor object.
+  const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;
+  namedTensor.name = tensorProto.name;
+  return namedTensor;
+}
+
+async function loadMlProto(_uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
+  return Promise.reject('not supported');
+}
+
+async function loadTensors(testCase: Test.ModelTestCase, fileCache?: FileCacheBuffer) {
+  const inputs: Test.NamedTensor[] = [];
+  const outputs: Test.NamedTensor[] = [];
+  let dataFileType: 'none'|'pb'|'npy' = 'none';
+
+  for (const dataFile of testCase.dataFiles) {
+    const ext = extname(dataFile);
+    if (ext.toLowerCase() === '.pb' || ext.toLowerCase() === '.tpb') {
+      if (dataFileType === 'none') {
+        dataFileType = 'pb';
+      }
+      if (dataFileType !== 'pb') {
+        throw new Error(`cannot load data from test case "${testCase.name}", multiple types of files detected`);
+      }
+
+      const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
+      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
+          await loadMlProto(uriOrData);                                           // (TBD)
+
+      const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
+
+      if (dataFileBasename.indexOf('input') !== -1) {
+        inputs.push(t);
+      } else if (dataFileBasename.indexOf('output') !== -1) {
+        outputs.push(t);
+      }
+    } else {
+      throw new Error(`${ext} file is not supported now`);
+    }
+  }
+
+  testCase.inputs = inputs;
+  testCase.outputs = outputs;
+}
+
+async function initializeSession(
+    modelFilePath: string, backendHint: string, profile: boolean,
+    fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
+  const preloadModelData: Uint8Array|undefined =
+      fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
+  Logger.verbose(
+      'TestRunner',
+      `Start to load model from file: ${modelFilePath}${
+          preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
+
+  const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
+  const sessionConfig = {executionProviders: [backendHint], profiler: profilerConfig};
+  let session: ort.InferenceSession;
+
+  try {
+    if (preloadModelData) {
+      session = await ort.InferenceSession.create(preloadModelData, sessionConfig);
+    } else {
+      session = await ort.InferenceSession.create(modelFilePath, sessionConfig);
+    }
+  } catch (e) {
+    Logger.error('TestRunner', `Failed to load model from file: ${modelFilePath}. Error: ${inspect(e)}`);
+    throw e;
+  }
+
+  if (profile) {
+    session.startProfiling();
+  }
+
+  Logger.verbose('TestRunner', `Finished loading model from file: ${modelFilePath}`);
+
+  return session;
+}
+
 type FileCacheBuffer = {
   [filePath: string]: Uint8Array;
 };
@@ -45,7 +146,7 @@ type FileCacheBuffer = {
  */
 export class ModelTestContext {
   private constructor(
-      readonly session: api.InferenceSession,
+      readonly session: ort.InferenceSession,
       readonly backend: string,
       readonly perfData: ModelTestContext.ModelTestPerfData,
       private readonly profile: boolean,
@@ -135,212 +236,6 @@ export declare namespace ModelTestContext {
     count: number;
   }
 }
-async function loadTensors(testCase: Test.ModelTestCase, fileCache?: FileCacheBuffer) {
-  const inputs: Test.NamedTensor[] = [];
-  const outputs: Test.NamedTensor[] = [];
-  let dataFileType: 'none'|'pb'|'npy' = 'none';
-
-  for (const dataFile of testCase.dataFiles) {
-    const ext = extname(dataFile);
-    if (ext.toLowerCase() === '.pb' || ext.toLowerCase() === '.tpb') {
-      if (dataFileType === 'none') {
-        dataFileType = 'pb';
-      }
-      if (dataFileType !== 'pb') {
-        throw new Error(`cannot load data from test case "${testCase.name}", multiple types of files detected`);
-      }
-
-      const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
-      const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
-          await loadMlProto(uriOrData);                                           // (TBD)
-
-      const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
-
-      if (dataFileBasename.indexOf('input') !== -1) {
-        inputs.push(t);
-      } else if (dataFileBasename.indexOf('output') !== -1) {
-        outputs.push(t);
-      }
-    } else {
-      throw new Error(`${ext} file is not supported now`);
-    }
-  }
-
-  testCase.inputs = inputs;
-  testCase.outputs = outputs;
-}
-
-async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
-  const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
-  const tensorProto = onnxProto.TensorProto.decode(Buffer.from(buf));
-  const tensor = Tensor.fromProto(tensorProto);
-  // add property 'name' to the tensor object.
-  const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;
-  namedTensor.name = tensorProto.name;
-  return namedTensor;
-}
-
-async function loadFile(uri: string): Promise<Uint8Array|ArrayBuffer> {
-  if (typeof fetch === 'undefined') {
-    // node
-    return promisify(readFile)(uri);
-  } else {
-    // browser
-    const response = await fetch(uri);
-    return response.arrayBuffer();
-  }
-}
-
-function loadMlProto(_uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
-  return Promise.reject('not supported');
-}
-
-async function initializeSession(
-    modelFilePath: string, backendHint: string, profile: boolean, fileCache?: FileCacheBuffer): InferenceSession {
-  const preloadModelData: Uint8Array|undefined =
-      fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
-  Logger.verbose(
-      'TestRunner',
-      `Start to load model from file: ${modelFilePath}${
-          preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
-
-  const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
-  const sessionConfig: api.InferenceSession.Config = {backendHint, profiler: profilerConfig};
-  const session = new onnx.InferenceSession(sessionConfig);
-
-  if (profile) {
-    session.startProfiling();
-  }
-
-  try {
-    if (preloadModelData) {
-      await session.loadModel(preloadModelData);
-    } else {
-      await session.loadModel(modelFilePath);
-    }
-  } catch (e) {
-    Logger.error('TestRunner', `Failed to load model from file: ${modelFilePath}. Error: ${inspect(e)}`);
-    throw e;
-  }
-
-  Logger.verbose('TestRunner', `Finished loading model from file: ${modelFilePath}`);
-
-  return session;
-}
-
-/**
- * run a single model test case. the inputs/outputs tensors should already been prepared.
- */
-export async function runModelTestSet(context: ModelTestContext, testCase: Test.ModelTestCase): Promise<void> {
-  Logger.verbose('TestRunner', `Start to run test data from folder: ${testCase.name}`);
-  const validator = new TensorResultValidator(context.backend);
-  try {
-    const start = now();
-    const outputs = await context.session.run(testCase.inputs!);
-    const end = now();
-    if (context.perfData.count === 0) {
-      context.perfData.firstRun = end - start;
-    } else {
-      context.perfData.runs.push(end - start);
-    }
-    context.perfData.count++;
-
-    Logger.verbose('TestRunner', `Finished running model from file: ${testCase.name}`);
-    Logger.verbose('TestRunner', ' Stats:');
-    Logger.verbose('TestRunner', `  Input(s): ${testCase.inputs!.length}`);
-    testCase.inputs!.forEach(i => {
-      Logger.verbose('TestRunner', `   '${i.name}': ${i.type}[${i.dims.join(',')}]`);
-    });
-    Logger.verbose('TestRunner', `  Output(s): ${outputs.size}`);
-    outputs.forEach((t, name) => {
-      Logger.verbose('TestRunner', `   '${name}': ${t.type}[${t.dims.join(',')}]`);
-    });
-
-    validator.checkNamedTensorResult(outputs, testCase.outputs!);
-
-    Logger.verbose('TestRunner', '  Result: PASS');
-  } catch (e) {
-    Logger.error('TestRunner', '  Result: FAILED');
-    Logger.error('TestRunner', `Failed to run test data from folder: ${testCase.name}. Error: ${inspect(e)}`);
-    throw e;
-  }
-}
-
-/**
- * a OpTestContext object contains all states in a OpTest
- */
-export class OpTestContext {
-  static profiler = Profiler.create();
-
-  readonly backendHint: string;
-  sessionHandler: SessionHandler;
-  inferenceHandler: InferenceHandler;
-
-  constructor(protected opTest: Test.OperatorTest) {
-    this.backendHint = opTest.backend === 'webgl' ? 'webgl' : 'cpu';
-  }
-  createOperator(): Operator {
-    return initializeOperator(
-        this.sessionHandler, this.opTest.operator, this.opTest.attributes,
-        this.opTest.opsets ?? [{domain: '', version: 7}]);
-  }
-
-  dispose(): void {
-    this.inferenceHandler.dispose();
-    this.sessionHandler.dispose();
-  }
-
-  async init(): Promise<void> {
-    const backend = await Backend(this.backendHint);
-    this.sessionHandler = backend.createSessionHandler({profiler: OpTestContext.profiler});
-    this.inferenceHandler = this.sessionHandler.createInferenceHandler();
-  }
-}
-
-function initializeOperator(
-    sessionHandler: SessionHandler, opType: string, attributeValues: readonly Test.AttributeValue[],
-    opsetImports: readonly Test.OperatorTestOpsetImport[]): Operator {
-  const attributes = new Attribute(undefined);
-  attributeValues.forEach(value => attributes.set(value.name, value.type, value.data));
-  const graph = createMockGraph(opType, attributes);
-  return sessionHandler.resolve(graph.getNodes()[0], opsetImports, graph);
-}
-
-/**
- * run a single operator test case.
- */
-export async function runOpTest(testcase: Test.OperatorTestCase, context: OpTestContext): Promise<void> {
-  await runOpTestcase(
-      context.inferenceHandler, context.createOperator(), testcase, new TensorResultValidator(context.backendHint));
-}
-
-async function runOpTestcase(
-    inferenceHandler: InferenceHandler, operator: Operator, testcase: Test.OperatorTestCase,
-    validator: TensorResultValidator): Promise<void> {
-  testcase.inputs.forEach((input, i) => {
-    Logger.verbose('TestOpRunner', `   Input '${i}': ${input.type}[${input.dims.join(',')}]`);
-  });
-  const inputTensors = testcase.inputs.map(input => createTensor(input.dims, input.type, input.data));
-
-  let results = operator.run(inferenceHandler, inputTensors);
-  if ('then' in results) {
-    results = await results;
-  }
-
-  results.forEach((output, i) => {
-    Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);
-  });
-  const expectedTensors = testcase.outputs.map(output => createTensor(output.dims, output.type, output.data));
-  validator.checkTensorResult(results, expectedTensors);
-}
-
-function createTensor(dims: number[], type: Tensor.DataType, data: number[]): Tensor {
-  const tensor = new Tensor(dims, type);
-  for (let i = 0; i < data.length; ++i) {
-    tensor.data[i] = data[i];
-  }
-  return tensor;
-}
 
 export class TensorResultValidator {
   private readonly absoluteThreshold: number;
@@ -355,7 +250,7 @@ export class TensorResultValidator {
       this.relativeThreshold = CPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'webgl') {
       if (TensorResultValidator.isHalfFloat === undefined) {
-        TensorResultValidator.isHalfFloat = !createWebGLContext(onnx.backend.webgl.contextId).isRenderFloat32Supported;
+        TensorResultValidator.isHalfFloat = !createWebGLContext(webglFlags.contextId).isRenderFloat32Supported;
       }
       if (TensorResultValidator.isHalfFloat) {
         this.maxFloatValue = 65504;
@@ -394,11 +289,11 @@ export class TensorResultValidator {
     }
   }
 
-  checkApiTensorResult(actual: api.Tensor[], expected: api.Tensor[]): void {
+  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
     this.checkTensorResult(actual.map(toInternalTensor), expected.map(toInternalTensor));
   }
 
-  checkNamedTensorResult(actual: ReadonlyMap<string, api.Tensor>, expected: Test.NamedTensor[]): void {
+  checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
     expect(actual.size, 'size of output tensors').to.equal(expected.length);
 
@@ -407,7 +302,7 @@ export class TensorResultValidator {
       expect(actual, 'keys of output tensors').to.contain.keys(expectedOneOutput.name);
     }
 
-    this.checkApiTensorResult(expected.map(i => actual.get(i.name)!), expected);
+    this.checkApiTensorResult(expected.map(i => actual[i.name]!), expected);
   }
 
   // This function check whether 2 tensors should be considered as 'match' or not
@@ -527,4 +422,126 @@ export class TensorResultValidator {
 
     return true;
   }
+}
+
+/**
+ * run a single model test case. the inputs/outputs tensors should already been prepared.
+ */
+export async function runModelTestSet(context: ModelTestContext, testCase: Test.ModelTestCase): Promise<void> {
+  Logger.verbose('TestRunner', `Start to run test data from folder: ${testCase.name}`);
+  const validator = new TensorResultValidator(context.backend);
+  try {
+    const fetches: Record<string, ort.Tensor> = {};
+    testCase.inputs!.forEach((tensor, i) => fetches[context.session.outputNames[i]] = tensor);
+    const start = now();
+    const outputs = await context.session.run(fetches);
+    const end = now();
+    if (context.perfData.count === 0) {
+      context.perfData.firstRun = end - start;
+    } else {
+      context.perfData.runs.push(end - start);
+    }
+    context.perfData.count++;
+
+    Logger.verbose('TestRunner', `Finished running model from file: ${testCase.name}`);
+    Logger.verbose('TestRunner', ' Stats:');
+    Logger.verbose('TestRunner', `  Input(s): ${testCase.inputs!.length}`);
+    testCase.inputs!.forEach(i => {
+      Logger.verbose('TestRunner', `   '${i.name}': ${i.type}[${i.dims.join(',')}]`);
+    });
+    Logger.verbose('TestRunner', `  Output(s): ${outputs.size}`);
+    for (const name in outputs) {
+      if (Object.hasOwnProperty.call(outputs, name)) {
+        const tensor = outputs[name];
+        Logger.verbose('TestRunner', `   '${name}': ${tensor.type}[${tensor.dims.join(',')}]`);
+      }
+    }
+
+    validator.checkNamedTensorResult(outputs, testCase.outputs!);
+
+    Logger.verbose('TestRunner', '  Result: PASS');
+  } catch (e) {
+    Logger.error('TestRunner', '  Result: FAILED');
+    Logger.error('TestRunner', `Failed to run test data from folder: ${testCase.name}. Error: ${inspect(e)}`);
+    throw e;
+  }
+}
+
+function initializeOperator(
+    sessionHandler: SessionHandler, opType: string, attributeValues: readonly Test.AttributeValue[],
+    opsetImports: readonly Test.OperatorTestOpsetImport[]): Operator {
+  const attributes = new Attribute(undefined);
+  attributeValues.forEach(value => attributes.set(value.name, value.type, value.data));
+  const graph = createMockGraph(opType, attributes);
+  return sessionHandler.resolve(graph.getNodes()[0], opsetImports, graph);
+}
+
+/**
+ * a OpTestContext object contains all states in a OpTest
+ */
+export class OpTestContext {
+  static profiler = Profiler.create();
+
+  readonly backendHint: string;
+  sessionHandler: SessionHandler;
+  inferenceHandler: InferenceHandler;
+
+  constructor(protected opTest: Test.OperatorTest) {
+    this.backendHint = opTest.backend === 'webgl' ? 'webgl' : 'cpu';
+  }
+  createOperator(): Operator {
+    return initializeOperator(
+        this.sessionHandler, this.opTest.operator, this.opTest.attributes,
+        this.opTest.opsets ?? [{domain: '', version: 7}]);
+  }
+
+  dispose(): void {
+    this.inferenceHandler.dispose();
+    this.sessionHandler.dispose();
+  }
+
+  async init(): Promise<void> {
+    const backend = await resolveBackend(this.backendHint);
+    this.sessionHandler = backend.createSessionHandler({profiler: OpTestContext.profiler});
+    this.inferenceHandler = this.sessionHandler.createInferenceHandler();
+  }
+}
+
+
+function createTensor(dims: number[], type: Tensor.DataType, data: number[]): Tensor {
+  const tensor = new Tensor(dims, type);
+  for (let i = 0; i < data.length; ++i) {
+    tensor.data[i] = data[i];
+  }
+  return tensor;
+}
+
+async function runOpTestcase(
+    inferenceHandler: InferenceHandler, operator: Operator, testcase: Test.OperatorTestCase,
+    validator: TensorResultValidator): Promise<void> {
+  testcase.inputs.forEach((input, i) => {
+    Logger.verbose('TestOpRunner', `   Input '${i}': ${input.type}[${input.dims.join(',')}]`);
+  });
+  const inputTensors =
+      testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
+
+  let results = operator.run(inferenceHandler, inputTensors);
+  if ('then' in results) {
+    results = await results;
+  }
+
+  results.forEach((output, i) => {
+    Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);
+  });
+  const expectedTensors =
+      testcase.outputs.map(output => createTensor(output.dims, output.type as Tensor.DataType, output.data));
+  validator.checkTensorResult(results, expectedTensors);
+}
+
+/**
+ * run a single operator test case.
+ */
+export async function runOpTest(testcase: Test.OperatorTestCase, context: OpTestContext): Promise<void> {
+  await runOpTestcase(
+      context.inferenceHandler, context.createOperator(), testcase, new TensorResultValidator(context.backendHint));
 }

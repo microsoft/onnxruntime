@@ -136,7 +136,15 @@ run({
   op: opTestGroups,
   log: args.logConfig,
   profile: args.profile,
-  options: {debug: args.debug, cpu: args.cpuOptions, webgl: args.webglOptions, wasm: args.wasmOptions}
+  options: {
+    debug: args.debug,
+    cpuOptions: args.cpuOptions,
+    webglOptions: args.webglOptions,
+    wasmOptions: args.wasmOptions,
+    cpuFlags: args.cpuFlags,
+    webglFlags: args.webglFlags,
+    wasmFlags: args.wasmFlags,
+  }
 });
 npmlog.info('TestRunnerCli', 'Tests completed successfully');
 
@@ -540,36 +548,28 @@ function saveConfig(config: Test.Config) {
   if (config.options.debug !== undefined) {
     setOptions += `ort.env.debug = ${config.options.debug};`;
   }
-  if (config.options.webgl && config.options.webgl.disabled !== undefined) {
-    setOptions += `onnx.backend.webgl.disabled = ${config.options.webgl.disabled};`;
+  if (config.options.webglFlags && config.options.webglFlags.contextId !== undefined) {
+    setOptions += `ort.env.webgl.contextId = ${JSON.stringify(config.options.webglFlags.contextId)};`;
   }
-  if (config.options.wasm && config.options.wasm.disabled !== undefined) {
-    setOptions += `onnx.backend.wasm.disabled = ${config.options.wasm.disabled};`;
+  if (config.options.webglFlags && config.options.webglFlags.matmulMaxBatchSize !== undefined) {
+    setOptions += `ort.env.webgl.matmulMaxBatchSize = ${config.options.webglFlags.matmulMaxBatchSize};`;
   }
-  if (config.options.webgl && config.options.webgl.contextId !== undefined) {
-    setOptions += `onnx.backend.webgl.contextId = ${JSON.stringify(config.options.webgl.contextId)};`;
+  if (config.options.webglFlags && config.options.webglFlags.textureCacheMode !== undefined) {
+    setOptions += `ort.env.webgl.textureCacheMode = ${JSON.stringify(config.options.webglFlags.textureCacheMode)};`;
   }
-  if (config.options.webgl && config.options.webgl.matmulMaxBatchSize !== undefined) {
-    setOptions += `onnx.backend.webgl.matmulMaxBatchSize = ${config.options.webgl.matmulMaxBatchSize};`;
+  if (config.options.webglFlags && config.options.webglFlags.pack !== undefined) {
+    setOptions += `ort.env.webgl.pack = ${JSON.stringify(config.options.webglFlags.pack)};`;
   }
-  if (config.options.webgl && config.options.webgl.textureCacheMode !== undefined) {
-    setOptions += `onnx.backend.webgl.textureCacheMode = ${JSON.stringify(config.options.webgl.textureCacheMode)};`;
+  if (config.options.wasmFlags && config.options.wasmFlags.worker !== undefined) {
+    setOptions += `ort.env.wasm.worker = ${JSON.stringify(config.options.wasmFlags.worker)};`;
   }
-  if (config.options.webgl && config.options.webgl.pack !== undefined) {
-    setOptions += `onnx.backend.webgl.pack = ${JSON.stringify(config.options.webgl.pack)};`;
+  if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
+    setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
   }
-  if (config.options.wasm && config.options.wasm.worker !== undefined) {
-    setOptions += `onnx.backend.wasm.worker = ${JSON.stringify(config.options.wasm.worker)};`;
-  }
-  if (config.options.wasm && config.options.wasm.cpuFallback !== undefined) {
-    setOptions += `onnx.backend.wasm.cpuFallback = ${JSON.stringify(config.options.wasm.cpuFallback)};`;
-  }
-  if (config.options.wasm && config.options.wasm.initTimeout !== undefined) {
-    setOptions += `onnx.backend.wasm.initTimeout = ${JSON.stringify(config.options.wasm.initTimeout)};`;
-  }
-  if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'onnxruntime'))) {
-    setOptions += 'require(\'onnxjs-node\');';
-  }
+  // TODO: support onnxruntime nodejs binding
+  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'onnxruntime'))) {
+  //   setOptions += 'require(\'onnxjs-node\');';
+  // }
 
   fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}
 

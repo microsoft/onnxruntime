@@ -1,14 +1,41 @@
-import {InferenceSession, SessionHandler} from 'onnxruntime-common';
+import {InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
+import {Session} from './session';
+import {Tensor as OnnxjsTensor} from './tensor';
 
 export class OnnxjsSessionHandler implements SessionHandler {
-  async dispose(): Promise<void> {
-    throw new Error('Method not implemented.');
+  constructor(private session: Session) {
+    this.inputNames = this.session.inputNames;
+    this.outputNames = this.session.outputNames;
   }
-  inputNames: string[];
-  outputNames: string[];
+
+  async dispose(): Promise<void> {}
+  inputNames: readonly string[];
+  outputNames: readonly string[];
   async run(
-      _feeds: SessionHandler.FeedsType, _fetches: SessionHandler.FetchesType,
+      feeds: SessionHandler.FeedsType, _fetches: SessionHandler.FetchesType,
       _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
-    throw new Error('Method not implemented.');
+    const inputMap = new Map<string, OnnxjsTensor>();
+    for (const name in feeds) {
+      if (Object.hasOwnProperty.call(feeds, name)) {
+        const feed = feeds[name];
+        inputMap.set(
+            name,
+            new OnnxjsTensor(
+                feed.dims, feed.type as OnnxjsTensor.DataType, undefined, undefined,
+                feed.data as OnnxjsTensor.NumberType));
+      }
+    }
+    const outputMap = await this.session.run(inputMap);
+    const output: SessionHandler.ReturnType = {};
+    outputMap.forEach((tensor, name) => {
+      output[name] = new Tensor(tensor.type, tensor.data, tensor.dims);
+    });
+    return output;
+  }
+  startProfiling(): void {
+    // TODO: implement profiling
+  }
+  endProfiling(): void {
+    // TODO: implement profiling
   }
 }

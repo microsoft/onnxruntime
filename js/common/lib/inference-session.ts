@@ -212,6 +212,20 @@ export interface InferenceSession {
 
   //#endregion
 
+  //#region profiling
+
+  /**
+   * Start profiling.
+   */
+  startProfiling(): void;
+
+  /**
+   * End profiling.
+   */
+  endProfiling(): void;
+
+  //#endregion
+
   //#region metadata
 
   /**

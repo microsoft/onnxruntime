@@ -268,4 +268,12 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       wasm.stackRestore(beforeRunStack);
     }
   }
+
+  startProfiling(): void {
+    // TODO: implement profiling
+  }
+
+  endProfiling(): void {
+    // TODO: implement profiling
+  }
 }

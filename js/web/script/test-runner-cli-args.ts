@@ -7,7 +7,7 @@ import {InferenceSession} from 'onnxruntime-common';
 
 import {WebGLFlags} from '../lib/backend-onnxjs';
 import {WebAssemblyFlags} from '../lib/backend-wasm';
-import {Logger} from '../lib/instrument';
+import {Logger} from '../lib/onnxjs/instrument';
 import {Test} from '../test/test-types';
 
 /* eslint-disable max-len */

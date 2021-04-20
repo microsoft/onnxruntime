@@ -126,7 +126,21 @@ module.exports = {
     }
   }, {
     files: ['web/lib/**/*.ts'], rules: {
-      'no-underscore-dangle': 'off'
+      'no-underscore-dangle': 'off',
+    }
+  }, {
+    files: ['web/lib/onnxjs/**/*.ts'], rules: {
+      // TODO: those rules are useful. should turn on them in future (webgl refactor)
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-use-before-define': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      '@typescript-eslint/restrict-plus-operands': 'off',
+      'import/no-internal-modules': 'off',
+      'prefer-arrow/prefer-arrow-functions': 'off',
+      'no-param-reassign': 'off',
+      'guard-for-in': 'off'
     }
   }, {
     files: ['web/lib/wasm/binding/**/*.ts'], rules: {

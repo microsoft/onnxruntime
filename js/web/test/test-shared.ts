@@ -4,8 +4,8 @@
 import * as fs from 'fs';
 import {promisify} from 'util';
 
-import {Attribute} from '../lib/attribute';
-import {Graph} from '../lib/graph';
+import {Attribute} from '../lib/onnxjs/attribute';
+import {Graph} from '../lib/onnxjs/graph';
 
 export function base64toBuffer(data: string): Uint8Array {
   return Buffer.from(data, 'base64');
@@ -13,11 +13,6 @@ export function base64toBuffer(data: string): Uint8Array {
 
 export function bufferToBase64(buffer: Uint8Array): string {
   return Buffer.from(buffer).toString('base64');
-}
-
-export async function readJsonFile(file: string) {
-  const content = await readFile(file);
-  return JSON.parse(content.toString());
 }
 
 async function readFile(file: string) {
@@ -30,6 +25,11 @@ async function readFile(file: string) {
     const buffer = await response.arrayBuffer();
     return Buffer.from(buffer);
   }
+}
+
+export async function readJsonFile(file: string): Promise<any> {
+  const content = await readFile(file);
+  return JSON.parse(content.toString());
 }
 
 /**

@@ -6,7 +6,7 @@ import '../lib/api';
 
 import * as platform from 'platform';
 
-import {Logger} from '../lib/instrument';
+import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
@@ -35,6 +35,21 @@ if (ONNX_JS_TEST_CONFIG.fileCacheUrls) {
       ModelTestContext.setCache(cache);
     }
   });
+}
+
+function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
+  if (!test.cases || test.cases.length === 0) {
+    return true;
+  }
+  if (!test.condition) {
+    return false;
+  }
+
+  if (!platform.description) {
+    throw new Error('failed to check current platform');
+  }
+  const regex = new RegExp(test.condition);
+  return !regex.test(platform.description);
 }
 
 // ModelTests
@@ -96,19 +111,4 @@ for (const group of ONNX_JS_TEST_CONFIG.op) {
       });
     }
   });
-}
-
-function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
-  if (!test.cases || test.cases.length === 0) {
-    return true;
-  }
-  if (!test.condition) {
-    return false;
-  }
-
-  if (!platform.description) {
-    throw new Error(`failed to check current platform`);
-  }
-  const regex = new RegExp(test.condition);
-  return !regex.test(platform.description);
 }

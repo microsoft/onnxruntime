@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-import {InferenceSession, Tensor} from '..';
-import {Attribute} from '../lib/attribute';
-import {Logger} from '../lib/instrument';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
+
+import {WebGLFlags} from '../lib/backend-onnxjs';
+import {WebAssemblyFlags} from '../lib/backend-wasm';
+import {Attribute} from '../lib/onnxjs/attribute';
+import {Logger} from '../lib/onnxjs/instrument';
 
 export declare namespace Test {
   export interface NamedTensor extends Tensor {
@@ -25,7 +28,7 @@ export declare namespace Test {
   export interface TensorValue {
     data: number[];
     dims: number[];
-    type: Tensor.DataType;
+    type: Tensor.Type;
   }
 
   /**
@@ -103,9 +106,14 @@ export declare namespace Test {
    */
   export interface Options {
     debug?: boolean;
-    cpu?: InferenceSession.CpuExecutionProviderOption;
-    webgl?: InferenceSession.WebGLExecutionProviderOption;
-    wasm?: InferenceSession.WebAssemblyExecutionProviderOption;
+    cpuOptions?: InferenceSession.CpuExecutionProviderOption;
+    cpuFlags?: Record<string, unknown>;
+    cudaOptions?: InferenceSession.CudaExecutionProviderOption;
+    cudaFlags?: Record<string, unknown>;
+    wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
+    wasmFlags?: WebAssemblyFlags;
+    webglOptions?: InferenceSession.WebGLExecutionProviderOption;
+    webglFlags?: WebGLFlags;
   }
 
   /**
