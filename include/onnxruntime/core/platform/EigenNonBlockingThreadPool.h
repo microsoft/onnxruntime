@@ -1147,13 +1147,10 @@ int CurrentThreadId() const EIGEN_FINAL {
   typedef typename Environment::EnvThread Thread;
   struct WorkerData;
 
-  // PerThread objects are allocated in thread-local storage and allocated
-  // on the thread's first call to GetPerThread.  The object should
-  // remain trivially-destructable, with other state placed in the
-  // WorkerData objects that are allocated and cleaned-up explicitly.
-  //
-  // PerThread objects are allocated for all threads that submit work to
-  // the thread pool, in addition to threads within the pool.
+  // PerThread objects are allocated in thread-local storage and
+  // allocated on the thread's first call to GetPerThread.  PerThread
+  // objects are allocated for all threads that submit work to the
+  // thread pool, in addition to threads within the pool.
   //
   // In contrast, the WorkerData objects are allocated only for the
   // threads in the pool, and their lifetime is managed along with the
@@ -1177,9 +1174,6 @@ int CurrentThreadId() const EIGEN_FINAL {
     std::vector<int> preferred_workers;
     PaddingToAvoidFalseSharing padding_2;
   };
-
-  //  static_assert(std::is_trivially_destructible<PerThread>::value,
-  //                "Per-thread state should be trivially destructible");
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {
