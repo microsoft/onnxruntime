@@ -13,14 +13,14 @@ stages:
     enable_mac_cpu: false
     enable_linux_arm: false
 
-- template: templates/py-packaging-stage.yml
-  parameters:
-    build_py_parameters: --enable_training
-    enable_linux_cpu: false
-    enable_linux_gpu: false
-    enable_linux_gpu_training: true
-    cuda_version: "11.1"
-    enable_windows_cpu: false
-    enable_windows_gpu: false
-    enable_mac_cpu: false
-    enable_linux_arm: false
+# - template: templates/py-packaging-stage.yml
+#   parameters:
+#     build_py_parameters: --enable_training
+#     enable_linux_cpu: false
+#     enable_linux_gpu: false
+#     enable_linux_gpu_training: true
+#     cuda_version: "11.1"
+#     enable_windows_cpu: false
+#     enable_windows_gpu: false
+#     enable_mac_cpu: false
+#     enable_linux_arm: false
