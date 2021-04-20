@@ -32,11 +32,10 @@
 namespace onnxruntime {
 namespace session_state_utils {
 
-static common::Status ReserveUsingArenaFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
-                                                        const AllocatorPtr& arena_alloc, /*out*/ void*& p_data) {
-  if (arena_alloc->Info().alloc_type != OrtArenaAllocator)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Given allocator must be an arena based allocator");
-
+// The following method will allocate memory directly using the device allocator.
+// It can handle arena-based allocators and non-arena based allocators.
+static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
+                                                                         const AllocatorPtr& alloc, /*out*/ void*& p_data) {
   int64_t shape_size = tensor_shape.Size();
   if (shape_size < 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape.Size() must >=0");
@@ -44,10 +43,13 @@ static common::Status ReserveUsingArenaFromShapeAndType(const TensorShape& tenso
   p_data = nullptr;
   if (shape_size > 0) {
     SafeInt<size_t> mem_size = 0;
-    if (!arena_alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
+    if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
 
-    p_data = static_cast<IArenaAllocator*>(arena_alloc.get())->Reserve(mem_size);
+    if (alloc->Info().alloc_type == OrtArenaAllocator)
+      p_data = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_size);
+    else
+      p_data = alloc->Alloc(mem_size);
   }
 
   return Status::OK();
@@ -74,10 +76,10 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                              p_tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    if (use_device_allocator_for_initializers && alloc->Info().alloc_type == OrtArenaAllocator) {
+    if (use_device_allocator_for_initializers) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(ReserveUsingArenaFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
+      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
       p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
     } else {
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
@@ -97,10 +99,10 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     // deserialize to CPU first for non-CPU allocator, then copy
     std::unique_ptr<Tensor> p_deserialize_tensor;
-    if (use_device_allocator_for_initializers && default_cpu_alloc->Info().alloc_type == OrtArenaAllocator) {
+    if (use_device_allocator_for_initializers) {
       // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(ReserveUsingArenaFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
+      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
       p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
     } else {
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena

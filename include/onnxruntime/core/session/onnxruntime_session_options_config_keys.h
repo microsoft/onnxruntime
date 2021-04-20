@@ -52,6 +52,8 @@ static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quan
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
+// Using device allocators means the memory allocation is made "directly" using the appropriate system call
+// (by-passing any arena if any).
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
