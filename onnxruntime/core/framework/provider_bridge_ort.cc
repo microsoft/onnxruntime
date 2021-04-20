@@ -102,12 +102,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 
 namespace onnxruntime {
 
-namespace contrib {
-void Link_embed_layer_norm_helper();
-
-}  // namespace contrib
-
-ProviderHost* g_host{};
+//ProviderHost* g_host{};
 
 ProviderInfo_CUDA* GetProviderInfo_CUDA();
 

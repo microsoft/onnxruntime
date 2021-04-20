@@ -8,13 +8,15 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+#if 0
 namespace onnxruntime {
 ProviderHost* g_host = Provider_GetHost();
 }
+#endif
 
 // Override default new/delete so that we match the host's allocator
 void* operator new(size_t n) {
-  onnxruntime::g_host = Provider_GetHost();
+//  onnxruntime::g_host = Provider_GetHost();
   return Provider_GetHost()->HeapAllocate(n);
 }
 void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }

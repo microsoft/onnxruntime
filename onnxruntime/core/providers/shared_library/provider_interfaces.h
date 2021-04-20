@@ -4,6 +4,8 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
+#include "core/providers/shared/common.h"
+
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -761,7 +763,8 @@ struct ProviderHost {
 #endif
 };
 
-extern ProviderHost* g_host;
+#define g_host Provider_GetHost()
+//extern ProviderHost* g_host;
 
 #ifdef SHARED_PROVIDER
 
