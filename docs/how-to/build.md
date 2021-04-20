@@ -1185,7 +1185,7 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 * Code Signing
 
-  If the development team ID and/or the code sign identity which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+  If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
 ##### iOS Build Instructions
 
@@ -1220,9 +1220,9 @@ Run one of the following build scripts from the ONNX Runtime repository root,
            --xcode_code_signing_identity <Your preferred code sign identity>
 ```
 
-##### Build c/c++ dynamic framework
+##### Build C/C++ dynamic framework
 
-c/c++ dynamic framework can be built using the above building commands with `--build_apple_framework`, for details about Apple Framework, please see [Apple Framework Document](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/WhatAreFrameworks.html#//apple_ref/doc/uid/20002303-BBCEIJFI)
+C/C++ dynamic framework can be built using the above building commands with `--build_apple_framework`, for details about Apple Framework, please see [Apple Framework Document](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/WhatAreFrameworks.html#//apple_ref/doc/uid/20002303-BBCEIJFI)
 
 
 ##### iOS CoreML Execution Provider
