@@ -474,11 +474,17 @@ void Loop::Init(const OpKernelInfo& info) { g_host->Loop__Init(this, info); }
 Status Loop::Compute(OpKernelContext* ctx) const { return g_host->Loop__Compute(this, ctx); }
 Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Loop__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
+template <>
 void Scan<8>::Init(const OpKernelInfo& info) { g_host->Scan__Init(this, info); }
+template <>
 void Scan<9>::Init(const OpKernelInfo& info) { g_host->Scan__Init(this, info); }
+template <>
 Status Scan<8>::Compute(OpKernelContext* ctx) const { return g_host->Scan__Compute(this, ctx); }
+template <>
 Status Scan<9>::Compute(OpKernelContext* ctx) const { return g_host->Scan__Compute(this, ctx); }
+template <>
 Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
 #ifdef ENABLE_TRAINING
