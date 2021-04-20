@@ -15,9 +15,7 @@
 Sticky allocation, todo:
 
 - Avoid non-trivially-destructible thread local state
-- Note race on preferred_workers -- can be resized in the main thread while written into in a worker starting
 - Update comments
-- Avoid cast on access to ps.submitter_pt
 - PushBack -- should return ready status via enum (i.e. return FAILED / OK_EMPTY / OK_NONEMPTY )
 - Describe assumptions for queues, and focus on work producer selecting and waking threads
 
@@ -154,6 +152,12 @@ using CHAR_TYPE = char;
 enum class StealAttemptKind {
   TRY_ONE,
   TRY_ALL,
+};
+
+enum class PushResult {
+  REJECTED,
+  ACCEPTED_IDLE,
+  ACCEPTED_BUSY
 };
 
 // Sticky worker assignment
@@ -333,10 +337,6 @@ class ThreadPoolParallelSection {
   // maximum degree of parallelism that the section will support.
   std::vector<std::pair<int,unsigned>> tasks;
 
-  // PerThread is nested inside ThreadPoolTempl.  Hack via void*
-  // during perf tests.
-  void *submitter_pt{0};
-
   // State shared between the main thread and worker threads
   // -------------------------------------------------------
 
@@ -463,7 +463,7 @@ class RunQueue {
   // subsequent call to RevokeWithTag to remove the item from the queue in combination
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
-  bool PushBackWithTag(Work w, Tag tag, unsigned &w_idx, bool &was_ready) {
+  PushResult PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
@@ -471,14 +471,14 @@ class RunQueue {
     ElemState s = e.state.load(std::memory_order_relaxed);
     if (s != ElemState::kEmpty ||
         !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return false; /* Not enqueued */
-    was_ready &= (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
+      return PushResult::REJECTED; /* Not enqueued */
+    bool was_ready = (((back^(front_.load(std::memory_order_relaxed)))&kMask) == 0);
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
     e.w = std::move(w);
     e.tag = tag;
     e.state.store(ElemState::kReady, std::memory_order_release);
-    return true; /* Enqueued */
+    return was_ready ? PushResult::ACCEPTED_IDLE : PushResult::ACCEPTED_BUSY; /* Enqueued */
   }
 
   // PopBack removes and returns the last elements in the queue.
@@ -837,12 +837,10 @@ void StartParallelSectionInternal(PerThread &pt,
                                   ThreadPoolParallelSection &ps) {
   assert((!pt.leading_par_section) && "Nested parallelism not supported");
   assert((!ps.active) && "Starting parallel section, but active already");
-  assert((!ps.submitter_pt) && "Submitter per-thread state already set");
   pt.leading_par_section = true;
   if (!pt.tag.Get()) {
     pt.tag = Tag::GetNext();
   }
-  ps.submitter_pt = (void*)&pt;
   ps.active = true;
 }
 
@@ -887,7 +885,6 @@ void EndParallelSectionInternal(PerThread &pt,
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
   ps.tasks_finished = 0;
-  ps.submitter_pt = 0;
 }
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
@@ -922,18 +919,22 @@ void SummonWorkers(PerThread &pt,
                    const std::function<void(unsigned)> &worker_fn) {
   assert(n <= (unsigned)(num_threads_+1));
 
-  // Initialize the set of preferred worker threads we will use.  We
-  // do this once, covering the maximum num_threads_ items, in order
-  // to avoid resizing preferred_workers concurrent with access from
-  // worker threads.
+  // Initialize the set of hints for preferred worker threads we will
+  // use.  We do this once, covering the maximum num_threads_ items,
+  // in order to avoid resizing preferred_workers concurrent with
+  // access from worker threads.
+  //
+  // For simplicity we initialize with hints round-robin among the
+  // workers.  For simple workloads with 1 main thread this means we
+  // will distribute work across the pool of workers.  For workers
+  // with multiple main threads it attempts to balance the load.
+  //
+  // These hints are just used as a starting point, and are updated by
+  // the worker thread that actually claims an item (e.g., if an item
+  // initially assigned to thread T1 is stolen and executed by T2,
+  // then T2 is assigned at the new preferred worker).
   if (!pt.preferred_init) {
     for (auto idx = 0; idx < num_threads_; idx++) {
-      // Pick new hint, round-robin.  For simplicity we don't attempt
-      // to avoid duplicates.  These are just used as a starting
-      // point, and are updated by the worker thread that actually
-      // claims an item (e.g., if an item initially assigned to thread
-      // T1 is stolen and executed by T2, then T2 is assigned at the
-      // new preferred worker).
       pt.preferred_workers.push_back(next_worker++ % num_threads_);
     }
     pt.preferred_init = true;
@@ -946,7 +947,7 @@ void SummonWorkers(PerThread &pt,
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
 
   if (n > current_dop) {
-  std::vector<int> &preferred_workers = pt.preferred_workers;
+    std::vector<int> &preferred_workers = pt.preferred_workers;
     unsigned extra_needed = n - current_dop;
 
     // Create the additional tasks, and push them to workers.
@@ -972,18 +973,15 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      bool enqueued;
-      bool was_ready = true;
-      enqueued = q.PushBackWithTag(
-          [&ps, preferred_workers, idx, worker_fn]() {
+      auto pr = q.PushBackWithTag(
+          [&ps, &preferred_workers, idx, worker_fn]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
             assert(idx >= 0 &&
-                   ((PerThread*)ps.submitter_pt) &&
-                   idx < (int)((PerThread*)ps.submitter_pt)->preferred_workers.size());
+                   idx < (int)preferred_workers.size());
             int my_idx = GetPerThread()->thread_id;
-            assert(my_idx >= 0 && my_idx < (int)((PerThread*)ps.submitter_pt)->preferred_workers.size());
-            ((PerThread*)ps.submitter_pt)->preferred_workers[idx] = my_idx;
+            assert(my_idx >= 0 && my_idx < (int)preferred_workers.size());
+            preferred_workers[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
@@ -991,16 +989,15 @@ void SummonWorkers(PerThread &pt,
             ps.tasks_finished++;
           },
           pt.tag,
-          w_idx,
-          was_ready);
+          w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
       // another thread (which may then steal the task).
-      if (enqueued) {
+      if (pr == PushResult::ACCEPTED_IDLE || pr == PushResult::ACCEPTED_BUSY) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
-        if (!was_ready) {
+        if (pr == PushResult::ACCEPTED_BUSY) {
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
       }
