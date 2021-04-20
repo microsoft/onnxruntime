@@ -3,6 +3,8 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  * The supported ORT tensor element data types.
  */
@@ -29,10 +31,12 @@ typedef NS_ENUM(NSUInteger, ORTTensorElementDataType) {
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (instancetype)initTensorWithData:(NSMutableData*)data
-                       elementType:(ORTTensorElementDataType)type
-                             shape:(const int64_t*)shape
-                          shapeLen:(size_t)shapeLen
-                             error:(NSError**)error;
+- (nullable instancetype)initTensorWithData:(NSMutableData*)data
+                                elementType:(ORTTensorElementDataType)type
+                                      shape:(const int64_t*)shape
+                                   shapeLen:(size_t)shapeLen
+                                      error:(NSError**)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

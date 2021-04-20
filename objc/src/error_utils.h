@@ -3,7 +3,7 @@
 
 #import <Foundation/Foundation.h>
 
-#include "core/session/onnxruntime_cxx_api.h"
+NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTErrorUtils : NSObject
 
@@ -12,3 +12,5 @@
               toError:(NSError**)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

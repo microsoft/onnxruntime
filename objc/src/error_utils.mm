@@ -3,9 +3,12 @@
 
 #import "src/error_utils.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 static NSString* const kOrtErrorDomain = @"onnxruntime";
 
 @implementation ORTErrorUtils
+
 + (void)saveErrorCode:(int)code
           description:(const char*)description_cstr
               toError:(NSError**)error {
@@ -18,4 +21,7 @@ static NSString* const kOrtErrorDomain = @"onnxruntime";
                                code:code
                            userInfo:@{NSLocalizedDescriptionKey : description}];
 }
+
 @end
+
+NS_ASSUME_NONNULL_END

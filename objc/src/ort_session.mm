@@ -13,13 +13,15 @@
 #include "core/common/optional.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation ORTSession {
   onnxruntime::optional<Ort::Session> _session;
 }
 
-- (instancetype)initWithEnv:(ORTEnv*)env
-                  modelPath:(NSString*)path
-                      error:(NSError**)error {
+- (nullable instancetype)initWithEnv:(ORTEnv*)env
+                           modelPath:(NSString*)path
+                               error:(NSError**)error {
   self = [super init];
   if (self) {
     try {
@@ -72,3 +74,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

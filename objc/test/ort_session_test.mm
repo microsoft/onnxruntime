@@ -9,25 +9,29 @@
 
 #include <vector>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface ORTSessionTest : XCTestCase
 
-@property(readonly) ORTEnv* ortEnv;
+@property(readonly, nullable) ORTEnv* ortEnv;
 
 @end
 
 @implementation ORTSessionTest
 
-- (BOOL)setUpWithError:(NSError**)error {
-  _ortEnv = [[ORTEnv alloc] initWithError:error];
-  if (!_ortEnv) {
-    return NO;
-  }
-  return YES;
+- (void)setUp {
+  [super setUp];
+
+  self.continueAfterFailure = NO;
+
+  _ortEnv = [[ORTEnv alloc] initWithError:nil];
+  XCTAssertNotNil(_ortEnv);
 }
 
-- (BOOL)tearDownWithError:(NSError**)error {
+- (void)tearDown {
   _ortEnv = nil;
-  return YES;
+
+  [super tearDown];
 }
 
 + (NSString*)getTestDataWithRelativePath:(NSString*)relativePath {
@@ -121,3 +125,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -5,6 +5,8 @@
 
 #import "onnxruntime/ort_env.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface ORTEnvTest : XCTestCase
 @end
 
@@ -16,3 +18,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

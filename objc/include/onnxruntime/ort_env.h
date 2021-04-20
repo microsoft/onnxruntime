@@ -3,6 +3,8 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  * The ORT environment.
  */
@@ -14,6 +16,8 @@
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (instancetype)initWithError:(NSError**)error;
+- (nullable instancetype)initWithError:(NSError**)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

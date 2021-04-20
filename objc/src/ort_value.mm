@@ -8,6 +8,8 @@
 #include "core/common/optional.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElementDataType value) {
   switch (value) {
     case ORTTensorElementDataTypeFloat:
@@ -21,18 +23,20 @@ static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElem
 }
 
 @interface ORTValue ()
+
 @property NSMutableData* data;
+
 @end
 
 @implementation ORTValue {
   onnxruntime::optional<Ort::Value> _value;
 }
 
-- (instancetype)initTensorWithData:(NSMutableData*)data
-                       elementType:(ORTTensorElementDataType)type
-                             shape:(const int64_t*)shape
-                          shapeLen:(size_t)shape_len
-                             error:(NSError**)error {
+- (nullable instancetype)initTensorWithData:(NSMutableData*)data
+                                elementType:(ORTTensorElementDataType)type
+                                      shape:(const int64_t*)shape
+                                   shapeLen:(size_t)shape_len
+                                      error:(NSError**)error {
   self = [super init];
   if (self) {
     try {
@@ -55,3 +59,5 @@ static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElem
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -7,6 +7,8 @@
 
 #include <vector>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface ORTValueTest : XCTestCase
 @end
 
@@ -45,3 +47,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

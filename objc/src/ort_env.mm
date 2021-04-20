@@ -8,11 +8,13 @@
 #include "core/common/optional.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation ORTEnv {
   onnxruntime::optional<Ort::Env> _env;
 }
 
-- (instancetype)initWithError:(NSError**)error {
+- (nullable instancetype)initWithError:(NSError**)error {
   self = [super init];
   if (self) {
     try {
@@ -32,3 +34,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

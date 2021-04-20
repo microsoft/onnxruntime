@@ -3,6 +3,8 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @class ORTEnv;
 @class ORTValue;
 
@@ -27,9 +29,9 @@
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (instancetype)initWithEnv:(ORTEnv*)env
-                  modelPath:(NSString*)path
-                      error:(NSError**)error;
+- (nullable instancetype)initWithEnv:(ORTEnv*)env
+                           modelPath:(NSString*)path
+                               error:(NSError**)error;
 
 /**
  * Runs the model with pre-allocated inputs and outputs.
@@ -44,3 +46,5 @@
                 error:(NSError**)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

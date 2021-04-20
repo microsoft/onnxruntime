@@ -5,6 +5,12 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface ORTEnv ()
+
 - (Ort::Env*)handle;
+
 @end
+
+NS_ASSUME_NONNULL_END
