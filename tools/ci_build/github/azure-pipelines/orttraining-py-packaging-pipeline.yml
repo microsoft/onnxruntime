@@ -3,7 +3,7 @@ trigger: none
 stages:
 - stage: Python_Packaging
   jobs:
-  - job: Python_Packaging_Cuda11
+  - job: Python_Packaging_Cuda11.1
     steps:
     - task: PythonScript@0
       displayName: 'Set Python manylinux variables'
@@ -26,24 +26,25 @@ stages:
         enable_mac_cpu: false
         enable_linux_arm: false
 
-# - stage: Python_Packaging_Cuda10.2
-#   - task: PythonScript@0
-#     displayName: 'Set Python manylinux variables'
-#     inputs:
-#       scriptSource: inline
-#       script: |
-#           variables = {
-#             "DockerFile": "Dockerfile.manylinux2014_training_cuda10_2",
-#             "CudaVersion": "10.2",
-#           }
+  - job: Python_Packaging_Cuda10.2
+    steps:
+    - task: PythonScript@0
+      displayName: 'Set Python manylinux variables'
+      inputs:
+        scriptSource: inline
+        script: |
+            variables = {
+              "DockerFile": "Dockerfile.manylinux2014_training_cuda10_1",
+              "CudaVersion": "10.2",
+            }
 
-#   - template: templates/py-packaging-stage.yml
-#     parameters:
-#       build_py_parameters: --enable_training
-#       enable_linux_cpu: false
-#       enable_linux_gpu: false
-#       enable_linux_gpu_training: true
-#       enable_windows_cpu: false
-#       enable_windows_gpu: false
-#       enable_mac_cpu: false
-#       enable_linux_arm: false
+    - template: templates/py-packaging-stage.yml
+      parameters:
+        build_py_parameters: --enable_training
+        enable_linux_cpu: false
+        enable_linux_gpu: false
+        enable_linux_gpu_training: true
+        enable_windows_cpu: false
+        enable_windows_gpu: false
+        enable_mac_cpu: false
+        enable_linux_arm: false
