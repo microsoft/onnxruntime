@@ -59,7 +59,6 @@ target_include_directories(onnxruntime_objc
     PUBLIC
         "${OBJC_ROOT}/include"
     PRIVATE
-        "${OPTIONAL_LITE_INCLUDE_DIR}"
         "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
@@ -74,7 +73,8 @@ set_target_properties(onnxruntime_objc PROPERTIES
     SOVERSION "1.0.0"
     FRAMEWORK_VERSION "A"
     PUBLIC_HEADER "${onnxruntime_objc_headers}"
-    FOLDER "ONNXRuntime")
+    FOLDER "ONNXRuntime"
+    CXX_STANDARD 17) # TODO remove when everything else moves to 17
 
 if (onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)

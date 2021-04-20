@@ -5,13 +5,14 @@
 #import "src/ort_env_internal.h"
 #import "src/error_utils.h"
 
-#include "core/common/optional.h"
+#include <optional>
+
 #include "core/session/onnxruntime_cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTEnv {
-  onnxruntime::optional<Ort::Env> _env;
+  std::optional<Ort::Env> _env;
 }
 
 - (nullable instancetype)initWithError:(NSError**)error {

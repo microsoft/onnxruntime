@@ -8,15 +8,15 @@
 #import "src/ort_env_internal.h"
 #import "src/ort_value_internal.h"
 
+#include <optional>
 #include <vector>
 
-#include "core/common/optional.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTSession {
-  onnxruntime::optional<Ort::Session> _session;
+  std::optional<Ort::Session> _session;
 }
 
 - (nullable instancetype)initWithEnv:(ORTEnv*)env

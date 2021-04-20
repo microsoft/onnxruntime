@@ -5,7 +5,8 @@
 #import "src/ort_value_internal.h"
 #import "src/error_utils.h"
 
-#include "core/common/optional.h"
+#include <optional>
+
 #include "core/session/onnxruntime_cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -29,7 +30,7 @@ static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElem
 @end
 
 @implementation ORTValue {
-  onnxruntime::optional<Ort::Value> _value;
+  std::optional<Ort::Value> _value;
 }
 
 - (nullable instancetype)initTensorWithData:(NSMutableData*)data
