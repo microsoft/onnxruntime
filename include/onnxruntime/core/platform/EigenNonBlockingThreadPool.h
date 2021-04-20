@@ -961,9 +961,6 @@ void SummonWorkers(PerThread &pt,
       // been from a different thread pool, hence we keep within the
       // current range [0,num_threads_).
       unsigned q_idx = preferred_workers[idx] % num_threads_;
-      if (!(q_idx >= 0 && q_idx < num_threads_)) {
-        ::std::cerr << "!!1 " << q_idx << " " << idx << " " << num_threads_ << ::std::endl;
-      }
       assert(q_idx >= 0 && q_idx < num_threads_);
 
       // If the worker's queue accepts the task, then record it in
@@ -982,16 +979,10 @@ void SummonWorkers(PerThread &pt,
                                    this]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
-                                    if (!(idx >= 0 && idx < num_threads_)) {
-                                      ::std::cerr << "!!2 " << idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
-                                    }
             assert(idx >= 0 && idx < preferred_workers.size());
-                                    unsigned my_idx = GetPerThread()->thread_id;
-                                    if (!(my_idx >= 0 && my_idx < preferred_workers.size())) {
-                                      ::std::cerr << "!!3 " << my_idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
-                                    }
+            unsigned my_idx = GetPerThread()->thread_id;
             assert(my_idx >= 0 && my_idx < preferred_workers.size());
-                                    preferred_workers[idx] = my_idx;
+            preferred_workers[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
