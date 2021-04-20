@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <>
-Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info), scan_cpu_{static_cast<onnxruntime::Scan<8>*>(CreateOpKernel_CPU_Scan_8(info).release())} {
+Scan<8>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<8>(info) {
   scan::detail::DeviceHelpers helpers;
 
   helpers.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
@@ -25,11 +25,11 @@ Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info), scan_cpu_{static_cast<
   };
 
   // copy into base class
-  scan_cpu_->SetDeviceHelpers(helpers);
+  SetDeviceHelpers(helpers);
 }
 
 template <>
-Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info), scan_cpu_{static_cast<onnxruntime::Scan<9>*>(CreateOpKernel_CPU_Scan_9(info).release())} {
+Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   scan::detail::DeviceHelpers helpers;
 
   helpers.transpose_func = [this](const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
@@ -40,7 +40,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info), scan_cpu_{static_cast<
   };
 
   // copy into base class
-  scan_cpu_->SetDeviceHelpers(helpers);
+  SetDeviceHelpers(helpers);
 }
 
 template <>
@@ -50,7 +50,7 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   // the logic to run the subgraph must be on CPU either way.
   // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
-  auto status = scan_cpu_->Compute(ctx);
+  auto status = onnxruntime::Scan<8>::Compute(ctx);
   return status;
 }
 
@@ -61,7 +61,7 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   // the logic to run the subgraph must be on CPU either way.
   // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
-  auto status = scan_cpu_->Compute(ctx);
+  auto status = onnxruntime::Scan<9>::Compute(ctx);
   return status;
 }
 

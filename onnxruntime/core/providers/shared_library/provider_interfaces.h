@@ -27,6 +27,8 @@ namespace onnxruntime {
 // These types don't directly map to internal types
 struct ProviderHost;
 
+class If;
+class Loop;
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
 struct Prepare;                            // ConcatBase, TODO: Scope to ConcatBase
@@ -735,10 +737,23 @@ struct ProviderHost {
   virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) = 0;
   virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) = 0;
 
-  virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info) = 0;
-  virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_Loop(const OpKernelInfo& info, const void* concat_output_func, void* stream) = 0;
-  virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) = 0;
-  virtual std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_9(const OpKernelInfo& info) = 0;
+  // If
+  virtual void If__Init(If* p, const OpKernelInfo& info) = 0;
+  virtual Status If__Compute(const If* p, OpKernelContext* ctx) = 0;
+  virtual Status If__SetupSubgraphExecutionInfo(If* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+
+  // Loop
+  virtual void Loop__Init(Loop* p, const OpKernelInfo& info) = 0;
+  virtual Status Loop__Compute(const Loop* p, OpKernelContext* ctx) = 0;
+  virtual Status Loop__SetupSubgraphExecutionInfo(Loop* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+
+  // Scan
+  virtual void Scan__Init(Scan<8>* p, const OpKernelInfo& info) = 0;
+  virtual void Scan__Init(Scan<9>* p, const OpKernelInfo& info) = 0;
+  virtual Status Scan__Compute(const Scan<8>* p, OpKernelContext* ctx) = 0;
+  virtual Status Scan__Compute(const Scan<9>* p, OpKernelContext* ctx) = 0;
+  virtual Status Scan__SetupSubgraphExecutionInfo(Scan<8>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+  virtual Status Scan__SetupSubgraphExecutionInfo(Scan<9>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
 
   // ContribOps
 #ifndef DISABLE_CONTRIB_OPS
@@ -1664,10 +1679,6 @@ struct EinsumTypedComputeProcessor {
 
   Status Run() { return g_host->EinsumTypedComputeProcessor__Run(this); }
 };
-
-inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info) { return g_host->CreateOpKernel_CPU_If(info); }
-inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) { return g_host->CreateOpKernel_CPU_Scan_8(info); }
-inline std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_9(const OpKernelInfo& info) { return g_host->CreateOpKernel_CPU_Scan_9(info); }
 
 #ifdef ENABLE_TRAINING
 namespace contrib {

@@ -12,17 +12,25 @@ class SessionState;
 
 class If : public controlflow::IControlFlowKernel {
  public:
-  If(const OpKernelInfo& info);
+  If(const OpKernelInfo& info) : IControlFlowKernel(info) { Init(info); }
+  void Init(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
 
-  common::Status SetupSubgraphExecutionInfo(const SessionState& session_state,
-                                            const std::string& attribute_name,
-                                            const SessionState& subgraph_session_state) override;
+  Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                    const std::string& attribute_name,
+                                    const SessionState& subgraph_session_state) override;
 
-  // hide internal implementation details via forward declaration.
-  struct Info;
-  ~If();
+  struct Info {
+    Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in);
+    const GraphViewer& subgraph;
+
+    std::vector<bool> used_implicit_inputs;
+    int num_implicit_inputs;
+    int num_outputs;
+
+    std::vector<std::string> subgraph_output_names;
+  };
 
  private:
   // Info and FeedsFetchesManager re-used for each subgraph execution.

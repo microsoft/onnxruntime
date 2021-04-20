@@ -10,14 +10,11 @@ namespace onnxruntime {
 namespace cuda {
 
 // Use the CPU implementation for the logic
-class Loop final : public OpKernel {
+class Loop final : public onnxruntime::Loop {
  public:
   Loop(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
-
- private:
-  std::unique_ptr<OpKernel> cpu_loop_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

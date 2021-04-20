@@ -47,16 +47,13 @@ ONNX_OPERATOR_KERNEL_EX(If,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
-If::If(const OpKernelInfo& info) : OpKernel(info), if_cpu_{CreateOpKernel_CPU_If(info)} {
-}
-
 Status If::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
   // we have this CUDA implementation so the inputs/outputs stay on GPU where possible.
   // the logic to run the subgraph must be on CPU either way.
   // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
-  auto status = if_cpu_->Compute(ctx);
+  auto status = onnxruntime::If::Compute(ctx);
   return status;
 }
 

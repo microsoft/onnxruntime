@@ -82,8 +82,9 @@ static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iter
   return Status::OK();
 }
 
-Loop::Loop(const OpKernelInfo& info) : OpKernel(info) {
-  cpu_loop_ = onnxruntime::Loop::Create(info, ConcatenateGpuOutput, static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
+Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
+  SetConcatOutputFunc(ConcatenateGpuOutput);
+  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 }
 
 Status Loop::Compute(OpKernelContext* ctx) const {
@@ -92,7 +93,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   // the logic to run the subgraph must be on CPU either way.
   // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
-  auto status = cpu_loop_->Compute(ctx);
+  auto status = onnxruntime::Loop::Compute(ctx);
   return status;
 }
 

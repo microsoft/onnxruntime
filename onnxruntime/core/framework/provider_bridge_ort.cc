@@ -174,16 +174,12 @@ struct ProviderHostImpl : ProviderHost {
     DataTypeImpl__GetTensorType_MLFloat16 = &DataTypeImpl::GetTensorType<MLFloat16>;
   }
 
-  AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) override {
-    return onnxruntime::CreateAllocator(info);
-  }
+  AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) override { return onnxruntime::CreateAllocator(info); }
 
-  std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) override {
-    return onnxruntime::make_unique<CPUAllocator>(memory_info);
-  };
+  std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) override { return onnxruntime::make_unique<CPUAllocator>(memory_info); };
 
-  void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) override { return p->Alloc(size); }
-  void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->Free(allocation); }
+  void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) override { return p->CPUAllocator::Alloc(size); }
+  void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
 #ifdef USE_CUDA
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA()->CreateCUDAAllocator(device_id, name); }
@@ -776,7 +772,7 @@ struct ProviderHostImpl : ProviderHost {
                                          std::vector<int64_t>& input_axes,
                                          std::vector<int64_t>& input_steps) override { return SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
   // From cpu/tensor/size.h
-  Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Compute(context); }
+  Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Size::Compute(context); }
   // From cpu/tensor/scatter_nd.h
   Status ScatterNDBase__ValidateShapes(const TensorShape& input_shape,
                                        const TensorShape& indice_shape,
@@ -794,7 +790,7 @@ struct ProviderHostImpl : ProviderHost {
 
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
 
-  Status Einsum__Compute(const Einsum* p, OpKernelContext* context) override { return p->Compute(context); }
+  Status Einsum__Compute(const Einsum* p, OpKernelContext* context) override { return p->Einsum::Compute(context); }
 
   // EinsumComputePreprocessor
   void EinsumComputePreprocessor__operator_delete(EinsumComputePreprocessor* p) override { delete p; }
@@ -820,10 +816,23 @@ struct ProviderHostImpl : ProviderHost {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
 
-  std::unique_ptr<OpKernel> CreateOpKernel_CPU_If(const OpKernelInfo& info) override { return onnxruntime::make_unique<If>(info); }
-  std::unique_ptr<OpKernel> CreateOpKernel_CPU_Loop(const OpKernelInfo& info, const void* concat_output_func, void* stream) override { return Loop::Create(info, *reinterpret_cast<const Loop::ConcatOutput*>(concat_output_func), stream); }
-  std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_8(const OpKernelInfo& info) override { return onnxruntime::make_unique<Scan<8>>(info); }
-  std::unique_ptr<OpKernel> CreateOpKernel_CPU_Scan_9(const OpKernelInfo& info) override { return onnxruntime::make_unique<Scan<9>>(info); }
+  // If
+  void If__Init(If* p, const OpKernelInfo& info) override { p->Init(info); }
+  Status If__Compute(const If* p, OpKernelContext* ctx) override { return p->If::Compute(ctx); }
+  Status If__SetupSubgraphExecutionInfo(If* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->If::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
+  // Loop
+  void Loop__Init(Loop* p, const OpKernelInfo& info) override { p->Init(info); }
+  Status Loop__Compute(const Loop* p, OpKernelContext* ctx) override { return p->Loop::Compute(ctx); }
+  Status Loop__SetupSubgraphExecutionInfo(Loop* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->Loop::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
+  // Scan
+  void Scan__Init(Scan<8>* p, const OpKernelInfo& info) override { p->Init(info); }
+  void Scan__Init(Scan<9>* p, const OpKernelInfo& info) override { p->Init(info); }
+  Status Scan__Compute(const Scan<8>* p, OpKernelContext* ctx) override { return p->Scan<8>::Compute(ctx); }
+  Status Scan__Compute(const Scan<9>* p, OpKernelContext* ctx) override { return p->Scan<9>::Compute(ctx); }
+  Status Scan__SetupSubgraphExecutionInfo(Scan<8>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->Scan<8>::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+  Status Scan__SetupSubgraphExecutionInfo(Scan<9>* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->Scan<9>::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
 
   // ContribOps
 #ifndef DISABLE_CONTRIB_OPS
@@ -839,13 +848,13 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef ENABLE_TRAINING
   void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
   void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
-  Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Compute(context); }
-  Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) override { return p->Compute(context); }
+  Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }
+  Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) override { return p->PassThrough::Compute(context); }
   void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) override { contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
   void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) override { contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-  Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->Compute(context); }
+  Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
 #endif
 #endif
 } provider_host_;

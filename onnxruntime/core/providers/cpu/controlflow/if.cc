@@ -94,34 +94,24 @@ ONNX_CPU_OPERATOR_KERNEL(If,
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                          If);
 
-struct If::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
-    num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
-    used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
-    num_outputs = static_cast<int>(node.OutputDefs().size());
+If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
+  num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
+  used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
+  num_outputs = static_cast<int>(node.OutputDefs().size());
 
-    auto& subgraph_outputs = subgraph.GetOutputs();
-    auto num_subgraph_outputs = subgraph_outputs.size();
+  auto& subgraph_outputs = subgraph.GetOutputs();
+  auto num_subgraph_outputs = subgraph_outputs.size();
 
-    ORT_ENFORCE(num_subgraph_outputs == static_cast<size_t>(num_outputs),
-                "'If' node has ", num_outputs, " outputs which doesn't match the subgraph's ",
-                num_subgraph_outputs, " outputs.");
+  ORT_ENFORCE(num_subgraph_outputs == static_cast<size_t>(num_outputs),
+              "'If' node has ", num_outputs, " outputs which doesn't match the subgraph's ",
+              num_subgraph_outputs, " outputs.");
 
-    subgraph_output_names.reserve(num_subgraph_outputs);
-    for (size_t i = 0; i < num_subgraph_outputs; ++i) {
-      auto& output = subgraph_outputs[i];
-      subgraph_output_names.push_back(output->Name());
-    }
+  subgraph_output_names.reserve(num_subgraph_outputs);
+  for (size_t i = 0; i < num_subgraph_outputs; ++i) {
+    auto& output = subgraph_outputs[i];
+    subgraph_output_names.push_back(output->Name());
   }
-
-  const GraphViewer& subgraph;
-
-  std::vector<bool> used_implicit_inputs;
-  int num_implicit_inputs;
-  int num_outputs;
-
-  std::vector<std::string> subgraph_output_names;
-};
+}
 
 class IfImpl {
  public:
@@ -154,7 +144,7 @@ class IfImpl {
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 };
 
-If::If(const OpKernelInfo& info) : IControlFlowKernel(info) {
+void If::Init(const OpKernelInfo& info) {
   // make sure the required attributes are present even though we don't need it here.
   // The GraphProto attributes are loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -164,9 +154,6 @@ If::If(const OpKernelInfo& info) : IControlFlowKernel(info) {
   ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("else_branch", &proto).IsOK());
   ORT_IGNORE_RETURN_VALUE(proto);
 }
-
-// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
-If::~If() = default;
 
 common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,

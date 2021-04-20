@@ -14,13 +14,15 @@ ProviderHost* g_host = Provider_GetHost();
 }
 #endif
 
+#ifdef _WIN32
 // Override default new/delete so that we match the host's allocator
 void* operator new(size_t n) {
-//  onnxruntime::g_host = Provider_GetHost();
+  //  onnxruntime::g_host = Provider_GetHost();
   return Provider_GetHost()->HeapAllocate(n);
 }
 void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
+#endif
 
 namespace onnxruntime {
 
@@ -344,6 +346,7 @@ std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/math/einsum.h"
+#include "core/providers/cpu/controlflow/if.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
@@ -463,9 +466,20 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
 }  // namespace contrib
 #endif
 
-std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const Loop::ConcatOutput& concat_output_func, void* stream) {
-  return g_host->CreateOpKernel_CPU_Loop(info, &concat_output_func, stream);
-}
+void If::Init(const OpKernelInfo& info) { g_host->If__Init(this, info); }
+Status If::Compute(OpKernelContext* ctx) const { return g_host->If__Compute(this, ctx); }
+Status If::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->If__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+void Loop::Init(const OpKernelInfo& info) { g_host->Loop__Init(this, info); }
+Status Loop::Compute(OpKernelContext* ctx) const { return g_host->Loop__Compute(this, ctx); }
+Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Loop__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+void Scan<8>::Init(const OpKernelInfo& info) { g_host->Scan__Init(this, info); }
+void Scan<9>::Init(const OpKernelInfo& info) { g_host->Scan__Init(this, info); }
+Status Scan<8>::Compute(OpKernelContext* ctx) const { return g_host->Scan__Compute(this, ctx); }
+Status Scan<9>::Compute(OpKernelContext* ctx) const { return g_host->Scan__Compute(this, ctx); }
+Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host->Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
