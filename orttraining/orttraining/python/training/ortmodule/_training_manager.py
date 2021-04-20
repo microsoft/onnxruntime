@@ -3,14 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _ortmodule_utils as _utils, _ortmodule_io as _io
-from ._ortmodule_graph_execution_manager import GraphExecutionManager, _run_forward
+from . import _utils, _io
+from ._graph_execution_manager import GraphExecutionManager, _run_forward
 from onnxruntime.capi import _pybind_state as C
-from . import _utils as _utils_ort
+from ._execution_agent import TrainingAgent
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
 import onnx
-import onnxruntime
 import torch
 
 
@@ -179,19 +178,24 @@ class TrainingManager(GraphExecutionManager):
         fw_outputs_device_info = []
         for idx in range(len(self._graph_info.user_output_names)):
             fw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
-            C.OrtDevice.default_memory(), _utils_ort.get_device_index(self._device)))
+            C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
 
         bw_fetches_names = [output.name for output in self._optimized_onnx_model.graph.output]
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
             bw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
-            C.OrtDevice.default_memory(), _utils_ort.get_device_index(self._device)))
+            C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
 
-        self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),
-                                                                    fw_feed_names, self._graph_info.user_output_names,
-                                                                    fw_outputs_device_info, self._graph_info.module_output_gradient_name,
-                                                                    bw_fetches_names, bw_outputs_device_info,
-                                                                    session_options, providers, provider_options)
+        self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
+                                              fw_feed_names,
+                                              self._graph_info.user_output_names,
+                                              fw_outputs_device_info,
+                                              self._graph_info.module_output_gradient_name,
+                                              bw_fetches_names,
+                                              bw_outputs_device_info,
+                                              session_options,
+                                              providers,
+                                              provider_options)
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

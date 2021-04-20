@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _ortmodule_io as _io
-from ._ortmodule_graph_execution_manager_factory import GraphExecutionManagerFactory
+from . import _io
+from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 

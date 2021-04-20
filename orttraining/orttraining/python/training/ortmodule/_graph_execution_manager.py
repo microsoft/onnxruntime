@@ -2,11 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from . import _ortmodule_utils as _utils, _ortmodule_io as _io
-from . import _ortmodule_logger as _logger
+
+from . import _utils, _io, _logger
+from ._runstateinfo import RunStateInfo
 
 from onnxruntime.capi import _pybind_state as C
-
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from abc import ABC, abstractmethod
@@ -60,7 +60,7 @@ def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
     _utils._check_same_device(device, "Output argument from forward", *user_outputs)
 
     output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
-    run_info = onnxruntime.training.RunStateInfo(state, output_info)
+    run_info = RunStateInfo(state, output_info)
     # Return user outputs and forward run information
     return user_outputs, run_info
 

@@ -3,13 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _ortmodule_utils as _utils, _ortmodule_io as _io
-from ._ortmodule_graph_execution_manager import GraphExecutionManager, _run_forward
+from . import _utils, _io
+from ._graph_execution_manager import GraphExecutionManager, _run_forward
+from ._execution_agent import InferenceAgent
 
-import copy
 import onnx
-import onnxruntime
-
 import torch
 
 
@@ -81,5 +79,5 @@ class InferenceManager(GraphExecutionManager):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        self._execution_agent = onnxruntime.training.InferenceAgent(self._optimized_onnx_model.SerializeToString(),
-                                                                    session_options, providers, provider_options)
+        self._execution_agent = InferenceAgent(self._optimized_onnx_model.SerializeToString(),
+                                               session_options, providers, provider_options)
