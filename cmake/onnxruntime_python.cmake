@@ -314,9 +314,6 @@ add_custom_command(
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
-      $<TARGET_FILE:onnxruntime_providers_shared>
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_datasets_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -347,6 +344,16 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_shared>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
   add_custom_command(
