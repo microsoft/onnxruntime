@@ -89,6 +89,8 @@ class GraphExecutionManager(ABC):
         self._propagate_cast_ops_level = -1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
+        # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
+        self._allow_layer_norm_mod_precision = False
 
         # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -168,6 +170,7 @@ class GraphExecutionManager(ABC):
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
+        session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = False
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
@@ -272,5 +275,11 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
         grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
         grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
+        grad_builder_config.graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
+        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
+                                        _logger.LogLevel.INFO : C.Severity.INFO,
+                                        _logger.LogLevel.WARNING : C.Severity.WARNING,
+                                        _logger.LogLevel.ERROR : C.Severity.ERROR,
+                                        _logger.LogLevel.FATAL : C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)

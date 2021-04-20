@@ -24,6 +24,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -69,6 +70,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<DivMulFusion>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
+      rules.push_back(onnxruntime::make_unique<GemmTransposeFusion>());
       rules.push_back(onnxruntime::make_unique<NotWhereFusion>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
