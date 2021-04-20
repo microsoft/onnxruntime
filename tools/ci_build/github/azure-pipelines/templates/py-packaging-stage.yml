@@ -230,12 +230,30 @@ stages:
       pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
-          Python36:
+          Python36 Cuda10.2:
             PythonVersion: '3.6'
-          Python37:
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python36 Cuda11.1:
+            PythonVersion: '3.6'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python37 Cuda10.2:
             PythonVersion: '3.7'
-          Python38:
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python37 Cuda11.1:
+            PythonVersion: '3.7'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python38 Cuda10.2:
             PythonVersion: '3.8'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python38 Cuda11.1:
+            PythonVersion: '3.8'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           # dependency PyTorch does not support Python 3.9 yet
           # Python39:
           #   PythonVersion: '3.9'
@@ -247,16 +265,16 @@ stages:
 
       - template: set-python-manylinux-variables-step.yml
       
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            variables = {
-              "DockerFile": "Dockerfile.manylinux2014_training_cuda10_2",
-              "CudaVersion": "10.2",
-            }
-        condition: eq(${{ parameters.cuda_version}}, '10.2')
-        displayName: 'Set variables for Cuda10.2'
+      # - task: PythonScript@0
+      #   inputs:
+      #     scriptSource: inline
+      #     script: |
+      #       variables = {
+      #         "DockerFile": "Dockerfile.manylinux2014_training_cuda10_2",
+      #         "CudaVersion": "10.2",
+      #       }
+      #   condition: eq(${{ parameters.cuda_version}}, '10.2')
+      #   displayName: 'Set variables for Cuda10.2'
 
       # - task: PythonScript@0
       #   inputs:
