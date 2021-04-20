@@ -238,6 +238,23 @@ class GraphExecutionManager(ABC):
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
+        try:
+            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
+                torch.onnx.export(self._flattened_module,
+                                  sample_inputs_copy + (sample_kwargs_copy, ),
+                                  "exported_model.onnx",
+                                  input_names=self._input_info.names,
+                                  output_names=output_names,
+                                  opset_version=ONNX_OPSET_VERSION,
+                                  do_constant_folding=False,
+                                  training=self._export_mode,
+                                  dynamic_axes=self._input_info.dynamic_axes,
+                                  verbose=self._loglevel < _logger.LogLevel.WARNING,
+                                  export_params=False,
+                                  keep_initializers_as_inputs=True)
+        except RuntimeError as e:
+            raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+
         return onnx.load_model_from_string(f.getvalue())
 
     def _set_device_from_module(self):
