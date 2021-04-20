@@ -296,6 +296,7 @@ stages:
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-t
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
+        displayName: 'tools/ci_build/github/linux/docker/$(DockerFile)'
 
       - task: CmdLine@2
         inputs:
