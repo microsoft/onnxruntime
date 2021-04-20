@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-
 from . import _ortmodule_utils as _utils, _ortmodule_io as _io
 from . import _ortmodule_logger as _logger
 
@@ -17,6 +16,8 @@ import inspect
 import onnx
 import onnxruntime
 import torch
+import warnings
+
 from torch.utils.cpp_extension import ROCM_HOME
 
 ONNX_OPSET_VERSION = 12
@@ -64,7 +65,7 @@ class GraphExecutionManager(ABC):
         """
 
         # Original and flattened (tranformed) output module
-        self._original_module = module._base_module
+        self._original_module = module._original_module
         self._flattened_module = module
 
         # Exported model
@@ -119,8 +120,9 @@ class GraphExecutionManager(ABC):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                raise NotImplementedError(
-                    "The model's forward method has **kwargs parameter which is currently not supported.")
+                if self._loglevel <= _logger.LogLevel.WARNING:
+                    warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
+                                  UserWarning)
 
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
@@ -196,6 +198,8 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+        if self._save_onnx:
+            onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
         if self._run_symbolic_shape_infer:
             self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
@@ -217,6 +221,9 @@ class GraphExecutionManager(ABC):
             _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
+        # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
+        self._flattened_module._input_info = self._input_info
+
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
 
@@ -224,7 +231,7 @@ class GraphExecutionManager(ABC):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
-
+        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy))
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
@@ -233,7 +240,7 @@ class GraphExecutionManager(ABC):
         try:
             with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                 torch.onnx.export(self._flattened_module,
-                                  sample_inputs_copy + (sample_kwargs_copy, ),
+                                  sample_inputs_as_tuple,
                                   f,
                                   input_names=self._input_info.names,
                                   output_names=output_names,
