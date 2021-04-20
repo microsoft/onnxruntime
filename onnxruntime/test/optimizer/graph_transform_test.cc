@@ -36,6 +36,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -1122,6 +1123,93 @@ TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   ASSERT_TRUE(op_to_count["com.microsoft.FusedGemm"] == 1);
 }
 #endif
+
+// (A')'B' = AB'
+TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2inputs_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+// (A'B)' = B'A
+TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_output_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
+
+//  ((A')'B')' = BA'
+TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 3);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
 
 TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-add-mul-float16.onnx";
