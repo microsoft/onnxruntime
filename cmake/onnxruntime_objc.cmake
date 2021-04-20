@@ -19,16 +19,17 @@ else()
     message(FATAL_ERROR "Objective-C++ is not supported.")
 endif()
 
+add_compile_options(
+    "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wall>"
+    "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wextra>")
 if(onnxruntime_DEV_MODE)
-    string(APPEND CMAKE_OBJC_FLAGS " -Werror")
-    string(APPEND CMAKE_OBJCXX_FLAGS " -Werror")
+    add_compile_options(
+        "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Werror>")
 endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objc")
 
-set(OBJC_ARC_COMPILE_OPTIONS
-    "-fobjc-arc"
-    "-fobjc-arc-exceptions")
+set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 
 # onnxruntime_objc target
 
@@ -49,11 +50,10 @@ file(GLOB onnxruntime_objc_srcs
 set(onnxruntime_objc_common_srcs
     "${OBJC_ROOT}/common/assert_arc_enabled.mm")
 
-source_group(TREE "${OBJC_ROOT}"
-    FILES
-        ${onnxruntime_objc_headers}
-        ${onnxruntime_objc_srcs}
-        ${onnxruntime_objc_common_srcs})
+source_group(TREE "${OBJC_ROOT}" FILES
+    ${onnxruntime_objc_headers}
+    ${onnxruntime_objc_srcs}
+    ${onnxruntime_objc_common_srcs})
 
 add_library(onnxruntime_objc SHARED
     ${onnxruntime_objc_headers}
@@ -91,8 +91,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         "${OBJC_ROOT}/test/*.m"
         "${OBJC_ROOT}/test/*.mm")
 
-    source_group(TREE "${OBJC_ROOT}"
-        FILES ${onnxruntime_objc_test_srcs})
+    source_group(TREE "${OBJC_ROOT}" FILES ${onnxruntime_objc_test_srcs})
 
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
         ${onnxruntime_objc_headers}
@@ -116,5 +115,5 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
 
     set_property(TEST XCTest.onnxruntime_objc_test APPEND PROPERTY
-        ENVIRONMENT DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:onnxruntime>)
+        ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:onnxruntime>")
 endif()
