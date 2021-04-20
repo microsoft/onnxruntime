@@ -8,7 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ORTErrorUtils : NSObject
 
 + (void)saveErrorCode:(int)code
-          description:(const char*)description_cstr
+          description:(const char*)descriptionCstr
               toError:(NSError**)error;
 
 @end

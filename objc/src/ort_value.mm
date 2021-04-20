@@ -11,7 +11,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElementDataType value) {
+static ONNXTensorElementDataType GetONNXTensorElementDataType(ORTTensorElementDataType value) {
   switch (value) {
     case ORTTensorElementDataTypeFloat:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
@@ -34,17 +34,17 @@ static ONNXTensorElementDataType get_onnx_tensor_element_data_type(ORTTensorElem
 }
 
 - (nullable instancetype)initTensorWithData:(NSMutableData*)data
-                                elementType:(ORTTensorElementDataType)type
+                                elementType:(ORTTensorElementDataType)elementType
                                       shape:(const int64_t*)shape
-                                   shapeLen:(size_t)shape_len
+                                   shapeLen:(size_t)shapeLen
                                       error:(NSError**)error {
   self = [super init];
   if (self) {
     try {
       _data = data;
-      const auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-      const auto element_type = get_onnx_tensor_element_data_type(type);
-      _value = Ort::Value::CreateTensor(memory_info, _data.mutableBytes, _data.length, shape, shape_len, element_type);
+      const auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+      const auto ONNXElementType = GetONNXTensorElementDataType(elementType);
+      _value = Ort::Value::CreateTensor(memoryInfo, _data.mutableBytes, _data.length, shape, shapeLen, ONNXElementType);
     } catch (const Ort::Exception& e) {
       [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
                        description:e.what()

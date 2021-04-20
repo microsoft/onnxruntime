@@ -25,10 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
   self = [super init];
   if (self) {
     try {
-      Ort::Env* ort_env = [env handle];
-      const char* path_cstr = path.UTF8String;
-      Ort::SessionOptions session_options{};  // TODO make configurable
-      _session = Ort::Session{*ort_env, path_cstr, session_options};
+      Ort::SessionOptions sessionOptions{};  // TODO make configurable
+      _session = Ort::Session{*[env handle], path.UTF8String, sessionOptions};
     } catch (const Ort::Exception& e) {
       [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
                        description:e.what()
@@ -44,25 +42,25 @@ NS_ASSUME_NONNULL_BEGIN
                 error:(NSError**)error {
   BOOL status = NO;
   try {
-    Ort::RunOptions run_options{};  // TODO make configurable
+    Ort::RunOptions runOptions{};  // TODO make configurable
 
-    std::vector<const char*> input_names, output_names;
-    std::vector<const OrtValue*> input_values;
-    std::vector<OrtValue*> output_values;
+    std::vector<const char*> inputNames, outputNames;
+    std::vector<const OrtValue*> inputValues;
+    std::vector<OrtValue*> outputValues;
 
-    for (NSString* input_name in inputs) {
-      input_names.push_back(input_name.UTF8String);
-      input_values.push_back(static_cast<const OrtValue*>(*[inputs[input_name] handle]));
+    for (NSString* inputName in inputs) {
+      inputNames.push_back(inputName.UTF8String);
+      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] handle]));
     }
 
-    for (NSString* output_name in outputs) {
-      output_names.push_back(output_name.UTF8String);
-      output_values.push_back(static_cast<OrtValue*>(*[outputs[output_name] handle]));
+    for (NSString* outputName in outputs) {
+      outputNames.push_back(outputName.UTF8String);
+      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] handle]));
     }
 
-    Ort::ThrowOnError(Ort::GetApi().Run(*_session, run_options,
-                                        input_names.data(), input_values.data(), input_names.size(),
-                                        output_names.data(), output_names.size(), output_values.data()));
+    Ort::ThrowOnError(Ort::GetApi().Run(*_session, runOptions,
+                                        inputNames.data(), inputValues.data(), inputNames.size(),
+                                        outputNames.data(), outputNames.size(), outputValues.data()));
 
     status = YES;
   } catch (const Ort::Exception& e) {

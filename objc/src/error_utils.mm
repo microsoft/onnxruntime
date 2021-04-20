@@ -10,11 +10,11 @@ static NSString* const kOrtErrorDomain = @"onnxruntime";
 @implementation ORTErrorUtils
 
 + (void)saveErrorCode:(int)code
-          description:(const char*)description_cstr
+          description:(const char*)descriptionCstr
               toError:(NSError**)error {
   if (!error) return;
 
-  NSString* description = [NSString stringWithCString:description_cstr
+  NSString* description = [NSString stringWithCString:descriptionCstr
                                              encoding:NSASCIIStringEncoding];
 
   *error = [NSError errorWithDomain:kOrtErrorDomain

@@ -8,7 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * The supported ORT tensor element data types.
  */
-typedef NS_ENUM(NSUInteger, ORTTensorElementDataType) {
+typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
   ORTTensorElementDataTypeUndefined,
   ORTTensorElementDataTypeFloat,
   ORTTensorElementDataTypeInt32,
@@ -19,6 +19,8 @@ typedef NS_ENUM(NSUInteger, ORTTensorElementDataType) {
  * Typically, ORT values represent tensors.
  */
 @interface ORTValue : NSObject
+
+- (nullable instancetype)init NS_UNAVAILABLE;
 
 /**
  * Creates an ORT value that is a tensor.
@@ -32,10 +34,10 @@ typedef NS_ENUM(NSUInteger, ORTTensorElementDataType) {
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initTensorWithData:(NSMutableData*)data
-                                elementType:(ORTTensorElementDataType)type
+                                elementType:(ORTTensorElementDataType)elementType
                                       shape:(const int64_t*)shape
                                    shapeLen:(size_t)shapeLen
-                                      error:(NSError**)error;
+                                      error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 @end
 

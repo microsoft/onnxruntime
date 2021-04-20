@@ -10,13 +10,15 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface ORTEnv : NSObject
 
+- (nullable instancetype)init NS_UNAVAILABLE;
+
 /**
  * Creates an ORT Environment.
  *
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (nullable instancetype)initWithError:(NSError**)error;
+- (nullable instancetype)initWithError:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 @end
 

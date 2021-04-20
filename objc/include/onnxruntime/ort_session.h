@@ -21,6 +21,8 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface ORTSession : NSObject
 
+- (nullable instancetype)init NS_UNAVAILABLE;
+
 /**
  * Creates an ORT Session.
  *
@@ -31,7 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                            modelPath:(NSString*)path
-                               error:(NSError**)error;
+                               error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 /**
  * Runs the model with pre-allocated inputs and outputs.
