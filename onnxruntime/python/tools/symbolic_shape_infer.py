@@ -1142,7 +1142,30 @@ class SymbolicShapeInference:
     def _infer_SplitToSequence(self, node):
         self._infer_Split_Common(node, helper.make_sequence_value_info)
 
-    def _infer_Squeeze(self, node):
+    def _infer_Squeeze(self, node): 
+        input_shape = self._get_shape(node, 0)
+
+        # Depending on op-version 'axes' are provided as attribute or via 2nd input      
+        axes = get_attribute(node, 'axes')
+        if axes == None:
+            axes = self._try_get_value(node, 1)
+
+        if axes == None:
+            # No axes have been provided (neither via attribute nor via input).
+            # In this case the 'Shape' op should remove all axis with dimension 1.
+            # For symbolic dimensions we guess they are !=1.
+            output_shape = [s for s in input_shape if s != 1]
+        else:
+            axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
+            output_shape = []
+            for i in range(len(input_shape)):
+                if i not in axes:
+                    output_shape.append(input_shape[i])
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                          output_shape))
         self._pass_on_sympy_data(node)
 
     def _infer_Tile(self, node):
