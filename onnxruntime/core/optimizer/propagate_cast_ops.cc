@@ -250,7 +250,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
           // TODO: If the specified optimization is greater than 1 then insert a Cast to the
           // other output_def and still propagate FP16 cast up the graph.
           if (output_def != node_arg) {
-            if (IsType(*output_def, TensorProto_DataType_FLOAT)) {
+            if (IsType(*output_def, TensorProto_DataType_FLOAT) && graph.GetConsumerNodes(output_def->Name()).size() > 0) {
               require_cast[node_arg].push_back(dst_node);
               return;
             }
