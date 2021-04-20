@@ -244,7 +244,7 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_gpu
+          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
@@ -275,7 +275,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
           workingDirectory: $(Build.SourcesDirectory)
   
       - task: CopyFiles@2
