@@ -38,7 +38,7 @@ void CheckLayerNorm() {
     testCase.CreateModel(true);
 }
 
-TEST(LayerNormTest, Test0) {
+TEST(LayerNormExpansionTest, Test0) {
   RegisterSchemas();
   // Test expand-and-run
   CheckLayerNorm<float, float, true>();
