@@ -21,7 +21,9 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 AllocatorPtr alloc_for_caching) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -198,12 +200,26 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 }
 
 template <typename T>
-Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
+Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed,
+                             /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                             AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   if (1 != input_idx) {
     return Status::OK();
   }
+
+  // Cached pre-packed weight
+  if (cached_prepacked_tensor.has_cached_) {
+    is_packed = true;
+    weight_shape_ = cached_prepacked_tensor.shape_;
+    packed_weights_size_ = cached_prepacked_tensor.weights_size_;
+    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    return Status::OK();
+  }
+
+  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
 
   weight_shape_ = weights.Shape();
   const auto& weights_dims = weight_shape_.GetDims();
@@ -229,7 +245,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   }
 
   const size_t loop_len = static_cast<size_t>(3) * num_heads_;
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
@@ -237,6 +252,14 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
     MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, hidden_size_x3, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
+  }
+
+  if (!kernel_owns_prepacked_buffer) {
+    cached_prepacked_tensor.buffer_ = std::move(packed_weights_);
+    cached_prepacked_tensor.shape_ = weight_shape_;
+    cached_prepacked_tensor.weights_size_ = packed_weights_size_;
+    cached_prepacked_tensor.has_cached_ = true;
+    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
   }
 
   is_packed = true;

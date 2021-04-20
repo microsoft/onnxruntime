@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
+#include "core/framework/prepacked_weights_cache.h"
 
 namespace onnxruntime {
 
@@ -65,7 +66,7 @@ struct SessionOptions {
   bool enable_mem_pattern = true;
 
   // Enable memory resue in memory planning. Allows to reuse tensor buffer between tensors if they are of
-  // the same size. The issue with this is it can lead to memory being held for longer than needed and 
+  // the same size. The issue with this is it can lead to memory being held for longer than needed and
   // can impact peak memory consumption.
   bool enable_mem_reuse = true;
 
@@ -108,6 +109,11 @@ struct SessionOptions {
 
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
+
+  // Cache to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session using this session options instance is still in scope.
+  PrepackedWeightsCache* prepacked_weights_cache;
 
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry

@@ -18,13 +18,16 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
  public:
   DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 AllocatorPtr alloc_for_caching) override;
   Status Compute(OpKernelContext* context) const override;
 
   ~DeepCpuLstmOp() override = default;
 
  private:
-  Status TryPackWeights(const Tensor& weights, rnn::detail::PackedWeights& packed_weights, bool& is_packed);
+  Status TryPackWeights(const Tensor& weights, rnn::detail::PackedWeights& packed_weights,
+                        bool& is_packed, AllocatorPtr alloc);
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;

@@ -23,7 +23,9 @@ class QLinearConv : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 AllocatorPtr alloc_for_caching) override;
 
  private:
   static void ReorderFilter(const uint8_t* input,
@@ -83,11 +85,22 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                            /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                            AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   // Support packing the weight matrix.
   if (input_idx != 3) {
+    return Status::OK();
+  }
+
+  // Cached pre-packed weight
+  if (cached_prepacked_tensor.has_cached_) {
+    is_packed = true;
+    b_shape_ = cached_prepacked_tensor.shape_;
+    // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
+    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
     return Status::OK();
   }
 

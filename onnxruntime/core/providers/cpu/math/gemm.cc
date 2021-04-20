@@ -70,7 +70,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
 
-bool GemmPackBFp32(const OpKernelInfo& info,
+bool GemmPackBFp32(AllocatorPtr alloc,
                    const Tensor& tensor_b,
                    bool trans_b,
                    BufferUniquePtr& packed_b,
@@ -90,7 +90,6 @@ bool GemmPackBFp32(const OpKernelInfo& info,
     return false;
   }
 
-  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
   auto* packed_b_data = alloc->Alloc(packed_b_size);
   packed_b = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
   MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
@@ -164,18 +163,40 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        concurrency::ThreadPool* thread_pool);
 
 template <typename T>
-Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
+Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed,
+                        /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                        AllocatorPtr alloc_for_caching) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                            /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                            AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
+  // Cached pre-packed weight
+  if (cached_prepacked_tensor.has_cached_) {
+    is_packed = true;
+    b_shape_ = cached_prepacked_tensor.shape_;
+    // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
+    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    return Status::OK();
+  }
+
+  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(Info(), tensor, trans_B_ != CblasNoTrans, packed_b_, b_shape_);
+    is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, b_shape_);
+    if (is_packed && !kernel_owns_prepacked_buffer) {
+      cached_prepacked_tensor.buffer_ = std::move(packed_b_);
+      cached_prepacked_tensor.shape_ = b_shape_;
+      cached_prepacked_tensor.weights_size_ = b_shape_.Size();
+      cached_prepacked_tensor.has_cached_ = true;
+      packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    }
   }
   return Status::OK();
 }

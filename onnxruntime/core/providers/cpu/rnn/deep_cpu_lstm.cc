@@ -167,7 +167,7 @@ using namespace rnn::detail;
 
 // LSTM details
 
-Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed) {
+Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, AllocatorPtr alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();
@@ -187,7 +187,6 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
     return Status::OK();
   }
 
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
   auto* packed_weights_data = alloc->Alloc(SafeInt<size_t>(packed_weights_size) * num_directions_);
   packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   packed_weights.weights_size_ = packed_weights_size;
@@ -204,14 +203,52 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   return Status::OK();
 }
 
-Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+static void UseCachedPrePackedWeights(const PackedWeight& cached_prepacked_tensor, rnn::detail::PackedWeights& packed_tensor) {
+  packed_tensor.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+  packed_tensor.shape_ = cached_prepacked_tensor.shape_;
+  packed_tensor.weights_size_ = cached_prepacked_tensor.weights_size_;
+}
+
+Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                              /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                              AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   if (tensor.IsDataType<float>()) {
     if (input_idx == 1) {
-      return TryPackWeights(tensor, packed_W_, is_packed);
+      if (cached_prepacked_tensor.has_cached_) {
+        is_packed = true;
+        UseCachedPrePackedWeights(cached_prepacked_tensor, packed_W_);
+      }
+
+      bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+      AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+      ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_W_, is_packed, alloc));
+
+      if (is_packed && !kernel_owns_prepacked_buffer) {
+        cached_prepacked_tensor.buffer_ = std::move(packed_W_.buffer_);
+        cached_prepacked_tensor.shape_ = packed_W_.shape_;
+        cached_prepacked_tensor.weights_size_ = packed_W_.weights_size_;
+        cached_prepacked_tensor.has_cached_ = true;
+        packed_W_.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+      }
     } else if (input_idx == 2) {
-      return TryPackWeights(tensor, packed_R_, is_packed);
+      if (cached_prepacked_tensor.has_cached_) {
+        is_packed = true;
+        UseCachedPrePackedWeights(cached_prepacked_tensor, packed_R_);
+      }
+
+      bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+      AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+      ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, alloc));
+
+      if (is_packed && !kernel_owns_prepacked_buffer) {
+        cached_prepacked_tensor.buffer_ = std::move(packed_R_.buffer_);
+        cached_prepacked_tensor.shape_ = packed_R_.shape_;
+        cached_prepacked_tensor.weights_size_ = packed_R_.weights_size_;
+        cached_prepacked_tensor.has_cached_ = true;
+        packed_R_.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+      }
     }
   }
 

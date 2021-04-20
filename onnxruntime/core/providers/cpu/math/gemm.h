@@ -27,7 +27,9 @@ class Gemm : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 AllocatorPtr alloc_for_caching) override;
 
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           int64_t M, int64_t N, int64_t K,

@@ -63,13 +63,17 @@ class OpKernel {
   //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   and the original initialized constant tensor will be released and not accessible anymore in
   //                   the Compute function.
-  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed) {
+  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed,
+                         /*InOut*/ PackedWeight& /*cached_prepacked_tensor*/,
+                         AllocatorPtr /*alloc_for_caching*/) {
     is_packed = false;
     return Status::OK();
   }
 
   const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const;
-  const OpKernelInfo& Info() const { return *op_kernel_info_; }
+  const OpKernelInfo& Info() const {
+    return *op_kernel_info_;
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);

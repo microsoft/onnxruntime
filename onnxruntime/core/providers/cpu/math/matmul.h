@@ -24,7 +24,9 @@ class MatMul<float> final : public OpKernel {
     info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 AllocatorPtr alloc_for_caching) override;
 
   Status Compute(OpKernelContext* context) const override;
 

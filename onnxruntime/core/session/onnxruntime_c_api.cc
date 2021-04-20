@@ -386,6 +386,14 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::AddPrepackedWeightsCache, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtPrepackedWeightsCache* prepacked_weights_cache) {
+  API_IMPL_BEGIN
+  options->value.prepacked_weights_cache = reinterpret_cast<::onnxruntime::PrepackedWeightsCache*>(prepacked_weights_cache);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
