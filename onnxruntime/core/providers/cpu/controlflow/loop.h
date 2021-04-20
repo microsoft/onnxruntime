@@ -14,7 +14,7 @@ namespace onnxruntime {
 
 class Loop : public controlflow::IControlFlowKernel {
  public:
-  Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) { Init(info); }
+  Loop(const OpKernelInfo& info) : IControlFlowKernel(info) { Init(info); }
   void Init(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
