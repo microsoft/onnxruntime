@@ -17,6 +17,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
@@ -2005,12 +2006,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   Ort::SessionOptions tmp_options;
   //the return status doesn't matter;
-  if(!OrtSessionOptionsAppendExecutionProvider_Dnnl(tmp_options, 0)){
-    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
-    LOGS(default_logger, INFO) << "This is a trick to initialize the shared provider bridge, it is safe to ignore.";
+  if(!InitProvidersSharedLibrary()){
+    throw std::runtime_error("Init providers shared library failed!");
   }
   
-
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING
