@@ -2148,7 +2148,7 @@ Example 4:
       })
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            // LayerNormalization <axis, epsilon, stash_type> (X, scale, bias) => (Y, mean?, invstdvar?)
+            // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)
 
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))

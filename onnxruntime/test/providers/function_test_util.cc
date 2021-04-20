@@ -75,14 +75,14 @@ static void AssertEqualT(const Tensor& tensor1, const Tensor& tensor2) {
 
   T threshold = T(0.001f);
 
-  for (int i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     ASSERT_NEAR(data1[i], data2[i], threshold) << "at position i:" << i;
   }
 }
 
 void FunctionTestCase::AssertEqual(const std::vector<OrtValue>& results1, const std::vector<OrtValue>& results2) {
   ASSERT_EQ(results1.size(), results2.size());
-  for (int i = 0; i < results1.size(); i++) {
+  for (size_t i = 0; i < results1.size(); i++) {
     auto& value1 = results1[i].Get<Tensor>();
     auto& value2 = results2[i].Get<Tensor>();
     // Currently, only float or double:
