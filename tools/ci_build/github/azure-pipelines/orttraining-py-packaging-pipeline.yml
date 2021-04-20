@@ -1,8 +1,9 @@
 trigger: none
 
 stages:
-- stage: Python_Packaging_Cuda11.1
+- stage: Python_Packaging
   jobs:
+  - job: Python_Packaging_Cuda11
     steps:
     - task: PythonScript@0
       displayName: 'Set Python manylinux variables'
