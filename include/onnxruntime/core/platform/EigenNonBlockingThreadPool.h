@@ -975,8 +975,7 @@ void SummonWorkers(PerThread &pt,
       auto pr = q.PushBackWithTag([&ps,
                                    &preferred_workers,
                                    idx,
-                                   worker_fn,
-                                   this]() {
+                                   worker_fn]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
             assert(idx >= 0 && idx < preferred_workers.size());
