@@ -228,14 +228,15 @@ stages:
       workspace:
         clean: all
       pool: AMD-GPU
+      # pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
           Python36:
             PythonVersion: '3.6'
-          # Python37:
-          #   PythonVersion: '3.7'
-          # Python38:
-          #   PythonVersion: '3.8'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
           # dependency PyTorch does not support Python 3.9 yet
           # Python39:
           #   PythonVersion: '3.9'
@@ -253,21 +254,21 @@ stages:
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
-            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmu
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetrainingrocmbuild
 
       - task: CmdLine@2
         inputs:
           script: |
+            #              --device=/dev/kfd \
+            #              --device=/dev/dri \
+            #              --group-add video \ 
             mkdir -p $HOME/.onnx
             docker run --rm \
               --privileged \
               --ipc=host \
               --network=host \
-              --device=/dev/kfd \
-              --device=/dev/dri \
-              --group-add video \
               --cap-add=SYS_PTRACE \
               --security-opt seccomp=unconfined \
               -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
@@ -332,31 +333,16 @@ stages:
         inputs:
           ArtifactName: onnxruntime_rocm
 
-#      - script: |
-#          sudo apt-get update
-#          sudo apt-get install python3-pip python-dev
-#        displayName: 'sudo apt-get install python3-pip python-dev'
-#
-#      - script: |
-#          python3 -m pip install azure-storage-blob==2.1.0
-#        displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
-#        timeoutInMinutes: 20
-
-#      - task: AzureCLI@2
-#        inputs:
-#          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-#          scriptType: 'bash'
-#          scriptLocation: 'inlineScript'
-#          inlineScript: |
-#            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
-#            echo ${files[0]} && \
-#            tools/ci_build/upload_python_package_to_azure_storage.py \
-#                --python_wheel_path ${files[0]} \
-#                --account_name onnxruntimepackages \
-#                --account_key $(orttrainingpackagestorageaccountkey) \
-#                --container_name '$web'
-#          condition: succeededOrFailed()
-#          displayName: 
+      - script: |
+          files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+          echo ${files[0]} && \
+          tools/ci_build/upload_python_package_to_azure_storage.py \
+              --python_wheel_path ${files[0]} \
+              --account_name onnxruntimepackages \
+              --account_key $(orttrainingpackagestorageaccountkey) \
+              --container_name '$web'
+        condition: succeededOrFailed()
+        displayName: Upload whl to storage 
 
       - template: component-governance-component-detection-steps.yml
         parameters:
