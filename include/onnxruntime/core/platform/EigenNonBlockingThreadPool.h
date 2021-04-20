@@ -9,17 +9,6 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-
-/*
-
-Sticky allocation, todo:
-
-- Avoid non-trivially-destructible thread local state
-- Update comments
-- Describe assumptions for queues, and focus on work producer selecting and waking threads
-
- */
-
 #include <type_traits>
 #include <sstream>
 
@@ -94,7 +83,7 @@ Sticky allocation, todo:
 //
 //     This two-layer approach lets us separate out the
 //     super-lightweight per-iteration-batch work from the more
-//     costsly per-loop work of managing Task objects.
+//     costly per-loop work of managing Task objects.
 //
 //   - Tasks for running a parallel section.  This is an extension of
 //     the approach taken for parallel loops.  However, the Tasks are
@@ -112,32 +101,42 @@ Sticky allocation, todo:
 // - The run queues follow the usual approach of having push/pop
 //   operations on the front/back, and optimizing the PopFront case
 //   for single-threaded use by the thread owning the run queue.
+//   Two points to note here are:
 //
-//   However, we support an additional Revoke operation to replace an
-//   item in the middle of a queue with a tombstone.  This operation
-//   is used at the end of parallel loops and parallel sections to
-//   remove any tasks that were created but not yet executed.  Once
-//   revoked, a thread can rely on the fact that the task will no
-//   longer execute.  Revocation helps manage captured state in
-//   parallel loops: the alternatives would be (i) waiting for all
-//   tasks that captured state to reach the head of their queues and
-//   execute, or (ii) use heap-allocated state in tasks, and use a
-//   technique such as reference counting to de-allocate it.
+//   * We should experiment with simplifying these queues.  In ORT, we
+//     use the CAS-based scheduling layer in threadpool.cc for the
+//     fine-grained allocation of individual loop iterations to worker
+//     threads.  This means we do not have the form of recursive
+//     sub-division of work that motivates the original design.
 //
-//   To support revoation, each thread has a unique "Tag" to identify
-//   the items that it adds to the work queues.  A thread can revoke
-//   an item only if it has the thread's own tag.
+//   * We support an additional Revoke operation to replace an item in
+//     the middle of a queue with a tombstone.  This operation is used
+//     at the end of parallel loops and parallel sections to remove
+//     any tasks that were created but not yet executed.  Once
+//     revoked, a thread can rely on the fact that the task will no
+//     longer execute.  Revocation helps manage captured state in
+//     parallel loops: the alternatives would be (i) waiting for all
+//     tasks that captured state to reach the head of their queues and
+//     execute, or (ii) use heap-allocated state in tasks, and use a
+//     technique such as reference counting to de-allocate it.
 //
-// - The worker threads maintain a best-effort bitmap in
-//   good_worker_hints_ of which threads to push work to.  A thread
-//   controls its status via SetGoodWorkerHint.  A thread is a "good"
-//   worker when it is actively spinning for work, meaning both that
-//   it is not blocked in the OS, and that it is not busy with work
-//   already.
+//     To support revocation, each thread has a unique "Tag" to
+//     identify the items that it adds to the work queues.  A thread
+//     can revoke an item only if it has the thread's own tag.
 //
-//   This heuristic aims to avoid waking additional sleeping threads
-//   where possible, and in a series of parallel loops or parallel
-//   sections to push the work to the same set of threads each time.
+// - When entering a parallel loop (or parallel section), a thread
+//   maintains a set of "preferred" worker hints, and initially
+//   submits tasks to these workers.  
+//   When a task executes, it updates the submitting thread's
+//   preferred workers to reflect the worker that the task ran on.
+//   Hence, if a task is submitted to thread T1's queue, and then
+//   stolen by T2 for execution, then T2 will become preferred.
+//
+//   This "stickiness" aims to retain locality between successive
+//   loops submitted by the same thread, to maintain the same set of
+//   active threads over time (when the entire pool is not needed),
+//   and to allow concurrent requests to submit works to their own
+//   respective sets of preferred workers.
 
 namespace onnxruntime {
 namespace concurrency {
@@ -147,6 +146,9 @@ using CHAR_TYPE = wchar_t;
 #else
 using CHAR_TYPE = char;
 #endif
+
+class ThreadPoolParallelSection;
+class ThreadPoolLoop;
 
 enum class StealAttemptKind {
   TRY_ONE,
@@ -158,14 +160,6 @@ enum class PushResult {
   ACCEPTED_IDLE,
   ACCEPTED_BUSY
 };
-
-// Sticky worker assignment
-// ------------------------
- 
-static std::atomic<unsigned> next_worker;
-
-class ThreadPoolParallelSection;
-class ThreadPoolLoop;
 
 // Align to avoid false sharing with prior fields.  If required,
 // alignment or padding must be added subsequently to avoid false
@@ -933,6 +927,7 @@ void SummonWorkers(PerThread &pt,
   // initially assigned to thread T1 is stolen and executed by T2,
   // then T2 is assigned at the new preferred worker).
   if (!pt.preferred_init) {
+    static std::atomic<unsigned> next_worker;
     for (auto idx = 0; idx < num_threads_; idx++) {
       pt.preferred_workers.push_back(next_worker++ % num_threads_);
     }
