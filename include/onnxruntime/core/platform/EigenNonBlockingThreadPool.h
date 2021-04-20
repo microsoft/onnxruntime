@@ -745,7 +745,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // indices as (t + coprime) % num_threads, we will cover all threads without
     // repetitions (effectively getting a presudo-random permutation of thread
     // indices).
-    for (int i = 1; i <= num_threads_; ++i) {
+    for (auto i = 1u; i <= num_threads_; ++i) {
       all_coprimes_.emplace_back(i);
       ComputeCoprimes(i, &all_coprimes_.back());
     }
@@ -757,7 +757,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     good_worker_hints_ = onnxruntime::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
 
     worker_data_.resize(num_threads_);
-    for (int i = 0; i < num_threads_; i++) {
+    for (auto i = 0u; i < num_threads_; i++) {
       worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
     }
   }
@@ -935,7 +935,7 @@ void SummonWorkers(PerThread &pt,
   // time.
   std::vector<int> &preferred_workers = pt.preferred_workers;
   static std::atomic<unsigned> next_worker;
-  while ((int)preferred_workers.size() < num_threads_) {
+  while (preferred_workers.size() < num_threads_) {
     preferred_workers.push_back(next_worker++ % num_threads_);
   }
   
@@ -953,14 +953,14 @@ void SummonWorkers(PerThread &pt,
     for (auto i = 0u; i < extra_needed; i++) {
       // Worker thread number in our team, starting from 0 (i.e., not
       // including the main thread).
-      int idx = current_dop + i - 1;
+      unsigned idx = current_dop + i - 1;
       assert(idx >= 0 && idx < num_threads_);
       
       // Use preferred hints from the worker threads that ran the
       // previous loop from this thread.  Note that the hints may have
       // been from a different thread pool, hence we keep within the
       // current range [0,num_threads_).
-      int q_idx = preferred_workers[idx] % num_threads_;
+      unsigned q_idx = preferred_workers[idx] % num_threads_;
       if (!(q_idx >= 0 && q_idx < num_threads_)) {
         ::std::cerr << "!!1 " << q_idx << " " << idx << " " << num_threads_ << ::std::endl;
       }
@@ -985,12 +985,12 @@ void SummonWorkers(PerThread &pt,
                                     if (!(idx >= 0 && idx < num_threads_)) {
                                       ::std::cerr << "!!2 " << idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
                                     }
-            assert(idx >= 0 && idx < (int)preferred_workers.size());
-            int my_idx = GetPerThread()->thread_id;
-                                    if (!(my_idx >= 0 && my_idx < (int)preferred_workers.size())) {
+            assert(idx >= 0 && idx < preferred_workers.size());
+                                    unsigned my_idx = GetPerThread()->thread_id;
+                                    if (!(my_idx >= 0 && my_idx < preferred_workers.size())) {
                                       ::std::cerr << "!!3 " << my_idx << " " << preferred_workers.size() << " " << num_threads_ << ::std::endl;
                                     }
-            assert(my_idx >= 0 && my_idx < (int)preferred_workers.size());
+            assert(my_idx >= 0 && my_idx < preferred_workers.size());
                                     preferred_workers[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
@@ -1268,7 +1268,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   };
 
   Environment& env_;
-  const int num_threads_;
+  const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1340,7 +1340,7 @@ int CurrentThreadId() const EIGEN_FINAL {
                     // that's we are done.
                     if (should_block) {
                       blocked_++;
-                      if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
+                      if (done_ && blocked_ == num_threads_) {
                         should_block = false;
                         // Almost done, but need to re-check queues.
                         // Consider that all queues are empty and all worker threads are preempted
@@ -1398,7 +1398,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   Task Steal(StealAttemptKind steal_kind) {
     PerThread* pt = GetPerThread();
-    unsigned size = static_cast<unsigned>(num_threads_);
+    unsigned size = num_threads_;
     unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
     unsigned r = Rand(&pt->rand);
     unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
