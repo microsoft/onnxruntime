@@ -248,7 +248,6 @@ stages:
       - template: set-python-manylinux-variables-step.yml
       
       - task: PythonScript@0
-        displayName: 'Set Python manylinux variables'
         inputs:
           scriptSource: inline
           script: |
@@ -260,7 +259,6 @@ stages:
         displayName: 'Set variables for Cuda10.2'
 
       - task: PythonScript@0
-        displayName: 'Set Python manylinux variables'
         inputs:
           scriptSource: inline
           script: |
