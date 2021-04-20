@@ -33,9 +33,6 @@ class Gpt2TesterFactory:
 class Gpt2BeamSearchTester(Gpt2Tester):
     def __init__(self,
                  input_ids,
-                 position_ids,
-                 attention_mask,
-                 beam_select_idx,
                  input_log_probs,
                  input_unfinished_sents,
                  prev_step_results,
@@ -51,21 +48,19 @@ class Gpt2BeamSearchTester(Gpt2Tester):
     ):
         super().__init__(
             input_ids,
-            position_ids,
-            attention_mask,
-            num_attention_heads,
-            hidden_size,
-            num_layer,
-            device,
-            is_fp16,
-            top_k,
-            top_k_required_order
+            position_ids=None,
+            attention_mask=None,
+            num_attention_heads=num_attention_heads,
+            hidden_size=hidden_size,
+            num_layer=num_layer,
+            device=device,
+            is_fp16=is_fp16,
+            top_k=top_k,
+            top_k_required_order=top_k_required_order
         )
         self.input_length = input_ids.shape[-1]
         self.n_layer = num_layer
         self.beam_size = beam_size
-
-        self.beam_select_idx = beam_select_idx.to(device)
 
         float_type = torch.float16 if is_fp16 else torch.float32
         self.input_log_probs = input_log_probs.type(float_type).to(device)
@@ -79,10 +74,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
     def get_inputs(self) -> Gpt2BeamSearchInputs:
         return Gpt2BeamSearchInputs(
             self.input_ids,
-            self.position_ids,
-            self.attention_mask,
             self.past,
-            self.beam_select_idx,
             self.input_log_probs,
             self.input_unfinished_sents,
             self.prev_step_results,
@@ -101,11 +93,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
         self.input_ids = self.last_state.view(self.batch_size * self.beam_size, -1).to(device)
 
-        self.beam_select_idx = (
-            torch.from_numpy(output[-5]).to(device)
-            if isinstance(output[-5], numpy.ndarray)
-            else output[-5].clone().detach().to(device)
-        )
         self.input_log_probs = (
             torch.from_numpy(output[-4]).to(device)
             if isinstance(output[-4], numpy.ndarray)
@@ -128,27 +115,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         )
         self.top_1_tokens = self.input_ids[0]
         self.top_k_tokens = self.last_state
-
-        self.position_ids = (
-            torch.tensor([self.input_length + step - 1])
-            .unsqueeze(0)
-            .repeat(self.batch_size * self.beam_size, 1)
-            .to(device)
-        )
-
-        if self.attention_mask.size(0) != (self.batch_size * self.beam_size):
-            self.attention_mask = self.attention_mask.repeat(
-                self.batch_size * self.beam_size, 1
-            )
-        self.attention_mask = torch.cat(
-            [
-                self.attention_mask,
-                torch.ones([self.batch_size * self.beam_size, 1]).type_as(
-                    self.attention_mask
-                ),
-            ],
-            1,
-        ).to(device)
 
         self.past = []
 
@@ -227,13 +193,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
-            position_ids = inputs["position_ids"] if "position_ids" in inputs else None
-            attention_mask = (
-                inputs["attention_mask"] if "attention_mask" in inputs else None
-            )
-            beam_select_idx = (
-                inputs["beam_select_idx"] if "beam_select_idx" in inputs else None
-            )
             input_log_probs = (
                 inputs["input_log_probs"] if "input_log_probs" in inputs else None
             )
@@ -246,9 +205,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
             onnx_runner = Gpt2BeamSearchTester(
                 input_ids,
-                position_ids,
-                attention_mask,
-                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_results,
@@ -264,9 +220,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             onnx_io_runner = Gpt2BeamSearchTester(
                 input_ids,
-                position_ids,
-                attention_mask,
-                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_results,
@@ -282,9 +235,6 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             torch_runner = Gpt2BeamSearchTester(
                 input_ids,
-                position_ids,
-                attention_mask,
-                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_results,
@@ -302,12 +252,11 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             batch_size = torch_runner.batch_size
             onnx_metric.start_batch(batch_size)
             onnx_io_metric.start_batch(batch_size)
-            context_len = list(onnx_runner.input_ids.size())[1]
+            context_len = list(onnx_runner.input_ids.size())[-1]
             with torch.no_grad():
-                done = torch.zeros(batch_size, dtype=torch.bool)
                 for step in range(max_steps):
                     print(f"Processing step: {step}")
-                    seq_len = list(onnx_runner.input_ids.size())[1]
+                    seq_len = list(onnx_runner.input_ids.size())[-1]
                     past_seq_len = list(onnx_runner.past[0].size())[3]
 
                     start_time = timeit.default_timer()
@@ -365,8 +314,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
                     onnx_io_runner.update(onnx_io_output, step, device)
 
-                    done = done | (not onnx_runner.input_unfinished_sents.all())
-                    if torch.all(done):
+                    if (not onnx_runner.input_unfinished_sents.any()):
                         print("break at step: ", step)
                         break
 

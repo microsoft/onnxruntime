@@ -102,6 +102,13 @@ def parse_arguments():
 
     parser.add_argument('--batch_size', required=False, type=int, default=1, help='Batch size for GPT model with beam search')
     parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
+    parser.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage repetition.')
+    parser.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits.')
+    parser.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference.')
+    parser.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence.')
+    parser.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy.')
+    parser.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability. (do sampling only)')
+    parser.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero. (do sampling only)')
 
     args = parser.parse_args()
 
@@ -143,7 +150,18 @@ def main():
     gpt2tester = Gpt2TesterFactory.create_tester(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
     if model_type == 'beam_search_step':
-        model = model_class.from_pretrained(args.model_name_or_path, config=config, batch_size=args.batch_size, beam_size=args.beam_size, cache_dir=cache_dir)
+        model = model_class.from_pretrained(args.model_name_or_path, 
+                                            config=config, 
+                                            batch_size=args.batch_size, 
+                                            beam_size=args.beam_size, 
+                                            temperature=args.temperature,
+                                            repetition_penalty=args.repetition_penalty, 
+                                            excluded_token_ids=args.excluded_token_ids, 
+                                            length_penalty=args.length_penalty, 
+                                            do_sample=args.do_sample, 
+                                            do_sample_top_p=args.do_sample_top_p, 
+                                            do_sample_top_k=args.do_sample_top_k,
+                                            cache_dir=cache_dir)
     else:
         model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
