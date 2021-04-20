@@ -935,7 +935,7 @@ void SummonWorkers(PerThread &pt,
     }
     pt.preferred_init = true;
   }
-  assert(preferred_workers->size() == num_threads_);
+  assert((int)preferred_workers->size() == (int)num_threads_);
   
   // Identify whether we need to create additional workers.
   // Throughout the threadpool implementation, degrees of parallelism
