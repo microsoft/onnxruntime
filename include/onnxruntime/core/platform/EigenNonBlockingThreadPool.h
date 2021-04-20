@@ -16,7 +16,6 @@ Sticky allocation, todo:
 
 - Avoid non-trivially-destructible thread local state
 - Update comments
-- PushBack -- should return ready status via enum (i.e. return FAILED / OK_EMPTY / OK_NONEMPTY )
 - Describe assumptions for queues, and focus on work producer selecting and waking threads
 
  */
@@ -1164,9 +1163,8 @@ int CurrentThreadId() const EIGEN_FINAL {
     // retain cache state within the workers, and to reduce the number
     // of times that the work-stealing code paths are used for
     // rebalancing.
-    int num_preferred{0};
-    bool preferred_init{false};
     std::vector<int> preferred_workers;
+    bool preferred_init{false};
     PaddingToAvoidFalseSharing padding_2;
   };
 
