@@ -295,7 +295,7 @@ export class TensorResultValidator {
 
   checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
-    expect(actual.size, 'size of output tensors').to.equal(expected.length);
+    expect(Object.getOwnPropertyNames(actual).length, 'size of output tensors').to.equal(expected.length);
 
     // check output mapping
     for (const expectedOneOutput of expected) {
@@ -431,10 +431,10 @@ export async function runModelTestSet(context: ModelTestContext, testCase: Test.
   Logger.verbose('TestRunner', `Start to run test data from folder: ${testCase.name}`);
   const validator = new TensorResultValidator(context.backend);
   try {
-    const fetches: Record<string, ort.Tensor> = {};
-    testCase.inputs!.forEach((tensor, i) => fetches[context.session.outputNames[i]] = tensor);
+    const feeds: Record<string, ort.Tensor> = {};
+    testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
     const start = now();
-    const outputs = await context.session.run(fetches);
+    const outputs = await context.session.run(feeds);
     const end = now();
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
