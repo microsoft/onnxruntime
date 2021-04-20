@@ -47,6 +47,7 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
 
     if (alloc->Info().alloc_type == OrtArenaAllocator)
+      // Reserve() uses the device allocator to make the allocation
       p_data = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_size);
     else
       p_data = alloc->Alloc(mem_size);
@@ -77,7 +78,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   } else {
     if (use_device_allocator_for_initializers) {
-      // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
       p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
@@ -100,7 +100,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     // deserialize to CPU first for non-CPU allocator, then copy
     std::unique_ptr<Tensor> p_deserialize_tensor;
     if (use_device_allocator_for_initializers) {
-      // Arena has a specific way to store static memory (interface Reserve()) - The arena does not reuse static memory allocated by Reserve.
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
       p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
