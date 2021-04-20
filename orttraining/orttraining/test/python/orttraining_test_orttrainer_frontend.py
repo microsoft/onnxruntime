@@ -79,7 +79,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'transformer_layer_recompute': False,
             'number_recompute_layers': 0,
             'propagate_cast_ops_level': -1,
-            'propagate_cast_ops_allow': []
+            'propagate_cast_ops_allow': [],
+            'allow_layer_norm_mod_precision': False
         },
         'utils': {
             'frozen_weights': [],
