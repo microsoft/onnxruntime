@@ -927,13 +927,15 @@ void SummonWorkers(PerThread &pt,
   // the worker thread that actually claims an item (e.g., if an item
   // initially assigned to thread T1 is stolen and executed by T2,
   // then T2 is assigned at the new preferred worker).
+  auto preferred_workers = &(pt.preferred_workers);
   if (!pt.preferred_init) {
     static std::atomic<unsigned> next_worker;
     for (auto idx = 0; idx < num_threads_; idx++) {
-      pt.preferred_workers.push_back(next_worker++ % num_threads_);
+      preferred_workers->push_back(next_worker++ % num_threads_);
     }
     pt.preferred_init = true;
   }
+  assert(preferred_workers->size() == num_threads_);
   
   // Identify whether we need to create additional workers.
   // Throughout the threadpool implementation, degrees of parallelism
@@ -942,7 +944,6 @@ void SummonWorkers(PerThread &pt,
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
 
   if (n > current_dop) {
-    std::vector<int> &preferred_workers = pt.preferred_workers;
     unsigned extra_needed = n - current_dop;
 
     // Create the additional tasks, and push them to workers.
@@ -956,7 +957,10 @@ void SummonWorkers(PerThread &pt,
       
       // Sticky worker assignment: use our own stats of which
       // workers previously started work without queuing.
-      int q_idx = preferred_workers[idx];
+      int q_idx = (*preferred_workers)[idx];
+      if (!(q_idx >= 0 && q_idx < num_threads_)) {
+        ::std::cerr << "!!1 " << q_idx << " " << idx << " " << num_threads_ << ::std::endl;
+      }
       assert(q_idx >= 0 && q_idx < num_threads_);
 
       // If the worker's queue accepts the task, then record it in
@@ -968,17 +972,23 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      auto pr = q.PushBackWithTag(
-                                  [&ps, &preferred_workers, idx, worker_fn, n, this]() {
+      auto pr = q.PushBackWithTag([&ps,
+                                   preferred_workers,
+                                   idx,
+                                   worker_fn,
+                                   this]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
-            if (!(idx >= 0 && idx < (int)preferred_workers.size())) {
-              ::std::cerr << "idx=" << idx << " num_threads_=" << num_threads_ << " n=" << n << std::endl;
-            }
-            assert(idx >= 0 && idx < (int)preferred_workers.size());
+                                    if (!(idx >= 0 && idx < num_threads_)) {
+                                      ::std::cerr << "!!2 " << idx << " " << preferred_workers->size() << " " << num_threads_ << ::std::endl;
+                                    }
+            assert(idx >= 0 && idx < (int)preferred_workers->size());
             int my_idx = GetPerThread()->thread_id;
-            assert(my_idx >= 0 && my_idx < (int)preferred_workers.size());
-            preferred_workers[idx] = my_idx;
+                                    if (!(my_idx >= 0 && my_idx < (int)preferred_workers->size())) {
+                                      ::std::cerr << "!!3 " << my_idx << " " << preferred_workers->size() << " " << num_threads_ << ::std::endl;
+                                    }
+            assert(my_idx >= 0 && my_idx < (int)preferred_workers->size());
+            (*preferred_workers)[idx] = my_idx;
             // Run the work
             worker_fn(idx+1);
             // After the assignment to ps.tasks_finished, the stack-allocated
