@@ -11,6 +11,7 @@
 
 #include <type_traits>
 #include <sstream>
+#include <iostream>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -968,11 +969,13 @@ void SummonWorkers(PerThread &pt,
       Queue& q = td.queue;
       unsigned w_idx;
       auto pr = q.PushBackWithTag(
-          [&ps, &preferred_workers, idx, worker_fn]() {
+                                  [&ps, &preferred_workers, idx, worker_fn, n, this]() {
             // Record the thread on which this worker runs.  We will
             // re-use that when submitting work on the next loop.
-            assert(idx >= 0 &&
-                   idx < (int)preferred_workers.size());
+            if (!(idx >= 0 && idx < (int)preferred_workers.size())) {
+              ::std::cerr << "idx=" << idx << " num_threads_=" << num_threads_ << " n=" << n << std::endl;
+            }
+            assert(idx >= 0 && idx < (int)preferred_workers.size());
             int my_idx = GetPerThread()->thread_id;
             assert(my_idx >= 0 && my_idx < (int)preferred_workers.size());
             preferred_workers[idx] = my_idx;
