@@ -573,7 +573,7 @@ function saveConfig(config: Test.Config) {
 
   fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}
 
-module.exports=${JSON.stringify(config)};`);
+ort.env.ORT_WEB_TEST_DATA=${JSON.stringify(config)};`);
 }
 
 function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {

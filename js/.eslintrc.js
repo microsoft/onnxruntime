@@ -115,6 +115,7 @@ module.exports = {
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-var-requires': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       'camelcase': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
       'import/no-extraneous-dependencies': 'off',

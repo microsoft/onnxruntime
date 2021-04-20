@@ -68,6 +68,37 @@ const tensorDataTypeEnumToString = (typeProto: onnx.TensorProto.DataType): Tenso
   }
 };
 
+const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|
+    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
+    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
+      switch (type) {
+        case 'float32':
+          return Float32Array;
+        case 'uint8':
+          return Uint8Array;
+        case 'int8':
+          return Int8Array;
+        case 'uint16':
+          return Uint16Array;
+        case 'int16':
+          return Int16Array;
+        case 'int32':
+          return Int32Array;
+        case 'bool':
+          return Uint8Array;
+        case 'float64':
+          return Float64Array;
+        case 'uint32':
+          return Uint32Array;
+        case 'int64':
+          return BigInt64Array;
+        case 'uint64':
+          return BigUint64Array;
+        default:
+          throw new Error(`unsupported type: ${type}`);
+      }
+    };
+
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionHandle: number;
 
@@ -243,7 +274,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
               // string tensor
               throw new TypeError('string tensor is not supported');
             } else {
-              const t = new Tensor(type, [], dims) as TypedTensor<Exclude<Tensor.Type, 'string'>>;
+              const typedArray = numericTensorTypeToTypedArray(type);
+              const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
+              const t = new Tensor(type, new typedArray(size), dims) as TypedTensor<Exclude<Tensor.Type, 'string'>>;
               new Uint8Array(t.data.buffer, t.data.byteOffset, t.data.byteLength)
                   .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + t.data.byteLength));
               output[this.outputNames[outputIndices[i]]] = t;

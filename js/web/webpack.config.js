@@ -1,5 +1,6 @@
 const path = require('path');
 const webpack = require('webpack');
+const NodePolyfillPlugin = require("node-polyfill-webpack-plugin");
 const minimist = require('minimist');
 
 function buildAllConfig({
@@ -22,6 +23,7 @@ function buildAllConfig({
     externals: {
       'fs': 'fs',
       'path': 'path',
+      'util': 'util',
     },
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
@@ -63,6 +65,7 @@ function buildWebConfig({
       'onnxruntime-common': 'ort',
       'fs': 'fs',
       'path': 'path',
+      'util': 'util',
     },
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
@@ -92,21 +95,23 @@ function buildTestRunnerConfig({
   devtool = 'source-map'
 }) {
   return {
-    entry: path.resolve(__dirname, 'test/test-runner2.ts'),
+    entry: path.resolve(__dirname, 'test/test-main.ts'),
     output: {
       path: path.resolve(__dirname, 'test'),
-      filename: `ort-test-runner${suffix}.js`,
+      filename: `ort${suffix}.js`,
       library: {
         type: format
       }
     },
     externals: {
-      '..': 'ort',
+      'onnxruntime-common': 'ort',
       'fs': 'fs',
-      'path': 'path',
     },
     resolve: { extensions: ['.ts', '.js'] },
-    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
+    plugins: [
+      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
+      new NodePolyfillPlugin()
+    ],
     module: {
       rules: [{
         test: /\.tsx?$/,
@@ -131,13 +136,10 @@ module.exports = () => {
   const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|undefined;
   const builds = [];
 
-  if (bundleMode === 'prod' || bundleMode === 'perf') {
+  if (bundleMode === 'prod') {
     builds.push(
       buildAllConfig({ suffix: '.min', target: 'es5' }),
-      buildWebConfig({ suffix: '.min', target: 'es5' })
-    );
-  } else { // dev
-    builds.push(
+      buildWebConfig({ suffix: '.min', target: 'es5' }),
       buildAllConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
       buildWebConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
     );
@@ -146,7 +148,7 @@ module.exports = () => {
   if (bundleMode === 'dev') {
     builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
   } else if (bundleMode === 'perf') {
-    builds.push(buildTestRunnerConfig({ suffix: '.perf' }));
+    builds.push(buildTestRunnerConfig({ suffix: '.perf', devtool: undefined }));
   }
 
   return builds;

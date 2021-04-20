@@ -124,9 +124,9 @@ export interface TestRunnerCliArgs {
    *
    * Mode   | Output File        | Main                 | Source Map         | Webpack Config
    * ------ | ------------------ | -------------------- | ------------------ | --------------
-   * prod   | /dist/onnx.min.js  | /lib/api/index.ts    | source-map         | production
-   * dev    | /test/onnx.dev.js  | /test/test-main.ts   | inline-source-map  | development
-   * perf   | /test/onnx.perf.js | /test/test-main.ts   | (none)             | production
+   * prod   | /dist/ort.min.js   | /lib/index.ts        | source-map         | production
+   * dev    | /test/ort.dev.js   | /test/test-main.ts   | inline-source-map  | development
+   * perf   | /test/ort.perf.js  | /test/test-main.ts   | (none)             | production
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
 

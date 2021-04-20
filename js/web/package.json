@@ -7,7 +7,8 @@
   "types": "./types/lib/index.d.ts",
   "scripts": {
     "prepare": "tsc && node ./script/prepare-test-data.js",
-    "build": "node ./script/build.js"
+    "build": "node ./script/build.js",
+    "test": "node ./script/test-runner-cli.js"
   },
   "repository": {
     "type": "git",
@@ -54,6 +55,7 @@
     "minimatch": "^3.0.4",
     "minimist": "^1.2.5",
     "mocha": "^8.3.2",
+    "node-polyfill-webpack-plugin": "^1.1.0",
     "npmlog": "^4.1.2",
     "numpy-parser": "^1.2.3",
     "strip-json-comments": "^3.1.1",

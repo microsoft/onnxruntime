@@ -1,17 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-// tslint:disable-next-line:no-import-side-effect
-import '../lib/api';
+import '../lib/index'; // this need to be the first line
 
+import * as ort from 'onnxruntime-common';
 import * as platform from 'platform';
 
 import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-// tslint:disable-next-line:no-require-imports
-const ONNX_JS_TEST_CONFIG = require('./testdata-config') as Test.Config;
+const ONNX_JS_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
 
 // Set logging configuration
 for (const logConfig of ONNX_JS_TEST_CONFIG.log) {

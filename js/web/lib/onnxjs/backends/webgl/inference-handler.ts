@@ -137,8 +137,17 @@ export class WebGLInferenceHandler implements InferenceHandler {
       ...layout,
       tensor: tensor ||
           new Tensor(
-                  layout.unpackedShape, dataType, (_id: Tensor.Id) => this.readTexture(textureData), undefined,
-                  undefined, tensorId),
+                  layout.unpackedShape, dataType,
+                  (_id: Tensor.Id) => {
+                    const data = this.readTexture(textureData);
+                    if (dataType === 'float32') {
+                      return Float32Array.from(data);
+                    } else if (dataType === 'bool') {
+                      return Uint8Array.from(data);
+                    }
+                    return data;
+                  },
+                  undefined, undefined, tensorId),
       texture
     };
     this.setTextureData(textureData.tensor.dataId, textureData);
