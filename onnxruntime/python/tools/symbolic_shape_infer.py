@@ -81,6 +81,13 @@ def sympy_reduce_product(x):
         value = x
     return value
 
+def handle_negative_index(index, bound):
+    try:
+        if index < 0:
+            return bound + index
+    except TypeError:
+        print("Cannot determine if {} < 0".format(index))
+    return index
 
 class SymbolicShapeInference:
     def __init__(self, int_max, auto_merge, guess_output_rank, verbose):
@@ -138,6 +145,7 @@ class SymbolicShapeInference:
             'Unsqueeze': self._infer_Unsqueeze,
             'Where': self._infer_symbolic_compute_ops,
             'ZipMap': self._infer_ZipMap,
+            'Neg': self._infer_symbolic_compute_ops,
             # contrib ops:
             'Attention': self._infer_Attention,
             'BiasGelu': self._infer_BiasGelu,
@@ -292,7 +300,7 @@ class SymbolicShapeInference:
         for d in self._get_shape(node, idx):
             if type(d) == str:
                 sympy_shape.append(self.symbolic_dims_[d] if d in
-                                   self.symbolic_dims_ else sympy.Symbol(d, integer=True))
+                                   self.symbolic_dims_ else sympy.Symbol(d, integer=True, positive=True))
             else:
                 assert None != d
                 sympy_shape.append(d)
@@ -451,7 +459,7 @@ class SymbolicShapeInference:
             v = self.suggested_merge_[new_dim]
             new_dim = sympy.Integer(int(v)) if is_literal(v) else v
         else:
-            self.symbolic_dims_[new_dim] = sympy.Symbol(new_dim, integer=True)
+            self.symbolic_dims_[new_dim] = sympy.Symbol(new_dim, integer=True, positive=True)
         return new_dim
 
     def _new_symbolic_dim_from_output(self, node, out_idx=0, dim=0):
@@ -587,7 +595,9 @@ class SymbolicShapeInference:
             'Sub':
             lambda l: l[0] - l[1],
             'Where':
-            lambda l: l[1] if l[0] else l[2]
+            lambda l: l[1] if l[0] else l[2],
+            'Neg':
+            lambda l: -l[0]
         }
         assert node.op_type in funcs
         self._compute_on_sympy_data(node, funcs[node.op_type])
@@ -1075,6 +1085,7 @@ class SymbolicShapeInference:
                         else:
                             e = new_sympy_shape[i] + e
                 else:
+                    e = handle_negative_index(e, new_sympy_shape[i])
                     if is_literal(new_sympy_shape[i]):
                         e = sympy.Min(e, new_sympy_shape[i])
                     else:
@@ -1085,8 +1096,7 @@ class SymbolicShapeInference:
                             print('Unable to determine if {} <= {}, treat as equal'.format(e, new_sympy_shape[i]))
                             e = new_sympy_shape[i]
 
-                if is_literal(s) and int(s) < 0:
-                    s = new_sympy_shape[i] + s
+                s = handle_negative_index(s, new_sympy_shape[i])
                 if is_literal(new_sympy_shape[i]) and is_literal(s):
                     s = max(0, min(s, new_sympy_shape[i]))
 
@@ -1265,8 +1275,7 @@ class SymbolicShapeInference:
                 assert s_merge in self.symbolic_dims_
                 self.symbolic_dims_[s] = self.symbolic_dims_[s_merge]
             else:
-                self.symbolic_dims_[s] = sympy.Symbol(s, integer=True)
-
+                self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
         # create a temporary ModelProto for single node inference
         # note that we remove initializer to have faster inference
         # for tensor ops like Reshape/Tile/Expand that read initializer, we need to do sympy computation based inference anyways
