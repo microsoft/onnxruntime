@@ -317,7 +317,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                           beam_size: int,
                           step: int,
                           config: GPT2Config,
-                          model_class: str = "GPT2LMHeadModel") -> Dict[str, List[int]]:
+                          model_class: str = "GPT2LMHeadModel",
+                          num_seq: int = 0) -> Dict[str, List[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         num_attention_heads = config.num_attention_heads
         hidden_size = config.hidden_size
@@ -328,9 +329,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         last_state_shape = [batch_size * beam_size, past_sequence_length + sequence_length + 1]
 
+        if num_seq == 0:
+            num_seq = beam_size
+        
         present_state_shape = [
             2,
-            batch_size * beam_size,
+            batch_size * num_seq,
             num_attention_heads,
             past_sequence_length + sequence_length,
             int(hidden_size / num_attention_heads),
@@ -378,27 +382,13 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}"
         )
 
-        is_all_close = is_close
-        num_layers = len(ort_outputs) - 5
-        for layer in range(num_layers):
-            is_close = numpy.allclose(
-                ort_outputs[1 + layer],
-                torch_outputs[1][layer].cpu().numpy(),
-                rtol=rtol,
-                atol=atol,
-            )
-            logger.debug(
-                f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}"
-            )
-            is_all_close = is_all_close and is_close
-
-        if not is_all_close:
+        if not is_close:
             max_abs_diff = Gpt2BeamSearchHelper.diff_outputs(torch_outputs, ort_outputs)
             logger.info(
                 f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}"
             )
 
-        return is_all_close
+        return is_close
 
     @staticmethod
     def export_onnx(model,

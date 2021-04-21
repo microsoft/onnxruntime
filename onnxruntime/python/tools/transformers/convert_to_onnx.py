@@ -258,15 +258,12 @@ def main():
                     inputs = {"input_ids": input_ids}
 
                 if model_type == "beam_search_step":
-                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
-
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])
                     input_unfinished_sents = torch.ones(
                         [input_ids.shape[0], 1], dtype=torch.bool
                     )
                     inputs.update(
                         {
-                            "beam_select_idx": beam_select_idx,
                             "input_log_probs": input_log_probs,
                             "input_unfinished_sents": input_unfinished_sents,
                         }

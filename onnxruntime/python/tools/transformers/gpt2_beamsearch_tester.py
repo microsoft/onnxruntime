@@ -265,33 +265,39 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                     onnx_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_runner.update(onnx_output, step, device)
 
-                    output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
-                        batch_size,
-                        context_len,
-                        past_seq_len,
-                        seq_len,
-                        beam_size,
-                        step,
-                        model.config,
-                        model_class=model_class
-                    )
+                    for num_seq in range(1, beam_size + 1):
+                        output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
+                            batch_size,
+                            context_len,
+                            past_seq_len,
+                            seq_len,
+                            beam_size,
+                            step,
+                            model.config,
+                            model_class=model_class,
+                            num_seq=num_seq,
+                        )
 
-                    Gpt2BeamSearchHelper.auto_increase_buffer_size(
-                        output_buffers, output_shapes
-                    )
+                        Gpt2BeamSearchHelper.auto_increase_buffer_size(
+                            output_buffers, output_shapes
+                        )
 
-                    (
-                        onnx_io_output,
-                        avg_latency_ms,
-                    ) = Gpt2BeamSearchHelper.onnxruntime_inference_with_binded_io(
-                        session,
-                        onnx_io_runner.get_inputs(),
-                        output_buffers,
-                        output_shapes,
-                        total_runs=1,
-                        return_numpy=False,
-                        include_copy_output_latency=True,
-                    )
+                        try:
+                            (
+                                onnx_io_output,
+                                avg_latency_ms,
+                            ) = Gpt2BeamSearchHelper.onnxruntime_inference_with_binded_io(
+                                session,
+                                onnx_io_runner.get_inputs(),
+                                output_buffers,
+                                output_shapes,
+                                total_runs=1,
+                                return_numpy=False,
+                                include_copy_output_latency=True,
+                            )
+                            break
+                        except RuntimeError:
+                            continue
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
 
                     if test_data_saved < save_test_data:
