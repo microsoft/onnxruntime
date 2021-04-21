@@ -70,8 +70,6 @@ size_t getMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& 
   // Assuming 10% of fragmentation
   free = static_cast<size_t>(static_cast<double>(free) * 0.9);
 
-  std::cout << "free: " << free << " total: " << total << std::endl;
-
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
