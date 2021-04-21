@@ -1490,7 +1490,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
 // Tile is defined as follows:
 // Y = Tile(X, repeat), say,
 // X shape : M, N, K
-// repeat is a 1D tensor with value: [a, b, c] 
+// repeat is a 1D tensor with value: [a, b, c]
 // Y shape : aM, bN, cK
 // To compute the gradient of y, we first reshape the gradient of y as,
 // Y^_grad = Reshape(Y_grad(a, M, b, N, c, K))
@@ -1619,6 +1619,64 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalFunctionOpGradient) {
 
   attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
   return std::vector<NodeDef>{NodeDef(OpDef{"ExternalFunctionOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
+  const auto num_src_node_inputs = GetSrcNodeInputSize();
+  if (num_src_node_inputs == 1) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
+    }
+
+    return std::vector<NodeDef>{};
+  }
+
+  if (num_src_node_inputs > 2) {
+    ORT_THROW("Min/Max gradient currently does not support over 2 inputs.");
+  }
+
+  if (!IsGradientRequiredForSrcNodeInput(0) && !IsGradientRequiredForSrcNodeInput(1)) {
+    return std::vector<NodeDef>{};
+  }
+
+  std::vector<NodeDef> result;
+  std::vector<Dimension> y_shape;
+  const ArgDef y = O(0);
+  bool get_y_shape_ok = GetShape(y, y_shape).IsOK();
+  result.push_back(NodeDef("Equal", {I(1), y}, {IA("Mask_1")}));
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    result.push_back(NodeDef("Not", {IA("Mask_1")}, {IA("Mask_0")}));
+  }
+  for (int i = 0; i < num_src_node_inputs; i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      const ArgDef x = I(i);
+      const ArgDef mask_cast_i_def = IA("Mask_Cast_" + std::to_string(i));
+      const ArgDef pre_reduce_grad_i_def = IA("PreReduceGrad_" + std::to_string(i), OType(0));
+      result.push_back(NodeDef("Cast",
+                               {IA("Mask_" + std::to_string(i))},
+                               {mask_cast_i_def},
+                               {MakeAttribute("to", int64_t(IElemType(0)))}));
+      result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
+      std::vector<Dimension> x_shape;
+      if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
+        std::vector<int64_t> x_axes;
+        ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
+        if (x_axes.size() > 0) {
+          HandleBroadcasting(pre_reduce_grad_i_def, x, GI(i), x_axes, result);
+        } else {
+          result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
+        }
+      } else {
+        ArgDef x_axes_def = IA("ReduceAxes_" + x.name);
+        ArgDef x_shape_def = IA("Shape_" + x.name);
+        ArgDef y_shape_def = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape_def, y_shape_def, &x_axes_def, nullptr, result);
+        HandleBroadcastingDynamic(pre_reduce_grad_i_def, x, x_shape_def, GI(i), x_axes_def, result);
+      }
+    }
+  }
+
+  return result;
 }
 
 }  // namespace training

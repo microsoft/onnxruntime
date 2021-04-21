@@ -35,10 +35,15 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers) {}
+  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {},
+                            const bool allow_precision_change = false) noexcept
+      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers),
+        allow_precision_change_(allow_precision_change) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  bool allow_precision_change_;
 };
 
 }  // namespace onnxruntime

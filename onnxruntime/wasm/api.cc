@@ -22,8 +22,10 @@ Ort::Session* OrtCreateSession(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
   session_options.SetLogId("onnxruntime");
 
-  // disable thread pool for now since not all major browsers support WebAssembly threading.
+#if !defined(__EMSCRIPTEN_PTHREADS__)
+  // must disable thread pool when WebAssembly multi-threads support is disabled.
   session_options.SetIntraOpNumThreads(1);
+#endif
 
   return new Ort::Session(*g_env, data, data_length, session_options);
 }
