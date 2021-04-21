@@ -121,14 +121,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
-        {
-            kCoreMLExecutionProvider,
-#ifdef USE_COREML
-            true,
-#else
-            false,
-#endif
-        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 }  // namespace
