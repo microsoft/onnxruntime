@@ -125,7 +125,9 @@ publishing {
 
 			pom {
 				name = 'onnx-runtime'
-				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+				description = 'ONNX Runtime Mobile package is a size optimized inference library for executing ' +
+					'ONNX (Open Neural Network Exchange) models. This package is built from the open source ' +
+					'inference engine targeting reduced disk footprint for mobile platforms.'
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {
