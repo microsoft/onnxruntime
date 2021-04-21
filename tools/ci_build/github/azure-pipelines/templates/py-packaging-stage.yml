@@ -392,7 +392,7 @@ stages:
                 --model_root training_e2e_test_data/models \
                 --training_data_root training_e2e_test_data/data \
                 --gpu_sku MI100_32G
-        displayName: 'Run C++ BERT-L convergence test'
+        displayName: 'Run C++ BERT-L convergence test (in container)'
         condition: succeededOrFailed() # ensure all tests are run
       
       - task: CopyFiles@2
@@ -427,7 +427,7 @@ stages:
           TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
 
       - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+        displayName: 'Upload Rocm wheel as build artifact'
         inputs:
           ArtifactName: onnxruntime_rocm
 
@@ -439,8 +439,8 @@ stages:
               --account_name onnxruntimepackages \
               --account_key $(orttrainingpackagestorageaccountkey) \
               --container_name '$web'
-        condition: succeededOrFailed()
-        displayName: Upload whl to storage 
+        condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+        displayName: 'Upload Rocm wheel to release repository'
 
       - template: component-governance-component-detection-steps.yml
         parameters:
