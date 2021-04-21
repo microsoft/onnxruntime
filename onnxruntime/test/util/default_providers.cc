@@ -71,6 +71,7 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
   OrtCUDAProviderOptions provider_options{};
+  provider_options.do_copy_in_default_stream = true;
   if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
     return factory->CreateProvider();
 #endif
