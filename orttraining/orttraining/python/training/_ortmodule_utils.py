@@ -28,20 +28,26 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
     gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
     gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
-    torch_gpu_allocator_addresses_cpp_source = f"#include <torch/extension.h>\n" \
-        f"#include <c10/{gpu_identifier}/{gpu_allocator_header}.h>\n" \
-        f"size_t gpu_caching_allocator_raw_alloc_address() {{\n" \
-        f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);\n" \
-        f"}}\n" \
-        f"size_t gpu_caching_allocator_raw_delete_address() {{\n" \
-        f"    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);\n" \
-        f"}}\n"
+    torch_gpu_allocator_addresses_cpp_source = f'''
+        #include <torch/extension.h>
+        #include <c10/{gpu_identifier}/{gpu_allocator_header}.h>
 
-    return load_inline(name='inline_extension', cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
+        size_t gpu_caching_allocator_raw_alloc_address() {{
+            return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);
+        }}
+
+        size_t gpu_caching_allocator_raw_delete_address() {{
+            return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);
+        }}
+    '''
+
+    return load_inline(name='inline_extension',
+                       cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
                        extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
                        functions=['gpu_caching_allocator_raw_alloc_address',
                                   'gpu_caching_allocator_raw_delete_address'],
-                       verbose=verbosity, with_cuda=True)
+                       verbose=verbosity,
+                       with_cuda=True)
 
 
 def _check_same_device(device, argument_str, *args):
