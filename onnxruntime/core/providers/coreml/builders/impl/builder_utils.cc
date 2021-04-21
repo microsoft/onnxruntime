@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include <core/providers/common.h>
+#include "core/providers/shared/utils/utils.h"
 
 #include "builder_utils.h"
 #include "coreml/NeuralNetwork.pb.h"
@@ -80,18 +82,20 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
   return Status::OK();
 }
 
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                        const float* data, size_t num_elements) {
+  weight.mutable_floatvalue()->Clear();
+  std::copy(data, data + num_elements,
+            google::protobuf::RepeatedFieldBackInserter(weight.mutable_floatvalue()));
+}
+
 common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
   if (data_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* data =
-        tensor.float_data().empty() ? reinterpret_cast<const float*>(tensor.raw_data().data())
-                                    : tensor.float_data().data();
-
-    weight.mutable_floatvalue()->Clear();
-    auto num_elements = Product(tensor.dims());
-    std::copy(data, data + num_elements,
-              google::protobuf::RepeatedFieldBackInserter(weight.mutable_floatvalue()));
+    const float* data = GetTensorFloatData(tensor);
+    auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
+    CreateCoreMLWeight(weight, data, num_elements);
   } else {
     // TODO: support other type
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
