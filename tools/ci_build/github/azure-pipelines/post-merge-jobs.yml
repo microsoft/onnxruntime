@@ -27,5 +27,3 @@ jobs:
       Destination: AzureBlob
       storage: onnxruntime
       ContainerName: '$web'
-      BlobPrefix: /
-      AdditionalArgumentsForBlobCopy: '--recursive'
