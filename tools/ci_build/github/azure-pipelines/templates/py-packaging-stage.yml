@@ -295,7 +295,7 @@ stages:
         displayName: 'Build onnxruntime (in container)'
 
       - script: |-
-          python orttraining/tools/ci_test/download_azure_blob_archive.py \
+          python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
             --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
             --target_dir t$(Build.SourcesDirectory)/training_e2e_test_data \
             --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
