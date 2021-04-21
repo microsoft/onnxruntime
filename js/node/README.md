@@ -1,4 +1,4 @@
-# ONNX Runtime Node.js API
+# ONNX Runtime Node.js Binding
 
 ONNX Runtime Node.js binding enables Node.js applications to run ONNX model inference.
 
@@ -8,12 +8,6 @@ Install the latest stable version:
 
 ```
 npm install onnxruntime
-```
-
-Install the latest dev version:
-
-```
-npm install onnxruntime@dev
 ```
 
 Refer to [Node.js samples](../../samples/nodejs/README.md) for samples and tutorials.
@@ -32,4 +26,4 @@ To use on platforms without pre-built binaries, you can build Node.js binding fr
 
 ## License
 
-License information can be found [here](../README.md#license).
+License information can be found [here](../../README.md#license).
