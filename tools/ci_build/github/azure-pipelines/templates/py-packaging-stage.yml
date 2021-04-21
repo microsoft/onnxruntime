@@ -295,6 +295,7 @@ stages:
         displayName: 'Build onnxruntime (in container)'
 
       - script: |-
+          echo "HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
@@ -316,6 +317,13 @@ stages:
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
       
+      - script: |-
+          python orttraining/tools/ci_test/download_azure_blob_archive.py \
+            --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
+            --target_dir t$(Build.SourcesDirectory)/training_e2e_test_data \
+            --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
+        displayName: 'Download onnxruntime_training_data.zip data'
+
       - script: |-
           docker run --rm \
             --device=/dev/kfd \
