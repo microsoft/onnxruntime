@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/win-ci-2019.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : 'onnxruntime-cpu-winbuild'
     JobName: 'Win_CPU_Training'
     # TODO fix test failures and remove --skip_onnx_tests
     BuildCommand: >-

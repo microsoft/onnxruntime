@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
+  pool: 'onnxruntime-cpu-winbuild'
   strategy:
     maxParallel: 2
     matrix:
