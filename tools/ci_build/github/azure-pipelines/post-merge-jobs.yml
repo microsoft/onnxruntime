@@ -65,7 +65,7 @@ jobs:
   - task: AzureFileCopy@4
     displayName: 'AzureBlob File Copy'
     inputs:
-      SourcePath: '$(Build.ArtifactStagingDirectory)'
+      SourcePath: '$(Build.BinariesDirectory)'
       azureSubscription: AIInfraBuildOnnxRuntimeOSS
       Destination: AzureBlob
       storage: onnxruntime
