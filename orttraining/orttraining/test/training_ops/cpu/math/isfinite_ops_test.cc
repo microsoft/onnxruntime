@@ -80,6 +80,36 @@ TEST(IsAllFiniteTest, TrueFloat) {
   test.Run();
 }
 
+TEST(IsAllFiniteTest, IsInfOnly) {
+  OpTester test("IsAllFinite", 1, kMSDomain);
+
+  std::vector<int64_t> shape = {3};
+  std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
+  std::vector<float> input1 = {7.5f, 1.2f, std::numeric_limits<float>::quiet_NaN()};
+
+  test.AddInput<float>("X0", shape, input0);
+  test.AddInput<float>("X1", shape, input1);
+  test.AddAttribute("isinf_only", static_cast<int64_t>(1));
+  test.AddOutput<bool>("Y", {}, {true});
+
+  test.Run();
+}
+
+TEST(IsAllFiniteTest, IsNaNOnly) {
+  OpTester test("IsAllFinite", 1, kMSDomain);
+
+  std::vector<int64_t> shape = {3};
+  std::vector<float> input0 = {9.4f, 1.7f, 3.6f};
+  std::vector<float> input1 = {7.5f, 1.2f, std::numeric_limits<float>::infinity()};
+
+  test.AddInput<float>("X0", shape, input0);
+  test.AddInput<float>("X1", shape, input1);
+  test.AddAttribute("isnan_only", static_cast<int64_t>(1));
+  test.AddOutput<bool>("Y", {}, {true});
+
+  test.Run();
+}
+
 std::vector<std::vector<float>> generate_is_all_finite_test_data(
     const int tensor_count,
     const int max_tensor_size,

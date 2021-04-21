@@ -36,6 +36,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -46,6 +47,7 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -53,6 +55,8 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -69,6 +73,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -94,6 +99,70 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
+TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
+  auto model_uri = MODEL_FOLDER "abs-id.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
+TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
+  auto model_uri = MODEL_FOLDER "id-elim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
+  ASSERT_TRUE(op_to_count["Add"] == 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // after CommonSubexpressionElimination, Add would have 1 output def and 2 edges
+  // each edge would share the same input node arg 0. Thus after execution, only one of the 2 outputs
+  // has data. Thus skip.
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
+TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
+  auto model_uri = MODEL_FOLDER "scan9_sum.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+
+  // tips: to dump the subgraph, can use python tool - dump_subgraphs.py
+  // or click on one of the input to see the drop down graph list and view subgraph 
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Identity's input in subgraph is also graph output. Thus skip.
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
 }
 
 TEST_F(GraphTransformationTests, DropoutElimination) {
@@ -359,12 +428,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   // Check DequantizeLinear aren't constant folded for default setting.
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
-  // set SessionOptionsEnableQuantQDQ to enable it explicitly
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "1");
+  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQ, "0");
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
@@ -546,6 +615,26 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 5);
   ASSERT_TRUE(op_to_count["Mul"] == 2);
+}
+
+TEST_F(GraphTransformationTests, NotWhereFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/not_where.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Not"] == 4);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NotWhereFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Where"] == 5);
+  ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -1034,6 +1123,93 @@ TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   ASSERT_TRUE(op_to_count["com.microsoft.FusedGemm"] == 1);
 }
 #endif
+
+// (A')'B' = AB'
+TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2inputs_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+// (A'B)' = B'A
+TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_output_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
+
+//  ((A')'B')' = BA'
+TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 3);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
 
 TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-add-mul-float16.onnx";
@@ -2891,7 +3067,6 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  Model::Save(*p_model, "t5_fused.onnx");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -2907,6 +3082,63 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+    } else {
+      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeDisallowed) {
+  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["ReduceMean"] == 1);
+  ASSERT_TRUE(op_to_count["Pow"] == 1);
+  ASSERT_TRUE(op_to_count["Sqrt"] == 1);
+  ASSERT_TRUE(op_to_count["Cast"] == 2);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeAllowed) {
+  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::unordered_set<std::string> compatible_eps;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
+  ASSERT_TRUE(op_to_count["Pow"] == 0);
+  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
+  ASSERT_TRUE(op_to_count["Cast"] == 3);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "SimplifiedLayerNormalization") {
+      // LayerNormalization should have two inputs.
+      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
+      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+    } else if (node.OpType() == "Cast") {
+      continue;
     } else {
       EXPECT_TRUE(false) << "Unexpected node " << node.Name();
     }
@@ -3797,6 +4029,27 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       },
       {kCpuExecutionProvider});
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
+  auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<IsInfReduceSumFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["IsInf"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
+  EXPECT_EQ(op_to_count["Not"], 1);
+}
+#endif
 #endif
 
 TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
@@ -3823,6 +4076,137 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Shape"] == 1);
   ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
   ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
+TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
+  struct PropagateCastOpsTestSpecs {
+    PathString model_uri;
+    int casts_count;                     // Expected number of casts after the transformation
+    vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
+    int level = 0;                       // Level of optimization
+  };
+  std::vector<std::string> allow_matmul = {"MatMul"};
+  std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
+  std::vector<std::string> allow_matmul_transpose_add = {"Add", "MatMul", "Transpose"};
+
+  const std::vector<PropagateCastOpsTestSpecs> test_cases = {
+      // Test fusing back to back casts functionality
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", 2},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float16.onnx", 0},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float.onnx", 1},
+      // Test fusing subgraph functionality
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float16.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float.onnx", 1},
+
+      // Test constant propagation with various combinations
+      // 1. Computation is float or float16
+      // 2. The inputs and/or output may be casted
+      // 3. The inputs and/or output may be transposed
+      // These variations help testing the following functions.
+      // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
+
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product.onnx", 0, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", 1, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast.onnx", 1, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul.onnx", 2, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul.onnx", 2, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul.onnx", 2, allow_matmul_transpose}};
+
+  // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
+  TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
+
+  for (PropagateCastOpsTestSpecs test_case : test_cases) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    ASSERT_STATUS_OK(graph.Resolve());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        onnxruntime::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    Path p = Path::Parse(test_case.model_uri);
+    ASSERT_FALSE(p.GetComponents().empty());
+    PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+    Model::Save(*p_model, transformed_model_uri);
+    // Load the transformed model to validate
+    ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
+    Graph& transformed_graph = p_model->MainGraph();
+    ASSERT_STATUS_OK(transformed_graph.Resolve());
+    std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
+    ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
+  }
 }
 
 }  // namespace test

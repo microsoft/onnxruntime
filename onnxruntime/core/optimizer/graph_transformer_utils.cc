@@ -24,6 +24,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -31,6 +32,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -38,7 +40,9 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/qdq_transformer.h"
+#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -66,10 +70,13 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<DivMulFusion>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
+      rules.push_back(onnxruntime::make_unique<GemmTransposeFusion>());
+      rules.push_back(onnxruntime::make_unique<NotWhereFusion>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
       rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
       rules.push_back(onnxruntime::make_unique<ConvBNFusion>());
+      rules.push_back(onnxruntime::make_unique<ReluQuantFusion>());
       break;
 
     case TransformerLevel::Level2:
@@ -125,7 +132,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
+  bool disable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
@@ -134,7 +141,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level1: {
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, enable_quant_qdq));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, !disable_quant_qdq));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>());
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>());
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(
@@ -161,7 +168,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                            onnxruntime::kAclExecutionProvider,
                                                                            onnxruntime::kArmNNExecutionProvider};
 
-      if (enable_quant_qdq) {
+      if (!disable_quant_qdq) {
+        transformers.emplace_back(onnxruntime::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
       }
 

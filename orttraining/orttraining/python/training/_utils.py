@@ -16,6 +16,7 @@ def get_device_index(device):
         return device
     return 0 if device.index is None else device.index
 
+
 def get_device_index_from_input(input):
     '''Returns device index from a input PyTorch Tensor'''
 
@@ -25,18 +26,6 @@ def get_device_index_from_input(input):
         device_index = get_device_index(input.device)
     return device_index
 
-def get_device_from_module(module):
-    '''Returns the first device found in the `module`'s parameters or None'''
-    device = None
-    try:
-        device = next(module.parameters()).device
-        for param in module.parameters():
-            if param.device != device:
-                raise RuntimeError('ORTModule supports a single device per model for now')
-    except StopIteration:
-        # Model doesn't have a device set to any of the model parameters
-        pass
-    return device
 
 def get_device_str(device):
     if isinstance(device, str):
@@ -53,6 +42,7 @@ def get_device_str(device):
     else:
         raise RuntimeError('Unsupported device type')
     return device
+
 
 def get_all_gradients_finite_name_from_session(session):
     '''Find all_gradients_finite node on Session graph and return its name'''
@@ -90,7 +80,7 @@ def dtype_torch_to_numpy(torch_dtype):
         # NOTE: numpy doesn't support bfloat16
         return np.float16
     elif torch_dtype == torch.int64 or torch_dtype == torch.long:
-        return np.longlong # np.int64 doesn't work!?
+        return np.longlong  # np.int64 doesn't work!?
     elif torch_dtype == torch.int32 or torch_dtype == torch.int:
         return np.int32
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
@@ -208,35 +198,42 @@ def import_module_from_file(file_path, module_name=None):
     spec.loader.exec_module(module)
     return module
 
+
 def state_dict_model_key():
     """Returns the model key name in the state dictionary"""
 
     return 'model'
+
 
 def state_dict_optimizer_key():
     """Returns the optimizer key name in the state dictionary"""
 
     return 'optimizer'
 
+
 def state_dict_partition_info_key():
     """Returns the partition info key name in the state dictionary"""
 
     return 'partition_info'
+
 
 def state_dict_trainer_options_key():
     """Returns the trainer options key name in the state dictionary"""
 
     return 'trainer_options'
 
+
 def state_dict_full_precision_key():
     """Returns the full precision key name in the state dictionary"""
 
     return 'full_precision'
 
+
 def state_dict_original_dimension_key():
     """Returns the original dimension key name in the state dictionary"""
 
     return 'original_dim'
+
 
 def state_dict_sharded_optimizer_keys():
     """Returns the optimizer key names that can be sharded in the state dictionary"""
@@ -246,40 +243,48 @@ def state_dict_sharded_optimizer_keys():
         'Moment_2'
     }
 
+
 def state_dict_user_dict_key():
     """Returns the user dict key name in the state dictionary"""
 
     return 'user_dict'
+
 
 def state_dict_trainer_options_mixed_precision_key():
     """Returns the trainer options mixed precision key name in the state dictionary"""
 
     return 'mixed_precision'
 
+
 def state_dict_trainer_options_zero_stage_key():
     """Returns the trainer options zero_stage key name in the state dictionary"""
 
     return 'zero_stage'
+
 
 def state_dict_trainer_options_world_rank_key():
     """Returns the trainer options world_rank key name in the state dictionary"""
 
     return 'world_rank'
 
+
 def state_dict_trainer_options_world_size_key():
     """Returns the trainer options world_size key name in the state dictionary"""
 
     return 'world_size'
+
 
 def state_dict_trainer_options_data_parallel_size_key():
     """Returns the trainer options data_parallel_size key name in the state dictionary"""
 
     return 'data_parallel_size'
 
+
 def state_dict_trainer_options_horizontal_parallel_size_key():
     """Returns the trainer options horizontal_parallel_size key name in the state dictionary"""
 
     return 'horizontal_parallel_size'
+
 
 def state_dict_trainer_options_optimizer_name_key():
     """Returns the trainer options optimizer_name key name in the state dictionary"""

@@ -252,6 +252,11 @@ class TrainingSession : public InferenceSession {
       bool transformer_layer_recompute{false};
       // Number of layers to apply recompute
       int number_recompute_layers{0};
+      // Propagate FP16 Cast operations up and FP32 operations down
+      int propagate_cast_ops_level{-1};
+      std::vector<std::string> propagate_cast_ops_allow;
+      // Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
+      bool allow_layer_norm_mod_precision{false};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
