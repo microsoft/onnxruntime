@@ -308,7 +308,10 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
                     onnx_io_runner.update(onnx_io_output, step, device)
 
-                    if (not onnx_runner.input_unfinished_sents.any()):
+                    if (
+                        (not onnx_runner.input_unfinished_sents.any()) 
+                        or (not torch_runner.input_unfinished_sents.any())
+                    ):
                         print("break at step: ", step)
                         break
 
