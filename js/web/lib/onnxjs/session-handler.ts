@@ -33,9 +33,9 @@ export class OnnxjsSessionHandler implements SessionHandler {
     return output;
   }
   startProfiling(): void {
-    // TODO: implement profiling
+    this.session.startProfiling();
   }
   endProfiling(): void {
-    // TODO: implement profiling
+    this.session.endProfiling();
   }
 }
