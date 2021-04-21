@@ -371,10 +371,7 @@ def test_torch_nn_module_cuda_method():
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == to_device
 
-@pytest.mark.parametrize("set_gpu_on_original_module", [
-    True,
-    False
-    ])
+@pytest.mark.parametrize("set_gpu_on_original_module", [True, False])
 def test_torch_nn_module_cpu_method(set_gpu_on_original_module):
     original_device = 'cuda'
     to_device = 'cpu'
@@ -395,18 +392,8 @@ def test_torch_nn_module_cpu_method(set_gpu_on_original_module):
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == to_device
 
-@pytest.mark.parametrize("original_device, to_argument", [
-    ('cpu', 'cpu'),
-    ('cpu', 'cuda'),
-    ('cpu', 'cuda:0'),
-    ('cpu', torch.device('cpu')),
-    ('cpu', torch.device('cuda')),
-    ('cuda', 'cuda'),
-    ('cuda', 'cuda:0'),
-    ('cuda', 'cpu'),
-    ('cuda', torch.device('cuda')),
-    ('cuda', torch.device('cpu')),
-    ])
+@pytest.mark.parametrize("original_device", ['cpu', 'cuda'])
+@pytest.mark.parametrize("to_argument", ['cpu', 'cuda', 'cuda:0', torch.device('cpu'), torch.device('cuda')])
 def test_torch_nn_module_to_api(original_device, to_argument):
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(original_device)
@@ -503,12 +490,8 @@ def test_gradient_correctness():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
-@pytest.mark.parametrize("use_fp16, input_requires_grad", [
-    (False, False),
-    (False, True),
-    (True, False),
-    (True, True),
-    ])
+@pytest.mark.parametrize("use_fp16", [False, True])
+@pytest.mark.parametrize("input_requires_grad",  [False, True])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
@@ -520,6 +503,10 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
             out = self.conv1(input.permute(0, 2, 1).contiguous())
             out = self.conv2(out).permute(0, 2, 1).contiguous()
             return out
+
+    # ConvGrad hasn't been tested on device with arch lower than 7.0
+    if torch.cuda.get_device_capability()[0] < 7:
+        return
 
     device = 'cuda'
     N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
@@ -931,7 +918,8 @@ def test_loss_combines_two_outputs_with_dependency(device):
     assert torch.allclose(pt_y2, ort_y2, atol=1e-06)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
-@pytest.mark.parametrize("x1_requires_grad, x2_requires_grad", [(True, True), (True, False), (False, False), (False, True)])
+@pytest.mark.parametrize("x1_requires_grad", [True, False])
+@pytest.mark.parametrize("x2_requires_grad", [True, False])
 def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_requires_grad, x2_requires_grad):
 
     def run_step(model, x1, x2):
@@ -988,14 +976,8 @@ def test_gpu_reserved_memory_with_torch_no_grad():
 
     assert mem_reserved_after_export_with_torch_no_grad <= mem_reserved_after_export_without_torch_no_grad
 
-@pytest.mark.parametrize("return_type, device", [
-    (dict, 'cpu'),
-    (dict, 'cuda'),
-    (OrderedDict, 'cpu'),
-    (OrderedDict, 'cuda'),
-    (SequenceClassifierOutput, 'cpu'),
-    (SequenceClassifierOutput, 'cuda')
-    ])
+@pytest.mark.parametrize("return_type", [dict, OrderedDict, SequenceClassifierOutput])
+@pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_dict_return_value_module(return_type, device):
     class NeuralNetDictOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
