@@ -1,0 +1,10 @@
+node_modules/
+types/
+dist/
+
+tsconfig.tsbuildinfo
+
+lib/**/*.js
+lib/**/*.js.map
+
+*.d.ts

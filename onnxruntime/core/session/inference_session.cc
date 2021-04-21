@@ -560,7 +560,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
   ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -1114,7 +1114,7 @@ common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
   ORT_TRY {
@@ -1186,7 +1186,8 @@ common::Status InferenceSession::Initialize() {
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute);
+        session_options_.use_deterministic_compute,
+        session_options_.enable_mem_reuse);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -1511,7 +1512,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

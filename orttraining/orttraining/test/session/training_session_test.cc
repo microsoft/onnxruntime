@@ -17,6 +17,8 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
 #endif
 
 using namespace onnxruntime::logging;
@@ -62,7 +64,7 @@ TEST(TrainingSessionTest, LoadOptimState_FullPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, false, false);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, true, false);
 }
