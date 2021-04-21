@@ -169,9 +169,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
   // thread local PerThreadContext cache
+
+  struct ContextCacheHolder {
+    ContextCacheHolder() {
+      RunOnUnload([this] { p.reset(); });
+    }
+    std::shared_ptr<PerThreadContextMap> p{std::make_shared<PerThreadContextMap>()};
+  };
+
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
-    thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
-    return per_thread_context_cache;
+    thread_local const ContextCacheHolder per_thread_context_cache;
+    return per_thread_context_cache.p;
   }
 
   struct PerThreadContextState {

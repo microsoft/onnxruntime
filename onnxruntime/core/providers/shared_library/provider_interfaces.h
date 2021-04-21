@@ -783,7 +783,7 @@ struct ProviderHost {
 
 #ifdef SHARED_PROVIDER
 
-struct CPUIDInfo {
+struct CPUIDInfo final {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
 
   bool HasAVX2() const { return g_host->CPUIDInfo__HasAVX2(this); }
@@ -794,19 +794,19 @@ struct CPUIDInfo {
 
 namespace logging {
 
-struct Logger {
+struct Logger final {
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
 
   PROVIDER_DISALLOW_ALL(Logger)
 };
 
-struct LoggingManager {
+struct LoggingManager final {
   static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
 
   PROVIDER_DISALLOW_ALL(LoggingManager)
 };
 
-struct Capture {
+struct Capture final {
   static std::unique_ptr<Capture> Create(const Logger& logger, logging::Severity severity, const char* category,
                                          logging::DataType dataType, const CodeLocation& location) { return g_host->logging__Capture__construct(logger, severity, category, dataType, location); }
   static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
@@ -822,7 +822,7 @@ struct Capture {
 
 namespace ONNX_NAMESPACE {
 
-struct int64s {
+struct int64s final {
   int size() const { return g_host->int64s__size(this); }
   const int64_t& Get(int index) const { return g_host->int64s__Get(this, index); }
   const int64_t& operator[](int index) const { return Get(index); }
@@ -830,7 +830,7 @@ struct int64s {
   PROVIDER_DISALLOW_ALL(int64s)
 };
 
-struct AttributeProto {
+struct AttributeProto final {
   static std::unique_ptr<AttributeProto> Create() { return g_host->AttributeProto__construct(); }
   void operator=(const AttributeProto& v) { g_host->AttributeProto__operator_assign(this, v); }
   static void operator delete(void* p) { g_host->AttributeProto__operator_delete(reinterpret_cast<AttributeProto*>(p)); }
@@ -870,7 +870,7 @@ struct AttributeProto {
   AttributeProto(const AttributeProto&) = delete;
 };
 
-struct GraphProto {
+struct GraphProto final {
   static void operator delete(void* p) { g_host->GraphProto__operator_delete(reinterpret_cast<GraphProto*>(p)); }
   void operator=(const GraphProto& v) { return g_host->GraphProto__operator_assign(this, v); }
 
@@ -891,7 +891,7 @@ struct GraphProto {
   GraphProto(const GraphProto&) = delete;
 };
 
-struct ModelProto {
+struct ModelProto final {
   static std::unique_ptr<ModelProto> Create() { return g_host->ModelProto__construct(); }
   static void operator delete(void* p) { g_host->ModelProto__operator_delete(reinterpret_cast<ModelProto*>(p)); }
 
@@ -910,7 +910,7 @@ struct ModelProto {
   void operator=(const ModelProto&) = delete;
 };
 
-struct TensorProto {
+struct TensorProto final {
   static std::unique_ptr<TensorProto> Create() { return g_host->TensorProto__construct(); }
   static void operator delete(void* p) { g_host->TensorProto__operator_delete(reinterpret_cast<TensorProto*>(p)); }
   void operator=(const TensorProto& v) { g_host->TensorProto__operator_assign(this, v); }
@@ -937,13 +937,13 @@ struct TensorProto {
   TensorProto(const TensorProto&) = delete;
 };
 
-struct TensorProtos {
+struct TensorProtos final {
   TensorProto* Add() { return g_host->TensorProtos__Add(this); }
 
   PROVIDER_DISALLOW_ALL(TensorProtos)
 };
 
-struct TensorShapeProto_Dimension {
+struct TensorShapeProto_Dimension final {
   enum ValueCase {
     kDimValue = 1,
     kDimParam = 2,
@@ -959,14 +959,14 @@ struct TensorShapeProto_Dimension {
   PROVIDER_DISALLOW_ALL(TensorShapeProto_Dimension)
 };
 
-struct TensorShapeProto_Dimensions {
+struct TensorShapeProto_Dimensions final {
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> begin() const { return g_host->TensorShapeProto_Dimensions__begin(this); }
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> end() const { return g_host->TensorShapeProto_Dimensions__end(this); }
 
   PROVIDER_DISALLOW_ALL(TensorShapeProto_Dimensions)
 };
 
-struct TensorShapeProto {
+struct TensorShapeProto final {
   int dim_size() const { return g_host->TensorShapeProto__dim_size(this); }
   const TensorShapeProto_Dimensions& dim() const { return g_host->TensorShapeProto__dim(this); }
   const TensorShapeProto_Dimension& dim(int index) const { return g_host->TensorShapeProto__dim(this, index); }
@@ -977,7 +977,7 @@ struct TensorShapeProto {
   PROVIDER_DISALLOW_ALL(TensorShapeProto)
 };
 
-struct TypeProto_Tensor {
+struct TypeProto_Tensor final {
   bool has_shape() const { return g_host->TypeProto_Tensor__has_shape(this); }
   const TensorShapeProto& shape() const { return g_host->TypeProto_Tensor__shape(this); }
   TensorShapeProto* mutable_shape() { return g_host->TypeProto_Tensor__mutable_shape(this); }
@@ -986,7 +986,7 @@ struct TypeProto_Tensor {
   PROVIDER_DISALLOW_ALL(TypeProto_Tensor)
 };
 
-struct TypeProto {
+struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
 
@@ -1004,7 +1004,7 @@ struct TypeProto {
   PROVIDER_DISALLOW_ALL(TypeProto)
 };
 
-struct ValueInfoProto {
+struct ValueInfoProto final {
   const TypeProto& type() const { return g_host->ValueInfoProto__type(this); }
   TypeProto* mutable_type() { return g_host->ValueInfoProto__mutable_type(this); }
 
@@ -1015,7 +1015,7 @@ struct ValueInfoProto {
   static void operator delete(void*) = delete;
 };
 
-struct ValueInfoProtos {
+struct ValueInfoProtos final {
   ValueInfoProto* Add() { return g_host->ValueInfoProtos__Add(this); }
   const ValueInfoProto& operator[](int index) const { return g_host->ValueInfoProtos__operator_array(this, index); }
 
@@ -1028,7 +1028,7 @@ namespace onnxruntime {
 
 namespace Utils {
 
-struct DataTypeUtils {
+struct DataTypeUtils final {
   static const std::string* ToType(const ONNX_NAMESPACE::TypeProto& type_proto) { return g_host->Utils__DataTypeUtils__ToType(type_proto); }
 
   PROVIDER_DISALLOW_ALL(DataTypeUtils)
@@ -1036,7 +1036,7 @@ struct DataTypeUtils {
 
 }  // namespace Utils
 
-struct ComputeCapability {
+struct ComputeCapability final {
   static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
 
@@ -1047,7 +1047,7 @@ struct ComputeCapability {
   void operator=(const ComputeCapability&) = delete;
 };
 
-struct DataTransferManager {
+struct DataTransferManager final {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
   Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
 
@@ -1056,7 +1056,7 @@ struct DataTransferManager {
   PROVIDER_DISALLOW_ALL(DataTransferManager)
 };
 
-struct IndexedSubGraph_MetaDef {
+struct IndexedSubGraph_MetaDef final {
   static std::unique_ptr<IndexedSubGraph_MetaDef> Create() { return g_host->IndexedSubGraph_MetaDef__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph_MetaDef__operator_delete(reinterpret_cast<IndexedSubGraph_MetaDef*>(p)); }
 
@@ -1082,7 +1082,7 @@ struct IndexedSubGraph_MetaDef {
   void operator=(const IndexedSubGraph_MetaDef&) = delete;
 };
 
-struct IndexedSubGraph {
+struct IndexedSubGraph final {
   static std::unique_ptr<IndexedSubGraph> Create() { return g_host->IndexedSubGraph__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph__operator_delete(reinterpret_cast<IndexedSubGraph*>(p)); }
 
@@ -1096,7 +1096,7 @@ struct IndexedSubGraph {
   void operator=(const IndexedSubGraph&) = delete;
 };
 
-struct KernelDef {
+struct KernelDef final {
   static void operator delete(void* p) { g_host->KernelDef__operator_delete(reinterpret_cast<KernelDef*>(p)); }
 
   int ExecQueueId() const { return g_host->KernelDef__ExecQueueId(this); }
@@ -1112,7 +1112,7 @@ struct KernelDef {
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
-struct KernelDefBuilder {
+struct KernelDefBuilder final {
   static std::unique_ptr<KernelDefBuilder> Create() { return g_host->KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->KernelDefBuilder__operator_delete(reinterpret_cast<KernelDefBuilder*>(p)); }
 
@@ -1191,7 +1191,7 @@ struct KernelDefBuilder {
   void operator=(const KernelDefBuilder&) = delete;
 };
 
-struct KernelRegistry {
+struct KernelRegistry final {
   static std::shared_ptr<KernelRegistry> Create() { return g_host->KernelRegistry__construct(); }
   static void operator delete(void* p) { g_host->KernelRegistry__operator_delete(reinterpret_cast<KernelRegistry*>(p)); }
 
@@ -1204,13 +1204,13 @@ struct KernelRegistry {
   void operator=(const KernelRegistry&) = delete;
 };
 
-struct PrimitiveDataTypeBase {
+struct PrimitiveDataTypeBase final {
   int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
 
   PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
 };
 
-class DataTypeImpl {
+class DataTypeImpl final {
  public:
   size_t Size() const { return g_host->DataTypeImpl__Size(this); }
 
@@ -1235,13 +1235,13 @@ class DataTypeImpl {
   PROVIDER_DISALLOW_ALL(DataTypeImpl)
 };
 
-struct Function {
+struct Function final {
   const Graph& Body() const { return g_host->Function__Body(this); }
 
   PROVIDER_DISALLOW_ALL(Function)
 };
 
-struct Node {
+struct Node final {
   const std::string& Name() const noexcept { return g_host->Node__Name(this); }
   const std::string& Description() const noexcept { return g_host->Node__Description(this); }
   const std::string& Domain() const noexcept { return g_host->Node__Domain(this); }
@@ -1306,7 +1306,7 @@ struct Node {
   PROVIDER_DISALLOW_ALL(Node)
 };
 
-struct NodeArg {
+struct NodeArg final {
   const std::string& Name() const noexcept { return g_host->NodeArg__Name(this); }
   const ONNX_NAMESPACE::TensorShapeProto* Shape() const { return g_host->NodeArg__Shape(this); }
   ONNX_NAMESPACE::DataType Type() const noexcept { return g_host->NodeArg__Type(this); }
@@ -1317,7 +1317,7 @@ struct NodeArg {
   PROVIDER_DISALLOW_ALL(NodeArg)
 };
 
-struct NodeAttributes {
+struct NodeAttributes final {
   static std::unique_ptr<NodeAttributes> Create() { return g_host->NodeAttributes__construct(); }
   void operator=(const NodeAttributes& v) { return g_host->NodeAttributes__operator_assign(this, v); }
   static void operator delete(void* p) { g_host->NodeAttributes__operator_delete(reinterpret_cast<NodeAttributes*>(p)); }
@@ -1337,7 +1337,7 @@ struct NodeAttributes {
   NodeAttributes(const NodeAttributes&) = delete;
 };
 
-struct Model {
+struct Model final {
   static void operator delete(void* p) { g_host->Model__operator_delete(reinterpret_cast<Model*>(p)); }
 
   Graph& MainGraph() { return g_host->Model__MainGraph(this); }
@@ -1349,7 +1349,7 @@ struct Model {
   void operator=(const Model&) = delete;
 };
 
-struct Graph {
+struct Graph final {
   std::unique_ptr<GraphViewer> CreateGraphViewer() const { return g_host->Graph__CreateGraphViewer(this); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> ToGraphProto() const { return g_host->Graph__ToGraphProto(this); }
 
@@ -1369,7 +1369,7 @@ struct Graph {
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
-struct GraphViewer {
+struct GraphViewer final {
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
@@ -1403,13 +1403,13 @@ struct GraphViewer {
   void operator=(const GraphViewer&) = delete;
 };
 
-struct Path {
+struct Path final {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
 
   PROVIDER_DISALLOW_ALL(Path)
 };
 
-struct OpKernelContext {
+struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;
   Tensor& RequiredOutput(int index, const TensorShape& shape) { return g_host->OpKernelContext__RequiredOutput(this, index, shape); }
@@ -1438,7 +1438,7 @@ inline const Tensor& OpKernelContext::RequiredInput(int index) const {
   return g_host->OpKernelContext__RequiredInput_Tensor(this, index);
 }
 
-struct OpKernelInfo {
+struct OpKernelInfo final {
   static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
 
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
@@ -1504,7 +1504,7 @@ class SessionState {
   PROVIDER_DISALLOW_ALL(SessionState)
 };
 
-struct Tensor {
+struct Tensor final {
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, allocator); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) { return g_host->Tensor__construct(p_type, shape, p_data, alloc, offset); }
 
