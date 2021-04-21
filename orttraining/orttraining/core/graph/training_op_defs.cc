@@ -2413,6 +2413,16 @@ Return true if all elements are true and false otherwise.
           false)
       // Output tensors.
       .Attr(
+          "input_pointer_scalars",
+          "",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "input_pointer_scalar_positions",
+          "",
+          AttributeProto::INTS,
+          false)
+      .Attr(
           "output_tensor_requires_grads",
           "Flags to indicate which output has gradient",
           AttributeProto::INTS)
@@ -2549,7 +2559,6 @@ Return true if all elements are true and false otherwise.
           updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i));
         }
       });
-
 }
 }  // namespace training
 }  // namespace onnxruntime

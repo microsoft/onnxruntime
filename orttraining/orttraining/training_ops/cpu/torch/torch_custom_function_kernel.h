@@ -18,7 +18,7 @@ class PythonOp final : public OpKernel {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
     inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
     ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
-    
+
     // Input tensors.
     input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
     input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
@@ -40,6 +40,9 @@ class PythonOp final : public OpKernel {
     input_float_tuples_ = info.GetAttrsOrDefault("input_float_tuples", std::vector<float>());
     input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
     input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
+
+    input_pointer_scalars_ = info.GetAttrsOrDefault("input_pointer_scalars", std::vector<int64_t>());
+    input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
 
     // Output tensors.
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
@@ -108,10 +111,12 @@ class PythonOp final : public OpKernel {
   std::vector<int64_t> input_float_tuple_positions_;
   std::vector<int64_t> input_float_tuple_begins_;
 
+  std::vector<int64_t> input_pointer_scalars_;
+  std::vector<int64_t> input_pointer_scalar_positions_;
+
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
   std::vector<int64_t> output_tensor_requires_grads_;
-
 
   void* instance_ = nullptr;
   // Number of input arguments to call autograd.Function.apply(...)

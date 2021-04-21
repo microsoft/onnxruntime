@@ -58,7 +58,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     const_arg_positions.emplace_back(input_int_scalar_positions_.at(i));
     const_args.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
   }
-  
+
   for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
     const_arg_positions.emplace_back(input_float_scalar_positions_.at(i));
     const_args.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
@@ -92,6 +92,15 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     }
     const_arg_positions.emplace_back(input_float_tuple_positions_.at(i));
     const_args.emplace_back(tuple);
+  }
+
+  for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_pointer_scalar_positions_.at(i));
+    PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
+    std::cout << "[torch_custom_function_kernel.cc] const_ptr: " << ptr << std::endl;
+    PyObject_Print(ptr, stdout, 0);
+    std::cout << std::endl;
+    const_args.emplace_back(ptr);
   }
 
   // occupied[i] being true means the i-th input argument
@@ -130,6 +139,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
   int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 
+  std::cout << "[torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << Py_REFCNT(ctx_addr) << std::endl;
+  PyObject_Print(ctx_addr, stdout, 0);
+  std::cout << std::endl;
+
   // std::vector<int64_t> output_values(1);
   // output_values[0] = ctx_index;
   // CudaAsyncBuffer<int64_t> ctx_cuda_address(this, output_values);
@@ -143,9 +156,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   int64_t* step_data_new = first_output_tensor->template MutableData<int64_t>();
   *step_data_new = ctx_index;
 
+  std::cout << "[torch_kernel.cc] " << Node().Name() << " ctx_ptr " << ctx_addr << std::endl;
   for (size_t index = 1; index < outputs_count; ++index) {
     std::cout << "PythonOp::ComputeInternal index: " << index << std::endl;
-    void* forward_ret_ortvalue_addr = outputs[index];
+    void* forward_ret_ortvalue_addr = outputs.at(index);
     // OrtValue is not release til now because we keep the values in Python side until the Python class instance is destoyed.
     // If we don't want Python do the lifecycle guarantee, we need consider PY_INCRE here as well, but be careful, need
     // operate on PyObject, directly operating on OrtValue will bring unexpected results.
@@ -199,7 +213,21 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::cout << "context_address_value_ptr got within PythonOpGrad::Compute:" << reinterpret_cast<void*>(ctx_ptr) << std::endl;
   //int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 
+  std::vector<int64_t> arg_positions(inputs.size());
+  for (int64_t i = 0; i < (int64_t)arg_positions.size(); ++i) {
+    arg_positions.at(i) = i + 1;
+  }
+
+  std::vector<void*> const_args{ctx_ptr};
+  std::vector<int64_t> const_arg_positions{0};
+
+  std::cout << "[torch_kernel.cc] ctx of " << Node().Name() << std::endl;
+  PyObject_Print(ctx_ptr, stdout, 0);
+  std::cout << std::endl;
+
   std::string err;
+  Py_INCREF(ctx_ptr);
+  std::cout << "[torch_kernel.cc] " << Node().Name() << " ctx_ptr " << ctx_ptr << std::endl;
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "backward_compute", ctx_ptr, inputs, outputs,
                                                                    log_func),
@@ -211,7 +239,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   for (size_t index = 0; index < outputs_count; ++index) {
     void* backward_ret_ortvalue_addr = outputs[index];
     auto* backward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(backward_ret_ortvalue_addr);
-    ORT_ENFORCE(backward_ret_ortvalue_ptr != nullptr, "backward_ret_ortvalue_ptr should not be null");
+    ORT_ENFORCE(backward_ret_ortvalue_ptr != nullptr, index, "th output from Python should not be null.");
 
     Tensor* t = backward_ret_ortvalue_ptr->GetMutable<Tensor>();
     const auto& input_shape = t->Shape();

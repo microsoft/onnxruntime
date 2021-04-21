@@ -25,6 +25,18 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   // it's possible that the graph already has some initializers in graph inputs,
   // so we need to NOT assign these initializers to the user inputs list.
   Graph& graph = model_->MainGraph();
+
+  //std::cout << "----------------------" << std::endl;
+  //std::cout << "----------------------" << std::endl;
+  //std::cout << "[module_gradient_graph_builder.cc,ModuleGradientGraphBuilder::Initialize] Forward graph: " << graph << std::endl;
+  //for (auto& node_arg : graph.GetInputs()) {
+  //  std::cout << "[module_gradient_graph_builder.cc,ModuleGradientGraphBuilder::Initialize] input + initializer: " << node_arg->Name() << std::endl;
+  //}
+  //for (auto& node_arg : graph.GetInputsIncludingInitializers()) {
+  //  std::cout << "[module_gradient_graph_builder.cc,ModuleGradientGraphBuilder::Initialize] input + initializer: " << node_arg->Name() << std::endl;
+  //}
+  //std::cout << "----------------------" << std::endl;
+  //std::cout << "----------------------" << std::endl;
   std::unordered_set<std::string> initializer_names(config.initializer_names.begin(),
                                                     config.initializer_names.end());
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
