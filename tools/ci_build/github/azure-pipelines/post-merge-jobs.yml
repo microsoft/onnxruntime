@@ -1,55 +1,8 @@
 jobs:
-- job: CodeCoverage
-  workspace:
-    clean: all
-  timeoutInMinutes:  150
-  variables:
-    skipComponentGovernanceDetection: true
-  pool: 'Linux-CPU'
-  steps:
-    - template: templates/set-version-number-variables-step.yml
-
-    - task: CmdLine@2
-      inputs:
-        script: |
-          set -e
-          sudo apt-get install -y python3-pip
-          sudo python3 -m pip install mysql-connector-python
-          ln -s /data/models .
-          #Build onnxruntime and run the instrumented program(unitests)
-          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
-
-          cd Debug
-          ./onnxruntime_mlas_test
-          #Merge the mulitple prof data into a single indexed profile data file
-          llvm-profdata merge -sparse -o ort.profdata *.profraw
-          #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
-          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: html
-
-    - task: CmdLine@2
-      displayName: 'Post code coverage data to the Dashboard'
-      inputs:
-        script: |
-          python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py  --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)"
-        workingDirectory: $(Build.BinariesDirectory)
-      env: 
-        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
-
-
 - job: Upload
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
-  dependsOn:
-  - CodeCoverage
   condition: succeeded()
   steps:
   - checkout: self
@@ -58,7 +11,11 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
-      buildType: 'current'
+      buildType: specific
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      definition: 845
+      buildVersionToDownload: specific
+      pipelineId: 150094
       artifactName: 'html'
       targetPath: '$(Build.BinariesDirectory)'
       
