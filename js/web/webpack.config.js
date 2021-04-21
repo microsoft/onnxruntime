@@ -101,7 +101,8 @@ function buildTestRunnerConfig({
       filename: `ort${suffix}.js`,
       library: {
         type: format
-      }
+      },
+      devtoolNamespace: '',
     },
     externals: {
       'onnxruntime-common': 'ort',

@@ -13,6 +13,7 @@ test/**/*.js.map
 script/**/*.js
 script/**/*.js.map
 
+lib/wasm/binding/**/*.wasm
 !lib/wasm/binding/**/*.d.ts
 
 test/data/node/
