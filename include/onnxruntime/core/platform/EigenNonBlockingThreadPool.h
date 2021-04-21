@@ -1078,6 +1078,15 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
+// For main thread:
+//  1. select a dispatching thread to do job distribution;
+//  2. run fn(0);
+//  3, wait for all;
+// For dispatching thread:
+//  1. distribute jobs to all other threads;
+//  2. run fn(...) itself.
+// For all other threads:
+//  1. run fn(...);
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
@@ -1087,14 +1096,14 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   int dispatch_q_idx = -1;  // index of thread that dispatch work to all other threads
   int dispatch_w_idx = -1;  // index of enqueued work
   std::atomic<bool> dispatch_done{false};
-  std::atomic<bool> dispatch_work_done{false};
+  std::atomic<bool> work_done{false};
 
-  Task worker_fn = [&]() {
-    fn(ps.worker_idx++);
+  Task worker_fn = [&fn, &ps]() {
+    fn(++ps.worker_idx);
     ps.tasks_finished++;
   };
 
-  std::function<int(int, Task&, bool)> enqueue_fn = [&, this](int q_idx, Task& w, bool logging) {
+  std::function<int(int, Task&, bool)> enqueue_fn = [&ps, pt, this](int q_idx, Task& w, bool logging) {
     WorkerData& td = worker_data_[q_idx];
     Queue& q = td.queue;
     unsigned w_idx;
@@ -1112,44 +1121,27 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
 
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
   unsigned extra_needed = n > current_dop ? n - current_dop : 0;
-  std::vector<unsigned> good_hints, alt_hints;
 
-  Task dispatch_task = [&]() {  // dispatch work to other threads
+  Task dispatch_task = [&extra_needed, &enqueue_fn, &dispatch_q_idx,
+                        &worker_fn, &dispatch_done, &work_done,
+                        &fn, &ps, this]() {  // dispatch work to other threads
     for (auto i = 1u; i < extra_needed; i++) {
-      int q_idx;
-      if (i < good_hints.size()) {
-        q_idx = good_hints[i];
-      } else {
-        auto alt_i = i - static_cast<unsigned>(good_hints.size());
-        if (alt_i < alt_hints.size()) {
-          q_idx = alt_hints[alt_i];
-        } else {
-          q_idx = Rand(&pt->rand) % num_threads_;
-        }
-      }  // else
-      enqueue_fn(q_idx, worker_fn, true);
+      enqueue_fn((dispatch_q_idx + i) % num_threads_, worker_fn, true);
     }
     dispatch_done.store(true, std::memory_order_release);  // dispatch complete
-    fn(ps.worker_idx++);
-    dispatch_work_done.store(true, std::memory_order_release);  // work complete
+    fn(++ps.worker_idx);
+    work_done.store(true, std::memory_order_release);  // work complete
   };
 
   if (extra_needed > 0) {
     profiler_.LogStart();
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    if (!good_hints.empty()) {
-      dispatch_q_idx = good_hints[0];
-    } else if (!alt_hints.empty()) {
-      dispatch_q_idx = alt_hints[0];
-    } else {
-      dispatch_q_idx = Rand(&pt->rand) % num_threads_;
-    }
+    dispatch_q_idx = Rand(&pt->rand) % num_threads_;
     dispatch_w_idx = enqueue_fn(dispatch_q_idx, dispatch_task, false);  // dispatch asynchronously
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
 
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
-  fn(ps.worker_idx++);  // run work in the main thread
+  fn(0);  // run work in the main thread
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   if (dispatch_w_idx != -1) {
@@ -1164,7 +1156,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   }
   EndParallelSectionInternal(*pt, ps);
   if (dispatch_w_idx != -1) {
-    while (!dispatch_work_done.load(std::memory_order_acquire)) {  // if started, wait for work completion
+    while (!work_done.load(std::memory_order_acquire)) {  // if started, wait for work completion
       onnxruntime::concurrency::SpinPause();
     }
   }
