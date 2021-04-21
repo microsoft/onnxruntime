@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "onnxruntime/ort_env.h"
 #import "src/ort_env_internal.h"
-#import "src/error_utils.h"
 
 #include <optional>
 
 #include "core/session/onnxruntime_cxx_api.h"
+
+#import "src/error_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -30,7 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
   return self;
 }
 
-- (Ort::Env*)handle {
+- (Ort::Env*)internalORTEnv {
   return &(*_env);
 }
 

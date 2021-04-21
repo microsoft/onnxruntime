@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTEnv ()
 
-- (Ort::Env*)handle;
+- (Ort::Env*)internalORTEnv;
 
 @end
 

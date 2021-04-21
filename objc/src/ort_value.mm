@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "onnxruntime/ort_value.h"
 #import "src/ort_value_internal.h"
-#import "src/error_utils.h"
 
 #include <optional>
 
 #include "core/session/onnxruntime_cxx_api.h"
+
+#import "src/error_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -25,7 +25,7 @@ static ONNXTensorElementDataType GetONNXTensorElementDataType(ORTTensorElementDa
 
 @interface ORTValue ()
 
-@property NSMutableData* data;
+@property(nullable) NSMutableData* data;
 
 @end
 
@@ -55,7 +55,7 @@ static ONNXTensorElementDataType GetONNXTensorElementDataType(ORTTensorElementDa
   return self;
 }
 
-- (Ort::Value*)handle {
+- (Ort::Value*)internalORTValue {
   return &(*_value);
 }
 

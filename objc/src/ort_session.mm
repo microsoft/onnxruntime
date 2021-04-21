@@ -2,16 +2,15 @@
 // Licensed under the MIT License.
 
 #import "onnxruntime/ort_session.h"
-#import "onnxruntime/ort_env.h"
-#import "onnxruntime/ort_value.h"
-#import "src/error_utils.h"
-#import "src/ort_env_internal.h"
-#import "src/ort_value_internal.h"
 
 #include <optional>
 #include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
+
+#import "src/error_utils.h"
+#import "src/ort_env_internal.h"
+#import "src/ort_value_internal.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -26,7 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
   if (self) {
     try {
       Ort::SessionOptions sessionOptions{};  // TODO make configurable
-      _session = Ort::Session{*[env handle], path.UTF8String, sessionOptions};
+      _session = Ort::Session{*[env internalORTEnv], path.UTF8String, sessionOptions};
     } catch (const Ort::Exception& e) {
       [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
                        description:e.what()
@@ -50,12 +49,12 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] handle]));
+      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] internalORTValue]));
     }
 
     for (NSString* outputName in outputs) {
       outputNames.push_back(outputName.UTF8String);
-      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] handle]));
+      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] internalORTValue]));
     }
 
     Ort::ThrowOnError(Ort::GetApi().Run(*_session, runOptions,

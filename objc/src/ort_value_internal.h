@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTValue ()
 
-- (Ort::Value*)handle;
+- (Ort::Value*)internalORTValue;
 
 @end
 
