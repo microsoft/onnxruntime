@@ -298,7 +298,7 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \  
+            --group-add video \
             --privileged \
             --ipc=host \
             --network=host \
@@ -320,7 +320,7 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \  
+            --group-add video \
             --privileged \
             --ipc=host \
             --network=host \
@@ -346,7 +346,7 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \  
+            --group-add video \
             --privileged \
             --ipc=host \
             --network=host \
@@ -372,7 +372,7 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \  
+            --group-add video \
             --privileged \
             --ipc=host \
             --network=host \
