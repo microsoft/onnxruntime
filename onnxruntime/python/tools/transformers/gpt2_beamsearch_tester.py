@@ -33,6 +33,7 @@ class Gpt2TesterFactory:
 class Gpt2BeamSearchTester(Gpt2Tester):
     def __init__(self,
                  input_ids,
+                 beam_select_idx,
                  input_log_probs,
                  input_unfinished_sents,
                  prev_step_scores,
@@ -61,6 +62,8 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         self.n_layer = num_layer
         self.beam_size = beam_size
 
+        self.beam_select_idx = beam_select_idx.to(device)
+
         float_type = torch.float16 if is_fp16 else torch.float32
         self.input_log_probs = input_log_probs.type(float_type).to(device)
         self.input_unfinished_sents = input_unfinished_sents.to(device)
@@ -73,6 +76,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         return Gpt2BeamSearchInputs(
             self.input_ids,
             self.past,
+            self.beam_select_idx,
             self.input_log_probs,
             self.input_unfinished_sents,
             self.prev_step_scores,
@@ -90,6 +94,11 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
         self.input_ids = self.last_state.view(self.batch_size * self.beam_size, -1).to(device)
 
+        self.beam_select_idx = (
+            torch.from_numpy(output[-4]).to(device)
+            if isinstance(output[-4], numpy.ndarray)
+            else output[-4].clone().detach().to(device)
+        )
         self.input_log_probs = (
             torch.from_numpy(output[-3]).to(device)
             if isinstance(output[-3], numpy.ndarray)
@@ -185,6 +194,9 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
+            beam_select_idx = (
+                inputs["beam_select_idx"] if "beam_select_idx" in inputs else None
+            )
             input_log_probs = (
                 inputs["input_log_probs"] if "input_log_probs" in inputs else None
             )
@@ -196,6 +208,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
             onnx_runner = Gpt2BeamSearchTester(
                 input_ids,
+                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_scores,
@@ -210,6 +223,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             onnx_io_runner = Gpt2BeamSearchTester(
                 input_ids,
+                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_scores,
@@ -224,6 +238,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             torch_runner = Gpt2BeamSearchTester(
                 input_ids,
+                beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
                 prev_step_scores,
@@ -265,39 +280,35 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                     onnx_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_runner.update(onnx_output, step, device)
 
-                    for num_seq in range(1, beam_size + 1):
-                        output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
-                            batch_size,
-                            context_len,
-                            past_seq_len,
-                            seq_len,
-                            beam_size,
-                            step,
-                            model.config,
-                            model_class=model_class,
-                            num_seq=num_seq,
-                        )
+                    output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
+                        batch_size,
+                        context_len,
+                        past_seq_len,
+                        seq_len,
+                        beam_size,
+                        step,
+                        model.config,
+                        model_class=model_class,
+                        num_seq=sum(onnx_io_runner.input_unfinished_sents.view(-1).long().cpu()),
+                    )
 
-                        Gpt2BeamSearchHelper.auto_increase_buffer_size(
-                            output_buffers, output_shapes
-                        )
+                    Gpt2BeamSearchHelper.auto_increase_buffer_size(
+                        output_buffers, output_shapes
+                    )
 
-                        try:
-                            (
-                                onnx_io_output,
-                                avg_latency_ms,
-                            ) = Gpt2BeamSearchHelper.onnxruntime_inference_with_binded_io(
-                                session,
-                                onnx_io_runner.get_inputs(),
-                                output_buffers,
-                                output_shapes,
-                                total_runs=1,
-                                return_numpy=False,
-                                include_copy_output_latency=True,
-                            )
-                            break
-                        except RuntimeError:
-                            continue
+                    (
+                        onnx_io_output,
+                        avg_latency_ms,
+                    ) = Gpt2BeamSearchHelper.onnxruntime_inference_with_binded_io(
+                        session,
+                        onnx_io_runner.get_inputs(),
+                        output_buffers,
+                        output_shapes,
+                        total_runs=1,
+                        return_numpy=False,
+                        include_copy_output_latency=True,
+                    )
+                        
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
 
                     if test_data_saved < save_test_data:

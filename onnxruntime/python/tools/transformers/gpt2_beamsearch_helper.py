@@ -77,6 +77,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
     def forward(
         self,
         input_ids,
+        beam_select_idx,
         input_log_probs,
         input_unfinished_sents,
         prev_step_scores,
@@ -99,6 +100,14 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             last_seq_len = past[0].size(-2)
             input_ids_unfinished_flat = input_ids_unfinished_flat[:, last_seq_len:]
             position_ids = position_ids[:, last_seq_len:]
+
+            unfinished_index_relative_to_last_unfinished = beam_select_idx.view(-1)[
+                input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
+            ]
+
+            past = tuple(
+                [p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in past]
+            )
 
         result = super().forward(
             input_ids_unfinished_flat.view(-1, input_ids_unfinished_flat.size(-1)),
@@ -195,18 +204,12 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
         # For next past state
         index_relative_to_last_unfinished = (
             input_unfinished_sents.view(-1).float().cumsum(-1) - 1
-        ).clamp(min=0).long().reshape_as(input_unfinished_sents).gather(1, selected_input_seq)        
-        unfinished_index_relative_to_last_unfinished = index_relative_to_last_unfinished.view(-1)[
-            output_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
-        ]
-
-        present_flat = tuple(
-            [p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in present_flat]
-        )
+        ).clamp(min=0).long().reshape_as(input_unfinished_sents).gather(1, selected_input_seq)  
 
         return (
             current_step_results.view(self.config.batch_size * self.config.beam_size, -1),
             present_flat,
+            index_relative_to_last_unfinished,
             output_log_probs,
             output_unfinished_sents,
             current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
@@ -227,12 +230,19 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
         self,
         input_ids,
         past,
+        beam_select_idx=None,
         input_log_probs=None,
         input_unfinished_sents=None,
         prev_step_scores=None,
     ):
         super().__init__(input_ids, position_ids=None, attention_mask=None, past=past)
         self.prev_step_scores: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = prev_step_scores
+        if beam_select_idx is None:
+            self.beam_select_idx: torch.LongTensor = torch.zeros(
+                [1, len(input_ids)]
+            ).long()
+        else:
+            self.beam_select_idx: torch.LongTensor = beam_select_idx
         self.input_log_probs: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = input_log_probs
         self.input_unfinished_sents: torch.ByteTensor = input_unfinished_sents
 
@@ -241,6 +251,7 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
             v 
             for v in [
                 self.input_ids,
+                self.beam_select_idx, 
                 self.input_log_probs, 
                 self.input_unfinished_sents, 
                 self.prev_step_scores
@@ -256,6 +267,7 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
         return Gpt2BeamSearchInputs(
             self.input_ids,
             past,
+            self.beam_select_idx, 
             self.input_log_probs.to(dtype=torch.float32),
             self.input_unfinished_sents,
             self.prev_step_scores.to(dtype=torch.float32),
@@ -295,6 +307,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         )
         float_type = torch.float16 if float16 else torch.float32
 
+        beam_select_idx = torch.zeros([1, batch_size], device=device).long()
+
         input_log_probs = torch.zeros([batch_size, 1], dtype=float_type, device=device)
         input_unfinished_sents = torch.ones(
             [batch_size, 1], dtype=torch.bool, device=device
@@ -304,6 +318,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return Gpt2BeamSearchInputs(
             gpt2_dummy_inputs.input_ids,
             gpt2_dummy_inputs.past,
+            beam_select_idx,
             input_log_probs,
             input_unfinished_sents,
             prev_step_scores,
@@ -328,22 +343,31 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         output_name = MODEL_CLASSES[model_class][1]
 
         last_state_shape = [batch_size * beam_size, past_sequence_length + sequence_length + 1]
-
-        if num_seq == 0:
-            num_seq = beam_size
-        
-        present_state_shape = [
-            2,
-            batch_size * num_seq,
-            num_attention_heads,
-            past_sequence_length + sequence_length,
-            int(hidden_size / num_attention_heads),
-        ]
+        if step == 0:
+            present_state_shape = [
+                2,
+                batch_size,
+                num_attention_heads,
+                past_sequence_length + sequence_length,
+                int(hidden_size / num_attention_heads),
+            ]
+        else:
+            if num_seq == 0:
+                num_seq = beam_size
+            
+            present_state_shape = [
+                2,
+                batch_size * num_seq,
+                num_attention_heads,
+                past_sequence_length + sequence_length,
+                int(hidden_size / num_attention_heads),
+            ]
 
         output_shapes = {output_name: last_state_shape}
         for i in range(num_layer):
             output_shapes["present_" + str(i)] = present_state_shape
 
+        output_shapes["output_selected_indices"] = [1, batch_size * beam_size]
         output_shapes["output_log_probs"] = [batch_size, beam_size]
         output_shapes["output_unfinished_sents"] = [batch_size, beam_size]
         output_shapes["current_step_scores"] = [batch_size * beam_size, past_sequence_length + sequence_length - context_len + 2]
@@ -358,7 +382,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         output_buffers = {}
         for name, shape in output_shapes.items():
-            if name == "last_state":
+            if name == "output_selected_indices" or name == "last_state":
                 output_buffers[name] = torch.empty(
                     numpy.prod(shape), dtype=torch.long, device=device
                 )
@@ -382,13 +406,27 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}"
         )
 
-        if not is_close:
+        is_all_close = is_close
+        num_layers = len(ort_outputs) - 5
+        for layer in range(num_layers):
+            is_close = numpy.allclose(
+                ort_outputs[1 + layer],
+                torch_outputs[1][layer].cpu().numpy(),
+                rtol=rtol,
+                atol=atol,
+            )
+            logger.debug(
+                f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}"
+            )
+            is_all_close = is_all_close and is_close
+
+        if not is_all_close:
             max_abs_diff = Gpt2BeamSearchHelper.diff_outputs(torch_outputs, ort_outputs)
             logger.info(
                 f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}"
             )
 
-        return is_close
+        return is_all_close
 
     @staticmethod
     def export_onnx(model,
@@ -423,6 +461,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         output_names = ["last_state"] + present_names
 
         output_names += [
+            "output_selected_indices",
             "output_log_probs",
             "output_unfinished_sents",
             "current_step_scores",
@@ -446,6 +485,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             dynamic_axes[name] = {1: "batch_size", 3: "cur_seq_len"}
 
         input_names = ["input_ids"]
+        dynamic_axes["beam_select_idx"] = {1: "batch_size"}
+        input_names.append("beam_select_idx")
         dynamic_axes["input_log_probs"] = {0: "batch_size", 1: "beam_size"}
         input_names.append("input_log_probs")
         dynamic_axes["input_unfinished_sents"] = {0: "batch_size", 1: "beam_size"}
@@ -483,6 +524,10 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())
         }
 
+        if inputs.beam_select_idx is not None:
+            ort_inputs["beam_select_idx"] = numpy.ascontiguousarray(
+                inputs.beam_select_idx.cpu().numpy()
+            )
         if inputs.input_log_probs is not None:
             ort_inputs["input_log_probs"] = numpy.ascontiguousarray(
                 inputs.input_log_probs.cpu().numpy()
@@ -522,6 +567,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                            past,
                            output_buffers,
                            output_shapes,
+                           beam_select_idx=None,
                            input_log_probs=None,
                            input_unfinished_sents=None,
                            prev_step_scores=None):
@@ -551,6 +597,17 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                     data_ptr = input_ids.data_ptr()
 
                 io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
+
+        if beam_select_idx is not None:
+            assert beam_select_idx.is_contiguous()
+            io_binding.bind_input(
+                "beam_select_idx",
+                beam_select_idx.device.type,
+                0,
+                numpy.longlong,
+                list(beam_select_idx.size()),
+                beam_select_idx.data_ptr(),
+            )
 
         if input_log_probs is not None:
             assert input_log_probs.is_contiguous()
@@ -592,7 +649,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             logger.debug(
                 f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}"
             )
-            if output_name == "last_state":
+            if output_name == "output_selected_indices" or output_name == "last_state":
                 io_binding.bind_output(
                     output_name,
                     output_buffer.device.type,
@@ -641,6 +698,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             inputs.past,
             output_buffers,
             output_shapes,
+            inputs.beam_select_idx,
             inputs.input_log_probs,
             inputs.input_unfinished_sents,
             inputs.prev_step_scores,

@@ -100,7 +100,6 @@ def parse_arguments():
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
-    parser.add_argument('--batch_size', required=False, type=int, default=1, help='Batch size for GPT model with beam search')
     parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
     parser.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage repetition.')
     parser.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits.')
@@ -152,7 +151,7 @@ def main():
     if model_type == 'beam_search_step':
         model = model_class.from_pretrained(args.model_name_or_path, 
                                             config=config, 
-                                            batch_size=args.batch_size, 
+                                            batch_size=1, 
                                             beam_size=args.beam_size, 
                                             temperature=args.temperature,
                                             repetition_penalty=args.repetition_penalty, 
@@ -258,12 +257,15 @@ def main():
                     inputs = {"input_ids": input_ids}
 
                 if model_type == "beam_search_step":
+                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
+
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])
                     input_unfinished_sents = torch.ones(
                         [input_ids.shape[0], 1], dtype=torch.bool
                     )
                     inputs.update(
                         {
+                            "beam_select_idx": beam_select_idx,
                             "input_log_probs": input_log_probs,
                             "input_unfinished_sents": input_unfinished_sents,
                         }
