@@ -85,6 +85,7 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                         const float* data, size_t num_elements) {
   weight.mutable_floatvalue()->Clear();
+  weight.mutable_floatvalue()->Reserve(num_elements);
   std::copy(data, data + num_elements,
             google::protobuf::RepeatedFieldBackInserter(weight.mutable_floatvalue()));
 }

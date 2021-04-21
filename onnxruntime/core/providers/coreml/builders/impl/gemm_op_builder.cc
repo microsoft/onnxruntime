@@ -34,6 +34,8 @@ class GemmOpBuilder : public BaseOpBuilder {
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
   const auto& input_defs(node.InputDefs());
+  // We have already embedded the weights (matrix B and C(if any)) into the coreml layer
+  // No need to copy them later to reduce memory consumption
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
   if (op == "Gemm" && input_defs.size() > 2) {
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
