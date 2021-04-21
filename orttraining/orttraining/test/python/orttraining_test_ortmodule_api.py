@@ -350,9 +350,8 @@ def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_s
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
 
-    # TODO: uncomment when onnxruntime/python/dlpack/dlpack_converter.cc:IsContiguousTensor issue is fixed
-    # prediction = eval(forward_statement).sum()
-    # prediction.backward()
+    prediction = eval(forward_statement).sum()
+    prediction.backward()
 
 def test_torch_nn_module_cuda_method():
     original_device = 'cpu'
@@ -2015,5 +2014,22 @@ def test_forward_call_kwargs_input(forward_statement):
     # Training step
     prediction = eval(forward_statement)
     assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()
+
+
+def test_repro_iscontiguous():
+    class SimpleNet(torch.nn.Module):
+        def __init__(self):
+            super(SimpleNet, self).__init__()
+            self.a = torch.nn.Parameter(torch.FloatTensor([-1., 1.]))
+        def forward(self, x):
+            result = torch.mean(self.a) + x
+            return result
+
+    one = torch.FloatTensor([1])
+    model = SimpleNet()
+    model = ORTModule(model)
+    prediction = model(one)
     prediction = prediction.sum()
     prediction.backward()
