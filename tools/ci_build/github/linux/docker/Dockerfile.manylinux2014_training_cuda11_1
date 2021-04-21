@@ -25,6 +25,7 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 
 #Build manylinux2014 docker image end
 
+ARG PYTHON_VERSION=3.6
 ARG INSTALL_DEPS_EXTRA_ARGS
 
 #Add our own dependencies
