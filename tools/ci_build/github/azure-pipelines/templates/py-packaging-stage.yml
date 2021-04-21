@@ -261,10 +261,6 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            #              --device=/dev/kfd \
-            #              --device=/dev/dri \
-            #              --group-add video \ 
-            mkdir -p $HOME/.onnx
             docker run --rm \
               --privileged \
               --ipc=host \
@@ -296,7 +292,109 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
           workingDirectory: $(Build.SourcesDirectory)
-  
+        displayName: 'Build onnxruntime (in container)'
+
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add video \  
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /build/Release \
+            --entrypoint /bin/bash \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild \
+               /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
+        displayName: 'Run onnxruntime unit tests (in container)'
+      
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add video \  
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild \
+              orttraining/tools/ci_test/run_batch_size_test.py \
+                --binary_dir /build/Release \
+                --model_root training_e2e_test_data/models \
+                --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L batch size test (in container)'
+        condition: succeededOrFailed() # ensure all tests are run
+      
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add video \  
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild \
+              --binary_dir /build/Release \
+              --model_root training_e2e_test_data/models \
+              --training_data_root training_e2e_test_data/data \
+              --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L performance test (in container)'
+        condition: succeededOrFailed() # ensure all tests are run
+      
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add video \  
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild \
+              orttraining/tools/ci_test/run_convergence_test.py \
+                --binary_dir /build/Release \
+                --model_root training_e2e_test_data/models \
+                --training_data_root training_e2e_test_data/data \
+                --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L convergence test'
+        condition: succeededOrFailed() # ensure all tests are run
+      
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
