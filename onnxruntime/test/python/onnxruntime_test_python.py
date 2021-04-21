@@ -903,13 +903,11 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):
+        # exclude for macos
+        if sys.platform.startswith("darwin"):
+            return
         if sys.platform.startswith("win"):
             shared_library = 'test_execution_provider.dll'
-            if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
-
-        elif sys.platform.startswith("darwin"):
-            shared_library = 'libtest_execution_provider.dylib'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
