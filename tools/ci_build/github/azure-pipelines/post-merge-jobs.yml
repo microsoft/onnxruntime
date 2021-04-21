@@ -25,7 +25,18 @@ jobs:
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
           llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
+
+
+    - task: AzureFileCopy@4
+      displayName: 'AzureBlob File Copy'
+      inputs:
+        SourcePath: '$(Build.ArtifactStagingDirectory)'
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        Destination: AzureBlob
+        storage: onnxruntime
+        ContainerName: '$web'
 
     - task: CmdLine@2
       displayName: 'Post code coverage data to the Dashboard'
