@@ -99,7 +99,7 @@ struct TensorrtFuncState {
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
-  nvinfer1::IRuntime* runtime = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>* runtime = nullptr;
 
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
@@ -149,7 +149,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string cache_path_;
-  nvinfer1::IRuntime* runtime_ = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
