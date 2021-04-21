@@ -813,7 +813,7 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
   OpDef op_def{"Conv"};
 
   // TODO: revisit the tol when ConvGrad impl is completed
-  float error_tolerance = 2e-1f;
+  float error_tolerance = 3e-1f;
 
   // 1D convolution
   {
