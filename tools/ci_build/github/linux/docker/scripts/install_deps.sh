@@ -11,6 +11,7 @@ do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
+v) CUDA_VERSION=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 u) ORTMODULE_BUILD=true;;
@@ -121,7 +122,7 @@ if [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $ORTMODULE_BUILD = false ]]; then
       ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
     else
-      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage1\/requirements.txt}
+      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage1\/requirements_torch_cu${CUDA_VERSION}.txt}
       # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
       ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
     fi
