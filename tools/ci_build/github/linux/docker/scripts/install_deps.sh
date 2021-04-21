@@ -6,7 +6,7 @@ INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 
-while getopts p:d:tmu parameter_Option
+while getopts p:d:v:tmu parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
