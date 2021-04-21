@@ -41,6 +41,9 @@ class PythonOp final : public CudaKernel {
     input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
     input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
 
+    input_pointer_scalars_ = info.GetAttrsOrDefault("input_pointer_scalars", std::vector<int64_t>());
+    input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
+
     // Output tensors.
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
     output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
@@ -97,6 +100,9 @@ class PythonOp final : public CudaKernel {
   std::vector<float> input_float_tuples_;
   std::vector<int64_t> input_float_tuple_positions_;
   std::vector<int64_t> input_float_tuple_begins_;
+
+  std::vector<int64_t> input_pointer_scalars_;
+  std::vector<int64_t> input_pointer_scalar_positions_;
 
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;

@@ -152,7 +152,7 @@ void DlpackCapsuleDestructor(PyObject* data) {
 
 bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   void* prt = PyLong_AsVoidPtr(pyObj);
-  std::cout << "ExtractPointerOutput:" << prt << std::endl;
+  // std::cout << "ExtractPointerOutput:" << prt << std::endl;
   outputs.push_back(prt);
   return true;
 }
@@ -435,6 +435,9 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
     // Let j = const_arg_positions.at(i).
     // Here we set the j-th input argument to const_args.at(i).
     PyTuple_SetItem(py_args, const_arg_positions.at(i), reinterpret_cast<PyObject*>(const_args.at(i)));
+    std::cout << "[pyop_lib_proxy.cc] const_arg " << i << ": " << std::endl;
+    PyObject_Print(reinterpret_cast<PyObject*>(const_args.at(i)), stdout, 0);
+    std::cout << std::endl;
   }
 
   // Fill argument list with tensor types.
@@ -442,6 +445,9 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
     PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
     PyTuple_SetItem(py_args, arg_positions.at(i), dltensor);
+    std::cout << "[pyop_lib_proxy.cc] arg " << i << ": " << std::endl;
+    PyObject_Print(dltensor, stdout, 0);
+    std::cout << std::endl;
   }
 
   scope.Add(py_args);
