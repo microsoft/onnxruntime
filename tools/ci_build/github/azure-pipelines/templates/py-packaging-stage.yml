@@ -302,11 +302,19 @@ stages:
         displayName: 'Download onnxruntime_training_data.zip data'
 
       - script: |-
-          echo "Selecting HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
+          echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
+          video=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+          echo "##vso[task.setvariable variable=video]$video"
+          render=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+          echo "##vso[task.setvariable variable=render]$render"
+        displayName: 'Find video and render gid to be mapped into container'
+ 
+      - script: |-
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \
+            --group-add $video \
+            --group-add $render \
             --privileged \
             --ipc=host \
             --network=host \
@@ -319,7 +327,7 @@ stages:
             -e HIP_VISIBLE_DEVICES \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            --user root \
+            --user onnxruntimedev \
             onnxruntimetrainingrocmbuild \
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
@@ -328,7 +336,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \
+            --group-add $video \
+            --group-add $render \
             --privileged \
             --ipc=host \
             --network=host \
@@ -341,7 +350,7 @@ stages:
             -e HIP_VISIBLE_DEVICES \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            --user root \
+            --user onnxruntimedev \
             onnxruntimetrainingrocmbuild \
               orttraining/tools/ci_test/run_batch_size_test.py \
                 --binary_dir /build/Release \
@@ -354,7 +363,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \
+            --group-add $video \
+            --group-add $render \
             --privileged \
             --ipc=host \
             --network=host \
@@ -367,7 +377,7 @@ stages:
             -e HIP_VISIBLE_DEVICES \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            --user root \
+            --user onnxruntimedev \
             onnxruntimetrainingrocmbuild \
               orttraining/tools/ci_test/run_bert_perf_test.py \
                 --binary_dir /build/Release \
@@ -381,7 +391,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add video \
+            --group-add $video \
+            --group-add $render \
             --privileged \
             --ipc=host \
             --network=host \
@@ -394,7 +405,7 @@ stages:
             -e HIP_VISIBLE_DEVICES \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            --user root \
+            --user onnxruntimedev \
             onnxruntimetrainingrocmbuild \
               orttraining/tools/ci_test/run_convergence_test.py \
                 --binary_dir /build/Release \
