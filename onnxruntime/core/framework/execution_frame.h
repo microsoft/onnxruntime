@@ -50,6 +50,8 @@ class IExecutionFrame {
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
 #ifdef ENABLE_TRAINING
+  // Override the index-th output with ort_value
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
   void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
   void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
   Status GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs);
@@ -100,6 +102,10 @@ class IExecutionFrame {
                                              size_t nnz) = 0;
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
+
+  virtual bool IsAllocatedExternally(int /*ort_value_idx*/) {
+    return false;
+  }
 
   const NodeIndexInfo& node_index_info_;
 
@@ -187,6 +193,8 @@ class ExecutionFrame final : public IExecutionFrame {
   void TraceFree(int ort_value_idx);
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
+
+  bool IsAllocatedExternally(int ort_value_idx) override;
 
   const SessionState& session_state_;
 

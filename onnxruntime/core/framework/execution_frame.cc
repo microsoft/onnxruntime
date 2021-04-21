@@ -36,6 +36,21 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 IExecutionFrame::~IExecutionFrame() = default;
 
 #ifdef ENABLE_TRAINING
+Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
+  }
+
+  if (!IsAllocatedExternally(ort_value_idx)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetOutputMLValue() is not allowed for OrtValue index ", ort_value_idx,
+                           " as its allocation kind is not kAllocatedExternally.");
+  }
+
+  all_values_[ort_value_idx] = ort_value;
+  return Status::OK();
+}
+
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
@@ -125,7 +140,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
     p_ort_value = nullptr;
   } else {
-    p_ort_value = &(all_values_[ort_value_idx]);
+    p_ort_value = &all_values_[ort_value_idx];
 
     if (p_ort_value->IsAllocated()) {
       // already allocated. verify shape matches if tensor.
@@ -687,6 +702,11 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
   return alloc_plan[ort_value_idx];
+}
+
+bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
+  const auto& allocation_plan = GetAllocationPlan(ort_value_idx);
+  return allocation_plan.alloc_kind == AllocKind::kAllocatedExternally;
 }
 
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
