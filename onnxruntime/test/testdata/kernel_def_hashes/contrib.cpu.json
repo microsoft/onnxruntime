@@ -246,5 +246,9 @@
     [
         "WordConvEmbedding com.microsoft CPUExecutionProvider",
         7416606351345164776
+    ],
+    [
+        "QLinearConcat com.microsoft CPUExecutionProvider",
+        1734858160766311432
     ]
 ]
