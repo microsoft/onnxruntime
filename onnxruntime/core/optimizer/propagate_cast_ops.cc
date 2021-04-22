@@ -307,7 +307,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
   if (level < 2 && (consumer_node_count > 1 ||
                     nullptr != node &&
                         consumer_node_count > 0 &&
-                        graph.IsOutput(node_arg) > 0)) {
+                        graph.IsOutput(node_arg))) {
     require_cast[node_arg].push_back(dst_node);
   } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
