@@ -3,15 +3,16 @@
 
 import "Windows.Foundation.idl";
 import "dualapipartitionattribute.idl";
-import "Windows.AI.MachineLearning.idl";
 
 #include <sdkddkver.h>
 
 #ifdef BUILD_INBOX
+import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Windows
 #define INBOX_ONLY(x) x
 #define OTB_ONLY(x)
 #else
+import "Microsoft.AI.MachineLearning.idl";
 #define INBOX_ONLY(x)
 #define OTB_ONLY(x) x
 #endif

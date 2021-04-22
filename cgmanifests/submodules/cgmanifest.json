@@ -162,10 +162,30 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        },
+        "comments": "git submodule at cmake/external/dlpack"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "8b32b7def837a15e766039501630549149d3db41",
+          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
+        },
+        "comments": "git submodule at cmake/external/emsdk"
       }
     },
     {
@@ -332,7 +352,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
+          "commitHash": "436bd7880e458532901c58f4d9d1ea23fa7edd52",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
@@ -446,16 +466,6 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
-          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
-        },
-        "comments": "git submodule at cmake/external/dlpack"
       }
     }
   ]

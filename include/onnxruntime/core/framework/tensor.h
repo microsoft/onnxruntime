@@ -65,9 +65,11 @@ class Tensor final {
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
-   * \param data A preallocated buffer. Can be NULL if the shape is empty.
+   * \param p_type Data type of the tensor
+   * \param shape Shape of the tensor
+   * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
-   * \param alloc Where the buffer('data') was allocated from
+   * \param alloc Where the buffer('p_data') was allocated from
    * \param offset Offset in bytes to start of Tensor within p_data. 
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
@@ -78,6 +80,20 @@ class Tensor final {
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+
+  /**
+   * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
+   * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * However, this function will de-allocate the buffer upon the tensor getting destructed.
+   * \param p_type Data type of the tensor
+   * \param shape Shape of the tensor
+   * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
+   *              Tensor does not own the data and will not delete it
+   * \param deleter Allocator used to free the pre-allocated memory
+   * \param offset Offset in bytes to start of Tensor within p_data. 
+   */
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+         ptrdiff_t offset = 0);
 
   ~Tensor();
 

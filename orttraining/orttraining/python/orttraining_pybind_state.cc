@@ -66,6 +66,11 @@ struct TrainingParameters {
   int number_recompute_layers = 0;
   bool enable_adasum = false;
 
+  // transformation
+  int propagate_cast_ops_level = -1;
+  std::vector<std::string> propagate_cast_ops_allow;
+  bool allow_layer_norm_mod_precision = false;
+
   // graph dumping
   std::string model_after_graph_transforms_path;
   std::string model_with_gradient_graph_path;
@@ -228,6 +233,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
+  config.graph_transformer_config.propagate_cast_ops_level = parameters.propagate_cast_ops_level;
+  config.graph_transformer_config.propagate_cast_ops_allow = parameters.propagate_cast_ops_allow;
+  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -348,7 +356,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("model_after_graph_transforms_path", &TrainingParameters::model_after_graph_transforms_path)
       .def_readwrite("model_with_gradient_graph_path", &TrainingParameters::model_with_gradient_graph_path)
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
-      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
+      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
+      .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
+      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -497,16 +508,39 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       })
       ;
 
+  py::class_<TrainingSession::TrainingConfiguration::GraphTransformerConfiguration> graph_transformer_config(
+      m, "GraphTransformerConfiguration",
+      R"pbdoc(Graph transformer configuration.)pbdoc");
+  graph_transformer_config.def(py::init())
+      .def_readwrite("enable_gelu_approximation", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::enable_gelu_approximation)
+      .def_readwrite("attn_dropout_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::attn_dropout_recompute)
+      .def_readwrite("gelu_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::gelu_recompute)
+      .def_readwrite("transformer_layer_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::transformer_layer_recompute)
+      .def_readwrite("number_recompute_layers", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::number_recompute_layers)
+      .def_readwrite("propagate_cast_ops_level", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_level)
+      .def_readwrite("propagate_cast_ops_allow", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_allow)
+      .def_readwrite("allow_layer_norm_mod_precision", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::allow_layer_norm_mod_precision);
+
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",
       R"pbdoc(Configuration information for module graph builder.)pbdoc");
+
+  py::enum_<Severity>(m, "Severity", py::arithmetic(), py::module_local())
+      .value("VERBOSE", logging::Severity::kVERBOSE)
+      .value("INFO", logging::Severity::kINFO)
+      .value("WARNING", logging::Severity::kWARNING)
+      .value("ERROR", logging::Severity::kERROR)
+      .value("FATAL", logging::Severity::kFATAL);
+
   module_graph_builder_config.def(py::init())
       .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_invertible_layernorm_grad",
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
-      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph);
+      .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
+      .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
+      .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
                                       R"pbdoc(The information of split graphs for frontend.)pbdoc");

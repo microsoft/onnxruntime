@@ -84,27 +84,31 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     b_offset = *static_cast<const uint8_t*>(b_zero_point->DataRaw());
   }
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-  gemm_params.M = static_cast<size_t>(helper.M());
-  gemm_params.N = static_cast<size_t>(helper.N());
-  gemm_params.K = static_cast<size_t>(helper.K());
-  gemm_params.lda = gemm_params.K;
-  gemm_params.ZeroPointA = a_offset;
-  gemm_params.ldb = gemm_params.N;
-  gemm_params.ZeroPointB = &b_offset;
-  gemm_params.ldc = gemm_params.N;
-  gemm_params.BIsPacked = bool(packed_b_);
-  gemm_params.BIsSigned = b_is_signed;
-
   const auto* a_data = a->template Data<uint8_t>();
   auto* y_data = y->template MutableData<int32_t>();
 
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    gemm_params.A = a_data + helper.LeftOffsets()[i];
-    gemm_params.B = b_data + helper.RightOffsets()[i];
-    gemm_params.C = y_data + helper.OutputOffsets()[i];
-    MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  gemm_shape.M = static_cast<size_t>(helper.M());
+  gemm_shape.N = static_cast<size_t>(helper.N());
+  gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.BIsSigned = b_is_signed;
+
+  const size_t batch_size = helper.OutputOffsets().size();
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch_size);
+  
+  for (size_t batch = 0; batch < batch_size; batch++) {
+    auto& gemm_params = gemm_data_vec[batch];
+    gemm_params.lda = gemm_shape.K;
+    gemm_params.ZeroPointA = a_offset;
+    gemm_params.ldb = gemm_shape.N;
+    gemm_params.ZeroPointB = &b_offset;
+    gemm_params.ldc = gemm_shape.N;
+    gemm_params.BIsPacked = bool(packed_b_);
+    gemm_params.A = a_data + helper.LeftOffsets()[batch];
+    gemm_params.B = b_data + helper.RightOffsets()[batch];
+    gemm_params.C = y_data + helper.OutputOffsets()[batch];
   }
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch_size, ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }
