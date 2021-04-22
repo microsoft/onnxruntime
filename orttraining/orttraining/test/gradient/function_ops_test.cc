@@ -6,7 +6,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "orttraining/core/graph/training_op_defs.h"
 
-#include "test/providers/function_test_util.h"
+#include "test/contrib_ops/function_test_util.h"
 
 using namespace ::onnxruntime::common;
 
