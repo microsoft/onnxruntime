@@ -1326,7 +1326,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           // Deserialize engine
           trt_state->context->reset();
           trt_state->engine->reset();
-          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->get()->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          auto runtime = trt_state->runtime->get();
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           if (trt_state->engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
