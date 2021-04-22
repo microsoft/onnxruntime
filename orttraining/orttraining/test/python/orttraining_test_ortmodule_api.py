@@ -2018,83 +2018,69 @@ def test_repro_iscontiguous():
 
 
 def test_forward_call_default_input():
-    class NumberNetAD(torch.nn.Module):
+    class UnusedNet(torch.nn.Module):
         def __init__(self):
             super().__init__()
             self.zeros = torch.nn.Parameter(torch.zeros(1,1))
 
-        def forward(self, a, b, c, d, *args):
+        def forward(self, a, b, c, d, *args, kw_0=None, **kwargs):
             result = a + d + self.zeros.sum()
             if args:
                 result += args[-1]
-            return result
-
-    class NumberNetBC(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.zeros = torch.nn.Parameter(torch.zeros(1,1))
-
-        def forward(self, a, b, c, d, *args):
-            result = b + c + self.zeros.sum()
-            if args:
-                result += args[-1]
+            if kw_0:
+                result += kw_0
+            if kwargs:
+                assert 'kwargs_1' in kwargs
+                result += kwargs['kwargs_1']
             return result
 
     # Modeling
     device = 'cuda'
-    model_ad = NumberNetAD().to(device)
-    model_ad = ORTModule(model_ad)
+    model = UnusedNet().to(device)
+    model = ORTModule(model)
 
-    model_bc = NumberNetBC().to(device)
-    model_bc = ORTModule(model_bc)
-
-    # Data used by both models
+    # Dummy data
     one = torch.FloatTensor([1]).to(device)
     two = 2*one
     three = 3*one
     four = 4*one
     args = [two]*5
+    kw_0 = 6*one
+    kwargs = {'kwargs_0': 7*one, 'kwargs_1': 8*one}
 
     # Make sure model runs without any exception
     for i in range(2):
         # Test both train and inference mode
         if i % 2 == 0:
-            model_ad.train()
-            model_bc.train()
+            model.train()
         else:
-            model_ad.eval()
-            model_bc.eval()
+            model.eval()
 
         # Model only uses a,d out of a,b,c,d
-        out_ad = model_ad(one, two, three, four)
-        assert out_ad.item() == 5.0
-        if model_ad.training:
-            out_ad.sum().backward()
+        out = model(one, two, three, four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
 
-        out_ad = model_ad(one, two, c=three, d=four)
-        assert out_ad.item() == 5.0
-        if model_ad.training:
-            out_ad.sum().backward()
+        out = model(one, two, c=three, d=four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
 
         # Model only uses a,d,args[-1] out of a,b,c,d,*args
-        out_ad = model_ad(one, two, three, four, *args)
-        assert out_ad.item() == 7.0
-        if model_ad.training:
-            out_ad.sum().backward()
+        out = model(one, two, three, four, *args)
+        assert out.item() == 7.0
+        if model.training:
+            out.sum().backward()
 
-        # Model only uses b,c out of a,b,c,d
-        out_bc = model_bc(one, two, three, four)
-        assert out_bc.item() == 5.0
-        if model_bc.training:
-            out_bc.sum().backward()
+        # Model only uses a,d,args[-1],kw_0 out of a,b,c,d,*args,kw_0
+        out = model(one, two, three, four, *args, kw_0=kw_0)
+        assert out.item() == 13.0
+        if model.training:
+            out.sum().backward()
 
-        out_bc = model_bc(one, b=two, c=three, d=four)
-        assert out_bc.item() == 5.0
-        if model_bc.training:
-            out_bc.sum().backward()
-
-        # Model only uses b,c,args[-1] out of a,b,c,d,*args
-        out_bc = model_bc(one, two, three, four, *args)
-        assert out_bc.item() == 7.0
-        if model_bc.training:
-            out_bc.sum().backward()
+        # Model only uses a,d,args[-1],kwargs['kwargs_1'] out of a,b,c,d,*args,kw_0,**kwargs
+        out = model(one, two, three, four, *args, **kwargs)
+        assert out.item() == 15.0
+        if model.training:
+            out.sum().backward()
