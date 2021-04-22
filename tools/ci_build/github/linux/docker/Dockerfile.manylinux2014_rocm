@@ -1,11 +1,4 @@
-# TODO unify this with Dockerfile.manylinux2014_cuda10_2
-
 FROM rocm/pytorch:rocm4.1.1_centos7_py3.6_pytorch
-
-#We need both CUDA and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
-#1. The application was developed starting from a NVIDIA CUDA container obtained from Docker Hub or the NVIDIA GPU Cloud, and
-#2. The resulting application is packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only.
-#So we use CUDA as the base image then add manylinux on top of it.
 
 #Build manylinux2014 docker image begin
 ENV AUDITWHEEL_ARCH x86_64
