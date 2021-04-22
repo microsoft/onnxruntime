@@ -46,39 +46,41 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-  gemm_params.M = static_cast<size_t>(helper.M());
-  gemm_params.N = static_cast<size_t>(helper.N());
-  gemm_params.K = static_cast<size_t>(helper.K());
-  gemm_params.lda = gemm_params.K;
-  gemm_params.ZeroPointA = a_zero_point;
-  gemm_params.ldb = gemm_params.N;
-  gemm_params.ZeroPointB = &b_zero_point;
-  gemm_params.ldc = gemm_params.N;
-
   auto* y_data = y->template MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(
-        y_data + helper.OutputOffsets()[i],
-        static_cast<size_t>(helper.N()),
-        &multiplier,
-        bias_data);
+  // batch gemm
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  gemm_shape.M = static_cast<size_t>(helper.M());
+  gemm_shape.N = static_cast<size_t>(helper.N());
+  gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.BIsSigned = packed_b_ ? b_is_signed_ : b->IsDataType<int8_t>();
 
-    gemm_params.A = a_data + helper.LeftOffsets()[i];
-    if (packed_b_) {
-      gemm_params.B = packed_b_.get();
-      gemm_params.BIsPacked = true;
-      gemm_params.BIsSigned = b_is_signed_;
-    } else {
-      gemm_params.B = static_cast<const uint8_t*>(b->DataRaw()) +  + helper.RightOffsets()[i];
-      gemm_params.BIsSigned = b->IsDataType<int8_t>();
-    }
-    gemm_params.C = reinterpret_cast<int32_t*>(y_data) + helper.OutputOffsets()[i];
-    gemm_params.OutputProcessor = &scale_bias_processor;
-    MlasGemm(&gemm_params, ctx->GetOperatorThreadPool());
+  const size_t num_gemms = helper.OutputOffsets().size();
+  std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> gemm_scale_procs;
+  gemm_scale_procs.reserve(num_gemms);
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(num_gemms);
+
+  for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+    gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],
+                                  gemm_shape.N,
+                                  &multiplier,
+                                  bias_data);
+    auto& params = gemm_data_vec[gemm_idx];
+    params.OutputProcessor = &(gemm_scale_procs[gemm_idx]);
+    params.A = a_data + helper.LeftOffsets()[gemm_idx];
+    params.lda = gemm_shape.K;
+    params.ZeroPointA = a_zero_point;
+    params.BIsPacked = bool(packed_b_);
+    params.B = bool(packed_b_) ? packed_b_.get() : 
+        static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[gemm_idx];
+    params.ldb = gemm_shape.N;
+    params.ZeroPointB = &b_zero_point;
+    params.C = reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[gemm_idx]);
+    params.ldc = gemm_shape.N;
   }
+
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }
@@ -144,14 +146,14 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
   float a_scale;
   uint8_t a_zero_point;
-  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point);
+  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
   BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
-  // quantize the data
-  MlasQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point);
+
+  ParQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
   return ComputeCommon(ctx,
                        a_data_quant,

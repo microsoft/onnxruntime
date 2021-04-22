@@ -56,6 +56,7 @@
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
 * com.microsoft.nchwc
   * <a href="#com.microsoft.nchwc.AveragePool">com.microsoft.nchwc.AveragePool</a>
   * <a href="#com.microsoft.nchwc.Conv">com.microsoft.nchwc.Conv</a>
@@ -2670,6 +2671,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain to tensor(int32).</dd>
 <dt><tt>T1</tt> : tensor(float)</dt>
 <dd>Constrain to tensor(float).</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.IsAllFinite"></a><a name="com.microsoft.isallfinite">**com.microsoft.IsAllFinite**</a>
+
+  IsAllFinite
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>isinf_only</tt> : int</dt>
+<dd>If true, check only for Inf, -Inf.</dd>
+<dt><tt>isnan_only</tt> : int</dt>
+<dd>If true, check only for NaN.</dd>
+</dl>
+
+#### Inputs (1 - &#8734;)
+
+<dl>
+<dt><tt>input</tt> (variadic) : V</dt>
+<dd>Input tensors to check.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>The output scalar. Its value is true if all input tensors are finite. Otherwise, the output value would be false.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>V</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T</tt> : tensor(bool)</dt>
+<dd>Constrain the output to a boolean tensor.</dd>
 </dl>
 
 
