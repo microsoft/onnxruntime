@@ -35,7 +35,7 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 
-ARG BUILD_UID=1002
+ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
