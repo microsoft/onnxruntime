@@ -2,7 +2,7 @@ pandas
 sklearn
 numpy==1.19.5
 transformers==v4.3.2
-tensorboard==v2.0.0
+tensorboard
 h5py
 wget
 pytorch-lightning==1.2.5
