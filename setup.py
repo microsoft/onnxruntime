@@ -47,6 +47,7 @@ if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
+rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
