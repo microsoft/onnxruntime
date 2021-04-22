@@ -1198,6 +1198,11 @@ common::Status InferenceSession::Initialize() {
     }
   }
 
+  if(std::getenv("DUMP_BP_GRAPH") and atoi(std::getenv("OMPI_COMM_WORLD_RANK"))==0){
+    PathString path_str("bp_graph.onnx");
+    std::remove(ToMBString(path_str).c_str());
+    Model::Save(*model_, path_str);
+  }
   return status;
 }
 
