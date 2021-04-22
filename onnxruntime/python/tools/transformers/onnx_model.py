@@ -426,11 +426,11 @@ class OnnxModel:
         Args:
             cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
         """
-        from packaging.version import Version
-        import onnxconverter_common as oc
-        if Version(oc.__version__) > Version("1.7.0"):
-            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
-            return
+        #from packaging.version import Version
+        #import onnxconverter_common as oc
+        #if Version(oc.__version__) > Version("1.7.0"):
+        #    self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+        #    return
 
         graph = self.model.graph
         initializers = graph.initializer

@@ -36,7 +36,8 @@ def create_dummy_inputs(batch_size, sequence_length, past_sequence_length,
 # optimize
 
 onnx_model_path = "/bert_ort/wy/Megatron/scripts/scripts_after_change/fp16_merge.onnx"
-optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/fp16_merge_optimized.onnx"
+#onnx_model_path = "/bert_ort/wy/Megatron/ChitChatONNX/megatron_onnx_partial/fp16_merge.onnx"
+optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_optimized/fp16_merge_optimized.onnx"
 
 print("optimizing")
 from optimizer import optimize_model
@@ -52,11 +53,10 @@ opt_model = optimize_model(onnx_model_path,
                            use_gpu=True,
                            only_onnxruntime=False)
 
-opt_model.convert_model_float32_to_float16()
-opt_model.save_model_to_file(optimized_model_path, use_external_data_format = False)
+opt_model.save_model_to_file(optimized_model_path, use_external_data_format = True)
 print(opt_model.get_fused_operator_statistics())
 
-# test parity
+#test parity
 print("test parity")
 num_layers = 6
 input_ids, position_ids, attention_mask, past_key_values = create_dummy_inputs(1, 1, 0, 1024, 16, 6, 1024, "cuda", 50304, True)

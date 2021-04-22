@@ -4,7 +4,7 @@
 #--------------------------------------------------------------------------
 from typing import Dict
 from logging import getLogger
-from onnx import helper
+from onnx import helper, TensorProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 
@@ -92,6 +92,8 @@ class FusionLayerNormalization(Fusion):
                     return
             else:
                 return
+        else:
+            mul_node = node_after_div
 
         last_add_node = input_name_to_nodes[mul_node.output[0]][0]
         if last_add_node.op_type != 'Add':
@@ -128,6 +130,9 @@ class FusionLayerNormalization(Fusion):
 
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
+
+        if parent.op_type == 'Cast':
+            parent.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT16))])
 
 
 class FusionLayerNormalizationTF(Fusion):

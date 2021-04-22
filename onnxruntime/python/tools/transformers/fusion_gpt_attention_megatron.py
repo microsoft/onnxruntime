@@ -48,7 +48,7 @@ class FusionGptAttention(Fusion):
         self.nodes_to_add.extend([attention_node, matmul_node, add_node])
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        print("megatron")
+        #print("megatron")
         past = None
         present = None
         return_indice = []
