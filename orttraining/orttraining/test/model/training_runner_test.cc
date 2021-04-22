@@ -11,7 +11,6 @@
 #include "core/common/path_string.h"
 #include "core/platform/path_lib.h"
 #include "core/session/environment.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 #include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_util.h"
 #include "test/util/include/default_providers.h"
