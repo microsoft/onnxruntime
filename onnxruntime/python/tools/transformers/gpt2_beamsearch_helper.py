@@ -316,7 +316,6 @@ class GPT2LMHeadModel_BeamSearchStepEarlyStop(GPT2LMHeadModel):
             current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
         )
 
-
 # Maps model class name to a tuple of model class, name of first output and use padding or not
 MODEL_CLASSES = {
     'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
@@ -332,8 +331,9 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
         self,
         input_ids,
         past,
-        position_ids=None,
-        attention_mask=None,
+        position_ids,
+        attention_mask,
+        past,
         beam_select_idx=None,
         input_log_probs=None,
         input_unfinished_sents=None,
@@ -373,11 +373,12 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
 
     def to_fp32(self):
         past = [p.to(dtype=torch.float32) for p in self.past]
+        attention_mask = self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else self.attention_mask
         return Gpt2BeamSearchInputs(
             self.input_ids,
             past,
             self.position_ids,
-            self.attention_mask,
+            attention_mask,
             self.beam_select_idx, 
             self.input_log_probs.to(dtype=torch.float32),
             self.input_unfinished_sents,
@@ -420,7 +421,6 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         float_type = torch.float16 if float16 else torch.float32
 
         beam_select_idx = torch.zeros([1, batch_size], device=device).long()
-
         input_log_probs = torch.zeros([batch_size, 1], dtype=float_type, device=device)
         input_unfinished_sents = torch.ones(
             [batch_size, 1], dtype=torch.bool, device=device
@@ -472,6 +472,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             last_state_shape = [batch_size, beam_size]
         else:
             last_state_shape = [batch_size * beam_size, past_sequence_length + sequence_length + 1]
+        
         if step == 0:
             present_state_shape = [
                 2,
@@ -594,6 +595,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
+            # outputs = model(input_ids, position_id, attention_mask, beam_select_idx, past)
             outputs = model(*input_list)
 
         past_names = [f"past_{i}" for i in range(num_layer)]
@@ -626,8 +628,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         #      or logits: (batch_size, seq_len, vocab_size)
         #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
         dynamic_axes = {
-            "input_ids": {0: "batch_size", 1: "cur_seq_len"},
-            output_names[0]: {0: "batch_size", 1: "next_seq_len"},
+            "input_ids": {0: "batch_size", 1: "seq_len"},
+            output_names[0]: {0: "batch_size", 1: "seq_len"},
         }
         for name in past_names:
             dynamic_axes[name] = {1: "batch_size", 3: "past_seq_len"}

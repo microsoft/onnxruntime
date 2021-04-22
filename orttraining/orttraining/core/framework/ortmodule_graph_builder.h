@@ -28,7 +28,11 @@ struct OrtModuleGraphBuilderConfiguration {
   bool use_invertible_layernorm_grad = false;
   bool build_gradient_graph = true;
 
+  // Graph transformer configuration
   TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
+
+  // Log severity
+  logging::Severity loglevel{logging::Severity::kWARNING};
 };
 
 /**
@@ -113,7 +117,6 @@ class OrtModuleGraphBuilder {
 
   OrtModuleGraphBuilderConfiguration config_;
   const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger();  // use default logger for now.
-  TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config_;
 };
 
 }  // namespace training

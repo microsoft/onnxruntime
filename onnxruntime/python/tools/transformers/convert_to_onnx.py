@@ -150,6 +150,7 @@ def main():
         model_type = "beam_search_step_earlystop"
     else:
         model_type = "default"
+
     gpt2helper = Gpt2HelperFactory.create_helper(model_type)
     gpt2tester = Gpt2TesterFactory.create_tester(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)

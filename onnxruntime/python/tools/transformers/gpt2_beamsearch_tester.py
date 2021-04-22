@@ -247,6 +247,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                 prev_step_results = inputs["input_ids"]
             else:
                 prev_step_results = None
+
             if "prev_step_scores" in inputs:
                 prev_step_scores = inputs["prev_step_scores"]
             else:
@@ -345,6 +346,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                         num_seq = beam_size
                     else:
                         num_seq = sum(onnx_io_runner.input_unfinished_sents.view(-1).long().cpu())
+            
                     output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
                         batch_size,
                         context_len,
@@ -373,7 +375,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                         return_numpy=False,
                         include_copy_output_latency=True,
                     )
-                        
+                  
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
 
                     if test_data_saved < save_test_data:
