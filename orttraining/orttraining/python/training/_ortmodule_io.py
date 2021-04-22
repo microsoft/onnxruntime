@@ -272,7 +272,6 @@ class _FlattenedModule(torch.nn.Module):
         self._input_info = None
 
     def forward(self, *args):
-        # TODO: Convert *args into *args + **kwars andd call _original_module with it
         new_args, new_kwargs = self._input_info.unflatten(args)
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
