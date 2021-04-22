@@ -76,7 +76,7 @@ static Status InsertCastNodes(Graph& graph,
     // data_type is the data type of the Cast output.
     TensorProto_DataType data_type = is_fp16 ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
     TypeProto type_proto;
-    bool is_node_arg_cast_output = IsType(*node_arg, data_type);
+    bool is_node_arg_cast_output = IsType(*node_arg, data_type);  // true if the producer node_arg is being replaced
     TensorProto_DataType new_node_arg_data_type = data_type;
 
     if (is_node_arg_cast_output) {
@@ -177,7 +177,7 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
   if (producer) {
     if (graph.IsOutput(cast_output)) {
       // cast_output is a graph output. Replace the cast node with an Identity operator unless node
-      // has other outputs.
+      // has no other outputs.
       if (producer->GetOutputEdgesCount() == 1) {
         int input_index = optimizer_utils::IndexOfNodeInput(*lead_cast, *cast_input);
         graph.RemoveEdge(producer->Index(), lead_cast->Index(), output_index, input_index);
@@ -185,11 +185,11 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
         std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
         graph.UpdateProducerNode(cast_output->Name(), producer->Index());
       } else {
-        (void) graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
-                             "Identity",
-                             "Created as a place-holder for a graph output",
-                             {cast_input},
-                             {cast_output});
+        (void)graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
+                            "Identity",
+                            "Created as a place-holder for a graph output",
+                            {cast_input},
+                            {cast_output});
       }
     }
   }
@@ -416,7 +416,6 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
     require_cast.insert(std::make_pair(node_arg, std::vector<Node*>()));
   }
 }
-
 
 // Change the elem_type of the given NodeArgs from FLOAT to FLOAT16.
 static void ChangeTypeToFP16(Graph& graph, std::unordered_set<NodeArg*>& require_type_change, bool is_forward, const logging::Logger& logger) {
@@ -858,7 +857,8 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 
     LOGS(logger, INFO) << "Nodes Converted to FP16:";
     std::for_each(converted_node_names.begin(), converted_node_names.end(), [removed_node_names, logger](std::string name) {
-      if (removed_node_names.find(name) == removed_node_names.end()) { LOGS(logger, INFO) << name; } });
+      if (removed_node_names.find(name) == removed_node_names.end() && inserted_node_names.find(name) == inserted_node_names.end()) {
+        LOGS(logger, INFO) << name; } });
   }
   inserted_node_names.clear();
   converted_node_names.clear();
