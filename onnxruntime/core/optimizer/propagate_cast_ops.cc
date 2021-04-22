@@ -11,10 +11,21 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 // NodeArg to Select consumer node map.
 typedef std::unordered_map<NodeArg*, std::vector<Node*>> NodeArgToConsumerMap;
-static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& p) { 
-  return p.first->Name();
-};
 
+// ConcatNames
+// Collects all the names from the pointers of the objects stores in the container class C
+// the class should have a member functions returning a string (or a ref).
+template <typename C, typename T = typename C::value_type>
+static std::string ConcatNames(
+    C const& items, std::string (*f)(const T& n) = [](const T& n) { return n->Name(); }) {
+  std::vector<std::string> names;
+  std::transform(items.begin(), items.end(), back_inserter(names), f);
+  return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; });
+}
+
+static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& p) {
+  return p.first->Name() + " feeding " + ConcatNames(p.second) + "; ";
+};
 // The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that
 // the code is allowed to propage Cast operations cross. The user may specify a custom list of optypes using level 0.
 // The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
@@ -393,16 +404,6 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
   }
 }
 
-// ConcatNames
-// Collects all the names from the pointers of the objects stores in the container class C
-// the class should have a member functions returning a string (or a ref).
-template <typename C, typename T = typename C::value_type>
-static std::string ConcatNames(
-    C const& items, std::string (*f)(const T& n) = [](const T& n) { return n->Name(); }) {
-  std::vector<std::string> names;
-  std::transform(items.begin(), items.end(), back_inserter(names), f);
-  return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; });
-}
 
 // Change the elem_type of the given NodeArgs from FLOAT to FLOAT16.
 static void ChangeTypeToFP16(Graph& graph, std::unordered_set<NodeArg*>& require_type_change, bool is_forward, const logging::Logger& logger) {
