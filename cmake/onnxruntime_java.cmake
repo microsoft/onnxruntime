@@ -213,5 +213,5 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   # Copy the built Android AAR package to libs folder of our test app
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink ${ANDROID_PACKAGE_OUTPUT_DIR}/outputs/aar/onnxruntime-debug.aar ${ANDROID_TEST_PACKAGE_LIB_DIR}/onnxruntime-debug.aar)
   # Build Android test apk for java package
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build.gradle build WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_ROOT})
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build.gradle assembleDebug WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_ROOT})
 endif()
