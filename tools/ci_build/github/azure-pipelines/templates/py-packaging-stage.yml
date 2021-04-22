@@ -272,7 +272,7 @@ stages:
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg CUDA_VERSION=$(CudaVersion)
-            --build-arg INSTALL_DEPS_EXTRA_ARGS=-t -u
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
 
