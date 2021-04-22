@@ -227,12 +227,11 @@ class TestInferenceSession(unittest.TestCase):
                 runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
 
-    #disable this test since we change it from exception to warning
-    #def testInvalidSetProviders(self):
-    #    with self.assertRaises(ValueError) as context:
-    #        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
-    #        sess.set_providers(['InvalidProvider'])
-    #    self.assertTrue('\'InvalidProvider\' is unavailable' in str(context.exception))
+    def testInvalidSetProviders(self):
+        with self.assertRaises(RuntimeError) as context:
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            sess.set_providers(['InvalidProvider'])
+        self.assertTrue('Unknown Provider Type: InvalidProvider' in str(context.exception))
 
     def testSessionProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
