@@ -315,8 +315,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add $video \
-            --group-add $render \
+            --group-add $(video) \
+            --group-add $(render) \
             --privileged \
             --ipc=host \
             --network=host \
@@ -338,8 +338,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add $video \
-            --group-add $render \
+            --group-add $(video) \
+            --group-add $(render) \
             --privileged \
             --ipc=host \
             --network=host \
@@ -365,8 +365,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add $video \
-            --group-add $render \
+            --group-add $(video) \
+            --group-add $(render) \
             --privileged \
             --ipc=host \
             --network=host \
@@ -393,8 +393,8 @@ stages:
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
-            --group-add $video \
-            --group-add $render \
+            --group-add $(video) \
+            --group-add $(render) \
             --privileged \
             --ipc=host \
             --network=host \
