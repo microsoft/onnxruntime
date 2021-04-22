@@ -624,6 +624,7 @@ TEST_P(ModelTest, Run) {
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("cpu_../models/opset8/test_resnet50/model.onnx"));
 #else
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensorrt_../models/opset8/test_resnet50/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_inception_v2/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_resnet18v2/resnet18v2.onnx")));
+#endif
 #else
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
