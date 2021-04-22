@@ -18,8 +18,8 @@ require('./unittests/lib/tensor');
 require('./e2e/simple-e2e-tests');
 require('./e2e/inference-session-run');
 
-// Test ONNX spec tests
-import {run as runTestRunner} from './test-runner';
-describe('ONNX spec tests', () => {
-  runTestRunner(NODE_TESTS_ROOT);
-});
+// // Test ONNX spec tests
+// import {run as runTestRunner} from './test-runner';
+// describe('ONNX spec tests', () => {
+//   runTestRunner(NODE_TESTS_ROOT);
+// });
