@@ -1093,10 +1093,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
+  return nullptr;
+#if 0
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
   return nullptr;
+#endif
 }
