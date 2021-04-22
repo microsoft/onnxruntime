@@ -1309,9 +1309,11 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-    // Test case w/o axes attribute/input.
-    gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes);
-    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    // Test case w/o axes attribute/input, only valid for Squeeze Op.
+    if (op_def.type == "Squeeze") {
+      gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes);
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
 
     // test case w/ axes attribute/input.
     if (axes_input) {
