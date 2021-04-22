@@ -621,7 +621,7 @@ TEST_P(ModelTest, Run) {
 #ifdef _WIN32
 //On windows these three models report errors like: "Non-zero status code returned while running TRTKernel_graph_resnet50_8187447026814079716_1 node. Name:'TensorrtExecutionProvider_TRTKernel_graph_resnet50_8187447026814079716_1_0' Status Message: D:\a\_work\1\s\onnxruntime\core\framework\tensor_type_and_shape.cc:203 OrtApis::GetTensorTypeAndShape type != nullptr was false. OrtValue is not a Tensor"
 
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("cpu_../models/opset8/test_resnet50/model.onnx"));
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("cpu_../models/opset8/test_resnet50/model.onnx")));
 #else
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensorrt_../models/opset8/test_resnet50/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_inception_v2/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_resnet18v2/resnet18v2.onnx")));
 #endif
