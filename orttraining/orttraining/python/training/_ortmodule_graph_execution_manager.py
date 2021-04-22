@@ -231,6 +231,7 @@ class GraphExecutionManager(ABC):
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+        # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
         sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy))
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
