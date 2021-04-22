@@ -2023,16 +2023,22 @@ def test_forward_call_default_input():
             super().__init__()
             self.zeros = torch.nn.Parameter(torch.zeros(1,1))
 
-        def forward(self, a, b, c, d):
-            return a + d + self.zeros.sum()
+        def forward(self, a, b, c, d, *args):
+            result = a + d + self.zeros.sum()
+            if args:
+                result += args[-1]
+            return result
 
     class NumberNetBC(torch.nn.Module):
         def __init__(self):
             super().__init__()
             self.zeros = torch.nn.Parameter(torch.zeros(1,1))
 
-        def forward(self, a, b, c, d):
-            return b + c + self.zeros.sum()
+        def forward(self, a, b, c, d, *args):
+            result = b + c + self.zeros.sum()
+            if args:
+                result += args[-1]
+            return result
 
     # Modeling
     device = 'cuda'
@@ -2047,6 +2053,7 @@ def test_forward_call_default_input():
     two = 2*one
     three = 3*one
     four = 4*one
+    args = [two]*5
 
     # Make sure model runs without any exception
     for i in range(2):
@@ -2069,6 +2076,12 @@ def test_forward_call_default_input():
         if model_ad.training:
             out_ad.sum().backward()
 
+        # Model only uses a,d,args[-1] out of a,b,c,d,*args
+        out_ad = model_ad(one, two, three, four, *args)
+        assert out_ad.item() == 7.0
+        if model_ad.training:
+            out_ad.sum().backward()
+
         # Model only uses b,c out of a,b,c,d
         out_bc = model_bc(one, two, three, four)
         assert out_bc.item() == 5.0
@@ -2077,5 +2090,11 @@ def test_forward_call_default_input():
 
         out_bc = model_bc(one, b=two, c=three, d=four)
         assert out_bc.item() == 5.0
+        if model_bc.training:
+            out_bc.sum().backward()
+
+        # Model only uses b,c,args[-1] out of a,b,c,d,*args
+        out_bc = model_bc(one, two, three, four, *args)
+        assert out_bc.item() == 7.0
         if model_bc.training:
             out_bc.sum().backward()
