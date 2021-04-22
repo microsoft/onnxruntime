@@ -94,31 +94,59 @@ static Status InsertCastNodes(Graph& graph,
     inserted_node_names.insert(cast.Name());
     Node* producer = graph.GetMutableProducerNode(node_arg->Name());
     std::vector<Node*> consumers = graph.GetMutableConsumerNodes(node_arg->Name());
-    int output_index = (nullptr != producer) ? optimizer_utils::IndexOfNodeOutput(*producer, *node_arg) : -1;
-    // Update consumers of node_arg to use the output of the cast node
-    int cast_output_index = optimizer_utils::IndexOfNodeOutput(cast, cast_output);
-    for (Node* consumer : graph.GetMutableConsumerNodes(node_arg->Name())) {
-      if (nullptr != consumer && std::find(nodes.begin(), nodes.end(), consumer) != nodes.end() &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
-        auto& consumer_inputs = consumer->MutableInputDefs();
-        int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
-        if (nullptr != producer) {
+    std::vector<Node*> other_nodes;
+    if (nullptr != producer) {
+      int output_index = optimizer_utils::IndexOfNodeOutput(*producer, *node_arg);
+      for (Node* consumer : consumers) {
+        // Removed the edges to the consumers, getting casted.
+        if (std::find(nodes.begin(), nodes.end(), consumer) != nodes.end()) {
+          int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
           graph.RemoveEdge(producer->Index(), consumer->Index(), output_index, input_index);
+        } else {
+          other_nodes.push_back(consumer);
         }
-        std::replace(consumer_inputs.begin(), consumer_inputs.end(), &cast_input, &cast_output);
-        graph.AddEdge(cast.Index(), consumer->Index(), cast_output_index, input_index);
+      }
+      if (is_node_arg_cast_output) {
+        // Replace the node_arg with the new_node_arg in the producer outputs
+        auto& producer_outputs = producer->MutableOutputDefs();
+        std::replace(producer_outputs.begin(), producer_outputs.end(), &cast_output, &cast_input);
+        graph.UpdateProducerNode(cast_input.Name(), producer->Index());
       }
     }
-    if (nullptr != producer) {
-      auto& producer_outputs = producer->MutableOutputDefs();
-      // The following replacement is necessary in case where the output of the cast node is original
-      // output of the producer, for example the original output of the producer may be the graph output.
-      std::replace(producer_outputs.begin(), producer_outputs.end(), &cast_output, &cast_input);
-      graph.UpdateProducerNode(cast_input.Name(), producer->Index());
-      int input_index = optimizer_utils::IndexOfNodeInput(cast, cast_input);
-      graph.AddEdge(producer->Index(), cast.Index(), output_index, input_index);
+    // Update consumers of node_arg to use the output of the cast node
+    int cast_output_index = optimizer_utils::IndexOfNodeOutput(cast, cast_output);
+    for (Node* consumer : consumers) {
+      if (std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
+        if (std::find(nodes.begin(), nodes.end(), consumer) == nodes.end()) {
+          // Consumers not getting casted need to replace input-def if the producer's output-def is changed
+          if (is_node_arg_cast_output) {
+            auto& consumer_inputs = consumer->MutableInputDefs();
+            std::replace(consumer_inputs.begin(), consumer_inputs.end(), &cast_output, &cast_input);
+          }
+        } else {
+          // Consumers getting casted need to get new edges from the new cast node..
+          int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *node_arg);
+          if (!is_node_arg_cast_output) {
+            auto& consumer_inputs = consumer->MutableInputDefs();
+            std::replace(consumer_inputs.begin(), consumer_inputs.end(), &cast_input, &cast_output);
+          }
+          graph.AddEdge(cast.Index(), consumer->Index(), cast_output_index, input_index);
+        }
+      }
     }
+    // Complete the input/output connections to the new cast node, and update the graph.
+    other_nodes.push_back(&cast);
     graph.UpdateProducerNode(cast_output.Name(), cast.Index());
+    graph.UpdateConsumerNodes(cast_output.Name(), nodes);
+    graph.UpdateConsumerNodes(cast_input.Name(), other_nodes);
+    if (nullptr != producer) {
+      int cast_input_index = optimizer_utils::IndexOfNodeInput(cast, cast_input);
+      int output_index = optimizer_utils::IndexOfNodeOutput(*producer, cast_input);
+      graph.AddEdge(producer->Index(), cast.Index(), output_index, cast_input_index);
+      if (is_node_arg_cast_output) {
+        graph.UpdateProducerNode(cast_input.Name(), producer->Index());
+      }
+    }
   }
   return Status::OK();
 }
