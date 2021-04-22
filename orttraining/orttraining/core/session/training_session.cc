@@ -553,7 +553,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // Add GIST encoding
   if (config.gist_config.has_value()) {
-    ORT_RETURN_IF_ERROR(AddGistEncoding(config.op_flag, config.compr_type));
+    const auto& gist_config = config.gist_config.value();
+    ORT_RETURN_IF_ERROR(AddGistEncoding(gist_config.op_type, gist_config.compr_type));
   }
 
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
@@ -820,12 +821,12 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   return common::Status::OK();
 }
 
-Status TrainingSession::AddGistEncoding(int op_flag, std::string compr_type) {
+Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
   try {
     Graph& graph = model_->MainGraph();
 
     auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>(op_flag, compr_type));
+    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>(op_type, compr_type));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 

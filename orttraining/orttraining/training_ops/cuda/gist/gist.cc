@@ -7,15 +7,15 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Pack Binary 
-#define REGISTER_KERNEL_TYPED_BIN_ENC(T)                                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                            \
-      GistBinarizeEncoder,                                                                  \
-      kOnnxDomain,                                                                          \
-      9,                                                                                    \
-      T,                                                                                    \
-      kCudaExecutionProvider,                                                               \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),             \
+// Pack Binary
+#define REGISTER_KERNEL_TYPED_BIN_ENC(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      GistBinarizeEncoder,                                                      \
+      kMSDomain,                                                                \
+      1,                                                                        \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       GistBinarizeEncoderOp<T>);
 
 REGISTER_KERNEL_TYPED_BIN_ENC(float)
@@ -38,11 +38,11 @@ Status GistBinarizeEncoderOp<T>::ComputeInternal(OpKernelContext* context) const
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_TYPED_BIN_DEC(T)                                                \
+#define REGISTER_KERNEL_TYPED_BIN_DEC(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistBinarizeDecoder,                                                      \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -68,12 +68,12 @@ Status GistBinarizeDecoderOp<T>::ComputeInternal(OpKernelContext* context) const
   return Status::OK();
 }
 
-// Pack1 
+// Pack1
 #define REGISTER_KERNEL_TYPED_PACK1_ENC(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack1Encoder,                                                         \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -87,7 +87,7 @@ Status GistPack1EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
-  long int n = (X->Shape().Size() + GIST_PACK1_FACTOR -1)/ GIST_PACK1_FACTOR;
+  long int n = (X->Shape().Size() + GIST_PACK1_FACTOR - 1) / GIST_PACK1_FACTOR;
   Tensor* Y = context->Output(0, TensorShape({n}));
   typedef typename ToCudaType<T>::MappedType CudaT;
   GistPack1EncoderImpl<CudaT>(
@@ -102,8 +102,8 @@ Status GistPack1EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
 #define REGISTER_KERNEL_TYPED_PACK1_DEC(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack1Decoder,                                                         \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -117,7 +117,7 @@ Status GistPack1DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
-  Tensor* Y = context->Output(0, TensorShape({X->Shape().Size()*GIST_PACK1_FACTOR}));
+  Tensor* Y = context->Output(0, TensorShape({X->Shape().Size() * GIST_PACK1_FACTOR}));
   typedef typename ToCudaType<T>::MappedType CudaT;
   GistPack1DecoderImpl<CudaT>(
       Stream(),
@@ -132,8 +132,8 @@ Status GistPack1DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
 #define REGISTER_KERNEL_TYPED_PACK8_ENC(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack8Encoder,                                                         \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -156,15 +156,15 @@ Status GistPack8EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
       Y->Shape().Size());
-  
+
   return Status::OK();
 }
 
 #define REGISTER_KERNEL_TYPED_PACK8_DEC(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack8Decoder,                                                         \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -178,7 +178,7 @@ Status GistPack8DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
-  
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack8DecoderImpl<CudaT>(
@@ -190,12 +190,12 @@ Status GistPack8DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Pack 16 
+// Pack 16
 #define REGISTER_KERNEL_TYPED_PACK16_ENC(T)                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack16Encoder,                                                        \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -224,8 +224,8 @@ Status GistPack16EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
 #define REGISTER_KERNEL_TYPED_PACK16_DEC(T)                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       GistPack16Decoder,                                                        \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -238,7 +238,7 @@ Status GistPack16DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF(X == nullptr, "X input is unavailable");
   Tensor* Y = context->Output(0, X->Shape());
-  
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPack16DecoderImpl<CudaT>(
@@ -251,11 +251,11 @@ Status GistPack16DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 // Pack MSFP15
-#define REGISTER_KERNEL_TYPED_PACKMSFP15_ENC(T)                                   \
+#define REGISTER_KERNEL_TYPED_PACKMSFP15_ENC(T)                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      GistPackMsfp15Encoder,                                                      \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      GistPackMsfp15Encoder,                                                    \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -277,7 +277,7 @@ Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) con
   const size_t tile_size = 8;
   if (axis_size % tile_size != 0)
     axis_size = shape.SizeToDimension(ndims - 2);
-  
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPackMsfp15EncoderImpl<CudaT>(
@@ -291,11 +291,11 @@ Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) con
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_TYPED_PACKMSFP15_DEC(T)                                   \
+#define REGISTER_KERNEL_TYPED_PACKMSFP15_DEC(T)                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      GistPackMsfp15Decoder,                                                      \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      GistPackMsfp15Decoder,                                                    \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

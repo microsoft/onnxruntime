@@ -73,9 +73,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
-      ("use_gist", "Use GIST encoding/decoding.")
-      ("op", "Gist op", cxxopts::value<int>()->default_value("0"))
-      ("gist_compr", "Gist compression type", cxxopts::value<std::string>()->default_value("GistPack8"))
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -127,8 +127,8 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
-    params.op = flags["op"].as<int>();
-    params.gist_compr = flags["gist_compr"].as<std::string>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -213,7 +213,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
-     params.use_gist = flags.count("use_gist") > 0;
+    params.use_gist = flags.count("use_gist") > 0;
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -294,7 +294,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
-  params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
 
   params.loss_func_info = LossFunctionInfo(OpDef("SparseSoftmaxCrossEntropy", kOnnxDomain),
                                            "mlm_loss",

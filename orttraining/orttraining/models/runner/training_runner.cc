@@ -162,10 +162,12 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = params_.gist_config.op_type;
+    gist.compr_type = params_.gist_config.compr_type;
+
     config.gist_config = gist;
-    config.op_flag = params_.op;
-    config.compr_type = params_.gist_compr;
   }
+
   // Prepare pipeline information to do configuration.
   if (params_.pipeline_parallel_size > 1) {
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};

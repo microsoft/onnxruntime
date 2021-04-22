@@ -1486,8 +1486,8 @@ Example 4:
           "Binarize tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Encoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
       .Output(0, "Y", "1 bit compressed output", "T1")
       .TypeConstraint(
@@ -1500,8 +1500,8 @@ Example 4:
           "8 bits represent 8 1-bit compressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Decoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "1 bit compresssed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .TypeConstraint(
@@ -1509,13 +1509,13 @@ Example 4:
           {"tensor(uint8)"},
           "8 bits represent 8 1-bit compressed tensors.")
       .TypeConstraint(
-         "T",
+          "T",
           {"tensor(bool)", "tensor(float)"},
           "boolean or float uncompressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Encoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
       .Output(0, "Y", "compressed output", "T1")
       .TypeConstraint(
@@ -1526,12 +1526,12 @@ Example 4:
           "T1",
           {"tensor(uint8)"},
           "8 bits compressed tensors.");
-  
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Decoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-       .Input(0, "X", "compresssed input", "T1")
-       .Output(0, "Y", "uncompressed output", "T")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)"},
@@ -1542,8 +1542,8 @@ Example 4:
           "8 bits compressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Encoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
       .Output(0, "Y", "compressed output", "T1")
       .TypeConstraint(
@@ -1556,8 +1556,8 @@ Example 4:
           "16 bits compressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Decoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .TypeConstraint(
@@ -1570,8 +1570,8 @@ Example 4:
           "16 bits compressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Encoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
       .Output(0, "Y", "compressed output", "T1")
       .TypeConstraint(
@@ -1584,10 +1584,10 @@ Example 4:
           "8 bits compressed tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-       .Input(0, "X", "compresssed input", "T1")
-       .Output(0, "Y", "uncompressed output", "T")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
       .TypeConstraint(
           "T",
           {"tensor(float)"},

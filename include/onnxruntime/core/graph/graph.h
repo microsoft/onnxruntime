@@ -771,9 +771,6 @@ class Graph {
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
-  /** Generate the decoder priority for GIST */
-  int GenerateDecodePriority() { return priority_generator_--; }; 
-  
   /** Copy a Node and add it to this Graph.
   @param other Node to copy
   @returns Reference to the Node that was created and added to this Graph.
@@ -1382,8 +1379,6 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
   int name_generator_ = 0;
 
-  int priority_generator_ = UINT16_MAX;
-  
   // Strings which have been used as node names.
   // New node name should not conflict with this set.
   std::unordered_set<std::string> generated_node_names_;
