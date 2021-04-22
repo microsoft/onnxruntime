@@ -270,7 +270,14 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
             "MatMul_1"))
         outputs.append(helper.make_tensor_value_info(
             "second_"+output,  input_type, ['M', 'N']))
-
+        if add_products:
+            nodes.append(helper.make_node(
+                "Add",
+                [output, "second_"+output],
+                ["sum"],
+                "Add_0"))
+            outputs.append(helper.make_tensor_value_info(
+                "sum",  input_type, ['M', 'N']))
     if transpose > 0 and transpose_before_cast:
         output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
 
@@ -303,6 +310,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
     model_path += ("_transpose_before_cast" if transpose_before_cast else "_transpose_after_cast") if transpose > 0 else ""
     model_path += "_transpose" if transpose > 1 else ""
     model_path +=  "_second_matmul" if second_matmul else ""
+    model_path +=  "_add_products" if add_products else ""
     save(model_path, nodes, inputs, outputs, [])
 
 for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2) in list(itertools.product([False, True], repeat=7)):
@@ -314,7 +322,9 @@ for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add,
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")
 
-for (transpose, transpose_before_cast, second_matmul) in list(itertools.product([0,1,2], [False, True], [False, True])):
+for (transpose, transpose_before_cast, second_matmul, add_products) in list(itertools.product([0,1,2], [False, True], [False, True], [False, True])):
     if not transpose and transpose_before_cast:
+        continue
+    if not second_matmul and add_products:
         continue
     gen_matmul_two_products("matmul_two_outputs", transpose, transpose_before_cast, second_matmul)
