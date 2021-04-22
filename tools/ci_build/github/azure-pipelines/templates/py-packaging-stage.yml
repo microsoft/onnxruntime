@@ -303,13 +303,15 @@ stages:
 
       - script: |-
           echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
-          video=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
-          echo "##vso[task.setvariable variable=video]$video"
-          render=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
-          echo "##vso[task.setvariable variable=render]$render"
+          video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+          echo "##vso[task.setvariable variable=video]$video_gid"
+          render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+          echo "##vso[task.setvariable variable=render]$render_gid"
         displayName: 'Find video and render gid to be mapped into container'
  
       - script: |-
+          echo "video=$video"
+          echo "render=$render"
           docker run --rm \
             --device=/dev/kfd \
             --device=/dev/dri \
