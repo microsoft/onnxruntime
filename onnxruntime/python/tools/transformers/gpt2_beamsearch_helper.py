@@ -28,7 +28,7 @@ class Gpt2HelperFactory:
         helpers = {
             "default": Gpt2Helper,
             "beam_search_step": Gpt2BeamSearchHelper,
-            "beam_search_step_earlystop": Gpt2BeamSearchHelper,
+            "beam_search_step_config": Gpt2BeamSearchHelper,
         }
         w = helpers[helper_type]
         return w
@@ -133,14 +133,15 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
         )
 
-class GPT2LMHeadModel_BeamSearchStepEarlyStop(GPT2LMHeadModel):
+class GPT2LMHeadModel_BeamSearchStepConfiguration(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one 
-    step beam search with early stopping."""
+    step beam search with configuration support."""
 
     def __init__(self, 
                  config, 
                  batch_size, 
                  beam_size, 
+                 ignore_eos=False,
                  temperature=1.0, 
                  repetition_penalty=1.0, 
                  excluded_token_ids=None, 
@@ -151,6 +152,7 @@ class GPT2LMHeadModel_BeamSearchStepEarlyStop(GPT2LMHeadModel):
         super().__init__(config)
         self.config.batch_size = batch_size
         self.config.beam_size = beam_size
+        self.config.ignore_eos = ignore_eos
         self.config.temperature = temperature
         self.config.repetition_penalty = repetition_penalty
         self.config.excluded_token_ids = excluded_token_ids
@@ -191,10 +193,12 @@ class GPT2LMHeadModel_BeamSearchStepEarlyStop(GPT2LMHeadModel):
             0, input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
         )
 
-        # attention_mask = (input_ids_unfinished_flat != self.config.eos_token_id).float()
-        attention_mask = torch.ones(input_ids_unfinished_flat.shape).float().to(
-            input_ids_unfinished_flat.device
-        )
+        if self.config.ignore_eos:
+            attention_mask = (input_ids_unfinished_flat != self.config.eos_token_id).float()
+        else:
+            attention_mask = torch.ones(input_ids_unfinished_flat.shape).float().to(
+                input_ids_unfinished_flat.device
+            )
         position_ids = (attention_mask.cumsum(-1) - 1).clamp(min=0).long()
 
         if past:
@@ -322,7 +326,7 @@ MODEL_CLASSES = {
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
     'GPT2Model': (MyGPT2Model, 'last_state', True),
     "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True), # defined in gpt2_beamsearch_helper.py
-    "GPT2LMHeadModel_BeamSearchStepEarlyStop": (GPT2LMHeadModel_BeamSearchStepEarlyStop, "last_state", False), # defined in gpt2_beamsearch_helper.py
+    "GPT2LMHeadModel_BeamSearchStepConfiguration": (GPT2LMHeadModel_BeamSearchStepConfiguration, "last_state", False), # defined in gpt2_beamsearch_helper.py
 }
 
 
@@ -333,7 +337,6 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
         past,
         position_ids,
         attention_mask,
-        past,
         beam_select_idx=None,
         input_log_probs=None,
         input_unfinished_sents=None,

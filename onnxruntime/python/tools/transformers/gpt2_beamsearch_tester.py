@@ -26,7 +26,7 @@ class Gpt2TesterFactory:
         testers = {
             "default": Gpt2Tester,
             "beam_search_step": Gpt2BeamSearchTester,
-            "beam_search_step_earlystop": Gpt2BeamSearchTester,
+            "beam_search_step_config": Gpt2BeamSearchTester,
         }
         w = testers[tester_type]
         return w

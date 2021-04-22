@@ -100,14 +100,16 @@ def parse_arguments():
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
-    parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
-    parser.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage repetition.')
-    parser.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits.')
-    parser.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference.')
-    parser.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence.')
-    parser.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy.')
-    parser.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability. (do sampling only)')
-    parser.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero. (do sampling only)')
+    parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
+    parser.add_argument('--ignore_eos', type=bool, default=False, help='If ignore end of sentence token in model inference (one step beam search with configuration only).')
+    parser.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage (one step beam search with configuration only).')
+    parser.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits (one step beam search with configuration only).')
+    parser.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference (one step beam search with configuration only).')
+    parser.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence (one step beam search with configuration only).')
+    parser.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy (one step beam search with configuration only).')
+    parser.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability (one step beam search with configuration only).')
+    parser.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero (one step beam search with configuration only).')
+
 
     args = parser.parse_args()
 
@@ -146,8 +148,8 @@ def main():
     model_class = MODEL_CLASSES[args.model_class][0]
     if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
         model_type = "beam_search_step"
-    elif args.model_class == "GPT2LMHeadModel_BeamSearchStepEarlyStop":
-        model_type = "beam_search_step_earlystop"
+    elif args.model_class == "GPT2LMHeadModel_BeamSearchStepConfiguration":
+        model_type = "beam_search_step_config"
     else:
         model_type = "default"
 
@@ -160,11 +162,12 @@ def main():
                                             batch_size=1, 
                                             beam_size=args.beam_size, 
                                             cache_dir=cache_dir)
-    elif model_type == 'beam_search_step_earlystop':
+    elif model_type == 'beam_search_step_config':
         model = model_class.from_pretrained(args.model_name_or_path, 
                                             config=config, 
                                             batch_size=1, 
                                             beam_size=args.beam_size, 
+                                            ignore_eos=args.ignore_eos,
                                             temperature=args.temperature,
                                             repetition_penalty=args.repetition_penalty, 
                                             excluded_token_ids=args.excluded_token_ids, 
