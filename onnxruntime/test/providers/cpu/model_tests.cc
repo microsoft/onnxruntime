@@ -618,7 +618,7 @@ TEST_P(ModelTest, Run) {
 }
 
 #ifdef USE_TENSORRT
-  INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensorrt_../models/opset8/test_resnet50/model.onnx"),ORT_TSTR("tensorrt_../models/opset8/test_inception_v2/model.onnx"),ORT_TSTR("tensorrt_../models/opset8/test_resnet18v2/resnet18v2.onnx")));
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensorrt_../models/opset8/test_resnet50/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_inception_v2/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_resnet18v2/resnet18v2.onnx")));
 #else
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
@@ -779,10 +779,10 @@ TEST_P(ModelTest, Run) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
-    } else if (CompareCString(provider_name, ORT_TSTR("tensorrt")) == 0) {
+    } else if (CompareCString(provider_name, ORT_TSTR("openvino")) == 0) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
-      all_disabled_tests.insert(std::begin(tensorrt_disabled_tests), std::end(tensorrt_disabled_tests));
+      all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
     }
 
 #if !defined(__amd64__) && !defined(_M_AMD64)
