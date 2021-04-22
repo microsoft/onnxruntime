@@ -72,16 +72,16 @@ jobs:
       #
       # - template: mac-esrp-dll.yml
       #   parameters:
-      #     FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
+      #     FolderPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/darwin/x64'
       #     DisplayName: 'ESRP - Sign Node.js binding binaries'
       #     DoEsrp: ${{ parameters.DoEsrp }}
       #     Pattern: '*.dylib,*.node'
 
       - script: |
          npm pack
-         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
 
       - task: PublishPipelineArtifact@0

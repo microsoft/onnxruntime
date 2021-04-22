@@ -25,7 +25,14 @@ jobs:
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
           llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: html
 
     - task: CmdLine@2
       displayName: 'Post code coverage data to the Dashboard'
@@ -36,6 +43,30 @@ jobs:
       env: 
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+
+- job: Upload
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  dependsOn:
+  - CodeCoverage
+  condition: succeeded()
+  steps:
+  - checkout: self
+    submodules: false
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'html'
+      targetPath: '$(Build.BinariesDirectory)'
+      
+  - task: AzureFileCopy@4
+    displayName: 'AzureBlob File Copy'
+    inputs:
+      SourcePath: '$(Build.BinariesDirectory)\*'
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      Destination: AzureBlob
+      storage: onnxruntime
+      ContainerName: '$web'

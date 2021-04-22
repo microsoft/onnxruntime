@@ -58,7 +58,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph.SetInputs(input_args);
-  graph_transformer_config_ = config.graph_transformer_config;
+  logging::LoggingManager::SetDefaultLoggerSeverity(config_.loglevel);
   return Status::OK();
 }
 
@@ -154,7 +154,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, graph_transformer_config_, *cpu_execution_provider);
+        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       graph_transformation_mgr.Register(std::move(entry), level);
     }

@@ -1713,26 +1713,26 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
 
 
 def generate_documentation(source_dir, build_dir, configs):
+    # Randomly choose one build config
+    config = next(iter(configs))
+    cwd = get_config_build_dir(build_dir, config)
+    if is_windows():
+        cwd = os.path.join(cwd, config)
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
-    for config in configs:
-        # Copy the gen_contrib_doc.py.
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config))
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_contrib_doc.py',
-             '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_opkernel_doc.py',
-             '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config))
+    shutil.copy(
+        os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
+    shutil.copy(
+         os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
+         cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_contrib_doc.py',
+         '--output_path', operator_doc_path], cwd=cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_opkernel_doc.py',
+         '--output_path', opkernel_doc_path], cwd=cwd)
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
@@ -2025,7 +2025,7 @@ def main():
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
