@@ -3,7 +3,7 @@ jobs:
   pool: Linux-GPU-CUDA10
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 90
+  timeoutInMinutes: 180
   steps:
     
     - template: templates/run-docker-build-steps.yml
