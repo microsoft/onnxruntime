@@ -206,3 +206,32 @@ add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTAB
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
 endif()
+
+set(ANDROID_TEST_PACKAGE_ROOT ${JAVA_ROOT}/src/test/android)
+
+set(ANDROID_TEST_PACKAGE_DIR ${JAVA_OUTPUT_DIR}/androidtest)
+file(MAKE_DIRECTORY ${ANDROID_TEST_PACKAGE_DIR})
+
+#copy the androidtest project into cmake binary directory
+file(COPY ${ANDROID_TEST_PACKAGE_ROOT} DESTINATION ${ANDROID_TEST_PACKAGE_DIR})
+
+set(ANDROID_TEST_PACKAGE_LIB_DIR ${ANDROID_TEST_PACKAGE_DIR}/android/app/libs)
+set(ANDROID_TEST_OUTPUT_DIR ${ANDROID_TEST_PACKAGE_DIR}/android/app/build)
+file(MAKE_DIRECTORY ${ANDROID_TEST_PACKAGE_LIB_DIR})
+file(MAKE_DIRECTORY ${ANDROID_TEST_OUTPUT_DIR})
+
+#use the gradle wrapper
+if(EXISTS "${ANDROID_TEST_PACKAGE_ROOT}/gradlew")
+    set(GRADLE_TEST_EXECUTABLE "${ANDROID_TEST_PACKAGE_ROOT}/gradlew")
+else()
+    find_program(GRADLE_TEST_EXECUTABLE gradle)
+    if(NOT GRADLE_TEST_EXECUTABLE)
+        message(SEND_ERROR "Gradle installation not found")
+    endif()
+endif()
+message(STATUS "Using gradle: ${GRADLE_TEST_EXECUTABLE}")
+
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build.gradle build -DbuildDir=${ANDROID_TEST_OUTPUT_DIR} WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_ROOT})
+
+#create symlink with onnxruntime.aar package
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink  $<TARGET_FILE:onnxruntime-debug> ${ANDROID_TEST_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime-debug>)
