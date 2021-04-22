@@ -296,6 +296,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
 // nodearg is traversed not more than once.
 static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
                            NodeArgToConsumerMap& require_cast,
+                           NodeArgToConsumerMap& require_cast_fp32,
                            std::unordered_set<NodeArg*>& require_type_change,
                            std::deque<NodeIndex>& removed_nodes,
                            size_t level) {
@@ -303,10 +304,10 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
   // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
   // node then it cannot propagate.
   size_t consumer_node_count = graph.GetConsumerNodes(node_arg->Name()).size();
-  if (consumer_node_count > 1 ||
-      (nullptr != node &&
-       consumer_node_count > 0 &&
-       graph.GetNodeOutputsInGraphOutputs(*node).size() > 0)) {
+  if (level < 2 && (consumer_node_count > 1 ||
+                    nullptr != node &&
+                        consumer_node_count > 0 &&
+                        graph.IsOutput(node_arg) > 0)) {
     require_cast[node_arg].push_back(dst_node);
   } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
@@ -336,12 +337,24 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
             }
           }
         }
+        if (level >= 2) {
+          for (Node* consumer : graph.GetMutableConsumerNodes(node_arg->Name())) {
+            if (nullptr != consumer && consumer != dst_node && consumer->OpType() != "Cast" &&
+                std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
+              require_cast_fp32[node_arg].push_back(consumer);
+            }
+          }
+          if (graph.IsOutput(node_arg)) {
+            require_cast_fp32[node_arg] = std::vector<Node*>();
+          }
+        }
         for (NodeArg* node_input : node->MutableInputDefs()) {
           if (IsType(*node_input, TensorProto_DataType_FLOAT) &&
               require_cast.find(node_input) == require_cast.end() &&
               require_type_change.find(node_input) == require_type_change.end()) {
-            SearchUpstream(graph, node_input, node, require_cast, require_type_change, removed_nodes, level);
-            if (require_cast.find(node_input) == require_cast.end()) {
+            SearchUpstream(graph, node_input, node, require_cast, require_cast_fp32, require_type_change, removed_nodes, level);
+            if (require_cast.find(node_input) == require_cast.end() &&
+                require_cast_fp32.find(node_input) == require_cast_fp32.end()) {
               require_type_change.insert(node_input);
             }
           }
@@ -477,17 +490,30 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   bool modified = false;
   ORT_ENFORCE(nullptr != node);
   NodeArgToConsumerMap require_cast;
+  NodeArgToConsumerMap require_cast_fp32;
   NodeArg* cast_input = node->MutableInputDefs()[0];
-  std::unordered_set<NodeArg*> require_type_change = {cast_input};
-  SearchUpstream(graph, cast_input, node, require_cast, require_type_change, removed_nodes, level);
-  if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end()) {
+  std::unordered_set<NodeArg*> require_type_change;
+  if (graph.IsOutput(cast_input)) {
+    return false;
+  }
+  SearchUpstream(graph, cast_input, node, require_cast, require_cast_fp32, require_type_change, removed_nodes, level);
+  if (require_cast_fp32.empty()) {
+    require_type_change.insert(cast_input);
+  }
+  // TODO need a huristic when to insert FP32 Cast
+  if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end() /* && require_cast.size() >= require_cast_fp32.size() */) {
     // Remove Cast operation
-    LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
+    if (require_cast_fp32.size() > 0) {
+      InsertCastNodes(graph, require_cast_fp32, false, removed_nodes);
+      LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted FP32 Cast nodes "
+                            << ConcatNames<NodeArgToConsumerMap>(require_cast_fp32, GetName);
+    }
     RemoveCastNodesChain(graph, {node}, removed_nodes);
+    LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
     InsertCastNodes(graph, require_cast, true, removed_nodes);
-    ChangeTypeToFP16(graph, require_type_change, false, logger);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted Cast nodes "
                           << ConcatNames<NodeArgToConsumerMap>(require_cast, GetName);
+    ChangeTypeToFP16(graph, require_type_change, false, logger);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Changed the type from float to float16 : "
                           << ConcatNames<std::unordered_set<NodeArg*>>(require_type_change);
     modified = true;
@@ -653,6 +679,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
     std::vector<Node*> casts;  // Cast nodes to propagate.
     std::vector<NodeArg*>& outputs = node->MutableOutputDefs();
     std::unordered_set<NodeArg*> require_type_change;
+    NodeArgToConsumerMap non_cast_consumers_map;
     // TODO Here we require the all floating point outputs are consumer by an immediate
     // child cast node.
     for (auto iter = outputs.begin(); iter != outputs.end() && all_float_outputs_have_casts; ++iter) {
@@ -662,22 +689,28 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
       has_float_outputs = true;
       std::vector<Node*> consumers = graph.GetMutableConsumerNodes(output->Name());
-      for (auto node_iter = consumers.begin(); node_iter != consumers.end() && all_float_outputs_have_casts; ++node_iter) {
+      for (auto node_iter = consumers.begin(); node_iter != consumers.end() && (level >= 2 || all_float_outputs_have_casts); ++node_iter) {
         Node* consumer = *node_iter;
         if (nullptr != consumer &&
-            std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end() &&
-            IsCastTo(consumer, TensorProto::FLOAT16)) {
-          casts.push_back(consumer);
-          continue;
+            std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
+          if (IsCastTo(consumer, TensorProto::FLOAT16)) {
+            casts.push_back(consumer);
+            continue;
+          } else {
+            non_cast_consumers_map[output].push_back(consumer);
+          }
         }
         all_float_outputs_have_casts = false;
       }
-      require_type_change.insert(output);
+      if (non_cast_consumers_map.empty()) {
+        require_type_change.insert(output);
+      }
     }
-    if (has_float_outputs && all_float_outputs_have_casts && casts.size() > 1) {
+    if (has_float_outputs && (level >= 2 || all_float_outputs_have_casts) && casts.size() > 1) {
       LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
                             << ConcatNames<std::vector<Node*>>(casts)
-                            << " feeding the same compute node " << node->Name();
+                            << " feeding from the same compute node " << node->Name();
+      InsertCastNodes(graph, non_cast_consumers_map, false, removed_nodes);
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
@@ -691,6 +724,8 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       ChangeTypeToFP16(graph, require_type_change, false, logger);
       LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted Cast node to "
                             << ConcatNames<NodeArgToConsumerMap>(node_args_map, GetName);
+      LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted FP32 Cast node to "
+                            << ConcatNames<NodeArgToConsumerMap>(non_cast_consumers_map, GetName);
       modified = true;
     }
   }
@@ -773,22 +808,22 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
     }
 
-    // Propagate FP16 Casts backward
-    for (auto node_index : node_topology_list) {
-      Node* node = graph.GetNode(node_index);
-      if (nullptr != node &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
-          IsCastTo(node, TensorProto::FLOAT16)) {
-        local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
-      }
-    }
-
     // Propagate FP16 Casts from outputs to inputs
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
       if (nullptr != node &&
           std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
         local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
+      }
+    }
+
+    // Propagate FP16 Casts
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (nullptr != node &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+          IsCastTo(node, TensorProto::FLOAT16)) {
+        local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
       }
     }
 
