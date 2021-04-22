@@ -300,7 +300,7 @@ class SymbolicShapeInference:
         for d in self._get_shape(node, idx):
             if type(d) == str:
                 sympy_shape.append(self.symbolic_dims_[d] if d in
-                                   self.symbolic_dims_ else sympy.Symbol(d, integer=True, positive=True))
+                                   self.symbolic_dims_ else sympy.Symbol(d, integer=True, nonnegative=True))
             else:
                 assert None != d
                 sympy_shape.append(d)
@@ -459,7 +459,7 @@ class SymbolicShapeInference:
             v = self.suggested_merge_[new_dim]
             new_dim = sympy.Integer(int(v)) if is_literal(v) else v
         else:
-            self.symbolic_dims_[new_dim] = sympy.Symbol(new_dim, integer=True, positive=True)
+            self.symbolic_dims_[new_dim] = sympy.Symbol(new_dim, integer=True, nonnegative=True)
         return new_dim
 
     def _new_symbolic_dim_from_output(self, node, out_idx=0, dim=0):
@@ -1275,6 +1275,7 @@ class SymbolicShapeInference:
                 assert s_merge in self.symbolic_dims_
                 self.symbolic_dims_[s] = self.symbolic_dims_[s_merge]
             else:
+                # Since inputs are not produced by other ops, we can assume positivity
                 self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
         # create a temporary ModelProto for single node inference
         # note that we remove initializer to have faster inference
