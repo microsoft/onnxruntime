@@ -144,11 +144,22 @@ def main():
         assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
-    model_type = "beam_search_step" if args.model_class == "GPT2LMHeadModel_BeamSearchStep" else "default"
+    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
+        model_type = "beam_search_step"
+    elif args.model_class == "GPT2LMHeadModel_BeamSearchStepEarlyStop":
+        model_type = "beam_search_step_earlystop"
+    else:
+        model_type = "default"
     gpt2helper = Gpt2HelperFactory.create_helper(model_type)
     gpt2tester = Gpt2TesterFactory.create_tester(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
     if model_type == 'beam_search_step':
+        model = model_class.from_pretrained(args.model_name_or_path, 
+                                            config=config, 
+                                            batch_size=1, 
+                                            beam_size=args.beam_size, 
+                                            cache_dir=cache_dir)
+    elif model_type == 'beam_search_step_earlystop':
         model = model_class.from_pretrained(args.model_name_or_path, 
                                             config=config, 
                                             batch_size=1, 
@@ -256,7 +267,7 @@ def main():
                 else:
                     inputs = {"input_ids": input_ids}
 
-                if model_type == "beam_search_step":
+                if model_type.startswith("beam_search_step"):
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
 
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])

@@ -26,6 +26,7 @@ class Gpt2TesterFactory:
         testers = {
             "default": Gpt2Tester,
             "beam_search_step": Gpt2BeamSearchTester,
+            "beam_search_step_earlystop": Gpt2BeamSearchTester,
         }
         w = testers[tester_type]
         return w
@@ -33,9 +34,12 @@ class Gpt2TesterFactory:
 class Gpt2BeamSearchTester(Gpt2Tester):
     def __init__(self,
                  input_ids,
+                 position_ids,
+                 attention_mask,
                  beam_select_idx,
                  input_log_probs,
                  input_unfinished_sents,
+                 prev_step_results,
                  prev_step_scores,
                  num_attention_heads,
                  hidden_size,
@@ -48,8 +52,8 @@ class Gpt2BeamSearchTester(Gpt2Tester):
     ):
         super().__init__(
             input_ids,
-            position_ids=None,
-            attention_mask=None,
+            position_ids,
+            attention_mask,
             num_attention_heads=num_attention_heads,
             hidden_size=hidden_size,
             num_layer=num_layer,
@@ -68,6 +72,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         self.input_log_probs = input_log_probs.type(float_type).to(device)
         self.input_unfinished_sents = input_unfinished_sents.to(device)
 
+        self.prev_step_results = prev_step_results.to(device) if prev_step_results is not None else None
         self.prev_step_scores = prev_step_scores.type(float_type).to(device)
 
         self.last_state = None
@@ -76,9 +81,12 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         return Gpt2BeamSearchInputs(
             self.input_ids,
             self.past,
+            self.position_ids,
+            self.attention_mask,
             self.beam_select_idx,
             self.input_log_probs,
             self.input_unfinished_sents,
+            self.prev_step_results,
             self.prev_step_scores,
         )
 
@@ -94,20 +102,50 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
         self.input_ids = self.last_state.view(self.batch_size * self.beam_size, -1).to(device)
 
+        if self.position_ids is not None:
+            input_unfinished_sents_id = -3
+            self.prev_step_results = (
+                torch.from_numpy(output[-2]).to(device)
+                if isinstance(output[-2], numpy.ndarray)
+                else output[-2].clone().detach().to(device)
+            )
+            self.position_ids = (
+                torch.tensor([self.input_length + step - 1])
+                .unsqueeze(0)
+                .repeat(self.batch_size * self.beam_size, 1)
+                .to(device)
+            )
+
+            if self.attention_mask.size(0) != (self.batch_size * self.beam_size):
+                self.attention_mask = self.attention_mask.repeat(
+                    self.batch_size * self.beam_size, 1
+                )
+            self.attention_mask = torch.cat(
+                [
+                    self.attention_mask,
+                    torch.ones([self.batch_size * self.beam_size, 1]).type_as(
+                        self.attention_mask
+                    ),
+                ],
+                1,
+            ).to(device)
+        else:
+            input_unfinished_sents_id = -2
+
         self.beam_select_idx = (
-            torch.from_numpy(output[-4]).to(device)
-            if isinstance(output[-4], numpy.ndarray)
-            else output[-4].clone().detach().to(device)
+            torch.from_numpy(output[input_unfinished_sents_id - 2]).to(device)
+            if isinstance(output[input_unfinished_sents_id - 2], numpy.ndarray)
+            else output[input_unfinished_sents_id - 2].clone().detach().to(device)
         )
         self.input_log_probs = (
-            torch.from_numpy(output[-3]).to(device)
-            if isinstance(output[-3], numpy.ndarray)
-            else output[-3].clone().detach().to(device)
+            torch.from_numpy(output[input_unfinished_sents_id - 1]).to(device)
+            if isinstance(output[input_unfinished_sents_id - 1], numpy.ndarray)
+            else output[input_unfinished_sents_id - 1].clone().detach().to(device)
         )
         self.input_unfinished_sents = (
-            torch.from_numpy(output[-2]).to(device)
-            if isinstance(output[-2], numpy.ndarray)
-            else output[-2].clone().detach().to(device)
+            torch.from_numpy(output[input_unfinished_sents_id]).to(device)
+            if isinstance(output[input_unfinished_sents_id], numpy.ndarray)
+            else output[input_unfinished_sents_id].clone().detach().to(device)
         )
         self.prev_step_scores = (
             torch.from_numpy(output[-1]).to(device)
@@ -194,6 +232,10 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
+            position_ids = inputs["position_ids"] if "position_ids" in inputs else None
+            attention_mask = (
+                inputs["attention_mask"] if "attention_mask" in inputs else None
+            )
             beam_select_idx = (
                 inputs["beam_select_idx"] if "beam_select_idx" in inputs else None
             )
@@ -201,6 +243,10 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                 inputs["input_log_probs"] if "input_log_probs" in inputs else None
             )
             input_unfinished_sents = inputs["input_unfinished_sents"]
+            if model_class == "GPT2LMHeadModel_BeamSearchStep":
+                prev_step_results = inputs["input_ids"]
+            else:
+                prev_step_results = None
             if "prev_step_scores" in inputs:
                 prev_step_scores = inputs["prev_step_scores"]
             else:
@@ -208,9 +254,12 @@ class Gpt2BeamSearchTester(Gpt2Tester):
 
             onnx_runner = Gpt2BeamSearchTester(
                 input_ids,
+                position_ids,
+                attention_mask,
                 beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
+                prev_step_results,
                 prev_step_scores,
                 n_head,
                 n_embd,
@@ -223,9 +272,12 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             onnx_io_runner = Gpt2BeamSearchTester(
                 input_ids,
+                position_ids,
+                attention_mask,
                 beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
+                prev_step_results,
                 prev_step_scores,
                 n_head,
                 n_embd,
@@ -238,9 +290,12 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             )
             torch_runner = Gpt2BeamSearchTester(
                 input_ids,
+                position_ids,
+                attention_mask,
                 beam_select_idx,
                 input_log_probs,
                 input_unfinished_sents,
+                prev_step_results,
                 prev_step_scores,
                 n_head,
                 n_embd,
@@ -259,8 +314,14 @@ class Gpt2BeamSearchTester(Gpt2Tester):
             with torch.no_grad():
                 for step in range(max_steps):
                     print(f"Processing step: {step}")
-                    past_seq_len = list(onnx_runner.past[0].size())[3]
-                    seq_len = list(onnx_runner.input_ids.size())[-1] - past_seq_len
+                    if model_class == "GPT2LMHeadModel_BeamSearchStep":
+                        num_seq = beam_size
+                        seq_len = list(onnx_runner.input_ids.size())[1]
+                        past_seq_len = list(onnx_runner.past[0].size())[3]
+                    else:
+                        num_seq = sum(onnx_io_runner.input_unfinished_sents.view(-1).long().cpu())
+                        past_seq_len = list(onnx_runner.past[0].size())[3]
+                        seq_len = list(onnx_runner.input_ids.size())[-1] - past_seq_len
 
                     start_time = timeit.default_timer()
                     pytorch_output = Gpt2BeamSearchHelper.pytorch_inference(
@@ -280,6 +341,10 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                     onnx_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_runner.update(onnx_output, step, device)
 
+                    if model_class == "GPT2LMHeadModel_BeamSearchStep":
+                        num_seq = beam_size
+                    else:
+                        num_seq = sum(onnx_io_runner.input_unfinished_sents.view(-1).long().cpu())
                     output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
                         batch_size,
                         context_len,
@@ -289,7 +354,7 @@ class Gpt2BeamSearchTester(Gpt2Tester):
                         step,
                         model.config,
                         model_class=model_class,
-                        num_seq=sum(onnx_io_runner.input_unfinished_sents.view(-1).long().cpu()),
+                        num_seq=num_seq,
                     )
 
                     Gpt2BeamSearchHelper.auto_increase_buffer_size(
@@ -335,15 +400,21 @@ class Gpt2BeamSearchTester(Gpt2Tester):
         onnx_io_metric.print()
 
         print("\tONNX")
+        if model_class == "GPT2LMHeadModel_BeamSearchStep":
+            results_onnx = onnx_runner.prev_step_results.view(batch_size * beam_size, -1)
+            results_onnx_io = onnx_io_runner.prev_step_results.view(batch_size * beam_size, -1)
+        else:
+            results_onnx = onnx_runner.input_ids.view(batch_size * beam_size, -1)
+            results_onnx_io = onnx_io_runner.input_ids.view(batch_size * beam_size, -1)
         Gpt2BeamSearchTester.pprint_results(
-            onnx_runner.input_ids.view(batch_size * beam_size, -1),
+            results_onnx,
             onnx_runner.prev_step_scores.view(batch_size * beam_size, -1),
             pad_token_id=eos_token_id,
             eos_token_id=eos_token_id,
         )
         print("\tONNX with IO binding")
         Gpt2BeamSearchTester.pprint_results(
-            onnx_io_runner.input_ids.view(batch_size * beam_size, -1),
+            results_onnx_io,
             onnx_io_runner.prev_step_scores.view(batch_size * beam_size, -1),
             pad_token_id=eos_token_id,
             eos_token_id=eos_token_id,
