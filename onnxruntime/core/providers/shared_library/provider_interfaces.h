@@ -122,11 +122,21 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
+  virtual void* HeapAllocate(size_t size) = 0;
+  virtual void HeapFree(void*) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
+  virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
+
+  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
+                               const char* file, const char* function, uint32_t line) = 0;
+
+  virtual std::vector<std::string> GetStackTrace() = 0;
+
   virtual OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept = 0;
+
+  virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
 
   virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
@@ -145,43 +155,10 @@ struct ProviderHost {
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
-  virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
-
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const std::string& provider_type,
                                                              const std::vector<const KernelRegistry*>& kernel_registries,
                                                              const std::vector<NodeIndex>& tentative_nodes) = 0;
-
-  // PrimitiveDataTypeBase
-  virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
-
-  // DataTypeImpl
-  MLDataType (*DataTypeImpl__GetType_Tensor)();
-  MLDataType (*DataTypeImpl__GetType_float)();
-  MLDataType (*DataTypeImpl__GetTensorType_bool)();
-  MLDataType (*DataTypeImpl__GetTensorType_int8)();
-  MLDataType (*DataTypeImpl__GetTensorType_uint8)();
-  MLDataType (*DataTypeImpl__GetTensorType_int16)();
-  MLDataType (*DataTypeImpl__GetTensorType_uint16)();
-  MLDataType (*DataTypeImpl__GetTensorType_int32)();
-  MLDataType (*DataTypeImpl__GetTensorType_uint32)();
-  MLDataType (*DataTypeImpl__GetTensorType_int64)();
-  MLDataType (*DataTypeImpl__GetTensorType_uint64)();
-  MLDataType (*DataTypeImpl__GetTensorType_float)();
-  MLDataType (*DataTypeImpl__GetTensorType_double)();
-  MLDataType (*DataTypeImpl__GetTensorType_BFloat16)();
-  MLDataType (*DataTypeImpl__GetTensorType_MLFloat16)();
-
-  virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
-  virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;
-  virtual bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) = 0;
-  virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
-  virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
-  virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
-  virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
-  virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -195,14 +172,6 @@ struct ProviderHost {
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) = 0;
-
-  virtual void* HeapAllocate(size_t size) = 0;
-  virtual void HeapFree(void*) = 0;
-
-  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
-                               const char* file, const char* function, uint32_t line) = 0;
-
-  virtual std::vector<std::string> GetStackTrace() = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
   virtual float math__halfToFloat(uint16_t h) = 0;
@@ -438,6 +407,36 @@ struct ProviderHost {
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
   virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
 
+  // PrimitiveDataTypeBase
+  virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
+
+  // DataTypeImpl
+  virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
+  virtual MLDataType DataTypeImpl__GetType_float() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_int16() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_uint16() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_int32() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_uint32() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_int64() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_uint64() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_float() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_double() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_BFloat16() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_MLFloat16() = 0;
+  virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
+  virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;
+  virtual bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) = 0;
+  virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
+  virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
+  virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
+  virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
+
   // Function
   virtual const Graph& Function__Body(const Function* p) = 0;
 
@@ -664,6 +663,7 @@ struct ProviderHost {
   // ROI
   virtual Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) = 0;
 
+  // NonMaxSuppresionBase
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
