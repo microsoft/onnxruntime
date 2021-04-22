@@ -398,6 +398,7 @@ Status NonMaxSuppressionImpl(
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     thrust::device_ptr<float> sorted_scores_device_ptr(d_sorted_scores);
     limited_num_boxes = thrust::count_if(
+        thrust::cuda::par.on(stream),
         sorted_scores_device_ptr,
         sorted_scores_device_ptr + num_boxes,
         DeviceGreaterThan(score_threshold));
