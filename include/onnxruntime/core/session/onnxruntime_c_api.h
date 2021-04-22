@@ -1279,16 +1279,21 @@ struct OrtApi {
                   _Out_ int64_t* out, _Inout_ size_t* size);
 
   /*
+     * Creates an OrtPrepackedWeightsCache instance
+    */
+  ORT_API2_STATUS(CreatePrepackedWeightsCache, _Outptr_ OrtPrepackedWeightsCache** out);
+
+  /*
+     * Add an OrtPrepackedWeightsCache instance to an OrtSessionOptions instance.
+    */
+  ORT_API2_STATUS(AddPrepackedWeightsCacheToSessionoptions, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtPrepackedWeightsCache* prepacked_weights_cache);
+
+  /*
      * Release OrtPrepackedWeightsCache instance
      *  Note: The OrtPrepackedWeightsCache instance must not be released until the sessions using it are released
     */
   ORT_CLASS_RELEASE(PrepackedWeightsCache);
-
-  /*
-     * Add a custom op domain to the OrtSessionOptions
-     *  Note: The OrtCustomOpDomain* must not be deleted until the sessions using it are released
-    */
-  ORT_API2_STATUS(AddPrepackedWeightsCache, _Inout_ OrtSessionOptions* options, _In_ OrtPrepackedWeightsCache* custom_op_domain);
 };
 
 /*

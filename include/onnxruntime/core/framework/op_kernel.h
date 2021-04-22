@@ -48,10 +48,16 @@ class OpKernel {
 
   // Override this function to PrePack initialized constant tensor to the format as needed.
   // For example, MatMul kernel can pack the input B if it is constant like code below.
-  //   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
+  //   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+  //                  /*in_out*/ PackedWeight& /*cached_prepacked_tensor*/,
+  //                  /*out*/ bool& /*read_from_cache*/,
+  //                  AllocatorPtr /*alloc_for_caching*/) override {
   //     is_packed = false;
   //     if (input_idx == 1) {
-  //       this.Pack(tensor, this.buffer_);
+  //       // LOGIC TO USE CACHED WEIGHTS IF PROVIDED AND SET `read_from_cache` to TRUE.
+  //       auto alloc =  alloc_for_caching ? alloc_for_caching : this.GetAllocator();
+  //       this.Pack(tensor, this.buffer_, alloc);
+  //       // LOGIC TO CACHE `this.buffer_` IF THE KERNEL DOESN"T OWN THE BUFFER
   //       is_packed = true;
   //     }
   //     return Status::OK();
@@ -63,8 +69,19 @@ class OpKernel {
   //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   and the original initialized constant tensor will be released and not accessible anymore in
   //                   the Compute function.
+  // @param cached_prepacked_tensor: A cached pre-packed weight will be provided to the kernel (if available)
+  //                   The kernel must use contents of the cached weights if provided.
+  //                   `cached_prepacked_tensor` will have a boolean flag set to true (has_cached_) if it has
+  //                   cached weights available.
+  // @param read_from_cache: The kernel's PrePack() method MUST have logic to read from the provided cached weights
+  //                         and the code path MUST set `read_from_cache` to true which will be validated.
+  // @param alloc_for_caching: The kernel's PrePack() method MUST use this allocator if provided for allocating the pre-packed
+  //                            weights' buffers. If this is provided to the kernel, it means that the pre-packed weights'
+  //                            will be cached and is not to be owned by the kernel itself.
+
   virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed,
-                         /*InOut*/ PackedWeight& /*cached_prepacked_tensor*/,
+                         /*in_out*/ PackedWeight& /*cached_prepacked_tensor*/,
+                         /*out*/ bool& /*read_from_cache*/,
                          AllocatorPtr /*alloc_for_caching*/) {
     is_packed = false;
     return Status::OK();

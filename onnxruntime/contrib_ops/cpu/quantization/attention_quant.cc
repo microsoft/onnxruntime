@@ -23,7 +23,8 @@ class QAttention : public OpKernel, public AttentionCPUBase {
 
   Status Compute(OpKernelContext* context) const override;
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                 /*out*/ bool& read_from_cache,
                  AllocatorPtr alloc_for_caching) override;
 
  private:
@@ -52,7 +53,8 @@ QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionC
 
 template <typename T>
 Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed,
-                              /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                              /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                              /*out*/ bool& read_from_cache,
                               AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
@@ -62,15 +64,13 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
 
   // Cached pre-packed weight
   if (cached_prepacked_tensor.has_cached_) {
+    read_from_cache = true;
     is_packed = true;
-    weight_shape_ = cached_prepacked_tensor.shape_;
-    packed_weights_size_ = cached_prepacked_tensor.weights_size_;
-    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    weight_shape_ = cached_prepacked_tensor.shapes_[0];
+    packed_weights_size_ = cached_prepacked_tensor.weights_sizes_[0];
+    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
     return Status::OK();
   }
-
-  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
-  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
 
   weight_shape_ = weights.Shape();
   const auto& weights_dims = weight_shape_.GetDims();
@@ -96,6 +96,9 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
     return Status::OK();
   }
 
+  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+
   const size_t loop_len = 3 * num_heads_;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
@@ -107,11 +110,11 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
   }
 
   if (!kernel_owns_prepacked_buffer) {
-    cached_prepacked_tensor.buffer_ = std::move(packed_weights_);
-    cached_prepacked_tensor.shape_ = weight_shape_;
-    cached_prepacked_tensor.weights_size_ = packed_weights_size_;
+    cached_prepacked_tensor.buffers_.push_back(std::move(packed_weights_));
+    cached_prepacked_tensor.shapes_.push_back(weight_shape_);
+    cached_prepacked_tensor.weights_sizes_.push_back(packed_weights_size_);
     cached_prepacked_tensor.has_cached_ = true;
-    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
   }
 
   is_packed = true;

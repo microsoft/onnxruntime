@@ -127,16 +127,18 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 }
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                              /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                              /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                              /*out*/ bool& read_from_cache,
                               AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   // Cached pre-packed weight
   if (cached_prepacked_tensor.has_cached_) {
+    read_from_cache = true;
     is_packed = true;
-    b_shape_ = cached_prepacked_tensor.shape_;
+    b_shape_ = cached_prepacked_tensor.shapes_[0];
     // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
-    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
     return Status::OK();
   }
 
@@ -144,13 +146,13 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
   AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != CblasNoTrans, packed_b_, b_shape_);
+    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, b_shape_);
     if (is_packed && !kernel_owns_prepacked_buffer) {
-      cached_prepacked_tensor.buffer_ = std::move(packed_b_);
-      cached_prepacked_tensor.shape_ = b_shape_;
-      cached_prepacked_tensor.weights_size_ = b_shape_.Size();
+      cached_prepacked_tensor.buffers_.push_back(std::move(packed_b_));
+      cached_prepacked_tensor.shapes_.push_back(b_shape_);
+      cached_prepacked_tensor.weights_sizes_.push_back(b_shape_.Size());
       cached_prepacked_tensor.has_cached_ = true;
-      packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+      packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
     }
   }
   return Status::OK();

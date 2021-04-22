@@ -386,14 +386,6 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddPrepackedWeightsCache, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtPrepackedWeightsCache* prepacked_weights_cache) {
-  API_IMPL_BEGIN
-  options->value.prepacked_weights_cache = reinterpret_cast<::onnxruntime::PrepackedWeightsCache*>(prepacked_weights_cache);
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
@@ -1880,6 +1872,26 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsCache, _Outptr_ OrtPrepackedWeightsCache** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<PrepackedWeightsCache> cache(new PrepackedWeightsCache());
+  *out = reinterpret_cast<OrtPrepackedWeightsCache*>(cache.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::AddPrepackedWeightsCacheToSessionoptions, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtPrepackedWeightsCache* prepacked_weights_cache) {
+  API_IMPL_BEGIN
+  options->value.prepacked_weights_cache = reinterpret_cast<PrepackedWeightsCache*>(prepacked_weights_cache);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleasePrepackedWeightsCache, _Frees_ptr_opt_ OrtPrepackedWeightsCache* ptr) {
+  delete reinterpret_cast<PrepackedWeightsCache*>(ptr);
+}
+
 #if defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
                     _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
@@ -2131,6 +2143,9 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
+    &OrtApis::CreatePrepackedWeightsCache,
+    &OrtApis::AddPrepackedWeightsCacheToSessionoptions,
+    &OrtApis::ReleasePrepackedWeightsCache,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

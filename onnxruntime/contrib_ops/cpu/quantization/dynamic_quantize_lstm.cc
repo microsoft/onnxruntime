@@ -10,14 +10,18 @@ using namespace rnn::detail;
 class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
  public:
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                 /*out*/ bool& read_from_cache,
+                 AllocatorPtr alloc_for_caching) override;
 
   Status Compute(OpKernelContext* context) const override;
 
   ~DynamicQuantizeLSTM() override = default;
 
  private:
-  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed);
+  Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed,
+                        bool& is_weight_signed, AllocatorPtr alloc);
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
@@ -28,7 +32,8 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   bool is_R_signed_;
 };
 
-Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed) {
+Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights,
+                                           bool& is_packed, bool& is_weight_signed, AllocatorPtr alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();
@@ -49,7 +54,6 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
     return Status::OK();
   }
 
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
   auto* packed_weights_data = alloc->Alloc(SafeInt<size_t>(packed_weights_size) * num_directions_);
   packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   packed_weights.weights_size_ = packed_weights_size;
@@ -66,13 +70,59 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   return Status::OK();
 }
 
-Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+static void UseCachedPrePackedWeights(const PackedWeight& cached_prepacked_tensor, rnn::detail::PackedWeights& packed_tensor) {
+  packed_tensor.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+  packed_tensor.shape_ = cached_prepacked_tensor.shapes_[0];
+  packed_tensor.weights_size_ = cached_prepacked_tensor.weights_sizes_[0];
+}
+
+Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
+                                    /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                                    /*out*/ bool& read_from_cache,
+                                    AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   if (input_idx == 1) {
-    return TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_);
+    if (cached_prepacked_tensor.has_cached_) {
+      read_from_cache = true;
+      is_packed = true;
+      UseCachedPrePackedWeights(cached_prepacked_tensor, packed_W_);
+      is_W_signed_ = tensor.IsDataType<int8_t>();
+      return Status::OK();
+    }
+
+    bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+    AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+
+    ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_, alloc));
+
+    if (is_packed && !kernel_owns_prepacked_buffer) {
+      cached_prepacked_tensor.buffers_.push_back(std::move(packed_W_.buffer_));
+      cached_prepacked_tensor.shapes_.push_back(packed_W_.shape_);
+      cached_prepacked_tensor.weights_sizes_.push_back(packed_W_.weights_size_);
+      cached_prepacked_tensor.has_cached_ = true;
+      packed_W_.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+    }
   } else if (input_idx == 2) {
-    return TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_);
+    if (cached_prepacked_tensor.has_cached_) {
+      read_from_cache = true;
+      is_packed = true;
+      UseCachedPrePackedWeights(cached_prepacked_tensor, packed_R_);
+      is_R_signed_ = tensor.IsDataType<int8_t>();
+      return Status::OK();
+    }
+
+    bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+    AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+    ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_, alloc));
+
+    if (is_packed && !kernel_owns_prepacked_buffer) {
+      cached_prepacked_tensor.buffers_.push_back(std::move(packed_R_.buffer_));
+      cached_prepacked_tensor.shapes_.push_back(packed_R_.shape_);
+      cached_prepacked_tensor.weights_sizes_.push_back(packed_R_.weights_size_);
+      cached_prepacked_tensor.has_cached_ = true;
+      packed_R_.buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+    }
   }
 
   return Status::OK();

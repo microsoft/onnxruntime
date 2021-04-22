@@ -113,7 +113,7 @@ struct SessionOptions {
   // Cache to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session using this session options instance is still in scope.
-  PrepackedWeightsCache* prepacked_weights_cache;
+  PrepackedWeightsCache* prepacked_weights_cache = nullptr;
 
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry

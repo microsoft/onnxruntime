@@ -258,7 +258,9 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                                       SessionOptions& session_options) {
+  bool cache_prepacked_weights_for_shared_initializers = (session_options.prepacked_weights_cache != nullptr);
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
     int input_idx = 0;
@@ -275,7 +277,42 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
             if (constant_initialized_tensors.count(ort_value_idx)) {
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
-              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+
+              auto iter = session_options.initializers_to_share_map.find(input_name);
+              bool is_shared_initializer = (iter != session_options.initializers_to_share_map.end());
+              // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
+              if (is_shared_initializer && cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
+                bool cache_contains_packed_weight = false;
+                PackedWeight& cached_weight = session_options.prepacked_weights_cache->GetOrCreateCachedWeight(input_name, cache_contains_packed_weight);
+
+                AllocatorPtr allocator_for_caching = session_options.prepacked_weights_cache->GetAllocator(CPU);
+                ORT_ENFORCE(allocator_for_caching.get() != nullptr);
+
+                bool read_from_cache = false;
+                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
+                                                    cached_weight,
+                                                    read_from_cache,
+                                                    allocator_for_caching));
+
+                // If the cache contained the pre-packed weight pertaining to this shared initializer, validate that the kernel
+                // has read this cached weight
+                if (cache_contains_packed_weight) {
+                  // TODO: Log that we used a cached pre-packed weight for this shared initializer
+                  ORT_ENFORCE(read_from_cache, "The kernel's PrePack implementation lacks logic for using pre-packed weights of shared initializers");
+                }
+
+                // If `has_cached_` had been set, validate that it has not been changed accidentally.
+                // If `has_cached_` had not been set, validate that it has run into the logic in the kernel's PrePack() method
+                // that caches the pre-packed weight computed by the kernel.
+                ORT_ENFORCE(cached_weight.has_cached_, "The kernel's PrePack implementation lacks logic for caching pre-packed weights of shared initializers");
+              } else {
+                bool dummy_read_from_cache = false;
+                PackedWeight dummy_cached_weight;
+                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed, dummy_cached_weight,
+                                                    dummy_read_from_cache, nullptr));
+                ORT_ENFORCE(!dummy_cached_weight.has_cached_, "The kernel's PrePack implementation should not be caching pre-packed weights of this initializer");
+              }
+
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                 // release the constant initialized tensor
                 st->initialized_tensors_.erase(ort_value_idx);
@@ -1065,7 +1102,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));
+    // TODO: Remove const_cast ugliness
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count, const_cast<SessionOptions&>(session_options)));
   }
 #endif
 

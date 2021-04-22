@@ -24,7 +24,8 @@ class QLinearConv : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                 /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                 /*out*/ bool& read_from_cache,
                  AllocatorPtr alloc_for_caching) override;
 
  private:
@@ -86,7 +87,8 @@ ONNX_OPERATOR_KERNEL_EX(
 #endif
 
 Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                            /*InOut*/ PackedWeight& cached_prepacked_tensor,
+                            /*in_out*/ PackedWeight& cached_prepacked_tensor,
+                            /*out*/ bool& read_from_cache,
                             AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
@@ -95,12 +97,18 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
     return Status::OK();
   }
 
-  // Cached pre-packed weight
+  is_W_signed_ = tensor.IsDataType<int8_t>();
+
+  // Cached pre-packed weights
   if (cached_prepacked_tensor.has_cached_) {
+    read_from_cache = true;
+    is_W_packed_ = true;
     is_packed = true;
-    b_shape_ = cached_prepacked_tensor.shape_;
-    // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
-    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffer_.get(), BufferDeleter(nullptr));
+
+    // These are cached pre-packed buffers and this kernel doesn't own these and hence the deleter is null
+    packed_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+    reordered_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[1].get(), BufferDeleter(nullptr));
+    packed_W_size_ = cached_prepacked_tensor.weights_sizes_[0];
     return Status::OK();
   }
 
@@ -123,13 +131,13 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
 
   const auto* Wdata = static_cast<const uint8_t*>(tensor.DataRaw());
   W_shape_ = shape;
-  is_W_signed_ = tensor.IsDataType<int8_t>();
-
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
 
   const size_t group_count = static_cast<size_t>(conv_attrs_.group);
   const size_t group_output_channels = output_channels / group_count;
   const size_t kernel_dim = group_input_channels * kernel_size;
+
+  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
+  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
@@ -156,6 +164,13 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
         Wdata += W_offset;
       }
 
+      if (!kernel_owns_prepacked_buffer) {
+        cached_prepacked_tensor.buffers_.push_back(std::move(packed_W_buffer_));
+        cached_prepacked_tensor.weights_sizes_.push_back(packed_W_size_);
+        cached_prepacked_tensor.has_cached_ = true;
+        packed_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+      }
+
       is_W_packed_ = true;
       is_packed = true;
       return Status::OK();
@@ -166,6 +181,11 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
+
+  if (!kernel_owns_prepacked_buffer) {
+    cached_prepacked_tensor.buffers_.push_back(std::move(reordered_W_buffer_));
+    reordered_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[1].get(), BufferDeleter(nullptr));
+  }
 
   is_W_packed_ = true;
   is_packed = true;
