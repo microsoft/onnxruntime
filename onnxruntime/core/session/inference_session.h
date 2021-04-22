@@ -303,8 +303,21 @@ class InferenceSession {
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
 #ifdef ENABLE_TRAINING
-  common::Status PartialRun(onnxruntime::RunOptions& run_options, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
+  /**
+  * Partially run a pre-loaded and pre-intialized model.
+    * @param run_options run options. 
+    * @param feeds inputs owned by client code and should not be changed during
+    *        execution of this function.
+    * @param fetches outputs produced after the executin of this function.
+    * @param state State of the graph needed to resume partial graph run.
+    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
+    *                              copy/checks.
+  */
+  common::Status PartialRun(onnxruntime::RunOptions& run_options,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state,
+                            FeedsFetchesManager& feeds_fetches_manager);
 #endif
 
   /**

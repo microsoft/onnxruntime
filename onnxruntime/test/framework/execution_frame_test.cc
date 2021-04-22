@@ -332,14 +332,6 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
   ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
-
-  SessionOptions so;
-  so.session_logid = "MemPatternWithExternalOutputsTest";
-  InferenceSession session_obj{so, GetEnvironment()};
-  std::stringstream buffer;
-  model.ToProto().SerializeToOstream(&buffer);
-  ASSERT_STATUS_OK(session_obj.Load(buffer));
-  ASSERT_STATUS_OK(session_obj.Initialize());
 }
 #endif
 

@@ -186,18 +186,13 @@ class TrainingManager(GraphExecutionManager):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
-
-        fw_feed_names = []
-        for input in self._optimized_onnx_model.graph.input:
-            fw_feed_names.append(input.name)
+        fw_feed_names = [input.name for input in self._optimized_onnx_model.graph.input]
         fw_outputs_device_info = []
         for idx in range(len(self._graph_info.user_output_names)):
             fw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
             C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
-        bw_fetches_names = []
-        for output in self._optimized_onnx_model.graph.output:
-            bw_fetches_names.append(output.name)
+        bw_fetches_names = [output.name for output in self._optimized_onnx_model.graph.output]
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
             bw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
@@ -205,9 +200,9 @@ class TrainingManager(GraphExecutionManager):
 
         self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                                                     fw_feed_names, self._graph_info.user_output_names,
-                                                                    fw_outputs_device_info, self._graph_info.loss_gradient_names,
+                                                                    fw_outputs_device_info, self._graph_info.module_output_gradient_name,
                                                                     bw_fetches_names, bw_outputs_device_info,
-                                                                    session_options, providers, provider_options,)
+                                                                    session_options, providers, provider_options)
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

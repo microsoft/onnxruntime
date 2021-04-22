@@ -75,7 +75,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                   const bool& terminate_flag, const logging::Logger& logger, PartialGraphExecutionState& state);
+                                   const logging::Logger& logger, PartialGraphExecutionState& state);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.

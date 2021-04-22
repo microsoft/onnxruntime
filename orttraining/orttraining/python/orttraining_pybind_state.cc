@@ -501,10 +501,16 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        agent->RunForward(feeds, fetches, *state);
+        Status status = agent->RunForward(feeds, fetches, *state);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
+        }
       })
       .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        agent->RunBackward(feeds, fetches, *state);
+        Status status = agent->RunBackward(feeds, fetches, *state);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
+        }
       });
 
   py::class_<TrainingSession::TrainingConfiguration::GraphTransformerConfiguration> graph_transformer_config(
@@ -532,7 +538,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
-                                      R"pbdoc(The information of split graphs for frontend.)pbdoc");
+                                   R"pbdoc(The information of split graphs for frontend.)pbdoc");
   graph_info.def(py::init())
       .def_readwrite("user_input_names", &GraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
@@ -542,7 +548,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("user_output_names", &GraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
-      .def_readwrite("loss_gradient_names", &GraphInfo::loss_gradient_names);
+      .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
   ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))

@@ -54,7 +54,7 @@ class IExecutionFrame {
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
   void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
   void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
-  Status GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs);
+  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
   // TO DO: make it thread safe

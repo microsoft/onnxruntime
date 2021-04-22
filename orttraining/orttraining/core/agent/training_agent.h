@@ -17,17 +17,33 @@ class IOBinding;
 
 class TrainingAgent {
  public:
-  explicit TrainingAgent(InferenceSession& session, const std::vector<std::string>& fw_feed_names,
-                         const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
-                         const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
+  explicit TrainingAgent(InferenceSession& session,
+                         const std::vector<std::string>& fw_feed_names,
+                         const std::vector<std::string>& fw_fetches_names,
+                         const std::vector<OrtDevice>& fw_outputs_device_info,
+                         const std::vector<std::string>& bw_feed_names,
+                         const std::vector<std::string>& bw_fetches_names,
                          const std::vector<OrtDevice>& bw_outputs_device_info);
   ~TrainingAgent();
   // For ORTModule.forward()
-  void RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
+  common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  ;
   // For ORTModule.backward()
-  void RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state);
+  common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                             PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  ;
 
-  void RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager);
+  common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                         PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager)
+      ORT_MUST_USE_RESULT;
+  ;
+
+  void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
+                                              const std::vector<std::string>& feed_names,
+                                              const std::vector<std::string>& fetches_names,
+                                              const std::vector<OrtDevice>& outputs_device_info,
+                                              std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

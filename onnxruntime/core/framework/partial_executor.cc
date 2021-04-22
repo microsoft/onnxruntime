@@ -68,10 +68,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << tensor.DataType()->Size()
-                         << "\n";
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
 #endif
       total_output_sizes += tensor_size;
     }
@@ -148,7 +148,10 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   }
 
   if (state_.GetExecutionFrame() == nullptr) {
-    state_.GetExecutionFrame() = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
+    auto frame = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs,
+                                                          fetches, fetch_allocators, session_state);
+
+    state_.SetExecutionFrame(frame);
   } else {
     state_.GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
     state_.GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
@@ -189,13 +192,10 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       profile::Color::Black);
 #endif
 
-  for (size_t program_counter = state_.GetProgramCounterStart(); program_counter <= state_.GetProgramCounterEnd(); program_counter += 1) {
+  for (size_t program_counter = state_.GetProgramCounterStart();
+       program_counter < state_.GetProgramCounterEnd();
+       program_counter += 1) {
     const auto& node_exec_plan = exec_plan_vec[program_counter];
-    if (terminate_flag_) {
-      LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-    }
-
     auto node_index = node_exec_plan.node_index;
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
@@ -207,7 +207,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
+    } else if (node.Description() == "Backward pass" &&
+               !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
       forward_range.End();
@@ -216,20 +217,22 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
+    // if a kernel has been added in the session state, it better be NON-null.
+    if (p_op_kernel == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+                             node.Name());
+    }
+
     if (p_op_kernel->KernelDef().OpName() == "YieldOp") {
       // Do not execute YieldOp (it is an no-op anyways).
       // Decrement the reference count of tensors that are not needed beyond this point.
       // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
-      // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor 
+      // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
       // memory lingers while the tensor is used downstream after the export.
       VLOGS(logger, 1) << "Releasing node ML values.";
       ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
       continue;
     }
-    // if a kernel has been added in the session state, it better be NON-null.
-    if (p_op_kernel == nullptr)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                             node.Name());
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_start;
@@ -237,7 +240,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
     // construct OpKernelContext
     // TODO: log kernel inputs?
-    OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
+    OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, false);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().Now();
@@ -337,7 +340,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 //If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                                  MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -373,7 +377,9 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
-                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
+                                                         {"thread_scheduling_stats",
+                                                          concurrency::ThreadPool::StopProfiling(
+                                                              session_state.GetThreadPool())},
                                                      });
       sync_time_begin = session_state.Profiler().Now();
     }
@@ -449,12 +455,13 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches, fetch_mlvalue_idxs));
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetch_mlvalue_idxs, fetches));
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                              MemoryInfo::MapType::DynamicActivation, "", 0);
   MemoryInfo::MemoryInfoProfile::Clear();
 #endif
 

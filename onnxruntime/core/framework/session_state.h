@@ -76,7 +76,11 @@ struct PartialGraphExecutionState {
   size_t GetProgramCounterStart() { return program_counter_start_; }
   size_t GetProgramCounterEnd() { return program_counter_end_; }
 
-  std::unique_ptr<ExecutionFrame>& GetExecutionFrame() { return execution_frame_; }
+  void SetExecutionFrame(std::unique_ptr<ExecutionFrame>& frame) {
+    execution_frame_ = std::move(frame);
+  }
+
+  const std::unique_ptr<ExecutionFrame>& GetExecutionFrame() { return execution_frame_; }
 
  private:
   std::unique_ptr<ExecutionFrame> execution_frame_;

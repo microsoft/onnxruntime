@@ -277,7 +277,7 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
-      graph_info_.loss_gradient_names.emplace_back(grad_name);
+      graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});

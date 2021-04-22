@@ -1506,8 +1506,11 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 }
 
 #ifdef ENABLE_TRAINING
-Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                    PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager) {
+Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
+                                    const std::vector<OrtValue>& feeds,
+                                    std::vector<OrtValue>& fetches,
+                                    PartialGraphExecutionState& state,
+                                    FeedsFetchesManager& feeds_fetches_manager) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Now();
@@ -1559,13 +1562,13 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options, const 
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
-    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false);
+    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false, "only_execute_path_to_fetches is not supported.");
 
-    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
-    
+    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
+
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_options.terminate, run_logger, state));
+                                                        run_logger, state));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

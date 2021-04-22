@@ -19,8 +19,8 @@
 namespace onnxruntime {
 class PartialExecutor : public IExecutor {
  public:
-  PartialExecutor(PartialGraphExecutionState& state, const bool& terminate_flag = false)
-      : state_{state}, terminate_flag_{terminate_flag} {}
+  PartialExecutor(PartialGraphExecutionState& state)
+      : state_{state} {}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -31,7 +31,6 @@ class PartialExecutor : public IExecutor {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PartialExecutor);
   PartialGraphExecutionState& state_;
-  const bool& terminate_flag_;
 };
 }  // namespace onnxruntime
 #endif

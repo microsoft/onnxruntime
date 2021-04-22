@@ -52,6 +52,9 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
+
+  ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
+
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underlying tensor/object for MLValue
@@ -63,6 +66,10 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 }
 
 void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
+
+  ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
+
+
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
 
@@ -94,7 +101,7 @@ void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, 
   }
 }
 
-Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches, const std::vector<int>& fetch_mlvalue_idxs) {
+Status IExecutionFrame::GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches) {
   auto num_fetches = fetch_mlvalue_idxs.size();
 
   if (fetches.empty()) {

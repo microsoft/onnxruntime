@@ -112,19 +112,11 @@ class TrainingAgent(object):
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
-        self._training_agent = None
-        self._inference_session = None
-
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
                                                                providers, provider_options)
 
         self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_fetches_names,
                                                fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info)
-
-    def io_binding(self):
-        """Return an onnxruntime.IOBinding object`."""
-
-        return IOBinding(self._inference_session)
 
     def run_forward(self, feeds, fetches, state):
         """
