@@ -1308,6 +1308,12 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
     x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+
+    // Test case w/o axes attribute/input.
+    gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+
+    // test case w/ axes attribute/input.
     if (axes_input) {
       std::vector<float> axes_float;
       std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
