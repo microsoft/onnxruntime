@@ -141,14 +141,13 @@ class MainActivity : AppCompatActivity() {
 
     // Read ort model into a ByteArray
     fun readModel(): ByteArray {
-        val modelID =
-            if (enableQuantizedModel) R.raw.mobilenet_v2_uint8 else R.raw.mobilenet_v2_float
+        val modelID = 0
         return resources.openRawResource(modelID).readBytes()
     }
 
     // Read MobileNet V2 classification labels
     fun readLabels(): List<String> {
-        return resources.openRawResource(R.raw.labels).bufferedReader().readLines()
+        return resources.openRawResource(0).bufferedReader().readLines()
     }
 
     private fun createOrtSession(): OrtSession? {
