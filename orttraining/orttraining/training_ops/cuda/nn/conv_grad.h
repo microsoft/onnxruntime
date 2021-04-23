@@ -48,6 +48,9 @@ class ConvGrad final : public CudaKernel {
   static constexpr auto kDefaultConvBwdDataAlgo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
   static constexpr auto kDefaultConvBwdFilterAlgo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
 
+  // static const cudnnConvolutionBwdDataAlgo_t kAllBwdDataAlgo[];
+  // static const cudnnConvolutionBwdFilterAlgo_t kAllBwdFilterAlgo[];
+
  private:
   Status ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const;
   Status ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const;

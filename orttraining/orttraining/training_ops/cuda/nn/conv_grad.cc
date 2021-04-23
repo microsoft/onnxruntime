@@ -24,6 +24,26 @@ REGISTER_GRADIENT_KERNEL_TYPED(float)
 REGISTER_GRADIENT_KERNEL_TYPED(double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 
+// template <typename T>
+// const cudnnConvolutionBwdDataAlgo_t ConvGrad<T>::kAllBwdDataAlgo[] = {
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
+//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED,
+// };
+
+// template <typename T>
+// const cudnnConvolutionBwdFilterAlgo_t ConvGrad<T>::kAllBwdFilterAlgo[] = {
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED,
+//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING,
+// };
+
 cudnnStatus_t getWorkspaceSize(
     const ConvolutionArgs& args,
     cudnnConvolutionBwdDataAlgo_t algo, size_t* sz) {
@@ -48,6 +68,114 @@ cudnnStatus_t getWorkspaceSize(
       args.w_desc,
       algo,
       sz);
+}
+
+template <typename algo_t>
+size_t getMaxWorkspaceSize(const ConvolutionArgs& args,
+                           const algo_t* algo, int n_algo) {
+  size_t max_ws_size = 0;
+
+  // TODO: get maximum available size from memory areana
+
+  size_t free, total;
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+  // Assuming 10% of fragmentation
+  free = static_cast<size_t>(static_cast<double>(free) * 0.9);
+
+  for (int i = 0; i < n_algo; i++) {
+    cudnnStatus_t err;
+    size_t sz;
+    err = getWorkspaceSize(args, algo[i], &sz);
+    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free)
+      continue;
+    max_ws_size = sz;
+  }
+  return max_ws_size;
+}
+
+// TODO: Use something less heavy duty than a big honking mutex
+template <typename T>
+struct BenchmarkCache {
+  std::mutex mutex;
+  std::unordered_map<std::vector<int64_t>, T, vector_hash<int64_t>> map;
+
+  bool find(const std::vector<int64_t>& x_dims, T* results) {
+    std::lock_guard<std::mutex> guard(mutex);
+    auto it = map.find(x_dims);
+    if (it == map.end()) {
+      return false;
+    }
+    *results = it->second;
+    return true;
+  }
+
+  void insert(const std::vector<int64_t>& x_dims, const T& results) {
+    std::lock_guard<std::mutex> guard(mutex);
+    map[x_dims] = results;
+  }
+};
+
+// BenchmarkCache<cudnnConvolutionFwdAlgoPerf_t> fwd_algos;
+BenchmarkCache<cudnnConvolutionBwdDataAlgoPerf_t> bwd_data_algos;
+BenchmarkCache<cudnnConvolutionBwdFilterAlgoPerf_t> bwd_filter_algos;
+
+cudnnConvolutionBwdDataAlgoPerf_t getBwdDataAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo,
+                                                     const void* w, const void* dy, void* dx) {
+  cudnnConvolutionBwdDataAlgoPerf_t perf;
+  if (bwd_data_algos.find(x_dims, &perf)) {
+    return perf;
+  }
+
+  static const cudnnConvolutionBwdDataAlgo_t kAllBwdDataAlgo[] = {
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED,
+  };
+
+  ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
+
+  int algo_count = 1;
+
+  if (cudnn_conv_algo == 0) {  // EXHAUSTIVE
+    static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
+    size_t max_ws_size = getMaxWorkspaceSize(args, kAllBwdDataAlgo, num_algos);
+    IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(max_ws_size);
+    CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+        args.handle,
+        args.w_desc, w,
+        args.o_desc, dy,
+        args.c_desc,
+        args.i_desc, dx,
+        1,            // requestedAlgoCount
+        &algo_count,  // returnedAlgoCount
+        &perf,
+        algo_search_workspace.get(),
+        max_ws_size));
+  } else if (cudnn_conv_algo == 1) {  // HEURISTIC
+    CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(
+        args.handle,
+        args.w_desc,
+        args.o_desc,
+        args.c_desc,
+        args.i_desc,
+        1,            // requestedAlgoCount
+        &algo_count,  // returnedAlgoCount
+        &perf));
+  } else {  // DEFAULT
+    perf.algo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
+    CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args, perf.algo, &perf.memory));
+    if (args.data_type == CUDNN_DATA_HALF) {
+      perf.mathType = CUDNN_TENSOR_OP_MATH;
+    } else {
+      perf.mathType = CUDNN_DEFAULT_MATH;
+    }
+  }
+
+  bwd_data_algos.insert(x_dims, perf);
+  return perf;
 }
 
 // TODO: we can cache the descriptors, and only update if the input shape changes
