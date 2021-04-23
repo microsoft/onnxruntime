@@ -51,16 +51,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                         : target_shape_tensor.int64_data().data();
 
   const auto size = target_shape_tensor.dims()[0];
-  std::vector<int64_t> target_shape;
-  std::copy(raw_target_shape, raw_target_shape + size, std::back_inserter(target_shape));
-
+  std::vector<int64_t> target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);
-  std::copy(target_shape.cbegin(), target_shape.cend(),
-            google::protobuf::RepeatedFieldBackInserter(
-                layer->mutable_reshapestatic()->mutable_targetshape()));
-
+  *layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
   *layer->mutable_input()->Add() = input_defs[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 

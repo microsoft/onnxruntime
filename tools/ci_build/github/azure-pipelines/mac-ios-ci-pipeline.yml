@@ -5,6 +5,25 @@ jobs:
   timeoutInMinutes: 120
   steps:
     - script: |
-        sdkpath=`xcrun --sdk iphonesimulator --show-sdk-path`
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir iOS --ios --ios_sysroot $sdkpath --osx_arch x86_64 --apple_deploy_target 12.1 --use_xcode --config RelWithDebInfo --parallel
-      displayName: Build onnxruntime for iOS x86_64 and run tests using simulator
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --build_dir build/iOS_cpu \
+          --ios \
+          --ios_sysroot iphonesimulator  \
+          --osx_arch x86_64 \
+          --apple_deploy_target 12.1 \
+          --use_xcode \
+          --config RelWithDebInfo \
+          --parallel
+      displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+    - script: |
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --build_dir build/iOS_coreml \
+          --use_coreml \
+          --ios \
+          --ios_sysroot iphonesimulator  \
+          --osx_arch x86_64 \
+          --apple_deploy_target 12.1 \
+          --use_xcode \
+          --config RelWithDebInfo \
+          --parallel
+      displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator

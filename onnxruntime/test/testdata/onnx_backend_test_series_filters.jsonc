@@ -62,12 +62,15 @@
         "^test_lstm_defaults_cpu",
         "^test_lstm_with_initial_bias_cpu",
         "^test_lstm_with_peepholes_cpu",
-        "^test_reshape_allowzero_reordered_cpu",
         "^test_rnn_seq_length_cpu",
         "^test_simple_rnn_batchwise_cpu",
         "^test_simple_rnn_defaults_cpu",
         "^test_simple_rnn_with_initial_bias_cpu",
-        "^test_tril_*"
+        "^test_sub_uint8_cpu",
+        "^test_mul_uint8_cpu",
+        "^test_add_uint8_cpu",
+        "^test_div_uint8_cpu",
+        "^test_batchnorm_*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
