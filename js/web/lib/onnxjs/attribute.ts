@@ -46,6 +46,7 @@ export class Attribute {
   delete(key: string): void {
     this._attributes.delete(key);
   }
+
   getFloat(key: string, defaultValue?: Attribute.DataTypeMap['float']) {
     return this.get(key, 'float', defaultValue);
   }

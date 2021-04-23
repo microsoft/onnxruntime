@@ -7,7 +7,7 @@ ONNX Runtime Node.js binding enables Node.js applications to run ONNX model infe
 Install the latest stable version:
 
 ```
-npm install onnxruntime
+npm install onnxruntime-node
 ```
 
 Refer to [Node.js samples](../../samples/nodejs/README.md) for samples and tutorials.

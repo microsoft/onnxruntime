@@ -95,7 +95,7 @@ export declare namespace Test {
 
   /**
    * The data schema of a whitelist file.
-   * A whitelist should only be applied when running suite test cases (suite0, suite1)
+   * A whitelist should only be applied when running suite test cases (suite0)
    */
   export interface WhiteList {
     [backend: string]: {[group: string]: readonly WhiteList.Test[]};

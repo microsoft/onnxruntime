@@ -21,7 +21,6 @@ Usage:
 
 Modes:
  suite0                        Run all unittests, all operator tests and node model tests that described in white list
- suite1                        Run all unittests, all operator tests and all model tests that described in white list
  model                         Run a single model test
  unittest                      Run all unittests
  op                            Run a single operator test
@@ -78,25 +77,25 @@ Examples:
  Run all suite0 tests:
  > test-runner-cli suite0
 
- Run single model test (test_relu) on CPU backend
- > test-runner-cli model test_relu --backend=cpu
+ Run single model test (test_relu) on WebAssembly backend
+ > test-runner-cli model test_relu --backend=wasm
 
  Debug unittest
  > test-runner-cli unittest --debug
 
  Debug operator matmul, highlight verbose log from BaseGlContext and WebGLBackend
- > test-runner-cli op matmul --debug --log-verbose=BaseGlContext,WebGLBackend
+ > test-runner-cli op matmul --backend=webgl --debug --log-verbose=BaseGlContext,WebGLBackend
 
- Profile the model ResNet50 on WebGL backend
- > test-runner-cli model resnet50 --profile --backend=webgl
+ Profile an ONNX model on WebGL backend
+ > test-runner-cli model <model_folder> --profile --backend=webgl
 
- Run perf testing of the model SqueezeNet on WebGL backend
- > test-runner-cli model squeezenet -b=webgl -P
+ Run perf testing of an ONNX model on WebGL backend
+ > test-runner-cli model <model_folder> -b=webgl -P
  `;
 /* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
-  type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
+  type Mode = 'suite0'|'model'|'unittest'|'op';
   type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
