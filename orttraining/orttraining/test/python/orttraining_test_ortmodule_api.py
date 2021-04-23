@@ -432,21 +432,21 @@ def test_model_and_input_without_device():
     out = model(x)
     out is not None
 
-# TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
-# def test_model_with_different_devices_same_session():
-#     N, D_in, H, D_out = 64, 784, 500, 10
-#     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
-#     model = ORTModule(model)
+#TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
+def test_model_with_different_devices_same_session():
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
 
-#     for i in range(5):
-#         if i % 2 == 0:
-#             device = 'cpu'
-#         else:
-#             device = 'cuda'
+    for i in range(5):
+        if i % 2 == 0:
+            device = 'cpu'
+        else:
+            device = 'cuda'
 
-#         model.to(device)
-#         x = torch.randn(N, D_in, device=device)
-#         y = model(x)
+        model.to(device)
+        x = torch.randn(N, D_in, device=device)
+        y = model(x)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_saved(device):
@@ -666,7 +666,6 @@ def test_multiple_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
-''' flaky test. Temporarily DISABLED for further investigation - hard to repro locally
 def test_multiple_ortmodules_common_backbone_training():
     device = 'cuda'
     N, D_in, H, D_out = 32, 64, 128, 64
@@ -702,7 +701,6 @@ def test_multiple_ortmodules_common_backbone_training():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
-'''
 
 def test_multiple_chained_ortmodules_training():
     device = 'cuda'

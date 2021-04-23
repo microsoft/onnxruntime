@@ -332,52 +332,6 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
   ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
-
-  SessionOptions so;
-  so.session_logid = "MemPatternWithExternalOutputsTest";
-  InferenceSession session_obj{so, GetEnvironment()};
-  std::stringstream buffer;
-  model.ToProto().SerializeToOstream(&buffer);
-  ASSERT_STATUS_OK(session_obj.Load(buffer));
-  ASSERT_STATUS_OK(session_obj.Initialize());
-
-  {
-    // Run with original InferenceSession::Run, it should fail due to the YieldOp.
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("X", x_value));
-
-    // prepare outputs
-    std::vector<std::string> output_names;
-    output_names.push_back("Y");
-    std::vector<OrtValue> fetches;
-
-    RunOptions run_options;
-    auto st = session_obj.Run(run_options, feeds, output_names, &fetches);
-    EXPECT_FALSE(st.IsOK());
-    EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Non-zero status code returned while running YieldOp node."));
-  }
-
-  {
-    // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(session_obj);
-    unique_ptr<IOBinding> io_binding;
-    ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
-    io_binding->BindInput("X", x_value);
-    OrtValue output;
-    io_binding->BindOutput("Y", output);
-    RunOptions run_options;
-    std::vector<OrtValue> user_outputs;
-    int64_t run_id;
-    ASSERT_STATUS_OK(training_agent.RunForward(run_options, *io_binding, user_outputs, run_id));
-    const std::vector<float> yield_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
-    EXPECT_THAT(user_outputs[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(yield_input_expected)));
-    ASSERT_STATUS_OK(training_agent.RunBackward(run_id, {t_value}));
-    // The output is MatMul(x_value, t_value);
-    const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
-    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(output_expected)));
-  }
 }
 #endif
 

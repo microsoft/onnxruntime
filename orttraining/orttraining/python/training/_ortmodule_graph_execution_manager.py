@@ -31,27 +31,38 @@ def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
 
     # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
     #   especially the backward graph outputs.
-    io_binding = execution_session.io_binding()
-    run_options = C.RunOptions()
+    # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
+    # have the need for passing IOBinding.
+    if isinstance(execution_session, onnxruntime.training.InferenceAgent):
+        io_binding = execution_session.io_binding()
+        run_options = C.RunOptions()
 
-    # Use IO binding
-    _utils._create_iobinding(io_binding, inputs, onnx_model, device)
+        # Use IO binding
+        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
 
-    # Run and return module outputs.
-    ort_output = execution_session.run_forward(io_binding, run_options)
-    forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
+        # Run and return module outputs.
+        ort_output = execution_session.run_forward(io_binding, run_options)
+        forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output._ortvalue) for forward_output in forward_outputs)
+        state = None
+    else:
+        state = C.PartialGraphExecutionState()
+        forward_inputs = C.OrtValueVector()
+        for input in inputs:
+            forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
 
-    user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+        forward_outputs = C.OrtValueVector()
+        # Run and return module outputs.
+        execution_session.run_forward(forward_inputs, forward_outputs, state)
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
 
     # Assert that the outputs and model device match
     _utils._check_same_device(device, "Output argument from forward", *user_outputs)
 
     output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
-    run_info = onnxruntime.training.RunStateInfo(run_id, run_options, io_binding, output_info)
-
+    run_info = onnxruntime.training.RunStateInfo(state, output_info)
     # Return user outputs and forward run information
     return user_outputs, run_info
-
 
 class GraphExecutionManager(ABC):
     def __init__(self, module):
