@@ -1440,3 +1440,22 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   ASSERT_TRUE(exception_thrown);
 }
 #endif
+
+TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
+  Ort::SessionOptions session_options;
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#else
+  // arena is enabled but the sole initializer will still be allocated from non-arena memory
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+#endif
+
+  // disable using arena for the sole initializer in the model
+  session_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
+
+  // This is mostly an usage example - if the logging level for the default logger is made INFO (by default it is at WARNING)
+  // when the Ort::Env instance is instantiated, logs pertaining to initializer memory being allocated from non-arena memory
+  // can be confirmed by seeing logs like "Reserving memory in BFCArena...".
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+}
