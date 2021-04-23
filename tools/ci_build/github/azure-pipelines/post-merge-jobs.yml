@@ -5,7 +5,7 @@ jobs:
   timeoutInMinutes:  150
   variables:
     skipComponentGovernanceDetection: true
-  pool: 'Linux-CPU'
+  pool: 'Onnxruntime-Linux-GPU'
   steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -17,10 +17,10 @@ jobs:
           sudo python3 -m pip install mysql-connector-python
           ln -s /data/models .
           #Build onnxruntime and run the instrumented program(unitests)
-          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_cuda --cuda_home /usr/local/cuda-11.0 --cudnn_home /usr --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
 
           cd Debug
-          ./onnxruntime_mlas_test
+          LLVM_PROFILE_FILE="%p.profraw" ./onnxruntime_mlas_test
           #Merge the mulitple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
