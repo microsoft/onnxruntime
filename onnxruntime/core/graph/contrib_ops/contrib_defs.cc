@@ -2206,9 +2206,11 @@ Example 4:
                 {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
                 {{"Biased"}, "Add", {"Scaled", "B"}},
                 {{"Y"}, "Reshape", {"Biased", "XShape"}},
-                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}},
-                {{"InvStdDev"}, "Reshape", {"InvStdDev2D", "ReducedShape"}},
-                {{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}}};
+                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+            if (ctx.hasOutput(1))
+              body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
+            if (ctx.hasOutput(2))
+              body.push_back({{"InvStdDev"}, "Reshape", {"InvStdDev2D", "ReducedShape"}});
 
             OperatorSetIdProto onnx_opset_13;
             onnx_opset_13.set_domain("");
