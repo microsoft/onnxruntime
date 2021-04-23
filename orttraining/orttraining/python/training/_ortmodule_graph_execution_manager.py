@@ -23,10 +23,10 @@ from torch.utils.cpp_extension import ROCM_HOME
 ONNX_OPSET_VERSION = 12
 
 
-def _run_forward(execution_session, onnx_model, device, skip_duplicate_checks, *inputs, **kwargs):
+def _run_forward(execution_session, onnx_model, device, skip_device_check, *inputs, **kwargs):
     """Runs the forward graph on execution_session with given model inputs and device"""
 
-    if skip_duplicate_checks == False:
+    if skip_device_check == False:
         # Assert that the input and model device match
         _utils._check_same_device(device, "Input argument to forward", *inputs)
 
@@ -81,7 +81,8 @@ class GraphExecutionManager(ABC):
         self._execution_agent = None
 
         # skip device or input info checks if there will be no change for the entire training
-        self._skip_duplicate_checks = False
+        self._skip_device_check = False
+        self._skip_input_check = False
 
         # Debug flags
         self._save_onnx = False
