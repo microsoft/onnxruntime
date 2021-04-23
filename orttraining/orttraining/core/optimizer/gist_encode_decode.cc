@@ -92,6 +92,8 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
       compressed_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     } else if (compression_type == "GistPack16") {
       compressed_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    } else if (compression_type == "GistBinarize") {
+      compressed_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
     } else {
       assert(0);  // "Gist compression type not supported"
     }
@@ -124,7 +126,20 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
     // Nested Gist decoders: Decoders have low priority, and need to be differentiated. Hence, each decoder is assigned a unqiue priority value.
     int curr_dec_priority = GenerateDecodePriority();
     assert(curr_dec_priority > 0);
-    auto& decode = graph.AddNode(decode_node_name, compression_type + "Decoder", "Decode", {&encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg}, nullptr, kMSDomain);
+    
+    // Add attribute data for decoder
+    ONNX_NAMESPACE::AttributeProto output_type;
+    output_type.set_name("to");
+    output_type.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+    auto element_type = curr_node_output_arg->TypeAsProto()->tensor_type().elem_type();
+    output_type.set_i(static_cast<int64_t>(element_type));
+
+    const int num_attributes = 1;  // one attribute: decoder's output data type
+    NodeAttributes attributes;
+    attributes.reserve(num_attributes);
+    attributes[output_type.name()] = output_type;
+    
+    auto& decode = graph.AddNode(decode_node_name, compression_type + "Decoder", "Decode", {&encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg}, &attributes, kMSDomain);
     decode.SetPriority(curr_dec_priority);
 
     // Connect decode node to destination nodes/edges

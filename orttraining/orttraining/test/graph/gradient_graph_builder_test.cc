@@ -180,15 +180,48 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
+TEST(GradientGraphBuilderTest, GraphTransformation_WithGist) {
+  // Setup training session configuration
+  auto config = MakeBasicTrainingConfig();
+  const int op_type_max = 9;
+  const vector<std::string> compr_type_vec = {"GistBinarize", "GistPack8", "GistPack16", "GistPackMsfp15"};
+
+  PathString backprop_model_file;
+  for (auto& compr_type : compr_type_vec) {
+    // Add GIST config to training session (op_type_max ensures GIST is applied to all applicable ops)
+    TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = op_type_max;
+    gist.compr_type = compr_type;
+    config.gist_config = gist;
+
+    // Create backward graph with gist transformations
+    ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
+
+    // Check correctness of GIST transformation
+    backprop_model_file = config.model_with_training_graph_path.value();
+    std::shared_ptr<Model> pModel;
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+    Graph& graph = pModel->MainGraph();
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    std::cout << "Type: "
+              << "com.microsoft." + gist.compr_type + "Encoder"
+              << ", Count: " << op_to_count["com.microsoft." + gist.compr_type + "Encoder"] << std::endl;
+    ASSERT_TRUE(op_to_count["com.microsoft.GistPack1Encoder"] == op_to_count["com.microsoft.GistPack1Decoder"]);
+    ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] == op_to_count["com.microsoft." + gist.compr_type + "Decoder"]);
+    ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] + op_to_count["com.microsoft.GistPack1Encoder"] > 0);
+  }
+}
+
 #ifdef USE_CUDA
 TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   // Setup training session configuration including GIST config (op_flag 9 ensures GIST will be applied to all possible supported node types)
   auto config = MakeBasicTrainingConfig();
   TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+  gist.op_type = 9;  // Apply Gist to all applicable operator types
+  gist.compr_type = "GistPack8";
   config.gist_config = gist;
-  config.op_flag = 9;
-  config.compr_type = "GistPack8";
-  
+
   // Create backward graph with gist transformations
   const PathString& forward_model_file = ORIGINAL_MODEL_PATH;
   std::unique_ptr<Environment> env;
@@ -204,17 +237,31 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   TrainingSession::TrainingConfigurationResult config_result{};
   ORT_THROW_IF_ERROR(training_session.ConfigureForTraining(config, config_result));
 
+  // Check correctness of GIST transformation
+  PathString backprop_model_file = config.model_with_training_graph_path.value();
+  std::shared_ptr<Model> pModel;
+  ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = pModel->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  std::cout << "Type: "
+            << "com.microsoft." + gist.compr_type + "Encoder"
+            << ", Count: " << op_to_count["com.microsoft." + gist.compr_type + "Encoder"] << std::endl;
+  ASSERT_TRUE(op_to_count["com.microsoft.GistPack1Encoder"] == op_to_count["com.microsoft.GistPack1Decoder"]);
+  ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] == op_to_count["com.microsoft." + gist.compr_type + "Decoder"]);
+  ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] + op_to_count["com.microsoft.GistPack1Encoder"] > 0);
+
   // Run training session with checks
   std::pair<common::Status, const ModelMetadata*> res = training_session.GetModelMetadata();
   ORT_THROW_IF_ERROR(res.first);
   ORT_ENFORCE(res.second != nullptr);
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
-  
+
   // Add cuda execution provider for gist encode/decode nodes
   CUDAExecutionProviderInfo xp_info;
   ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
-  
+
   ORT_THROW_IF_ERROR(training_session.Initialize());
 
   std::vector<MLValue> gradient_fetches;

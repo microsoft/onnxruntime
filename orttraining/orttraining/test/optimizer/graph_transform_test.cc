@@ -56,39 +56,6 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
-TEST_F(GraphTransformationTests, GistEncodeDecode) {
-  auto model_uri = MODEL_FOLDER "../test_training_model.onnx"; // requires an exisiting backward model
-  
-  vector<std::string> gist_compr_vec = {"GistPack8", "GistPack16", "GistPackMsfp15"};
-  const int op_max = 9;
-  
-  for (int op = 1; op <= op_max; op++) {
-    for (auto& gist_compr : gist_compr_vec) {
-      std::cout << "GIST test - op: " << op << ", compr: " << gist_compr << std::endl;
-      
-      // Load graph
-      std::shared_ptr<Model> p_model;
-      ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-      Graph& graph = p_model->MainGraph();
-      
-      // Add GIST Rule to the backward graph
-      auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-      rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>(op, gist_compr));
-      onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-      graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-      auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-      ASSERT_TRUE(ret.IsOK());
-
-      // Check correctness of transformation
-      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-      std::cout << "Gist Pack1Encoder Count: " << op_to_count["GistPack1Encoder"] << std::endl;
-      std::cout << "Gist Encoder Count: " << op_to_count[gist_compr + "Encoder"] << std::endl;
-      ASSERT_TRUE(op_to_count["GistPack1Encoder"] == op_to_count["GistPack1Decoder"]);
-      ASSERT_TRUE(op_to_count[gist_compr + "Encoder"] == op_to_count[gist_compr + "Decoder"]);
-    }
-  }
-}
-
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
