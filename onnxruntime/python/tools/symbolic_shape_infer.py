@@ -81,13 +81,6 @@ def sympy_reduce_product(x):
         value = x
     return value
 
-def handle_negative_index(index, bound):
-    try:
-        if index < 0:
-            return bound + index
-    except TypeError:
-        print("Cannot determine if {} < 0".format(index))
-    return index
 
 class SymbolicShapeInference:
     def __init__(self, int_max, auto_merge, guess_output_rank, verbose):
@@ -1039,6 +1032,15 @@ class SymbolicShapeInference:
             helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
 
     def _infer_Slice(self, node):
+        def handle_negative_index(index, bound):
+            """ normalizes a negative index to be in [0, bound) """
+            try:
+                if index < 0:
+                    return bound + index
+            except TypeError:
+                print("Cannot determine if {} < 0".format(index))
+            return index
+
         if get_opset(self.out_mp_) <= 9:
             axes = get_attribute(node, 'axes')
             starts = get_attribute(node, 'starts')
