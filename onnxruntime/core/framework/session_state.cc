@@ -308,8 +308,12 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
               } else {
                 bool dummy_read_from_cache = false;
                 PackedWeight dummy_cached_weight;
-                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed, dummy_cached_weight,
-                                                    dummy_read_from_cache, nullptr));
+
+                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
+                                                    dummy_cached_weight,
+                                                    dummy_read_from_cache,
+                                                    nullptr));
+
                 ORT_ENFORCE(!dummy_cached_weight.has_cached_, "The kernel's PrePack implementation should not be caching pre-packed weights of this initializer");
               }
 

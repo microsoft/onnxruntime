@@ -88,19 +88,6 @@ class OpKernel {
     return Status::OK();
   }
 
-  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed) {
-    is_packed = false;
-    return Status::OK();
-  }
-
-  virtual Status PrePack(AllocatorPtr /*alloc_for_caching*/) {
-    return Status::OK();
-  }
-
-  virtual Status Dummy() {
-    return Status::OK();
-  }
-
   const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const;
   const OpKernelInfo& Info() const {
     return *op_kernel_info_;
