@@ -58,6 +58,7 @@ class InferenceManager(GraphExecutionManager):
         user_outputs, _ = _run_forward(self._execution_agent,
                                        self._optimized_onnx_model,
                                        self._device,
+                                       self._skip_duplicate_checks,
                                        *_io._convert_input_to_list(self._flattened_module.named_parameters(),
                                                                    self._graph_info.user_input_names,
                                                                    self._flattened_module.named_buffers(),
