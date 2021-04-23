@@ -13,19 +13,9 @@ class QDQConcatTransformer : public QDQOperatorTransformer {
  public:
   QDQConcatTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool KeepNode() const override {
-    return need_keep_;
-  }
-
  protected:
   bool TransformImpl(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) override {
-    std::vector<NodeArg*> fp32_input_defs = node_.MutableInputDefs();
-    auto input_count = fp32_input_defs.size();
-    if (input_count != dq_nodes.size() || q_nodes.size() != 1) {
-      need_keep_ = true;
-      return false;
-    }
-
+    auto input_count = dq_nodes.size();
     std::vector<NodeArg*> input_defs;
     input_defs.reserve(2 + input_count * 3);
 
@@ -49,8 +39,6 @@ class QDQConcatTransformer : public QDQOperatorTransformer {
 
     return true;
   }
-
-  bool need_keep_ = false;
 };
 
 DEFINE_QDQ_CREATOR(Concat, QDQConcatTransformer)
