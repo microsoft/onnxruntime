@@ -1,13 +1,8 @@
---pre
--f https://download.pytorch.org/whl/nightly/rocm4.1/torch_nightly.html
 # transformers requires sklearn
 pandas
 sklearn
 numpy==1.19.5
 transformers==v4.3.2
-torch==1.9.0.dev20210417
-torchvision==0.10.0.dev20210419
-torchtext==0.10.0.dev20210419
 tensorboard
 h5py
 wget
