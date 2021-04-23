@@ -29,10 +29,10 @@ For build instructions, please see the [BUILD page](../../how-to/build.md#androi
 
 ```c++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
-Ort::SessionOptions sf;
+Ort::SessionOptions so;
 uint32_t nnapi_flags = 0;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, nnapi_flags));
-Ort::Session session(env, model_path, sf);
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(so, nnapi_flags));
+Ort::Session session(env, model_path, so);
 ```
 
 The C API details are [here](../api/c-api.md).
