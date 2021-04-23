@@ -945,11 +945,17 @@ static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
-  s_library_cuda.Unload();
+  std::cout << "Unloading shared providers...";
+  LOGS_DEFAULT(ERROR) << "LOGS_DEFAULT: Unloading shared providers...";
+
   s_library_dnnl.Unload();
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
+  s_library_cuda.Unload();
   s_library_shared.Unload();
+
+  std::cout << "Finished Unloading shared providers";
+  LOGS_DEFAULT(ERROR) << "LOGS_DEFAULT: Finished Unloading shared providers";
 }
 
 // Used by test code
