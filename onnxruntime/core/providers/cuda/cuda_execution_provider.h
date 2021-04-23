@@ -172,7 +172,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   struct ContextCacheHolder {
     ContextCacheHolder() {
-      RunOnUnload([this] { p.reset(); });
+      // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        if (auto lock = weak_p_.lock())
+          p.reset();
+      });
     }
     std::shared_ptr<PerThreadContextMap> p{std::make_shared<PerThreadContextMap>()};
   };
