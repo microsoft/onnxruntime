@@ -4,8 +4,10 @@
 # --------------------------------------------------------------------------
 
 class RunStateInfo(object):
-   def __init__(self, run_id, run_options, io_binding, output_info):
-      self.run_id = run_id
-      self.run_options = run_options
-      self.io_binding = io_binding
+   def __init__(self, state, output_info):
+      """
+      :param state: State of partial run that contains intermediate tensors needed to resume the run later.
+      :param output_info: Output info.
+      """
+      self.state = state
       self.output_info = output_info

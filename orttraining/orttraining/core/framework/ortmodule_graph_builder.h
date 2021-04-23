@@ -56,6 +56,7 @@ struct GraphInfo {
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
+  std::vector<std::string> module_output_gradient_name{};
 };
 
 class OrtModuleGraphBuilder {
