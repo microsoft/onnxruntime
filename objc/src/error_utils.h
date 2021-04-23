@@ -3,14 +3,12 @@
 
 #import <Foundation/Foundation.h>
 
+#include "core/session/onnxruntime_cxx_api.h"
+
 NS_ASSUME_NONNULL_BEGIN
 
-@interface ORTErrorUtils : NSObject
-
-+ (void)saveErrorCode:(int)code
-          description:(const char*)descriptionCstr
-              toError:(NSError**)error;
-
-@end
+void ORTThrowNotImplementedException(const char* description);
+void ORTSaveCodeAndDescriptionToError(int code, const char* description, NSError** error);
+void ORTSaveExceptionToError(const Ort::Exception& e, NSError** error);
 
 NS_ASSUME_NONNULL_END

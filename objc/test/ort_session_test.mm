@@ -53,19 +53,18 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 + (ORTValue*)ortValueWithScalarFloatData:(NSMutableData*)data {
-  const std::vector<int64_t> shape{1};
+  NSArray<NSNumber*>* shape = @[ @1 ];
   NSError* err = nil;
   ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
                                                  elementType:ORTTensorElementDataTypeFloat
-                                                       shape:shape.data()
-                                                    shapeLen:shape.size()
+                                                       shape:shape
                                                        error:&err];
   XCTAssertNotNil(ort_value);
   XCTAssertNil(err);
   return ort_value;
 }
 
-- (void)testInitAndRunOk {
+- (void)testInitAndRunWithPreallocatedOutputOk {
   NSMutableData* a_data = [ORTSessionTest dataWithScalarFloat:1.0f];
   NSMutableData* b_data = [ORTSessionTest dataWithScalarFloat:2.0f];
   NSMutableData* c_data = [ORTSessionTest dataWithScalarFloat:0.0f];
@@ -85,6 +84,40 @@ NS_ASSUME_NONNULL_BEGIN
                                    outputs:@{@"C" : c}
                                      error:&err];
   XCTAssertTrue(run_result);
+  XCTAssertNil(err);
+
+  const float c_expected = 3.0f;
+  float c_actual;
+  memcpy(&c_actual, c_data.bytes, sizeof(float));
+  XCTAssertEqual(c_actual, c_expected);
+}
+
+- (void)testInitAndRunOk {
+  NSMutableData* a_data = [ORTSessionTest dataWithScalarFloat:1.0f];
+  NSMutableData* b_data = [ORTSessionTest dataWithScalarFloat:2.0f];
+
+  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:a_data];
+  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:b_data];
+
+  NSError* err = nil;
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                                  error:&err];
+  XCTAssertNotNil(session);
+  XCTAssertNil(err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:@{@"A" : a, @"B" : b}
+                 outputNames:[NSSet setWithArray:@[ @"C" ]]
+                       error:&err];
+  XCTAssertNotNil(outputs);
+  XCTAssertNil(err);
+
+  ORTValue* c_output = outputs[@"C"];
+  XCTAssertNotNil(c_output);
+
+  NSData* c_data = [c_output tensorDataWithError:&err];
+  XCTAssertNotNil(c_data);
   XCTAssertNil(err);
 
   const float c_expected = 3.0f;

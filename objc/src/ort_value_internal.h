@@ -9,7 +9,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTValue ()
 
-- (Ort::Value*)internalORTValue;
+- (nullable instancetype)initWithCAPIOrtValue:(OrtValue*)CAPIOrtValue
+                           externalTensorData:(nullable NSMutableData*)externalTensorData
+                                        error:(NSError**)error NS_DESIGNATED_INITIALIZER;
+
+- (Ort::Value*)CXXAPIOrtValue;
 
 @end
 

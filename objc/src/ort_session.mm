@@ -25,11 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
   if (self) {
     try {
       Ort::SessionOptions sessionOptions{};  // TODO make configurable
-      _session = Ort::Session{*[env internalORTEnv], path.UTF8String, sessionOptions};
+      _session = Ort::Session{*[env CXXAPIOrtEnv], path.UTF8String, sessionOptions};
     } catch (const Ort::Exception& e) {
-      [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
-                       description:e.what()
-                           toError:error];
+      ORTSaveExceptionToError(e, error);
       self = nil;
     }
   }
@@ -49,12 +47,12 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] internalORTValue]));
+      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] CXXAPIOrtValue]));
     }
 
     for (NSString* outputName in outputs) {
       outputNames.push_back(outputName.UTF8String);
-      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] internalORTValue]));
+      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] CXXAPIOrtValue]));
     }
 
     Ort::ThrowOnError(Ort::GetApi().Run(*_session, runOptions,
@@ -63,11 +61,56 @@ NS_ASSUME_NONNULL_BEGIN
 
     status = YES;
   } catch (const Ort::Exception& e) {
-    [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
-                     description:e.what()
-                         toError:error];
+    ORTSaveExceptionToError(e, error);
   }
   return status;
+}
+
+- (nullable NSDictionary<NSString*, ORTValue*>*)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
+                                                  outputNames:(NSSet<NSString*>*)outputNameSet
+                                                        error:(NSError**)error {
+  try {
+    NSArray<NSString*>* outputNameArray = outputNameSet.allObjects;
+
+    Ort::RunOptions runOptions{};  // TODO make configurable
+
+    std::vector<const char*> inputNames, outputNames;
+    std::vector<const OrtValue*> inputValues;
+    std::vector<OrtValue*> outputValues;
+
+    for (NSString* inputName in inputs) {
+      inputNames.push_back(inputName.UTF8String);
+      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] CXXAPIOrtValue]));
+    }
+
+    for (NSString* outputName in outputNameArray) {
+      outputNames.push_back(outputName.UTF8String);
+      outputValues.push_back(nullptr);
+    }
+
+    Ort::ThrowOnError(Ort::GetApi().Run(*_session, runOptions,
+                                        inputNames.data(), inputValues.data(), inputNames.size(),
+                                        outputNames.data(), outputNames.size(), outputValues.data()));
+
+    NSMutableDictionary<NSString*, ORTValue*>* outputs = [[NSMutableDictionary alloc] init];
+    for (NSUInteger i = 0; i < outputNameArray.count; ++i) {
+      ORTValue* outputValue = [[ORTValue alloc] initWithCAPIOrtValue:outputValues[i] externalTensorData:nil error:error];
+      if (!outputValue) {
+        // clean up remaining C API OrtValues which haven't been wrapped by an ORTValue yet
+        for (NSUInteger j = i; j < outputNameArray.count; ++j) {
+          Ort::GetApi().ReleaseValue(outputValues[j]);
+        }
+        return nil;
+      }
+
+      outputs[outputNameArray[i]] = outputValue;
+    }
+
+    return outputs;
+  } catch (const Ort::Exception& e) {
+    ORTSaveExceptionToError(e, error);
+    return nil;
+  }
 }
 
 @end

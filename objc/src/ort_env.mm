@@ -21,16 +21,14 @@ NS_ASSUME_NONNULL_BEGIN
     try {
       _env = Ort::Env{};
     } catch (const Ort::Exception& e) {
-      [ORTErrorUtils saveErrorCode:e.GetOrtErrorCode()
-                       description:e.what()
-                           toError:error];
+      ORTSaveExceptionToError(e, error);
       self = nil;
     }
   }
   return self;
 }
 
-- (Ort::Env*)internalORTEnv {
+- (Ort::Env*)CXXAPIOrtEnv {
   return &(*_env);
 }
 

@@ -7,11 +7,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 static NSString* const kOrtErrorDomain = @"onnxruntime";
 
-@implementation ORTErrorUtils
+void ORTThrowNotImplementedException(const char* description) {
+  throw Ort::Exception{description, ORT_NOT_IMPLEMENTED};
+}
 
-+ (void)saveErrorCode:(int)code
-          description:(const char*)descriptionCstr
-              toError:(NSError**)error {
+void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSError** error) {
   if (!error) return;
 
   NSString* description = [NSString stringWithCString:descriptionCstr
@@ -22,6 +22,8 @@ static NSString* const kOrtErrorDomain = @"onnxruntime";
                            userInfo:@{NSLocalizedDescriptionKey : description}];
 }
 
-@end
+void ORTSaveExceptionToError(const Ort::Exception& e, NSError** error) {
+  ORTSaveCodeAndDescriptionToError(e.GetOrtErrorCode(), e.what(), error);
+}
 
 NS_ASSUME_NONNULL_END

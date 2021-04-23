@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Creates an ORT Environment.
  *
- * @param error Optional error information set if an error occurs.
+ * @param[out] error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithError:(NSError**)error NS_DESIGNATED_INITIALIZER;
