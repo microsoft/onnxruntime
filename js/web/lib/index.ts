@@ -7,4 +7,4 @@ import {onnxjsBackend} from './backend-onnxjs';
 import {wasmBackend} from './backend-wasm';
 
 registerBackend('webgl', onnxjsBackend, 1);
-registerBackend('wasm', wasmBackend, 0);
+registerBackend('wasm', wasmBackend, 2);
