@@ -132,8 +132,7 @@ def flip_type(flip, type):
     return (TensorProto.FLOAT16 if type == TensorProto.FLOAT else TensorProto.FLOAT) if flip else type
 
 
-def do_cast_inputs(input_0, input_1, nodes):
-    input_cast_type = TensorProto.FLOAT
+def do_cast_inputs(input_0, input_1, nodes, input_cast_type):
     nodes.extend([helper.make_node(
         "Cast",
         [input_0],
@@ -155,13 +154,13 @@ def do_transpose_inputs(input_0, input_1, nodes):
     return "input_transpose_0", "input_transpose_1"
 
 
-def do_cast_product(product, nodes):
+def do_cast_product(product, nodes, product_type):
     nodes.insert(1, helper.make_node(
         "Cast",
         [product],
         [product+"_cast"],
         "Cast_2",
-        to=TensorProto.FLOAT16))
+        to=product_type))
     return product+"_cast"
 
 
@@ -203,11 +202,11 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
         if cast_inputs:
-            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
             input_type = flip_type(True, input_type)
     else:
         if cast_inputs:
-            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+            input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
             input_type = flip_type(True, input_type)
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
@@ -222,7 +221,7 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
         product = do_transpose_product(product, nodes)
 
     if cast_product:
-        product = do_cast_product(product, nodes)
+        product = do_cast_product(product, nodes, flip_type(True, product_type))
         product_type = flip_type(True, product_type)
 
     inputs = [
@@ -264,7 +263,7 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
          nodes, inputs, outputs, [])
 
 
-def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second_matmul):
+def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second_matmul, cast_inputs):
     def do_transpose(output_0, output_1, transpose, nodes):
         nodes.append(helper.make_node("Transpose", [output_0], [
                      "transpose_0_"+output_0], "Transpose_0"))
@@ -274,25 +273,32 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
                          "transpose_1_"+output_1], "Transpose_1"))
             output_1 = "transpose_1_"+output_1
         return output_0, output_1
-    input_type = TensorProto.FLOAT
+    input_type = flip_type(cast_inputs, TensorProto.FLOAT)
     input_0 = "input_0"
     input_1 = "input_1"
     output = "product"
     output_0 = "product"
     output_1 = "product"
+    outputs = []
+    nodes = []
+    cast_count=0
     inputs = [
         helper.make_tensor_value_info(
-            input_0, input_type, ['M', 'K']),
+            "input_0", input_type, ['M', 'K']),
         helper.make_tensor_value_info(
-            input_1, input_type, ['K', 'N'])
+            "input_1", input_type, ['K', 'N'])
     ]
-    outputs = []
-    nodes = [
-        helper.make_node(
+    if cast_inputs:
+        input_type = flip_type(True, input_type)
+        input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
+        cast_count +=2
+    output0_type = input_type
+    output1_type = input_type
+    nodes.append(helper.make_node(
             "MatMul",
             [input_0, input_1],
             [output],
-            "MatMul_0")]
+            "MatMul_0"))
     if second_matmul:
         nodes.append(helper.make_node(
             "MatMul",
@@ -311,33 +317,34 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
                 "sum",  input_type, ['M', 'N']))
     if transpose > 0 and transpose_before_cast:
         output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
-
+    output0_type = flip_type(True, output0_type)
     nodes.append(helper.make_node(
         "Cast",
         [output_0],
-        ["cast_0_"+output_0],
-        "Cast_0",
-        to=TensorProto.FLOAT16))
-    output_0 = "cast_0_"+output_0
-
+        ["cast_"+str(cast_count)+"_"+output_0],
+        "Cast_"+str(cast_count),
+        to=output0_type))
+    output_0 = "cast_"+str(cast_count)+"_"+output_0
+    cast_count += 1
     if second_matmul:
         nodes.append(helper.make_node(
             "Cast",
             [output_1],
-            ["cast_1_"+output_1],
-            "Cast_1",
+            ["cast_"+str(cast_count)+"_"+output_1],
+            "Cast_"+str(cast_count),
             to=TensorProto.FLOAT16))
-        output_1 = "cast_1_"+output_1
-
+        output_1 = "cast_"+str(cast_count)+"_"+output_1
+        output1_type = flip_type(True, output1_type)
     if transpose > 0 and not transpose_before_cast:
         output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
 
     outputs.extend([
         helper.make_tensor_value_info(
-            output_0,  flip_type(True, input_type), ['M', 'N']),
+            output_0,  output0_type, ['M', 'N']),
         helper.make_tensor_value_info(
-            output_1,  flip_type(second_matmul, input_type), ['M', 'N'])
+            output_1, output1_type, ['M', 'N'])
     ])
+    model_path += "_cast_inputs" if cast_inputs else ""
     model_path += ("_transpose_before_cast" if transpose_before_cast else "_transpose_after_cast") if transpose > 0 else ""
     model_path += "_transpose" if transpose > 1 else ""
     model_path += "_second_matmul" if second_matmul else ""
@@ -355,10 +362,10 @@ for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add,
 gen_fuse_sibling_casts("fuse_sibling_casts")
 gen_fuse_back2back_casts("fuse_back2back_casts")
 
-for (transpose, transpose_before_cast, second_matmul, add_products) in list(itertools.product([0, 1, 2], [False, True], [False, True], [False, True])):
+for (transpose, transpose_before_cast, second_matmul, add_products, cast_inputs) in list(itertools.product([0, 1, 2], [False, True], [False, True], [False, True], [False, True])):
     if not transpose and transpose_before_cast:
         continue
     if not second_matmul and add_products:
         continue
     gen_matmul_two_products("matmul_two_outputs", transpose,
-                            transpose_before_cast, second_matmul)
+                            transpose_before_cast, second_matmul, cast_inputs)
