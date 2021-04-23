@@ -165,13 +165,6 @@ set(JAVA_PACKAGE_JNI_DIR ${JAVA_NATIVE_JNI_DIR}/${JAVA_PACKAGE_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_LIB_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_JNI_DIR})
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
-  set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
-  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
-  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
-endif()
-
 # On Windows TARGET_LINKER_FILE_NAME is the .lib, TARGET_FILE_NAME is the .dll
 if (WIN32)
   #Our static analysis plugin set /p:LinkCompiled=false
@@ -182,11 +175,6 @@ if (WIN32)
 else()
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
-endif()
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
 endif()
 
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
@@ -204,5 +192,26 @@ if(onnxruntime_USE_CUDA)
 endif()
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
+  set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
+  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
+  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
+
+  set(ANDROID_TEST_PACKAGE_ROOT ${JAVA_ROOT}/src/test/android)
+  set(ANDROID_TEST_PACKAGE_DIR ${JAVA_OUTPUT_DIR}/androidtest)
+  #copy the androidtest project into cmake binary directory
+  file(MAKE_DIRECTORY ${ANDROID_TEST_PACKAGE_DIR})
+  file(COPY ${ANDROID_TEST_PACKAGE_ROOT} DESTINATION ${ANDROID_TEST_PACKAGE_DIR})
+  set(ANDROID_TEST_PACKAGE_LIB_DIR ${ANDROID_TEST_PACKAGE_DIR}/android/app/libs)
+  file(MAKE_DIRECTORY ${ANDROID_TEST_PACKAGE_LIB_DIR})
+
+  # Create symbolic links for onnxruntime.so and onnxruntime4j_jni.so for building Android AAR package
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+  # Generate the Android AAR package
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+  # Copy the built Android AAR package to libs folder of our test app
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink ${ANDROID_PACKAGE_OUTPUT_DIR}/outputs/aar/onnxruntime-debug.aar ${ANDROID_TEST_PACKAGE_LIB_DIR}/onnxruntime-debug.aar)
+  # Build Android test apk for java package
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build.gradle assembleDebug WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_ROOT})
 endif()
