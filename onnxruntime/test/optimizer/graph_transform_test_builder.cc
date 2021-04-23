@@ -43,13 +43,17 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     session_options.graph_optimization_level = level;
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
-    ASSERT_TRUE(session.Initialize().IsOK());
+    auto status = session.Initialize();
+    if (!status.IsOK()) {
+      std::cout << "Model initialized failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
 
     RunOptions run_options;
-    auto status = session.Run(run_options,
-                              helper.feeds_,
-                              helper.output_names_,
-                              &fetches);
+    status = session.Run(run_options,
+                         helper.feeds_,
+                         helper.output_names_,
+                         &fetches);
     if (!status.IsOK()) {
       std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
     }
