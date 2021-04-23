@@ -104,7 +104,7 @@ void FunctionTestCase::AddInput(std::string input_name, std::vector<int64_t> sha
 }
 
 void FunctionTestCase::AddOutput(std::string output_name) {
-  output_names.emplace_back(output_name);
+  if (!output_name.empty()) output_names.emplace_back(output_name);
   output_args.emplace_back(output_name, nullptr);
 }
 
@@ -147,7 +147,7 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
 
   if (inline_call) {
     graph.InlineFunction(call_node);
-#if _LOCAL_DEBUG_FLAG_
+#if 0
     std::cout << graph << std::endl;
 #endif
     status = graph.Resolve();

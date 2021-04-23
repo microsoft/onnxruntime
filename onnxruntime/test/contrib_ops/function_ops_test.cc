@@ -20,7 +20,7 @@ static void RegisterSchemas() {
 }
 
 template <typename T, typename U, bool RunTest>
-void CheckLayerNorm() {
+void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
   FunctionTestCase testCase("LayerNormalization", kOnnxDomain);
   std::vector<int64_t> shape1{8, 16};
   std::vector<int64_t> shape2{16};
@@ -29,14 +29,14 @@ void CheckLayerNorm() {
   testCase.AddInput<T, RunTest>("scale", shape2);
   testCase.AddInput<T, RunTest>("bias", shape2);
   testCase.AddOutput("y");
-  testCase.AddOutput("mean");
-  testCase.AddOutput("invstddev");
+  testCase.AddOutput(compute_mean ? "mean" : "");
+  testCase.AddOutput(compute_isd ? "invstddev" : "");
   testCase.AddAttribute("stash_type", data_types_internal::ToTensorDataType<U>());
   if (RunTest)
     testCase.RunTest();
   else
     testCase.CreateModel(true);
-}
+}  // namespace test
 
 TEST(LayerNormExpansionTest, Test0) {
   RegisterSchemas();
@@ -44,6 +44,14 @@ TEST(LayerNormExpansionTest, Test0) {
   CheckLayerNorm<float, float, true>();
   // Test expand-and-check-only
   CheckLayerNorm<MLFloat16, BFloat16, false>();
+}
+
+TEST(LayerNormExpansionTest, OptionalOutputs) {
+  RegisterSchemas();
+  // Test expand-and-run
+  CheckLayerNorm<float, float, true>(false, false);
+  CheckLayerNorm<float, float, true>(false, true);
+  CheckLayerNorm<float, float, true>(true, false);
 }
 
 }  // namespace test
