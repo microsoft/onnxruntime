@@ -2,16 +2,18 @@
 
 ## Overview
 
-<img align="left" width=40% src="images/Mobile.png" alt="Steps to build for mobile platforms."/>
-
-ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
+ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile, edge and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
 A minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
-I.e., the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
+i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
+
+<br>
+<img align="center" src="images/Mobile.png" alt="Steps to build for mobile platforms."/>
+<br>
 
 ## Steps to create model and minimal build
 
-You will need a script from the ONNX Runtime repository and to also perform a custom build, so you will need to clone the repository locally. See [here](https://www.onnxruntime.ai/docs/how-to/build.html#prerequisites) for initial steps.
+As you will need to perform a custom build of ONNX Runtime, you will need to clone the repository locally. See [here](https://www.onnxruntime.ai/docs/how-to/build.html#prerequisites) for initial steps.
 
 The directory the ONNX Runtime repository was cloned into is referred to as `<ONNX Runtime repository root>` in this documentation.
 
@@ -28,26 +30,29 @@ It is also possible (and optional) to further prune the operator kernel implemen
 This pruning is referred to as "operator type reduction" in this documentation.
 
 - The helper python script requires the standard ONNX Runtime python package to be installed. Install the ONNX Runtime python package from https://pypi.org/project/onnxruntime/. Version 1.5.2 or later is required.
-  To enable operator type reduction, version 1.7 or later is required.
   - `pip install onnxruntime`
   - Ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package.
 
-- Additionally, if you want to enable operator type reduction, the Flatbuffers python package should be installed.
+- Additionally, if you want to enable operator type reduction, version 1.7 of ONNX Runtime is required, and the flatbuffers python package must be installed.
   - `pip install flatbuffers`
 
 - Copy all the ONNX models you wish to convert and use with the minimal build into a directory.
 
 - Convert the ONNX models to ORT format
-  - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more .onnx models>`
-    - To enable operator type reduction, specify the `--enable_type_reduction` option.
-  - For each ONNX model an ORT format model will be created with '.ort' as the file extension.
+  - Run the helper script to convert the models
+    - For ONNX Runtime version 1.8 or later you can use ONNX Runtime python package:
+      - `python -m onnxruntime.tools.convert_onnx_models_to_ort <path to directory containing one or more .onnx models>` 
+    - Alternatively use the conversion script in the ONNX Runtime repository:
+      - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more onnx models>`
+  - To enable operator type reduction, specify the `--enable_type_reduction` option
+  - For each ONNX model an ORT format model will be created with '.ort' as the file extension
   - A configuration file will also be created.
     If operator type reduction is enabled, the file will be called `required_operators_and_types.config`.
     Otherwise, the file will be called `required_operators.config`.
 
 Example:
 
-Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
+Running `python -m onnxruntime.tools.convert_onnx_models_to_ort /models` where the '/models' directory contains ModelA.onnx and ModelB.onnx
   - Will create /models/ModelA.ort and /models/ModelB.ort
   - Will create /models/required_operators.config
 
@@ -144,10 +149,10 @@ For a more in-depth analysis of the performance considerations when using NNAPI 
 
 ### Limit ORT format model to ONNX operators
 
-The NNAPI Execution Provider is only able to execute ONNX operators using NNAPI. When creating the ORT format model it is recommended to limit the optimization level to 'basic' so that custom internal ONNX Runtime operators are not added by the 'extended' optimizations. This will ensure that the maximum number of nodes can be executed using NNAPI. See the [graph optimization](https://www.onnxruntime.ai/docs/resources/graph-optimizations.html) documentation for details on the optimization levels.
+The NNAPI Execution Provider is only able to execute ONNX operators using NNAPI. When creating the ORT format model it is recommended to limit the optimization level to 'basic' so that custom internal ONNX Runtime operators are not added by the 'extended' or 'all' optimization levels. This will ensure that the maximum number of nodes can be executed using NNAPI. See the [graph optimization](https://www.onnxruntime.ai/docs/resources/graph-optimizations.html) documentation for details on the optimization levels.
 
 To limit the optimization level when creating the ORT format models using `tools\python\convert_onnx_models_to_ort.py` as per the above [instructions](#1-Create-ORT-format-model-and-configuration-file-with-required-operators), add `--optimization_level basic` to the arguments.
-  - e.g. `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --optimization_level basic /models`
+  - e.g. `python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_level basic /models` or `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --optimization_level basic /models`
 
 ### Create a minimal build for Android with NNAPI support
 
