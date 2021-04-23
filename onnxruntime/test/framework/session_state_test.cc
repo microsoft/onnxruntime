@@ -20,6 +20,12 @@
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_execution_provider.h"
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace std;
 namespace onnxruntime {
@@ -172,6 +178,72 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
     }
   }
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri, size_t expected_cpu_cnt, size_t expected_gpu_cnt) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = model->MainGraph();
+
+  ExecutionProviders execution_providers;
+#if defined(USE_CUDA)
+  CUDAExecutionProviderInfo cuda_epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, onnxruntime::make_unique<CUDAExecutionProvider>(cuda_epi)));
+#elif defined(USE_ROCM)
+  ROCMExecutionProviderInfo rocm_epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kRocmExecutionProvider, onnxruntime::make_unique<ROCMExecutionProvider>(rocm_epi)));
+#endif
+  // add CPU EP
+  CPUExecutionProviderInfo epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+
+  SessionState session_state(graph, execution_providers, false, nullptr, nullptr, dtm,
+                             DefaultLoggingManager().DefaultLogger(), profiler);
+
+  // Partition the graph. Here, the graph partitioner assigns EPs to the nodes
+  GraphPartitioner partitioner(krm, execution_providers);
+  ASSERT_STATUS_OK(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
+
+  // check how many nodes are assigned to CPU and GPU
+  size_t actual_cpu_cnt = 0, actual_gpu_cnt = 0;
+  for (auto& node : graph.Nodes()) {
+    // assert that EP is assigned
+    ASSERT_TRUE(!node.GetExecutionProviderType().empty());
+    auto& ep = node.GetExecutionProviderType();
+    if (ep == onnxruntime::kCudaExecutionProvider || ep == onnxruntime::kRocmExecutionProvider) {
+      ++actual_gpu_cnt;
+    } else if (ep == onnxruntime::kCpuExecutionProvider) {
+      ++actual_cpu_cnt;
+    } else {
+      ASSERT_TRUE(false) << "Invalid execution provider assigned to node: " << node.Name() << " , value: " << ep;
+    }
+  }
+  ASSERT_EQ(expected_cpu_cnt, actual_cpu_cnt);
+  ASSERT_EQ(expected_gpu_cnt, actual_gpu_cnt);
+}
+
+TEST(SessionStateTest, CPUPlacementTest0) {
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_0.onnx"), 6, 2);
+}
+TEST(SessionStateTest, CPUPlacementTest1) {
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_1.onnx"), 1, 2);
+}
+TEST(SessionStateTest, CPUPlacementTest2) {
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_2.onnx"), 1, 2);
+}
+TEST(SessionStateTest, CPUPlacementTest3) {
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_3.onnx"), 2, 6);
+}
+TEST(SessionStateTest, CPUPlacementTest4) {
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), 3, 2);
+}
+#endif
 
 // Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
 // if the relevant session option config flag is set
