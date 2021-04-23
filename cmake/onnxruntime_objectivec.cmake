@@ -27,7 +27,7 @@ if(onnxruntime_DEV_MODE)
         "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Werror>")
 endif()
 
-set(OBJC_ROOT "${REPO_ROOT}/objc")
+set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 
 set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 

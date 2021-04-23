@@ -1579,7 +1579,7 @@ endif()
 
 if (onnxruntime_BUILD_OBJC)
   message(STATUS "Objective-C Build is enabled")
-  include(onnxruntime_objc.cmake)
+  include(onnxruntime_objectivec.cmake)
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
