@@ -27,6 +27,8 @@ limitations under the License.
 #include "longformer_attention_softmax.h"
 #include "attention_impl.h"
 
+#include "blockreducesum_stable.cuh"
+
 using namespace onnxruntime::cuda;
 using namespace cub;
 
@@ -34,6 +36,7 @@ using namespace cub;
   if (!CUBLAS_CALL(expr)) { \
     return false;           \
   }
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -51,7 +54,7 @@ __launch_bounds__(blockSize)
                                                 int dim0,
                                                 int sequence_length,
                                                 int attention_window) {
-  typedef cub::BlockReduce<float, blockSize> BlockReduce;
+  typedef cub::BlockReduce<float, blockSize, cub::BLOCK_REDUCE_RAKING> BlockReduce;
   __shared__ typename BlockReduce::TempStorage block_reduce_temp;
   __shared__ float max_shared;
   __shared__ float sum_shared;
@@ -113,6 +116,7 @@ __launch_bounds__(blockSize)
     }
   }
 
+  __syncthreads();
   float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
   if (tid == 0) {
     max_shared = max_block;
@@ -138,7 +142,9 @@ __launch_bounds__(blockSize)
     }
   }
 
-  float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+  __syncthreads();
+  float sum_block = blockReduceSum<blockSize>(sum_input);
+  //  BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
   if (tid == 0) {
     sum_shared = sum_block;
   }
