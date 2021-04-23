@@ -197,14 +197,18 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
     input_1 = "input_1"
     product = "product"
     nodes = []
+    input_type = TensorProto.FLOAT
+    product_type = input_type
     if transpose_inputs_before_cast:
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
         if cast_inputs:
             input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+            input_type = flip_type(True, input_type)
     else:
         if cast_inputs:
             input_0, input_1 = do_cast_inputs(input_0, input_1, nodes)
+            input_type = flip_type(True, input_type)
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
     nodes.append(helper.make_node(
@@ -219,12 +223,8 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
 
     if cast_product:
         product = do_cast_product(product, nodes)
+        product_type = flip_type(True, product_type)
 
-    output = product
-
-    input_type = TensorProto.FLOAT16 if cast_inputs else TensorProto.FLOAT
-    output_type = flip_type(cast_sum, flip_type(
-        cast_product, flip_type(cast_inputs, input_type)))
     inputs = [
         helper.make_tensor_value_info(
             "input_0", input_type, ['N', 'N']),
@@ -232,23 +232,24 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             "input_1", input_type, ['N', 'N'])
     ]
     if insert_add:
-
         input_2 = "input_2"
-        add_input_type = flip_type(
-            True, input_type) if cast_inputs != cast_product else input_type
-        add_input_type = flip_type(cast_input2, add_input_type)
+        add_input_type = flip_type(cast_input2, product_type)
         inputs.append(helper.make_tensor_value_info(
             input_2, add_input_type, ['N', 'N']))
-        add_output = "sum"
+        output = "sum"
+        output_type = product_type
         if cast_input2:
             input_2 = do_cast_input2(
                 input_2, nodes, flip_type(True, add_input_type))
         nodes.append(helper.make_node(
-            "Add", [product, input_2], [add_output], "Add_0"))
+            "Add", [product, input_2], [output], "Add_0"))
         if cast_sum:
-            add_output = do_cast_sum(add_output, nodes, flip_type(
-                not cast_input2, add_input_type))
-        output = add_output
+            output = do_cast_sum(output, nodes, flip_type(
+                True, output_type))
+            output_type = flip_type(True, output_type)
+    else:
+        output = product
+        output_type = product_type
     outputs = [
         helper.make_tensor_value_info(
             output, output_type, ['N', 'N'])
