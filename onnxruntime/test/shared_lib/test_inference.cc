@@ -1351,9 +1351,9 @@ TEST(CApiTest, TestSharingOfInitializer) {
   session_options.AddInitializer("W", val);
 
   OrtPrepackedWeightsCache* prepacked_weights_cache;
-  Ort::GetApi().CreatePrepackedWeightsCache(&prepacked_weights_cache);
+  ASSERT_TRUE(Ort::GetApi().CreatePrepackedWeightsCache(&prepacked_weights_cache) == nullptr);
 
-  Ort::GetApi().AddPrepackedWeightsCacheToSessionoptions(session_options, prepacked_weights_cache);
+  ASSERT_TRUE(Ort::GetApi().AddPrepackedWeightsCacheToSessionoptions(session_options, prepacked_weights_cache) == nullptr);
 
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // create session 1
