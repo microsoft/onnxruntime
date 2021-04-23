@@ -29,6 +29,9 @@
 #include <TraceLoggingActivity.h>
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
 class Environment;

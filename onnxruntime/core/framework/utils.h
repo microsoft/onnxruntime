@@ -10,7 +10,9 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
-
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 class TensorProto;

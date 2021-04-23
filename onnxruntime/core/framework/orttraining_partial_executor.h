@@ -14,7 +14,7 @@
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/sequential_executor.h"
+#include "core/framework/partial_graph_execution_state.h"
 
 namespace onnxruntime {
 class PartialExecutor : public IExecutor {

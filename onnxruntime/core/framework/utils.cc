@@ -19,7 +19,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #ifdef ENABLE_TRAINING
-#include "core/framework/partial_executor.h"
+#include "core/framework/orttraining_partial_executor.h"
 #endif
 
 namespace ONNX_NAMESPACE {

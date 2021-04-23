@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING
-#include "core/framework/partial_executor.h"
+#include "core/framework/orttraining_partial_executor.h"
 
 #include <chrono>
 #include <thread>
@@ -151,7 +151,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     auto frame = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs,
                                                           fetches, fetch_allocators, session_state);
 
-    state_.SetExecutionFrame(frame);
+    state_.SetExecutionFrame(std::move(frame));
   } else {
     state_.GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
     state_.GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());

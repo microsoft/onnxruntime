@@ -10,6 +10,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/framework_common.h"
 #include "core/session/inference_session.h"
+#include "core/framework/partial_graph_execution_state.h"
 
 namespace onnxruntime {
 namespace training {

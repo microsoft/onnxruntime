@@ -7,6 +7,7 @@ from . import _ortmodule_utils as _utils, _ortmodule_io as _io
 from ._ortmodule_graph_execution_manager import GraphExecutionManager, _run_forward
 from onnxruntime.capi import _pybind_state as C
 from . import _utils as U
+from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
 import onnx
 import onnxruntime
@@ -22,15 +23,6 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model):
         super().__init__(model)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
-    
-    def _get_ort_device_type(self, device):
-        device = device.lower()
-        if device == 'cuda':
-            return C.OrtDevice.cuda()
-        elif device == 'cpu':
-            return C.OrtDevice.cpu()
-        else:
-            raise Exception('Unsupported device type: ' + device)
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -185,13 +177,13 @@ class TrainingManager(GraphExecutionManager):
         fw_feed_names = [input.name for input in self._optimized_onnx_model.graph.input]
         fw_outputs_device_info = []
         for idx in range(len(self._graph_info.user_output_names)):
-            fw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
+            fw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
             C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         bw_fetches_names = [output.name for output in self._optimized_onnx_model.graph.output]
         bw_outputs_device_info = []
         for idx in range(len(bw_fetches_names)):
-            bw_outputs_device_info.append(C.OrtDevice(self._get_ort_device_type(self._device.type),
+            bw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
             C.OrtDevice.default_memory(), U.get_device_index(self._device)))
 
         self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),

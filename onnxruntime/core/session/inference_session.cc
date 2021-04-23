@@ -1512,19 +1512,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
                                     FeedsFetchesManager& feeds_fetches_manager) {
-  TimePoint tp;
-  if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
-  }
-
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
-  ortrun_activity.SetRelatedActivity(session_activity);
-  TraceLoggingWriteStart(ortrun_activity, "OrtRun");
-#endif
   Status retval = Status::OK();
-  const Env& env = Env::Default();
-
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
@@ -1534,14 +1522,9 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
-    // log evaluation start to trace logging provider
-    env.GetTelemetryProvider().LogEvaluationStart();
-
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
-
-    ++current_num_runs_;
 
     // scope of owned_run_logger is just the call to Execute.
     // If Execute ever becomes async we need a different approach
@@ -1586,33 +1569,6 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
-  --current_num_runs_;
-
-  // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-
-  // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
-  }
-
-  // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
-
-  // send out profiling events (optional)
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
-  }
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  TraceLoggingWriteStop(ortrun_activity, "OrtRun");
-#endif
   return retval;
 }
 #endif
