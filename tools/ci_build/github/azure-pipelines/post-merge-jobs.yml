@@ -13,6 +13,7 @@ jobs:
       inputs:
         script: |
           set -e
+          export PATH=/opt/llvm/bin:$PATH
           sudo apt-get install -y python3-pip
           sudo python3 -m pip install mysql-connector-python
           ln -s /data/models .
