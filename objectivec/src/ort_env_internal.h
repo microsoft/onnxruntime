@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTEnv ()
 
-- (Ort::Env*)CXXAPIOrtEnv;
+- (Ort::Env&)CXXAPIOrtEnv;
 
 @end
 

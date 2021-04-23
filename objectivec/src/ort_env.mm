@@ -28,8 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
   return self;
 }
 
-- (Ort::Env*)CXXAPIOrtEnv {
-  return &(*_env);
+- (Ort::Env&)CXXAPIOrtEnv {
+  return *_env;
 }
 
 @end

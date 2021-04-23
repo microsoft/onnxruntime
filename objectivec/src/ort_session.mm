@@ -25,7 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
   if (self) {
     try {
       Ort::SessionOptions sessionOptions{};  // TODO make configurable
-      _session = Ort::Session{*[env CXXAPIOrtEnv], path.UTF8String, sessionOptions};
+      _session = Ort::Session{[env CXXAPIOrtEnv], path.UTF8String, sessionOptions};
     } catch (const Ort::Exception& e) {
       ORTSaveExceptionToError(e, error);
       self = nil;
@@ -47,12 +47,12 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] CXXAPIOrtValue]));
+      inputValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
     }
 
     for (NSString* outputName in outputs) {
       outputNames.push_back(outputName.UTF8String);
-      outputValues.push_back(static_cast<OrtValue*>(*[outputs[outputName] CXXAPIOrtValue]));
+      outputValues.push_back(static_cast<OrtValue*>([outputs[outputName] CXXAPIOrtValue]));
     }
 
     Ort::ThrowOnError(Ort::GetApi().Run(*_session, runOptions,
@@ -80,7 +80,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>(*[inputs[inputName] CXXAPIOrtValue]));
+      inputValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
     }
 
     for (NSString* outputName in outputNameArray) {

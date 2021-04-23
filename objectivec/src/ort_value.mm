@@ -206,8 +206,8 @@ size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
   return self;
 }
 
-- (Ort::Value*)CXXAPIOrtValue {
-  return &(*_value);
+- (Ort::Value&)CXXAPIOrtValue {
+  return *_value;
 }
 
 @end

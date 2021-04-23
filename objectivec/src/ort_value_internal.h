@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
                            externalTensorData:(nullable NSMutableData*)externalTensorData
                                         error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
-- (Ort::Value*)CXXAPIOrtValue;
+- (Ort::Value&)CXXAPIOrtValue;
 
 @end
 
