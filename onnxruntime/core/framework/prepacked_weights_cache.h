@@ -51,7 +51,7 @@ class PrepackedWeightsCache {
     return allocators_[name];
   }
 
-  PackedWeight& GetOrCreateCachedWeight(const std::string& initializer_name, /*out*/ bool is_cached) {
+  PackedWeight& GetOrCreateCachedWeight(const std::string& initializer_name, /*out*/ bool& is_cached) {
     auto iter = initialized_tensor_name_to_prepacked_weights_.find(initializer_name);
     if (iter != initialized_tensor_name_to_prepacked_weights_.end()) {
       is_cached = true;
