@@ -2381,7 +2381,8 @@ void Graph::InitFunctionBodyForNode(Node& node) {
           input_types.emplace_back();
       }
       onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
+        return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
@@ -2391,7 +2392,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     for (const auto& fn_import : onnx_function_proto.opset_import()) {
       auto it = graphImports.find(fn_import.domain());
       if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return; // Incompatible. Do not use this function expansion.
+        return;  // Incompatible. Do not use this function expansion.
     }
 
     auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,

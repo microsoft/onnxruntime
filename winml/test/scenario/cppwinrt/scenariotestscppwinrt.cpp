@@ -1389,7 +1389,7 @@ static void DeviceLostRecovery() {
   } catch (...) {
   }
 
-  // remove all references to the device by reseting the session and binding.
+  // remove all references to the device by resetting the session and binding.
   session = nullptr;
   binding = nullptr;
 

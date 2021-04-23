@@ -473,7 +473,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
-    runtime_ = nvinfer1::createInferRuntime(GetTensorrtLogger());
+    runtime_ = tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
   }
 
   const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
@@ -1243,7 +1243,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &max_workspace_size_,
-            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_, trt_profile_,
+            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
             allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_};
       *state = p.release();
       return 0;
@@ -1266,7 +1266,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
-      auto trt_profile = trt_state->trt_profile;
+      auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
       int num_inputs = input_indexes.size();
       int num_outputs = output_indexes.size();
@@ -1295,9 +1295,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
-          auto runtime_ = trt_state->runtime;
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+              trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
@@ -1433,12 +1432,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               engine_update = true;
             }
 
-            if (trt_profile == nullptr) {
-              trt_profile = trt_builder->createOptimizationProfile();
+            if (*trt_profile == nullptr) {
+              *trt_profile = trt_builder->createOptimizationProfile();
             }
-            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
-            trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
 
           } else {  // Execution tensor
             nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
@@ -1465,12 +1464,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               }
             }
 
-            if (trt_profile == nullptr) {
-              trt_profile = trt_builder->createOptimizationProfile();
+            if (*trt_profile == nullptr) {
+              *trt_profile = trt_builder->createOptimizationProfile();
             }
-            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-            trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
           }
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         }
@@ -1483,7 +1482,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_state->engine->reset();
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
-        trt_config->addOptimizationProfile(trt_profile);
+        trt_config->addOptimizationProfile(*trt_profile);
 
         // Set INT8 Per Tensor Dynamic range
         if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {

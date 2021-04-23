@@ -29,6 +29,9 @@
 #include <TraceLoggingActivity.h>
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
 class Environment;
@@ -302,6 +305,24 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
+  /**
+  * Partially run a pre-loaded and pre-intialized model.
+    * @param run_options run options. 
+    * @param feeds inputs owned by client code and should not be changed during
+    *        execution of this function.
+    * @param fetches outputs produced after the executin of this function.
+    * @param state State of the graph needed to resume partial graph run.
+    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
+    *                              copy/checks.
+  */
+  common::Status PartialRun(onnxruntime::RunOptions& run_options,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state,
+                            FeedsFetchesManager& feeds_fetches_manager);
+#endif
+
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -402,6 +423,11 @@ class InferenceSession {
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
 
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -423,11 +449,6 @@ class InferenceSession {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   bool IsInitialized() const;
-
-  const SessionState& GetSessionState() const {
-    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
-    return *session_state_;
-  }
 
   // Use these 2 threadpool methods to get access to the threadpools since they rely on
   // specific flags in session options

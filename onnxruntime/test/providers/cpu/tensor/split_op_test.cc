@@ -18,17 +18,20 @@ template <typename T>
 void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
              const std::vector<ShapeAndData<T>>& outputs, bool is_tensorrt_supported = true,
              bool expect_failure = false, bool split_as_input = false,
-             bool is_initializer = true, const std::string& err_msg = {}) {
+             bool is_initializer = true, const std::string& err_msg = {}, bool skip_split_if_empty = true) {
   int opset_version = split_as_input ? 13 : 7;
   OpTester test("Split", opset_version, onnxruntime::kOnnxDomain);
 
   test.AddAttribute("axis", axis);
   test.AddInput<T>("input", input.first, input.second);
-  if (!split_sizes.empty()){
-    if (split_as_input)
+  if (!split_sizes.empty()) {
+    if (split_as_input) {
       test.AddInput<int64_t>("split", {static_cast<int64_t>(split_sizes.size())}, split_sizes, is_initializer);
-    else
+    } else {
       test.AddAttribute("split", split_sizes);
+    }
+  } else if (!skip_split_if_empty) {
+    test.AddMissingOptionalInput<int64_t>();
   }
 
   int i = 0;
@@ -611,6 +614,26 @@ TEST(SplitOperatorTest, Uint8NegativeAxis) {
                       7, 8}});
 
   RunTest<uint8_t>(axis, {}, input, outputs, false);
+}
+
+TEST(SplitOperatorTest, MissingOptionalInputAdded) {
+  const int64_t axis = 1;  // split last axis equally
+  std::vector<ShapeAndFloatData> outputs;
+
+  // input shape and data
+  ShapeAndFloatData input = {{2, 4},
+                             {1.f, 2.f, 3.f, 4.f,
+                              5.f, 6.f, 7.f, 8.f}};
+
+  outputs.push_back({{2, 2},
+                     {1.f, 2.f,
+                      5.f, 6.f}});
+
+  outputs.push_back({{2, 2},
+                     {3.f, 4.f,
+                      7.f, 8.f}});
+
+  RunTest<float>(axis, {}, input, outputs, false, false, true, false, {}, false);
 }
 
 }  // namespace test
