@@ -64,11 +64,16 @@ target_include_directories(onnxruntime_objc
     PUBLIC
         "${OBJC_ROOT}/include"
     PRIVATE
+        "${ONNXRUNTIME_ROOT}"
         "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
-target_link_libraries(onnxruntime_objc PUBLIC onnxruntime ${FOUNDATION_LIB})
+target_link_libraries(onnxruntime_objc
+    PRIVATE
+        onnxruntime
+        safeint_interface
+        ${FOUNDATION_LIB})
 
 target_compile_options(onnxruntime_objc PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
