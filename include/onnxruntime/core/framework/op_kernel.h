@@ -17,6 +17,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/prepacked_weights_cache.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
@@ -84,6 +85,19 @@ class OpKernel {
                          /*out*/ bool& /*read_from_cache*/,
                          AllocatorPtr /*alloc_for_caching*/) {
     is_packed = false;
+    return Status::OK();
+  }
+
+  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed) {
+    is_packed = false;
+    return Status::OK();
+  }
+
+  virtual Status PrePack(AllocatorPtr /*alloc_for_caching*/) {
+    return Status::OK();
+  }
+
+  virtual Status Dummy() {
     return Status::OK();
   }
 
