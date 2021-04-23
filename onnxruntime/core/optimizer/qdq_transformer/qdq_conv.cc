@@ -36,6 +36,16 @@ class QDQConvTransformer : public QDQOperatorTransformer {
 
     return true;
   }
+
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (!QDQOperatorTransformer::Check(dq_nodes, q_nodes)) {
+      return false;
+    }
+
+    // Currently QLinearConv only support activation type uint8_t
+    int32_t dt = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+  }
 };
 
 DEFINE_QDQ_CREATOR(Conv, QDQConvTransformer)

@@ -1216,12 +1216,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                           "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc", "-destination",
                           "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                               "-configuration", config,
                               "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
                               "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
@@ -1482,7 +1482,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=2000']
+    args = ['npm', 'test', '--', '--timeout=10000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
