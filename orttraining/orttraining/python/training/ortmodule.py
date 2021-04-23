@@ -9,6 +9,7 @@ from onnxruntime.training import register_custom_ops_pytorch_exporter
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
+import copy
 import functools
 import io
 import logging
@@ -520,25 +521,28 @@ class ORTModule(torch.nn.Module):
                 *inputs, **kwargs)
 
         try:
-            with torch.no_grad():
-                torch.onnx.export(self._flattened_output_module,
-                                  sample_inputs_copy + (sample_kwargs_copy, ),
-                                  f,
-                                  input_names=input_names,
-                                  output_names=output_names,
-                                  opset_version=ONNX_OPSET_VERSION,
-                                  do_constant_folding=False,
-                                  training=torch.onnx.TrainingMode.TRAINING,
-                                  dynamic_axes=dynamic_axes,
-                                  operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
-                                  custom_opsets={"prim": 1},
-                                  verbose=self._verbosity < Verbosity.WARNING)
+            cloned_model = copy.deepcopy(self._flattened_output_module)
+            # we removed torch.no_grad here, to make sure we have the right "require_grad" attributes exported
+            # in onnx model, which will be important for PythonOp to decide which tensor to compute gradients.
+            torch.onnx.export(cloned_model,
+                              sample_inputs_copy + (sample_kwargs_copy, ),
+                              f,
+                              input_names=input_names,
+                              output_names=output_names,
+                              opset_version=ONNX_OPSET_VERSION,
+                              do_constant_folding=False,
+                              training=torch.onnx.TrainingMode.TRAINING,
+                              dynamic_axes=dynamic_axes,
+                              operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
+                              custom_opsets={"prim": 1},
+                              verbose=self._verbosity < Verbosity.WARNING)
         except RuntimeError as e:
             raise RuntimeError(
                 'There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         my_model = onnx.load_model_from_string(f.getvalue())
-        my_model.opset_import[1].domain = 'com.microsoft'
+        if len(my_model.opset_import) > 1:
+            my_model.opset_import[1].domain = 'com.microsoft'
         index = 0
         for node in my_model.graph.node:
             if node.domain == 'prim':
