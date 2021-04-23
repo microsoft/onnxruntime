@@ -371,8 +371,9 @@ class ORTModule(torch.nn.Module):
 
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [name
-                             for name, _ in self._flattened_output_module.named_parameters()]
+        #initializer_names = [name
+        #                     for name, _ in self._flattened_output_module.named_parameters()]
+        initializer_names = [p.name for p in self._onnx_inference.graph.initializer]
         initializer_names_to_train = []
         if self._is_training():
             initializer_names_to_train = [name
@@ -448,6 +449,7 @@ class ORTModule(torch.nn.Module):
             self._module_gradient_graph_builder.get_training_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
+        onnx.save(self._onnx_training, 'toy_training.onnx')
         if self._save_onnx:
             onnx.save(self._onnx_training,
                       self._save_onnx_prefix + '_training.onnx')
@@ -557,18 +559,36 @@ class ORTModule(torch.nn.Module):
                 index += 1
 
         onnx.save(my_model, 'my_model_new.onnx')
-        initializer_names = [i.name for i in my_model.graph.initializer]
-        exported_model_input_count = [i for i in my_model.graph.input if i.name not in initializer_names]
-        if len(sample_inputs_copy) != len(exported_model_input_count):
-            print("WARINING: exported model has inputs {}, while training inputs are {}".format(exported_model_input_count, sample_inputs_copy))
-        if "FP16_TRAINING" in os.environ:
-            # for fp16 training, workaround the naming mismatch between exported model parameters and pytorch named parameters.
-            for p in my_model.graph.initializer:
-                p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
-            for p in my_model.graph.input:
-                p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
-            for node in my_model.graph.node:
-                for i, _ in enumerate(node.input):
-                    node.input[i] = node.input[i].replace("_base_module.language_model", "_base_module.module.language_model")
-        onnx.save(my_model, 'my_model_rectified.onnx')
+        #initializer_names = [i.name for i in my_model.graph.initializer]
+        #exported_model_input_count = [i for i in my_model.graph.input if i.name not in initializer_names]
+        #if len(sample_inputs_copy) != len(exported_model_input_count):
+        #    print("WARINING: exported model has inputs {}, while training inputs are {}".format(exported_model_input_count, sample_inputs_copy))
+        #if "FP16_TRAINING" in os.environ:
+        #    # for fp16 training, workaround the naming mismatch between exported model parameters and pytorch named parameters.
+        #    for p in my_model.graph.initializer:
+        #        p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
+        #    for p in my_model.graph.input:
+        #        p.name = p.name.replace("_base_module.language_model", "_base_module.module.language_model")
+        #    for node in my_model.graph.node:
+        #        for i, _ in enumerate(node.input):
+        #            node.input[i] = node.input[i].replace("_base_module.language_model", "_base_module.module.language_model")
+        #onnx.save(my_model, 'my_model_rectified.onnx')
+
+        #print('Before remove----------------------------------')
+        #print(my_model)
+        #print('----------------------------------')
+        used = set()
+        for node in my_model.graph.node:
+            for name in node.input:
+                used.add(name)
+        new_inits = []
+        for tensor in my_model.graph.initializer:
+            if tensor.name in used:
+                new_inits.append(tensor)
+        del my_model.graph.initializer[:]
+        my_model.graph.initializer.extend(new_inits)
+        #print('After remove----------------------------------')
+        #print(my_model)
+        #print('----------------------------------')
+        onnx.save(my_model, 'my_model_shrink.onnx')
         return my_model

@@ -1529,13 +1529,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   input_args.push_back(O(0));
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
     // input_args[i + 1] is typed to input_types[i].
-    input_args.push_back(GO(i));
+    if (input_tensor_types.at(i - 1) != 9) {
+      input_args.push_back(GO(i));
+    }
   }
 
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
     // output_args[i] is typed to output_types[i].
-    output_args.push_back(GI(i));
+    if (output_tensor_types.at(i) == 9) {
+      output_args.push_back(ArgDef());
+    } else {
+      output_args.push_back(GI(i));
+    }
   }
 
   result.push_back(NodeDef(OpDef{"PythonOpGrad", kMSDomain, 1},

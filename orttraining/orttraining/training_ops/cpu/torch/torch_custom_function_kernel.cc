@@ -55,7 +55,7 @@ Status PythonOp::Compute(OpKernelContext* context) const {
     const_arg_positions.emplace_back(input_int_scalar_positions_.at(i));
     const_args.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
   }
-  
+
   for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
     const_arg_positions.emplace_back(input_float_scalar_positions_.at(i));
     const_args.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
@@ -91,6 +91,12 @@ Status PythonOp::Compute(OpKernelContext* context) const {
     const_args.emplace_back(tuple);
   }
 
+  for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
+    const_arg_positions.emplace_back(input_pointer_scalar_positions_.at(i));
+    PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
+    const_args.emplace_back(ptr);
+  }
+
   // occupied[i] being true means the i-th input argument
   // to Python function has been set.
   std::vector<bool> occupied(inputs.size() + const_args.size(), false);
@@ -101,7 +107,7 @@ Status PythonOp::Compute(OpKernelContext* context) const {
   }
 
   // arg_positions[i] is the position index for the i-th tensor input.
-  std::vector<int64_t> arg_positions(inputs.size());
+  std::vector<int64_t> arg_positions;
   // Search for empty slots for tensors.
   // The i-th empty slot is assigned the i-th input tensor.
   for (size_t i = 0; i < occupied.size(); ++i) {
