@@ -911,7 +911,7 @@ TEST(QDQTransformerTests, Concat_UInt8) {
       if (!can_trans) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 0);
       } else {
-        EXPECT_EQ(op_to_count["QuantizeLinear"], input_shapes.size());
+        EXPECT_EQ(op_to_count["QuantizeLinear"], static_cast<int>(input_shapes.size()));
         EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 1);
         EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
       }
