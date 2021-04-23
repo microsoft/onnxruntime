@@ -9,6 +9,7 @@
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/framework/float16.h"
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -45,8 +46,11 @@ inline std::vector<BFloat16> random<BFloat16>(std::vector<int64_t> shape) {
 
 template <>
 inline std::vector<MLFloat16> random<MLFloat16>(std::vector<int64_t> shape) {
-  // TODO: Unimplemented
-  return std::vector<MLFloat16>();
+  auto floatdata = random<float>(shape);
+  std::vector<MLFloat16> data(floatdata.size());
+  for (uint64_t i = 0; i < floatdata.size(); i++)
+    data[i] = MLFloat16(floatdata[i]);
+  return data;
 }
 
 struct FunctionTestCase {
