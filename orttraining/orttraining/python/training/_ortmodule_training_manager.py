@@ -35,24 +35,28 @@ class TrainingManager(GraphExecutionManager):
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=True)
 
-        input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                      self._onnx_model,
-                                                      inputs,
-                                                      kwargs)
-
-        # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+        if self._skip_duplicate_checks == False:
+            input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
+                                                        self._onnx_model,
+                                                        inputs,
+                                                        kwargs)
+            # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
+            build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
 
         # Build the gradient graph
         if build_gradient_graph:
             self._build_graph()
 
-        module_device = _utils.get_device_from_module(self._original_module)
-        # The _training_session/_inference_session should be created every time
-        # the graph was built or if the device changed between calls to forward
-        create_execution_session = build_gradient_graph or self._device != module_device
-        if self._device != module_device:
-            self._device = module_device
+        if self._skip_duplicate_checks == False:
+            module_device = _utils.get_device_from_module(self._original_module)
+            # The _training_session/_inference_session should be created every time
+            # the graph was built or if the device changed between calls to forward
+            create_execution_session = build_gradient_graph or self._device != module_device
+            if self._device != module_device:
+                self._device = module_device
+        else:
+            create_execution_session = build_gradient_graph
+
         if create_execution_session:
             # Create execution session creates the training_session
             self._create_execution_agent()
@@ -75,6 +79,7 @@ class TrainingManager(GraphExecutionManager):
                 user_outputs, ctx.run_info = _run_forward(self._execution_agent,
                                                           self._optimized_onnx_model,
                                                           self._device,
+                                                          self._skip_duplicate_checks,
                                                           *inputs,
                                                           **kwargs)
 
