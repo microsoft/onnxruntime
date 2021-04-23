@@ -35,10 +35,6 @@ class TrainingManager(GraphExecutionManager):
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=True)
 
-            # Save the onnx model if the model was exported
-            if self._save_onnx:
-                onnx.save(self._onnx_model, self._save_onnx_prefix + '_exported_training_model.onnx')
-
         input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
                                                       self._onnx_model,
                                                       inputs,

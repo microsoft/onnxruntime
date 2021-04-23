@@ -1216,12 +1216,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                           "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc", "-destination",
                           "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                               "-configuration", config,
                               "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
                               "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
@@ -1482,7 +1482,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=2000']
+    args = ['npm', 'test', '--', '--timeout=10000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
@@ -1713,26 +1713,26 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
 
 
 def generate_documentation(source_dir, build_dir, configs):
+    # Randomly choose one build config
+    config = next(iter(configs))
+    cwd = get_config_build_dir(build_dir, config)
+    if is_windows():
+        cwd = os.path.join(cwd, config)
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
-    for config in configs:
-        # Copy the gen_contrib_doc.py.
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config))
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_contrib_doc.py',
-             '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_opkernel_doc.py',
-             '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config))
+    shutil.copy(
+        os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
+    shutil.copy(
+         os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
+         cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_contrib_doc.py',
+         '--output_path', operator_doc_path], cwd=cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_opkernel_doc.py',
+         '--output_path', opkernel_doc_path], cwd=cwd)
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
