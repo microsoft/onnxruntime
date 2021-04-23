@@ -5,6 +5,8 @@
 
 #include "boost/mp11.hpp"
 
+#include "core/framework/prepacked_weights_cache.h"
+
 #ifndef SHARED_PROVIDER
 #include <functional>
 #include "core/common/exceptions.h"
@@ -17,7 +19,6 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
-#include "core/framework/prepacked_weights_cache.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
