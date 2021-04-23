@@ -99,7 +99,7 @@ struct TensorrtFuncState {
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
-  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>* runtime = nullptr;
+  nvinfer1::IRuntime* runtime = nullptr;
 
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
