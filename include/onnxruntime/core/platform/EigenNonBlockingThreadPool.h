@@ -349,296 +349,117 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-template <typename Work, typename Tag, unsigned kSize>
+template <typename Elem, unsigned Capacity>
 class RunQueue {
  public:
-  RunQueue() : front_(0), back_(0) {
-    // require power-of-two for fast masking
-    assert((kSize & (kSize - 1)) == 0);
-    assert(kSize > 2);            // why would you do this?
-    assert(kSize <= (64 << 10));  // leave enough space for counter
-    for (unsigned i = 0; i < kSize; i++) array_[i].state.store(ElemState::kEmpty, std::memory_order_relaxed);
-  }
-
-  ~RunQueue() {
-    assert(Size() == 0);
-  }
-
-  // PushFront inserts w at the beginning of the queue.
-  // If queue is full returns w, otherwise returns default-constructed Work.
-  Work PushFront(Work w) {
-    unsigned front = front_.load(std::memory_order_relaxed);
-    Elem& e = array_[front & kMask];
-    ElemState s = e.state.load(std::memory_order_relaxed);
-    if (s != ElemState::kEmpty ||
-        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return w;
-    front_.store(front + 1 + (kSize << 1), std::memory_order_relaxed);
-    e.w = std::move(w);
-    e.tag = Tag();
-    e.state.store(ElemState::kReady, std::memory_order_release);
-    return Work();
-  }
-
-  // PopFront removes and returns the first element in the queue.
-  // If the queue was empty returns default-constructed Work.
-  Work PopFront() {
-    unsigned front;
-    Elem *e;
-    ElemState s;
-
-    // Drain revoked items from the front of the queue.  CAS to busy to synchronize with
-    // any attempt to take the same item from the back of the queue.
-    do {
-      front = front_.load(std::memory_order_relaxed);
-      e = &array_[(front - 1) & kMask];
-      s = e->state.load(std::memory_order_relaxed);
-      if (s == ElemState::kRevoked &&
-          e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
-        e->state.store(ElemState::kEmpty, std::memory_order_release);
-        front = ((front - 1) & kMask2) | (front & ~kMask2);
-        front_.store(front, std::memory_order_relaxed);
-      }
-    } while (s == ElemState::kRevoked);
-
-    // Attempt to take next item.  State kEmpty shows the queue is empty, kBusy shows
-    // the work is in progress on the item at the front of the queue.
-    if (s != ElemState::kReady ||
-        !e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return Work();
-    Work w = std::move(e->w);
-    e->tag = Tag();
-    e->state.store(ElemState::kEmpty, std::memory_order_release);
-    front = ((front - 1) & kMask2) | (front & ~kMask2);
-    front_.store(front, std::memory_order_relaxed);
-    return w;
-  }
-
-  // PushBack adds w at the end of the queue.
-  // If queue is full returns w, otherwise returns default-constructed Work.
-  Work PushBack(Work w) {
-    std::unique_lock<OrtMutex> lock(mutex_);
-    unsigned back = back_.load(std::memory_order_relaxed);
-    Elem& e = array_[(back - 1) & kMask];
-    ElemState s = e.state.load(std::memory_order_relaxed);
-    if (s != ElemState::kEmpty ||
-        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return w;
-    back = ((back - 1) & kMask2) | (back & ~kMask2);
-    back_.store(back, std::memory_order_relaxed);
-    e.w = std::move(w);
-    e.tag = Tag();
-    e.state.store(ElemState::kReady, std::memory_order_release);
-    return Work();
-  }
-
-  // PushBackWithTag adds w at the end of the queue.  The tag value can be used on a 
-  // subsequent call to RevokeWithTag to remove the item from the queue in combination
-  // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
-  // submitted from different threads.
-  //
-  // If the queue is full, returns w, otherwise returns default-constructed work.
-  Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
-    std::unique_lock<OrtMutex> lock(mutex_);
-    unsigned back = back_.load(std::memory_order_relaxed);
-    w_idx = (back-1) & kMask;
-    Elem& e = array_[w_idx];
-    ElemState s = e.state.load(std::memory_order_relaxed);
-    if (s != ElemState::kEmpty ||
-        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return w;
-    back = ((back - 1) & kMask2) | (back & ~kMask2);
-    back_.store(back, std::memory_order_relaxed);
-    e.w = std::move(w);
-    e.tag = tag;
-    e.state.store(ElemState::kReady, std::memory_order_release);
-    return Work();
-  }
-
-  // PopBack removes and returns the last elements in the queue.
-  Work PopBack() {
-    if (Empty())
-      return Work();
-    std::unique_lock<OrtMutex> lock(mutex_);
-    unsigned back;
-    Elem *e;
-    ElemState s;
-
-    // Drain revoked items from the back of the queue.  CAS to busy to synchronize with
-    // any attempt to take the same item from the front of the queue.
-    do {
-      back = back_.load(std::memory_order_relaxed);
-      e = &array_[back & kMask];
-      s = e->state.load(std::memory_order_relaxed);
-      if (s == ElemState::kRevoked &&
-          e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
-        e->state.store(ElemState::kEmpty, std::memory_order_release);
-        back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
-      }
-    } while (s == ElemState::kRevoked);
-
-    if (s != ElemState::kReady ||
-        !e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return Work();
-    Work w = std::move(e->w);
-    e->tag = Tag();
-    e->state.store(ElemState::kEmpty, std::memory_order_release);
-    back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
-    return w;
-  }
-
-  // RevokeItem removes a work item from the queue.  Items are identified positionally,
-  // and so a tag is used to detect whether the same position is occupied by a 
-  // different work item at the time of removal.  RevokeWithTags lets threads offer work
-  // for parallel execution, and then revoke the offer prior to the work executing (for 
-  // instance if the thread itself completes all of the work).  Revoking the work 
-  // lets the thread deallocate state that might otherwise have been captured by the work item
-  // and accessed by it.
-  //
-  // Return true iff the item is successfully revoked.  If the item is not revoked then
-  // the caller must assume that it may still execute, for instance because it
-  // has been pop'd from the queue concurrent with the revocation request.
-
-  bool RevokeWithTag(Tag tag, unsigned w_idx) {
-    bool revoked = false;
-    std::unique_lock<OrtMutex> lock(mutex_);
-    Elem& e = array_[w_idx];
-    ElemState s = e.state.load(std::memory_order_relaxed);
-
-    // We have acquired a lock on the queue, synchronizing with
-    // operations aside from the PopFront fast-path.  Synchronize with
-    // that by attempting the same kReady->kBusy transition via CAS.
-
-    if (s == ElemState::kReady &&
-        e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
-      if (e.tag == tag) {
-        unsigned back = back_.load(std::memory_order_relaxed);
-        unsigned back_idx = back & kMask;
-        if (back_idx != w_idx) {
-          // Item is not at the back of the queue, mark it in-place as revoked
-          e.tag = Tag();
-          e.w = Work();
-          e.state.store(ElemState::kRevoked, std::memory_order_release);
-          revoked = true;
-        } else {
-          // Item being removed as still at the back; shift the back pointer over it,
-          // and bump the version number.
-          e.tag = Tag();
-          e.w = Work();
-          e.state.store(ElemState::kEmpty, std::memory_order_release);
-          back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
-          revoked = true;
+  enum State {
+    empty = 0,
+    loading,
+    unloading,
+    ready,
+  };
+  struct Signature {
+    State state_{State::empty};
+    size_t tag_{0};
+  };
+  struct Slot {
+    std::atomic<Signature> signature_;
+    Elem elem_;
+  };
+  Elem PushFront(Elem e) {
+    for (unsigned i = 0; i < Capacity; i++) {
+      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+      if (State::empty == signature.state_) {
+        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
+          slots_[i].elem_ = std::move(e);
+          size_.fetch_add(1, std::memory_order_relaxed);
+          slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
+          return {};
         }
-      } else {
-        // Tag mismatch, i.e. work queue slot re-used
-        e.state.store(ElemState::kReady, std::memory_order_release);
       }
     }
-    return revoked;
+    return e;
   }
-
-  // Size returns current queue size.
-  // Can be called by any thread at any time.
+  Elem PushBack(Elem e) {
+    for (int32_t i = Capacity - 1; i > -1; i--) {
+      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+      if (State::empty == signature.state_) {
+        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
+          slots_[i].elem_ = std::move(e);
+          size_.fetch_add(1, std::memory_order_relaxed);
+          slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
+          return {};
+        }
+      }
+    }
+    return e;
+  }
+  Elem PopFront() {
+    for (unsigned i = 0; i < Capacity; i++) {
+      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+      if (State::ready == signature.state_) {
+        if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
+          Elem e = slots_[i].elem_;
+          size_.fetch_sub(1, std::memory_order_relaxed);
+          slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
+          return e;
+        }
+      }
+    }
+    return {};
+  }
+  Elem PopBack() {
+    for (int32_t i = Capacity - 1; i > -1; i--) {
+      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+      if (State::ready == signature.state_) {
+        if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
+          Elem e = slots_[i].elem_;
+          size_.fetch_sub(1, std::memory_order_relaxed);
+          slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
+          return e;
+        }
+      }
+    }
+    return {};
+  }
+  Elem PushBackWithTag(Elem e, size_t tag, unsigned& w_idx) {
+    for (int32_t i = Capacity - 1; i > -1; i--) {
+      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+      if (State::empty == signature.state_) {
+        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
+          slots_[i].elem_ = std::move(e);
+          size_.fetch_add(1, std::memory_order_relaxed);
+          w_idx = i;
+          slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
+          return {};
+        }
+      }
+    }
+    return e;
+  }
+  bool RevokeWithTag(size_t tag, unsigned w_idx) {
+    Signature signature{State::ready, tag};
+    if (w_idx < Capacity &&
+        slots_[w_idx].signature_.compare_exchange_weak(signature, {State::empty, 0}, std::memory_order_relaxed)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
   unsigned Size() const {
-    return SizeOrNotEmpty<true>();
+    return size_.load(std::memory_order_relaxed);
   }
-
-  // Empty tests whether container is empty.
-  // Can be called by any thread at any time.
   bool Empty() const {
-    return SizeOrNotEmpty<false>() == 0;
+    return size_.load(std::memory_order_relaxed) == 0;
   }
-
-  // Delete all the elements from the queue.
   void Flush() {
     while (!Empty()) {
       PopFront();
     }
   }
-
  private:
-  static const unsigned kMask = kSize - 1;
-  static const unsigned kMask2 = (kSize << 1) - 1;
-
-  enum class ElemState : uint8_t {
-    kEmpty,
-    kBusy,
-    kReady,
-    kRevoked,
-  };
-
-  // Updates to an element are bracketed by a std::memory_order_acquire
-  // load from the state, and a std::memory_order_release store.  Accesses
-  // to the front/back indices for the work queue use relaxed semantics,
-  // with the state of the elements being authoritative.
-  //
-  // TODO: Revisit whether there is a significant benefit for the current
-  // workloads in the complexity here.
-  struct Elem {
-    std::atomic<ElemState> state;
-    Tag tag;
-    Work w;
-  };
-
-  OrtMutex mutex_;
-
-  // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
-  // front/back, respectively. The remaining bits contain modification counters
-  // that are incremented on Push operations. This allows us to (1) distinguish
-  // between empty and full conditions (if we would use log(kSize) bits for
-  // position, these conditions would be indistinguishable); (2) obtain
-  // consistent snapshot of front_/back_ for Size operation using the
-  // modification counters.
-  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> front_;
-  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> back_;
-  ORT_ALIGN_TO_AVOID_FALSE_SHARING Elem array_[kSize];
-
-  // SizeOrNotEmpty returns current queue size; if NeedSizeEstimate is false,
-  // only whether the size is 0 is guaranteed to be correct.
-  // Can be called by any thread at any time.
-  template <bool NeedSizeEstimate>
-  unsigned SizeOrNotEmpty() const {
-    // Emptiness plays critical role in thread pool blocking. So we go to great
-    // effort to not produce false positives (claim non-empty queue as empty).
-    unsigned front = front_.load(std::memory_order_acquire);
-    for (;;) {
-      // Capture a consistent snapshot of front/tail.
-      unsigned back = back_.load(std::memory_order_acquire);
-      unsigned front1 = front_.load(std::memory_order_relaxed);
-      if (front != front1) {
-        front = front1;
-        std::atomic_thread_fence(std::memory_order_acquire);
-        continue;
-      }
-      if (NeedSizeEstimate) {
-        return CalculateSize(front, back);
-      }
-        // This value will be 0 if the queue is empty, and undefined otherwise.
-        unsigned maybe_zero = ((front ^ back) & kMask2);
-        // Queue size estimate must agree with maybe zero check on the queue
-        // empty/non-empty state.
-        eigen_assert((CalculateSize(front, back) == 0) == (maybe_zero == 0));
-        return maybe_zero;
-    }
-  }
-
-  EIGEN_ALWAYS_INLINE
-  unsigned CalculateSize(unsigned front, unsigned back) const {
-    int size = (front & kMask2) - (back & kMask2);
-    // Fix overflow.
-    if (size < 0)
-      size += 2 * kSize;
-    // Order of modification in push/pop is crafted to make the queue look
-    // larger than it is during concurrent modifications. E.g. push can
-    // increment size before the corresponding pop has decremented it.
-    // So the computed size can be up to kSize + 1, fix it.
-    if (size > static_cast<int>(kSize))
-      size = kSize;
-    return static_cast<unsigned>(size);
-  }
-
-  RunQueue(const RunQueue&) = delete;
-  void operator=(const RunQueue&) = delete;
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING Slot slots_[Capacity];
+  std::atomic_int32_t size_{0};
 };
 
 static std::atomic<uint32_t> next_tag{1};
@@ -668,6 +489,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return profiler_.Stop();
   }
 
+  /*
   struct Tag {
     constexpr Tag() : v_(0) {
     }
@@ -700,10 +522,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
 
     uint32_t v_ = 0;
-  };
+  };*/
 
   typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 1024> Queue;
+  //typedef RunQueue<Task, Tag, 1024> Queue;
+  typedef RunQueue<Task, 64> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -881,9 +704,10 @@ void StartParallelSectionInternal(PerThread &pt,
   assert((!pt.leading_par_section) && "Nested parallelism not supported");
   assert((!ps.active) && "Starting parallel section, but active already");
   pt.leading_par_section = true;
+  /*
   if (!pt.tag.Get()) {
     pt.tag = Tag::GetNext();
-  }
+  }*/
   ps.active = true;
 }
 
@@ -1179,11 +1003,13 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
+      tag = reinterpret_cast<size_t>(this);
     }
     ThreadPoolTempl* pool;            // Parent pool, or null for normal threads.
     uint64_t rand{0};                 // Random generator state.
     int thread_id{-1};                // Worker thread index in pool.
-    Tag tag{};                        // Work item tag used to identify this thread.
+    // Tag tag{};                        // Work item tag used to identify this thread.
+    size_t tag;
     bool leading_par_section{false};  // Leading a parallel section (used only for asserts)
   };
 
