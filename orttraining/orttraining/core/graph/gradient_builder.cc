@@ -881,8 +881,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
     }
   } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes = IA("ReduceAxes_" + a.name);
-    ArgDef b_axes = IA("ReduceAxes_" + b.name);
+    ArgDef a_axes = IA("ReduceAxes_a_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_b_" + b.name);
     ArgDef A_shape = IA("Shape_" + a.name);
     ArgDef B_shape = IA("Shape_" + b.name);
     ComputeBroadcastBackwardAxesDynamic(a, b, A_shape, B_shape, &a_axes, &b_axes, output);
@@ -891,7 +891,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
       HandleBroadcastingDynamic(GO(0), a, A_shape, GI(0), a_axes, output);
     }
 
-    if (IsGradientRequiredForSrcNodeInput(1)) {
+    // Skip when two inputs are same.
+    if (a.name.compare(b.name) != 0 && IsGradientRequiredForSrcNodeInput(1)) {
       ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
       HandleBroadcastingDynamic(GO(0), b, B_shape, reshape_output, b_axes, output);
 
@@ -948,8 +949,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
     }
   } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes = IA("ReduceAxes_" + a.name);
-    ArgDef b_axes = IA("ReduceAxes_" + b.name);
+    ArgDef a_axes = IA("ReduceAxes_a_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_b_" + b.name);
     ArgDef A_shape = IA("Shape_" + a.name);
     ArgDef B_shape = IA("Shape_" + b.name);
     ComputeBroadcastBackwardAxesDynamic(a, b, A_shape, B_shape, &a_axes, &b_axes, output);
