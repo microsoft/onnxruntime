@@ -925,7 +925,7 @@ struct ProviderLibrary {
       if (provider_)
         provider_->Shutdown();
 
-      Env::Default().UnloadDynamicLibrary(handle_);
+      //      Env::Default().UnloadDynamicLibrary(handle_);
       handle_ = nullptr;
       provider_ = nullptr;
     }
