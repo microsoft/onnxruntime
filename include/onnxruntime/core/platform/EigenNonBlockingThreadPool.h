@@ -441,6 +441,7 @@ class RunQueue {
     Signature signature{State::ready, tag};
     if (w_idx < Capacity &&
         slots_[w_idx].signature_.compare_exchange_weak(signature, {State::empty, 0}, std::memory_order_relaxed)) {
+      size_.fetch_sub(1, std::memory_order_relaxed);
       return true;
     } else {
       return false;
