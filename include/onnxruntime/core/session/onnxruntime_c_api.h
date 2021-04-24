@@ -298,6 +298,7 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int force_sequential_engine_build;              // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
