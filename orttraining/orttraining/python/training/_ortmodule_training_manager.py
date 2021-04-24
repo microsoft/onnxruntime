@@ -122,6 +122,7 @@ class TrainingManager(GraphExecutionManager):
 
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                del ctx.run_info.state
                 # Return input and initializer gradients
                 num_user_input_grads = len(self._input_info.require_grad_names)
                 results = []
