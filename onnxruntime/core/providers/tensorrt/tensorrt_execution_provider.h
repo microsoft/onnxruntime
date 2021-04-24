@@ -185,7 +185,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
 
-  /** Get the shared mutex across all trt provider instances to force sequential engine build. */
+  /** 
+  Get a unique_lock object to control the concurrency behavior of TensorRT engine building. When force_sequential_engine_build
+  is set to true, the lock object is associated with a globally shared mutex to force sequential engine build. Otherwise, the 
+  constructed unique_lock is not associated with any mutex thus no locking/unlocking will happen.
+  */
   std::unique_lock<OrtMutex> GetEngineBuildLock() const;
 };
 }  // namespace onnxruntime
