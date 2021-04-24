@@ -66,8 +66,8 @@ TOOLCHAIN_DEPS="devtoolset-$1-binutils devtoolset-$1-gcc devtoolset-$1-gcc-c++ d
 if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
     # Software collection (for devtoolset-$1)
     yum -y install centos-release-scl-rh
-    # EPEL support (for yasm)
-    yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    # EPEL support (for yasm) (localinstall to avoid error code if already installed - as for Rocm container)
+    yum -y localinstall https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
     YASM=yasm
 elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
     # Software collection (for devtoolset-$1)
