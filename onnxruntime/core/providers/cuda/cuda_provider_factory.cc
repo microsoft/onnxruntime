@@ -19,6 +19,8 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
+void Shutdown_DeleteRegistry();
+
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(const CUDAExecutionProviderInfo& info)
       : info_{info} {}
@@ -157,6 +159,7 @@ struct CUDA_Provider : Provider {
   }
 
   void Shutdown() override {
+    Shutdown_DeleteRegistry();
   }
 
 } g_provider;
