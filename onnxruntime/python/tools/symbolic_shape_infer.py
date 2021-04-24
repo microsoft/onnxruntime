@@ -1040,6 +1040,15 @@ class SymbolicShapeInference:
             try:
                 return bool(y >= x)
             except TypeError:
+                pass
+            try:
+                return bool(-x >= -y)
+            except TypeError:
+                pass
+            try:
+                return bool(-y <= -x)
+            except TypeError:
+                # the last attempt; this may raise TypeError
                 return bool(y - x >= 0)
 
         def handle_negative_index(index, bound):
@@ -1081,6 +1090,7 @@ class SymbolicShapeInference:
                     new_sympy_shape[i] = self._new_symbolic_dim_from_output(node, 0, i)
         else:
             for i, s, e, t in zip(axes, starts, ends, steps):
+                e = handle_negative_index(e, new_sympy_shape[i])
                 if is_literal(e):
                     if e >= self.int_max_:
                         e = new_sympy_shape[i]
@@ -1094,15 +1104,12 @@ class SymbolicShapeInference:
                         if e > 0:
                             e = sympy.Min(e, new_sympy_shape[i]
                                           ) if e > 1 else e  #special case for slicing first to make computation easier
-                        else:
-                            e = new_sympy_shape[i] + e
                 else:
-                    e = handle_negative_index(e, new_sympy_shape[i])
                     if is_literal(new_sympy_shape[i]):
                         e = sympy.Min(e, new_sympy_shape[i])
                     else:
                         try:
-                            if less_equal(new_sympy_shape[i], e):
+                            if not less_equal(e, new_sympy_shape[i]):
                                 e = new_sympy_shape[i]
                         except Exception:
                             print('Unable to determine if {} <= {}, treat as equal'.format(e, new_sympy_shape[i]))
