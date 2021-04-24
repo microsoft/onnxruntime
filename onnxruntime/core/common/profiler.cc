@@ -27,13 +27,14 @@ class DeviceProfiler {
   (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
 #define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
 
-class CudaProfiler final: public DeviceProfiler {
+class CudaProfiler final : public DeviceProfiler {
  public:
   friend class DeviceProfiler;
   ~CudaProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
   void StartProfiling(TimePoint start_time, int pid, int tid) override;
   std::vector<EventRecord> EndProfiling() override;
+
  private:
   CudaProfiler() = default;
   static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
@@ -133,10 +134,11 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   enabled_.clear();
   return events;
 }
-#endif //USE_CUDA
+#endif  //USE_CUDA
 
 DeviceProfiler* DeviceProfiler::GetDeviceProfiler() {
-#ifdef USE_CUDA
+#if 0
+//#ifdef USE_CUDA
   static CudaProfiler cuda_profiler;
   return &cuda_profiler;
 #else
