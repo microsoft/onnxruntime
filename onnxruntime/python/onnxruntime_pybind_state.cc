@@ -2058,8 +2058,20 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #endif
 }
 
+struct OutputOnDestroy {
+  ~OutputOnDestroy() {
+    std::cerr << "OutputOnDestroy: " << p_message << std::endl;
+  }
+
+  const char* p_message;
+};
+
+static OutputOnDestroy v1{"After Environment Destroyed"};
+
 // static variable used to create inference session and training session.
 static std::unique_ptr<Environment> session_env;
+
+static OutputOnDestroy v2{"Before Environment Destroyed"};
 
 void InitializeEnv() {
   auto initialize = [&]() {
