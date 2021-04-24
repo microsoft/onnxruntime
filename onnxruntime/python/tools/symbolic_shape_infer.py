@@ -1032,10 +1032,20 @@ class SymbolicShapeInference:
             helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
 
     def _infer_Slice(self, node):
+        def less_equal(x, y):
+            try:
+                return bool(x <= y)
+            except TypeError:
+                pass
+            try:
+                return bool(y >= x)
+            except TypeError:
+                return bool(y - x >= 0)
+
         def handle_negative_index(index, bound):
             """ normalizes a negative index to be in [0, bound) """
             try:
-                if index < 0:
+                if not less_equal(0, index):
                     return bound + index
             except TypeError:
                 print("Cannot determine if {} < 0".format(index))
@@ -1092,7 +1102,7 @@ class SymbolicShapeInference:
                         e = sympy.Min(e, new_sympy_shape[i])
                     else:
                         try:
-                            if (e - new_sympy_shape[i]) >= 0:
+                            if less_equal(new_sympy_shape[i], e):
                                 e = new_sympy_shape[i]
                         except Exception:
                             print('Unable to determine if {} <= {}, treat as equal'.format(e, new_sympy_shape[i]))
