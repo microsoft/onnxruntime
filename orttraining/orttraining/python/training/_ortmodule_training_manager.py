@@ -150,15 +150,16 @@ class TrainingManager(GraphExecutionManager):
                 
                 return tuple(results)
 
-        return _io.populate_user_output_from_schema_and_outputs(self._module_output_schema,
-                                                                self._graph_info.user_output_names,
-                                                                _ORTModuleFunction.apply(
-                                                                    *_io._convert_input_to_list(
-                                                                        self._flattened_module.named_parameters(),
-                                                                        self._graph_info.user_input_names,
-                                                                        self._flattened_module.named_buffers(),
-                                                                        inputs,
-                                                                        kwargs)))
+        return _io.unflatten_user_output(self._module_output_schema,
+                                        self._graph_info.user_output_names,
+                                        _ORTModuleFunction.apply(
+                                            *_io._combine_input_buffers_initializers(
+                                                self._flattened_module.named_parameters(),
+                                                self._graph_info.user_input_names,
+                                                self._input_info,
+                                                self._flattened_module.named_buffers(),
+                                                inputs,
+                                                kwargs)))
 
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
