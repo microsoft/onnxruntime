@@ -483,7 +483,6 @@ bool IsNodeSupportedInternal(const Node& node, const GraphViewer& graph_viewer,
     return true;
 }
 
-// TODO, share this function with
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
   const auto& input_name = input.Name();
   const auto* shape_proto = input.Shape();
