@@ -632,7 +632,8 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       if (nullptr != producer &&
           std::find(removed_nodes.begin(), removed_nodes.end(), producer->Index()) == removed_nodes.end() &&
           IsCastTo(producer, TensorProto::FLOAT) &&
-          producer->GetOutputEdgesCount() == 1) {
+          producer->GetOutputEdgesCount() == 1 &&
+          !graph.IsOutput(input)) {
         casts.push_back(producer);
         require_type_change.insert(input);
         continue;
