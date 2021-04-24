@@ -61,6 +61,7 @@ def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
 
     output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
     run_info = onnxruntime.training.RunStateInfo(state, output_info)
+    del state
     # Return user outputs and forward run information
     return user_outputs, run_info
 

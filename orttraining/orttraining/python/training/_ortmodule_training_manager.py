@@ -123,6 +123,12 @@ class TrainingManager(GraphExecutionManager):
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
                 del ctx.run_info.state
+                # REVIEW(codemzs): This will ensure PyTorch gradient tensors are freed but that was being done by
+                # GC anyways when torch to ort tensor conversion is done there is no exchange of shared_ptr from DLPack
+                # to ORTValue, hence might as well decrement the ref count here and ensure it gets freed.
+                # If we want this tensor to not be freed, we must modify ORTValue to artificially increment shared_ptr
+                # ref count by an extra ref count.
+                del backward_inputs
                 # Return input and initializer gradients
                 num_user_input_grads = len(self._input_info.require_grad_names)
                 results = []
