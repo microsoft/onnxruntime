@@ -196,8 +196,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
+  auto num_partitions = result.size();
+  if (num_partitions > 1) {
+    LOGS_DEFAULT(WARNING) << "NnapiExecutionProvider::GetCapability,"
+                          << " number of partitions supported by NNAPI: " << num_partitions;
+  }
+
   LOGS_DEFAULT(INFO) << "NnapiExecutionProvider::GetCapability,"
-                     << " number of partitions supported by NNAPI: " << result.size()
+                     << " number of partitions supported by NNAPI: " << num_partitions
                      << " number of nodes in the graph: " << graph_view.NumberOfNodes()
                      << " number of nodes supported by NNAPI: " << num_of_supported_nodes;
 
