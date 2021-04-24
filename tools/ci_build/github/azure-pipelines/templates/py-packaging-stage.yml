@@ -445,6 +445,7 @@ stages:
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
             --enable_onnx_tests
+            --skip_tests
             ${{ parameters.build_py_parameters }}
             --parallel
             $(TelemetryOption)
@@ -476,14 +477,6 @@ stages:
           rename *.whl *.zip
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
         displayName: 'Rename file extension for codesign validation'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**\*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
