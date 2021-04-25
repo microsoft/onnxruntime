@@ -1073,7 +1073,17 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   // Run work in the main thread
   loop.fn(0);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-
+  if (ps.dispatch_q_idx > -1) {
+    Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, ps.dispatch_w_idx)) {
+      ps.dispatch_q_idx = -1;  // cancel dispatch if not started yet
+    } else {
+      // if dispatch task started, wait for its dispatch completion
+      while (!ps.dispatch_done.load(std::memory_order_acquire)) {
+        onnxruntime::concurrency::SpinPause();
+      }
+    }
+  }
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
