@@ -33,7 +33,7 @@ This pruning is referred to as "operator type reduction" in this documentation.
   - `pip install onnxruntime`
   - Ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package.
 
-- Additionally, if you want to enable operator type reduction, version 1.7 of ONNX Runtime is required, and the flatbuffers python package must be installed.
+- Additionally, if you want to enable operator type reduction, ONNX Runtime version 1.7 or later is required, and the flatbuffers python package must be installed.
   - `pip install flatbuffers`
 
 - Copy all the ONNX models you wish to convert and use with the minimal build into a directory.

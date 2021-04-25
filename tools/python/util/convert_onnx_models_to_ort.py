@@ -196,6 +196,9 @@ def convert_onnx_models_to_ort():
     if custom_op_library and not custom_op_library.is_file():
         raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
 
+    if args.use_nnapi and 'NnapiExecutionProvider' not in ort.get_available_providers():
+        raise ValueError('The NNAPI Execution Provider was not included in this build of ONNX Runtime.')
+
     _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, custom_op_library,
              args.save_optimized_onnx_model)
 
