@@ -12,31 +12,34 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
  public:
   QDQMatMulTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
-    if (children.size() != 1) {
-      return false;
-    }
-
-    FillQDQOptionalZeroPoint(parents);
-    FillQDQOptionalZeroPoint(children);
-
-    std::vector<NodeArg*> input_defs(graph_.GetNode(parents[0]->Index())->MutableInputDefs());
-    Node* b = graph_.GetNode(parents[1]->Index());
+  bool TransformImpl(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) override {
+    std::vector<NodeArg*> input_defs(graph_.GetNode(dq_nodes[0]->Index())->MutableInputDefs());
+    Node* b = graph_.GetNode(dq_nodes[1]->Index());
     input_defs.insert(input_defs.end(), b->MutableInputDefs().begin(), b->MutableInputDefs().end());
 
-    Node* q = graph_.GetNode(children[0]->Index());
+    Node* q = graph_.GetNode(q_nodes[0]->Index());
     input_defs.push_back(q->MutableInputDefs()[1]);
     input_defs.push_back(q->MutableInputDefs()[2]);
 
-    Node& qlinear_conv_node = graph_.AddNode(node_.Name(),
-                                             "QLinearMatMul",
-                                             node_.Description(),
-                                             input_defs,
-                                             q->MutableOutputDefs(),
-                                             &node_.GetAttributes(),
-                                             kOnnxDomain);
-    qlinear_conv_node.SetExecutionProviderType(kCpuExecutionProvider);
+    graph_.AddNode(node_.Name(),
+                   "QLinearMatMul",
+                   node_.Description(),
+                   input_defs,
+                   q->MutableOutputDefs(),
+                   &node_.GetAttributes(),
+                   kOnnxDomain)
+        .SetExecutionProviderType(kCpuExecutionProvider);
     return true;
+  }
+
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (!QDQOperatorTransformer::Check(dq_nodes, q_nodes)) {
+      return false;
+    }
+
+    // Currently QLinearConv only support activation type uint8_t
+    int32_t dt = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
   }
 };
 

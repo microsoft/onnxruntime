@@ -3,7 +3,7 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
-
+import onnxruntime as ort
 
 class ORTTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
@@ -188,6 +188,19 @@ class ORTTrainerOptions(object):
                             'type': 'integer',
                             'min': 0,
                             'default': 0
+                        },
+                        'propagate_cast_ops_level': {
+                            'type': 'integer',
+                            'default': -1
+                        },
+                        'propagate_cast_ops_allow': {
+                            'type': 'list',
+                            'schema': {'type': 'string'},
+                            'default': []
+                        },
+                        'allow_layer_norm_mod_precision': {
+                            'type': 'boolean',
+                            'default': False
                         }
                     }
                 },
@@ -277,7 +290,18 @@ class ORTTrainerOptions(object):
                             'default' : True
                         }
                     }
-                }
+                },
+                'provider_options':{
+                    'type': 'dict',
+                    'default': {},
+                    'required': False,
+                    'schema': {}
+                },
+                'session_options': {
+                    'type': 'SessionOptions',
+                    'nullable': True,
+                    'default': None
+                },
              }
 
     Keyword arguments:
@@ -333,6 +357,19 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         graph_transformer (dict):
             graph transformer related configurations
+        graph_transformer.attn_dropout_recompute(bool, default False)
+        graph_transformer.gelu_recompute(bool, default False)
+        graph_transformer.transformer_layer_recompute(bool, default False)
+        graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_level(integet, default -1)
+            Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+            Use predetermined list of opcodes considered safe to move before/after cast operation
+            if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+        graph_transformer.propagate_cast_ops_allow(list of str, [])
+            List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        graph_transformer.allow_layer_norm_mod_precision(bool, default False)
+            Enable LayerNormalization/SimplifiedLayerNormalization fusion 
+            even if it requires modified compute precision
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -383,6 +420,11 @@ class ORTTrainerOptions(object):
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        session_options (onnxruntime.SessionOptions):
+            The SessionOptions instance that TrainingSession will use.
+        provider_options (dict): 
+            The provider_options for customized execution providers. it is dict map from EP name to 
+            a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
         .. code-block:: python
@@ -459,9 +501,13 @@ class ORTTrainerOptionsValidator(cerberus.Validator):
     _LOSS_SCALER = cerberus.TypeDefinition(
         'loss_scaler', (loss_scaler.LossScaler,), ())
 
+    _SESSION_OPTIONS = cerberus.TypeDefinition(
+        'session_options', (ort.SessionOptions,),())
+
     types_mapping = cerberus.Validator.types_mapping.copy()
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
+    types_mapping['session_options'] = _SESSION_OPTIONS
 
 
 def _check_is_callable(field, value, error):
@@ -642,7 +688,21 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
-            }
+            },
+            'propagate_cast_ops_level': {
+                'type': 'integer',
+                'min': -1,
+                'default': -1
+            },
+            'propagate_cast_ops_allow': {
+                'type': 'list',
+                'schema': {'type': 'string'},
+                'default': []
+            },
+            'allow_layer_norm_mod_precision': {
+                'type': 'boolean',
+                'default': False
+            },
         }
     },
     'utils': {
@@ -731,5 +791,17 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             }
         }
-    }
+    },
+    'provider_options':{
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'allow_unknown': True,
+        'schema': {}
+    },
+    'session_options': {
+        'type': 'session_options',
+        'nullable': True,
+        'default': None
+    },
 }

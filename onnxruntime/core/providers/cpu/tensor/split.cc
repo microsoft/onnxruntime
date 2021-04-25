@@ -17,7 +17,10 @@ namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
     float, int32_t, int64_t, uint8_t, std::string);
-}
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
+    int32_t, int64_t);
+}  // namespace op_kernel_type_control
 
 using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
@@ -77,9 +80,9 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
     split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
   } else {
     int64_t split_size_sum = split_size_sum_;
-    if (split_size_sum == -1){
+    if (split_size_sum == -1) {
       split_size_sum = std::accumulate(split_sizes.cbegin(), split_sizes.cend(), 0LL);
-    }        
+    }
     if (split_sizes.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot split using values in 'split' attribute. Axis=", axis_,
@@ -138,16 +141,14 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   int after_dims_excluding_split = 0;
   std::vector<int64_t> split_sizes;
 
-  size_t num_inputs = context.InputCount();
-  if (num_inputs == 2) {
-    //override the attribute value with the input value for split_split
-    const Tensor* split_tensor = context.Input<Tensor>(1);
+  const Tensor* split_tensor = context.Input<Tensor>(1);
+  if (split_tensor != nullptr) {
+    //override the attribute value with the input value for split
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const auto* data = split_tensor->template Data<int64_t>();
     split_sizes.assign(data, data + nDims);
-  }
-  else{
+  } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
   }
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,

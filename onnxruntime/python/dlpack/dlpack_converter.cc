@@ -181,7 +181,11 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
   int64_t running_size = 1;
   for (int i = tensor.ndim - 1; i >= 0; i--) {
-    if (tensor.strides[i] != running_size) {
+    if (tensor.shape[i] == 0) {
+      return true;
+    }
+
+    if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
       return false;
     }
 

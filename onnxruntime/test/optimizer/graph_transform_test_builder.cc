@@ -20,7 +20,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       int opset_version) {
+                       int opset_version,
+                       double per_sample_tolerance,
+                       double relative_per_sample_tolerance) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -41,13 +43,17 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     session_options.graph_optimization_level = level;
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
-    ASSERT_TRUE(session.Initialize().IsOK());
+    auto status = session.Initialize();
+    if (!status.IsOK()) {
+      std::cout << "Model initialized failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
 
     RunOptions run_options;
-    auto status = session.Run(run_options,
-                              helper.feeds_,
-                              helper.output_names_,
-                              &fetches);
+    status = session.Run(run_options,
+                         helper.feeds_,
+                         helper.output_names_,
+                         &fetches);
     if (!status.IsOK()) {
       std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
     }
@@ -68,8 +74,6 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   ASSERT_TRUE(num_outputs == target_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
-    double per_sample_tolerance = 0.0;
-    double relative_per_sample_tolerance = 0.0;
     std::pair<COMPARE_RESULT, std::string> ret =
         CompareOrtValue(target_fetches[i],
                         baseline_fetches[i],

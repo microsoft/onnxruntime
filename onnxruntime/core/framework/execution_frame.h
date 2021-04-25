@@ -52,6 +52,9 @@ class IExecutionFrame {
 #ifdef ENABLE_TRAINING
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
+  void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
+  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
+  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
   // TO DO: make it thread safe
@@ -113,7 +116,7 @@ class IExecutionFrame {
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
-  const std::vector<int> fetch_mlvalue_idxs_;
+  std::vector<int> fetch_mlvalue_idxs_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {

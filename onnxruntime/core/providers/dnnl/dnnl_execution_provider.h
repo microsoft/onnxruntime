@@ -194,6 +194,26 @@ class DNNLExecutionProvider : public IExecutionProvider {
         supported = false;
 #endif  // ENABLE_TRAINING
     }
+    if (node->OpType().find("MatMul") != std::string::npos) {
+      auto node_inputs = node->InputDefs();
+      if ((node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() >= 2) &&
+          (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2) &&
+          (node_inputs[0]->Shape()->dim_size() == node_inputs[1]->Shape()->dim_size())) {
+        supported = true;
+        for (const onnx::TensorShapeProto_Dimension& dim : node_inputs[0]->Shape()->dim()) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+            supported = false;
+          }
+        }
+        for (const onnx::TensorShapeProto_Dimension& dim : node_inputs[1]->Shape()->dim()) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+            supported = false;
+          }
+        }
+      } else {
+        supported = false;
+      }
+    }
     return supported;
   }
 
@@ -224,7 +244,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
 #else
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN", "MatMul"};
 #endif  // ENABLE_TRAINING
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
