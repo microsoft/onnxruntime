@@ -99,16 +99,20 @@ def parse_arguments():
 
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
-
     parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
-    parser.add_argument('--ignore_eos', type=bool, default=False, help='If ignore end of sentence token in model inference (one step beam search with configuration only).')
-    parser.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage (one step beam search with configuration only).')
-    parser.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits (one step beam search with configuration only).')
-    parser.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference (one step beam search with configuration only).')
-    parser.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence (one step beam search with configuration only).')
-    parser.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy (one step beam search with configuration only).')
-    parser.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability (do sample only).')
-    parser.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero (do sample only).')
+
+    search_option_group = parser.add_argument_group("configurable one step search options")
+
+    search_option_group.add_argument('--ignore_eos', type=bool, default=False, help='If ignore end of sentence token in model inference.')
+    search_option_group.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage.')
+    search_option_group.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits.')
+    search_option_group.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference.')
+    search_option_group.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence.')
+    
+    sampling_option_group = parser.add_argument_group("one step sampling options")
+    sampling_option_group.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy.')
+    sampling_option_group.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability.')
+    sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
 
 
     args = parser.parse_args()
