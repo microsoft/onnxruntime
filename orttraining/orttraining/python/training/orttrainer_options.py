@@ -189,6 +189,10 @@ class ORTTrainerOptions(object):
                             'min': 0,
                             'default': 0
                         },
+                        'propagate_cast_ops_strategy': {
+                            'type': 'integer',
+                            'default': 0
+                        },
                         'propagate_cast_ops_level': {
                             'type': 'integer',
                             'default': -1
@@ -361,6 +365,10 @@ class ORTTrainerOptions(object):
         graph_transformer.gelu_recompute(bool, default False)
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_strategy(integet, default 0)
+            Specify the choice of the cast propagation optimization strategy. The available options are
+            0. Insert-and-reduce cast operations around the nodes with allowed opcodes
+            1. Flood-fill algorithms to expand float16 regions in the graph using the allowed opcodes.
         graph_transformer.propagate_cast_ops_level(integet, default -1)
             Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
             Use predetermined list of opcodes considered safe to move before/after cast operation
@@ -687,6 +695,12 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'number_recompute_layers': {
                 'type': 'integer',
                 'min': 0,
+                'default': 0
+            },
+            'propagate_cast_ops_strategy': {
+                'type': 'integer',
+                'min': 0,
+                'max': 1,
                 'default': 0
             },
             'propagate_cast_ops_level': {

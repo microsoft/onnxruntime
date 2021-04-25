@@ -12,6 +12,7 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/core/optimizer/graph_transformer_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -241,25 +242,7 @@ class TrainingSession : public InferenceSession {
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
 
-    struct GraphTransformerConfiguration {
-      // Whether to enable GELU approximation which is faster but produces different results.
-      bool enable_gelu_approximation{false};
-      // Enable recompute of attention dropout to save memory
-      bool attn_dropout_recompute{false};
-      // Enable recompute of Gelu activation output to save memory
-      bool gelu_recompute{false};
-      // Enable recompute of transformer layer ouput to save memory
-      bool transformer_layer_recompute{false};
-      // Number of layers to apply recompute
-      int number_recompute_layers{0};
-      // Propagate FP16 Cast operations up and FP32 operations down
-      int propagate_cast_ops_level{-1};
-      std::vector<std::string> propagate_cast_ops_allow;
-      // Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
-      bool allow_layer_norm_mod_precision{false};
-    };
-
-    GraphTransformerConfiguration graph_transformer_config{};
+    TrainingGraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -483,7 +466,7 @@ class TrainingSession : public InferenceSession {
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+                                                 const TrainingGraphTransformerConfiguration& config);
 
   common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                               TrainingConfigurationResult& config_result_out);
@@ -492,7 +475,7 @@ class TrainingSession : public InferenceSession {
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
-                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  const TrainingGraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */

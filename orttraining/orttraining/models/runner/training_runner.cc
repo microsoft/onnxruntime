@@ -183,7 +183,7 @@ Status TrainingRunner::Initialize() {
 
   // always configure the graph transformer
   {
-    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    TrainingGraphTransformerConfiguration gt_config{};
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
     gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
     gt_config.gelu_recompute = params_.gelu_recompute;

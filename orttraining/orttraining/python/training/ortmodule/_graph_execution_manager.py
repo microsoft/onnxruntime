@@ -61,9 +61,12 @@ class GraphExecutionManager(ABC):
         self._save_onnx_prefix = ''
 
         # Graph transformer config
+        # Specify cast propagation strategy. Currently two strategies are available, insert-and-reduce and flood-fill
+        # the default is insert-and-reduce
+        self._propagate_cast_ops_strategy = 0
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
-        # Use predetermined list of opcodes considered safe to move before/after cast operation
-        # if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+        # In addition to propagate_cast_ops_allow use predetermined list of opcodes considered safe to move before/after cast operation
+        # if propagate_cast_ops_level is positive and use only propagate_cast_ops_allow otherwise.
         self._propagate_cast_ops_level = -1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
@@ -278,8 +281,10 @@ class GraphExecutionManager(ABC):
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
-        grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
-        grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_config = C.PropagateCastOpsConfiguration()
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_allow
         grad_builder_config.graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
         grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
                                         _logger.LogLevel.INFO : C.Severity.INFO,

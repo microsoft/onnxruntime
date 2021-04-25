@@ -753,11 +753,27 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       auto& node = *node_ptr;
 
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+      if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce) {
+        if (IsFP16Allow(node.OpType(), level_)) {
+          // Insert FP16 Cast on all float inputs
+          for (NodeArg* input_arg : node.MutableInputDefs()) {
+            if (IsType(*input_arg, TensorProto::FLOAT)) {
+              InsertFP16Cast(graph, input_arg, node_ptr, logger);
+            }
+          }
+          // Convert all output args to FP16 and insert FP32 cast for all consumer
+          for (NodeArg* output_arg : node.MutableOutputDefs()) {
+            if (IsType(*output_arg, TensorProto::FLOAT)) {
+              InsertFP32Casts(graph, output_arg, logger);
+            }
+          }
+        }
+      }
     }
   }
   std::unordered_set<std::string> removed_node_names;
   int pass = 0;
-  bool local_modified = false;
+  bool local_modified = strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce;
   do {
     LOGS(logger, VERBOSE) << "Propagate Cast Operations Pass " << pass << ":";
     std::deque<NodeIndex> removed_nodes;
@@ -866,9 +882,10 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   converted_node_names.clear();
   return Status::OK();
 }
-PropagateCastOps::PropagateCastOps(size_t level, const std::vector<std::string>& _allow_list,
+PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
+                                   size_t level, const std::vector<std::string>& _allow_list,
                                    const std::unordered_set<std::string>& compatible_execution_providers) noexcept
-    : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level) {
+    : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level), strategy_(strategy) {
   fp16_allow_ops[0].clear();  // Remove previously added op types if any.
   std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(fp16_allow_ops[0], fp16_allow_ops[0].begin()));
 }

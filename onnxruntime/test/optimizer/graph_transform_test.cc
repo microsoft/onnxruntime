@@ -38,6 +38,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_transformer_config.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
@@ -152,7 +153,7 @@ TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
   // tips: to dump the subgraph, can use python tool - dump_subgraphs.py
-  // or click on one of the input to see the drop down graph list and view subgraph 
+  // or click on one of the input to see the drop down graph list and view subgraph
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
@@ -4247,7 +4248,9 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     ASSERT_STATUS_OK(graph.Resolve());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-        std::make_unique<PropagateCastOps>(test_case.level, test_case.allow_ops), TransformerLevel::Level1));
+        onnxruntime::make_unique<PropagateCastOps>(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
+                                                   test_case.level, test_case.allow_ops),
+        TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
     Path p = Path::Parse(test_case.model_uri);
     ASSERT_FALSE(p.GetComponents().empty());
