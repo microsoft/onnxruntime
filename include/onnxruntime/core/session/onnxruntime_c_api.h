@@ -289,16 +289,16 @@ typedef struct OrtROCMProviderOptions {
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;                                  // cuda device id.
-  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                      // user specified CUDA compute stream.
-  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
-  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
-  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
-  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
-  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
-  int force_sequential_engine_build;              // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  int device_id;                                // cuda device id.
+  int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                    // user specified CUDA compute stream.
+  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>

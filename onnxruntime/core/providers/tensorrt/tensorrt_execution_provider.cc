@@ -449,14 +449,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
       }
     }
+  }
 
-    if (info.force_sequential_engine_build) {
-      force_sequential_engine_build_ = info.force_sequential_engine_build;
-    } else {
-      const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
-      if (!force_sequential_engine_build_env.empty()) {
-        force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
-      }
+  if (info.has_trt_options) {
+    force_sequential_engine_build_ = info.force_sequential_engine_build;
+  } else {
+    const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
+    if (!force_sequential_engine_build_env.empty()) {
+      force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
     }
   }
 
@@ -1023,8 +1023,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
 std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const {
   static OrtMutex singleton;
-  std::unique_lock<OrtMutex> lock = force_sequential_engine_build_ ? std::unique_lock<OrtMutex>(singleton) : std::unique_lock<OrtMutex>();
-  return lock;
+
+  // Acquire a lock only when force_sequential_engine_build_ is true;
+  return force_sequential_engine_build_ ? std::unique_lock<OrtMutex>(singleton) : std::unique_lock<OrtMutex>();
 }
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
