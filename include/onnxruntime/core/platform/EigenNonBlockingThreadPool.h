@@ -349,9 +349,70 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-template <typename Elem, unsigned Capacity>
+template <typename Elem, int32_t Capacity, int32_t Base = 8>
 class RunQueue {
  public:
+  RunQueue() {
+    assert(Base > 0 && (Base & Base - 1) == 0);
+    assert(Capacity >= Base && (Capacity & Capacity - 1) == 0);
+  }
+  ~RunQueue() {
+    assert(Empty());
+  }
+  Elem Push(Elem e, size_t tag, unsigned& at) {
+    if (Size() < Capacity) {
+      int32_t base = base_.load(std::memory_order_relaxed);
+      for (int32_t i = 0; i < base; i++) {
+        Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+        if (State::empty == signature.state_) {
+          if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
+            slots_[i].elem_ = std::move(e);
+            size_.fetch_add(1, std::memory_order_relaxed);
+            at = i;
+            slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
+            return {};
+          }
+        }
+      }
+      int32_t doubled_base = base << 1;
+      if (base < Capacity && base_.compare_exchange_weak(base, doubled_base, std::memory_order_relaxed)) {
+        for (int32_t i = base; i < doubled_base; i++) {
+          Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+          if (State::empty == signature.state_) {
+            if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
+              slots_[i].elem_ = std::move(e);
+              size_.fetch_add(1, std::memory_order_relaxed);
+              at = i;
+              slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
+              return {};
+            }
+          }
+        }
+      }
+    }
+    return e;
+  }
+  Elem Pop() {
+    if (!Empty()) {
+      int32_t base = base_.load(std::memory_order_relaxed);
+      int32_t half_base = base >> 1;
+      for (int32_t i = base - 1; i > -1; i--) {
+        Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
+        if (State::ready == signature.state_) {
+          if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
+            Elem e = slots_[i].elem_;
+            size_.fetch_sub(1, std::memory_order_relaxed);
+            slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
+            if (i < half_base && half_base >= Base) {
+              base_.compare_exchange_weak(base, half_base, std::memory_order_relaxed);
+            }
+            return e;
+          }
+        }
+      }
+    }
+    return {};
+  }
   enum State {
     empty = 0,
     loading,
@@ -367,80 +428,26 @@ class RunQueue {
     Elem elem_;
   };
   Elem PushFront(Elem e) {
-    for (unsigned i = 0; i < Capacity; i++) {
-      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-      if (State::empty == signature.state_) {
-        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
-          slots_[i].elem_ = std::move(e);
-          size_.fetch_add(1, std::memory_order_relaxed);
-          slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
-          return {};
-        }
-      }
-    }
-    return e;
+    unsigned at = 0;
+    return Push(e, 0, at);
   }
   Elem PushBack(Elem e) {
-    for (int32_t i = Capacity - 1; i > -1; i--) {
-      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-      if (State::empty == signature.state_) {
-        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
-          slots_[i].elem_ = std::move(e);
-          size_.fetch_add(1, std::memory_order_relaxed);
-          slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
-          return {};
-        }
-      }
-    }
-    return e;
+    unsigned at = 0;
+    return Push(e, 0, at);
   }
   Elem PopFront() {
-    for (unsigned i = 0; i < Capacity; i++) {
-      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-      if (State::ready == signature.state_) {
-        if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
-          Elem e = slots_[i].elem_;
-          size_.fetch_sub(1, std::memory_order_relaxed);
-          slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
-          return e;
-        }
-      }
-    }
-    return {};
+    return Pop();
   }
   Elem PopBack() {
-    for (int32_t i = Capacity - 1; i > -1; i--) {
-      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-      if (State::ready == signature.state_) {
-        if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
-          Elem e = slots_[i].elem_;
-          size_.fetch_sub(1, std::memory_order_relaxed);
-          slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
-          return e;
-        }
-      }
-    }
-    return {};
+    return Pop();
   }
-  Elem PushBackWithTag(Elem e, size_t tag, unsigned& w_idx) {
-    for (int32_t i = Capacity - 1; i > -1; i--) {
-      Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-      if (State::empty == signature.state_) {
-        if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
-          slots_[i].elem_ = std::move(e);
-          size_.fetch_add(1, std::memory_order_relaxed);
-          w_idx = i;
-          slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
-          return {};
-        }
-      }
-    }
-    return e;
+  Elem PushBackWithTag(Elem e, size_t tag, unsigned& at) {
+    return Push(e, tag, at);
   }
-  bool RevokeWithTag(size_t tag, unsigned w_idx) {
+  bool RevokeWithTag(size_t tag, unsigned at) {
     Signature signature{State::ready, tag};
-    if (w_idx < Capacity &&
-        slots_[w_idx].signature_.compare_exchange_weak(signature, {State::empty, 0}, std::memory_order_relaxed)) {
+    if (at < Capacity &&
+        slots_[at].signature_.compare_exchange_weak(signature, {State::empty, 0}, std::memory_order_relaxed)) {
       size_.fetch_sub(1, std::memory_order_relaxed);
       return true;
     } else {
@@ -451,7 +458,7 @@ class RunQueue {
     return size_.load(std::memory_order_relaxed);
   }
   bool Empty() const {
-    return size_.load(std::memory_order_relaxed) == 0;
+    return Size() == 0;
   }
   void Flush() {
     while (!Empty()) {
@@ -461,6 +468,7 @@ class RunQueue {
  private:
   ORT_ALIGN_TO_AVOID_FALSE_SHARING Slot slots_[Capacity];
   std::atomic_int32_t size_{0};
+  std::atomic_int32_t base_{Base};
 };
 
 static std::atomic<uint32_t> next_tag{1};
@@ -527,7 +535,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   //typedef RunQueue<Task, Tag, 1024> Queue;
-  typedef RunQueue<Task, 64> Queue;
+  typedef RunQueue<Task, 1024> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
