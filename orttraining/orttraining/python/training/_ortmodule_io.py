@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 from collections import abc
 import copy
 import inspect
@@ -33,17 +38,21 @@ class _InputInfo(object):
             \tKeyword names:    {self.keyword_names}'''
 
     def flatten(self, args, kwargs):
+        '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
+
         ret = list(args)
         for _, kwarg in kwargs.items():
             ret.append(kwarg)
         return tuple(ret)
 
     def unflatten(self, flat_args):
+        '''Unflatten tuple of tensors into args and kwargs'''
+
         args = tuple(flat_args[:self.num_positionals])
         kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
         return args, kwargs
 
-def _convert_input_to_list(param_names, user_input_names, buffer_names, inputs, kwargs):
+def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -55,12 +64,19 @@ def _convert_input_to_list(param_names, user_input_names, buffer_names, inputs, 
     non_none_inputs = [inp for inp in inputs if inp is not None]
     named_buffers_iter = iter(buffer_names)
     result = []
-    for input_idx, name in enumerate(user_input_names):
+
+    for input_idx, name in enumerate(onnx_input_names):
         inp = None
-        if input_idx < len(non_none_inputs):
-            inp = non_none_inputs[input_idx]
-        elif name in kwargs and kwargs[name] is not None:
+        if name in kwargs and kwargs[name] is not None:
+            # Only use keywords coming from user that are expected by ONNX model
             inp = kwargs[name]
+        elif input_idx < len(non_none_inputs):
+            # Only use positionals coming from user that are expected by ONNX model
+            if name != input_info.names[input_idx]:
+                # When ONNX drops unused inputs, get correct index from user input
+                input_idx = input_info.names.index(name)
+            inp = non_none_inputs[input_idx]
+
         elif input_idx >= len(non_none_inputs):
             # Registered buffers are translated to user_input+initializer in ONNX
             buffer_name, inp = next(named_buffers_iter)
@@ -134,7 +150,7 @@ class _TensorStub(object):
         return True
 
 
-def populate_user_output_from_schema_and_outputs(output_schema, output_names, outputs):
+def unflatten_user_output(output_schema, output_names, outputs):
     """Follows the schema to generate an output that is expected by the user"""
 
     def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
@@ -272,7 +288,6 @@ class _FlattenedModule(torch.nn.Module):
         self._input_info = None
 
     def forward(self, *args):
-        # TODO: Convert *args into *args + **kwars andd call _original_module with it
         new_args, new_kwargs = self._input_info.unflatten(args)
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
