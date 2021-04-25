@@ -32,8 +32,10 @@ Status TorchEmbeddingGrad::Compute(OpKernelContext* p_ctx) const {
 
   at::Tensor torch_grad = dlpack::ToTorchTensor(grad);
   at::Tensor torch_indices = dlpack::ToTorchTensor(indices);
-  auto torch_result =
-      at::embedding_backward(torch_grad, torch_indices, num_weights, padding_idx, scale_grad_by_freq, false);
+  // auto torch_result =
+  //     at::embedding_backward(torch_grad, torch_indices, num_weights, padding_idx, scale_grad_by_freq, false);
+  auto torch_result = dlpack::GetATenOpAndExecute<at::Tensor>("aten::embedding_backward", torch_grad, torch_indices,
+                                                              num_weights, padding_idx, scale_grad_by_freq, false);
   ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::FromTorchTensor(torch_result)));
   return Status::OK();
 }

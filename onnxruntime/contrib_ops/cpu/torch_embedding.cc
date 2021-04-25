@@ -30,7 +30,9 @@ Status TorchEmbedding::Compute(OpKernelContext* p_ctx) const {
 
   at::Tensor torch_weight = dlpack::ToTorchTensor(weight);
   at::Tensor torch_indices = dlpack::ToTorchTensor(indices);
-  auto torch_result = at::embedding(torch_weight, torch_indices, padding_idx, scale_grad_by_freq, false);
+  // auto torch_result = at::embedding(torch_weight, torch_indices, padding_idx, scale_grad_by_freq, false);
+  auto torch_result = dlpack::GetATenOpAndExecute<at::Tensor>("aten::embedding", torch_weight, torch_indices,
+                                                              padding_idx, scale_grad_by_freq, false);
   ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::FromTorchTensor(torch_result)));
   return Status::OK();
 }

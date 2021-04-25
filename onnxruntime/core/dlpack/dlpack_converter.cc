@@ -240,6 +240,7 @@ at::Tensor ToTorchTensor(OrtValue& ort_value) { return at::fromDLPack(dlpack::Or
 OrtValue FromTorchTensor(const at::Tensor& torch_tensor) {
   return dlpack::DlpackToOrtValue(at::toDLPack(torch_tensor), torch_tensor.dtype() == at::kBool);
 }
+
 #endif
 
 }  // namespace dlpack
