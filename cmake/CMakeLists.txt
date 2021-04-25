@@ -1494,8 +1494,6 @@ foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
   endif()
 endforeach()
 
-
-
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
 endif()

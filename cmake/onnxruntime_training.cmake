@@ -32,6 +32,10 @@ if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 
+if (onnxruntime_USE_NCCL)
+  target_include_directories(onnxruntime_training PRIVATE ${NCCL_INCLUDE_DIRS})
+endif()
+
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_training_srcs})
 
@@ -63,6 +67,10 @@ target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_B
 target_link_libraries(onnxruntime_training_runner PRIVATE nlohmann_json::nlohmann_json)
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+endif()
+
+if (onnxruntime_USE_NCCL)
+  target_include_directories(onnxruntime_training_runner PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
 
 if (onnxruntime_USE_ROCM)
@@ -175,6 +183,9 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+if (onnxruntime_USE_NCCL)
+  target_include_directories(onnxruntime_training_pipeline_poc PRIVATE ${NCCL_INCLUDE_DIRS})
+endif()
 
 target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
