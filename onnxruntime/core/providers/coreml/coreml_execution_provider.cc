@@ -163,16 +163,19 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
-  auto num_partitions = result.size();
-  if (num_partitions > 1) {
-    LOGS_DEFAULT(WARNING) << "CoreMLExecutionProvider::GetCapability,"
-                          << " number of partitions supported by CoreML: " << num_partitions;
-  }
+  auto num_of_partitions = result.size();
+  const auto summary_msg = MakeString(
+      "CoreMLExecutionProvider::GetCapability,",
+      " number of partitions supported by CoreML: ", num_of_partitions,
+      " number of nodes in the graph: ", graph_view.NumberOfNodes(),
+      " number of nodes supported by CoreML: ", num_of_supported_nodes);
 
-  LOGS(logger, INFO) << "CoreMLExecutionProvider::GetCapability,"
-                     << " number of partitions supported by CoreML: " << num_partitions
-                     << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
-                     << " number of nodes supported by CoreML: " << num_of_supported_nodes;
+  // If the graph is partitioned in multiple subgraphs, and this may impact performance,
+  // we want to give users a summary message at warning level.
+  if (num_of_partitions > 1)
+    LOGS_DEFAULT(WARNING) << summary_msg;
+  else
+    LOGS_DEFAULT(INFO) << summary_msg;
 
   return result;
 }
