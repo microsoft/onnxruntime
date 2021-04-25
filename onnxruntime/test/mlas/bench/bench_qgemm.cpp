@@ -17,18 +17,18 @@ void QGEMM(benchmark::State& state, bool pack_b) {
   const uint8_t a_zero_point = 29;
   const uint8_t b_zero_point = 179;
 
-  const int64_t M = state.range(0);
-  const int64_t N = state.range(1);
-  const int64_t K = state.range(2);
+  if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
+  if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
+  if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
+  if (state.range(3) <= 0) throw std::invalid_argument("Batch must greater than 0!");
+  if (state.range(4) <= 0) throw std::invalid_argument("Threads must greater than 0!");
 
-  const int64_t batch = state.range(3);
-  const int64_t threads = state.range(4);
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
 
-  if (M <= 0) throw std::invalid_argument("M must greater than 0!");
-  if (N <= 0) throw std::invalid_argument("N must greater than 0!");
-  if (K <= 0) throw std::invalid_argument("K must greater than 0!");
-  if (batch <= 0) throw std::invalid_argument("Batch must greater than 0!");
-  if (threads <= 0) throw std::invalid_argument("Threads must greater than 0!");
+  const size_t batch = static_cast<size_t>(state.range(3));
+  const size_t threads = static_cast<size_t>(state.range(4));
   
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);
@@ -42,41 +42,39 @@ void QGEMM(benchmark::State& state, bool pack_b) {
   std::vector<int32_t> C_holder(static_cast<size_t>(M * N * batch));
   std::vector<uint8_t> pack_b_holder;
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-
-  gemm_params.M = static_cast<size_t>(M);
-  gemm_params.N = static_cast<size_t>(N);
-  gemm_params.K = static_cast<size_t>(K);
-  gemm_params.lda = gemm_params.K;
-  gemm_params.ZeroPointA = a_zero_point;
-  gemm_params.ZeroPointB = &b_zero_point;
-  gemm_params.BIsSigned = b_is_signed;
-  gemm_params.C = C_holder.data();
-  gemm_params.ldc = gemm_params.N;
-
   size_t packed_b_size = 0;
   if (pack_b) {
     packed_b_size = MlasGemmPackBSize(N, K, b_is_signed);
     pack_b_holder.resize(packed_b_size * batch);
-    for (int i = 0; i < batch; i++) {
-      MlasGemmPackB(N, K, B_holder.data() + N * K * i, N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
-    }
-    gemm_params.BIsPacked = true;
-  } else {
-    gemm_params.ldb = gemm_params.N;
   }
 
-  for (auto _ : state) {
-    for (int i = 0; i < batch; i++) {
-      gemm_params.A = A_holder.data() + M * K * i;
-      gemm_params.C = C_holder.data() + M * N * i;
-      if (pack_b) {
-        gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
-      } else {
-        gemm_params.B = B_holder.data() + N * K * i;
-      }
-      MlasGemm(&gemm_params, tp.get());
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+
+  gemm_shape.M = static_cast<size_t>(M);
+  gemm_shape.N = static_cast<size_t>(N);
+  gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.BIsSigned = b_is_signed;
+
+
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch);
+  for (int i = 0; i < batch; i++) {
+    auto& gemm_params = gemm_data_vec[i];
+    gemm_params.lda = gemm_shape.K;
+    gemm_params.ZeroPointA = a_zero_point;
+    gemm_params.ZeroPointB = &b_zero_point;
+    gemm_params.ldc = gemm_shape.N;
+    gemm_params.A = A_holder.data() + M * K * i;
+    gemm_params.B = B_holder.data() + N * K * i;
+    gemm_params.ldb = gemm_shape.N;
+    gemm_params.C = C_holder.data() + M * N * i;
+    if (pack_b) {
+      MlasGemmPackB(N, K, (const uint8_t*)gemm_params.B, N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
+      gemm_params.BIsPacked = true;
+      gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
     }
+  }
+  for (auto _ : state) {
+    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch, tp.get());
   }
 }
 

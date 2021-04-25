@@ -15,6 +15,7 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
+#include "core/providers/dnnl/subgraph/dnnl_matmul.h"
 #ifdef ENABLE_TRAINING
 #include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_relugrad.h"
@@ -198,6 +199,15 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "Sum-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlSum<T>> kernel;
         kernel = std::make_shared<DnnlSum<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "MatMul") {
+        std::ostringstream os;
+        os << "MatMul-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlMatmul<T>> kernel;
+        kernel = std::make_shared<DnnlMatmul<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }

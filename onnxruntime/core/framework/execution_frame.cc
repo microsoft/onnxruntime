@@ -35,16 +35,6 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
-// Return nullptr if index map to an value that is an unused optional input/output
-const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
-  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
-  return ort_value_idx != NodeIndexInfo::kInvalidEntry ? &all_values_[ort_value_idx] : nullptr;
-}
-
-OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
-  return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
-}
-
 #ifdef ENABLE_TRAINING
 Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
@@ -60,7 +50,89 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   all_values_[ort_value_idx] = ort_value;
   return Status::OK();
 }
+
+void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
+
+  ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
+
+  for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
+    int ort_value_idx = feed_mlvalue_idxs[idx];
+    // we are sharing the underlying tensor/object for MLValue
+
+    ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
+    all_values_[ort_value_idx] = feeds[idx];
+  }
+}
+
+void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
+
+  ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
+
+
+  if (!fetches.empty()) {
+    fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
+
+    auto num_fetches = fetch_mlvalue_idxs_.size();
+
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      int ort_value_idx = fetch_mlvalue_idxs_[idx];
+
+      ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
+
+      all_values_[ort_value_idx] = fetches[idx];
+
+      // Copy the initializer if it is a fetch entry.
+      auto entry = initializers.find(ort_value_idx);
+      if (entry != initializers.end()) {
+        const Tensor& src = entry->second.Get<Tensor>();
+        OrtValue& dest = all_values_[ort_value_idx];
+
+        if (!dest.IsAllocated()) {
+          AllocatorPtr allocator = GetAllocator(src.Location());
+          auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+          dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+        }
+
+        ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+      }
+    }
+  }
+}
+
+Status IExecutionFrame::GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches) {
+  auto num_fetches = fetch_mlvalue_idxs.size();
+
+  if (fetches.empty()) {
+    fetches.resize(num_fetches);
+  } else {
+    // if there's a mismatch things are out so sync so fail
+    if (fetches.size() != num_fetches) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
+                             " entries which doesn't match the number of fetches the frame was initialized with of ",
+                             num_fetches);
+    }
+  }
+
+  for (size_t idx = 0; idx < num_fetches; ++idx) {
+    fetches[idx] = GetMLValue(fetch_mlvalue_idxs[idx]);
+  }
+
+  return Status::OK();
+}
+
 #endif
+
+// Return nullptr if index map to an value that is an unused optional input/output
+const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  return ort_value_idx != NodeIndexInfo::kInvalidEntry ? &(all_values_[ort_value_idx]) : nullptr;
+}
+
+OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
+  return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
+}
 
 // TO DO: make it thread safe
 // This method is not thread safe!

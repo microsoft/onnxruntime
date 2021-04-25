@@ -213,6 +213,21 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 */
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
 
+/** Finalize the fusion of two or more nodes which are being replaced with two or more nodes.
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
+    Conceptually multiple nodes are being combined, and post-fusion will produce output/s with the same names
+    as the last node in 'nodes', and be connected to the same downstream nodes.
+
+    The input edges to the first node in 'nodes' will be moved to replacement_node_start. No other input edges are moved.
+    The output definitions and edges from the last node in 'nodes' will be moved to replacement_node_end.
+    All nodes in 'nodes' will be removed.
+*/
+void FinalizeNodeFusion(Graph& graph,
+                        const std::vector<std::reference_wrapper<Node>>& nodes,
+                        Node& replacement_node_start,
+                        Node& replacement_node_end);
+
 /** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.
 */
@@ -283,5 +298,32 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
 */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
+
+// A class helps handle graph edges
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node, int src_arg_index, int dst_arg_index, const std::string& arg_name);
+
+  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge);
+
+  /** Returns a vector of the input GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
+
+  /** Returns a vector of the output GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
+
+  /** Returns a vector of output GraphEdges of a node for the provided output index. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index);
+
+  /** Removes a set of GraphEdges from the graph. */
+  static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges);
+};
+
 }  // namespace graph_utils
 }  // namespace onnxruntime
