@@ -28,7 +28,7 @@ class Gpt2HelperFactory:
         helpers = {
             "default": Gpt2Helper,
             "beam_search_step": Gpt2BeamSearchHelper,
-            "beam_search_step_config": Gpt2BeamSearchHelper,
+            "configurable_one_step_search": Gpt2BeamSearchHelper,
         }
         w = helpers[helper_type]
         return w
@@ -133,7 +133,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
         )
 
-class GPT2LMHeadModel_BeamSearchStepConfiguration(GPT2LMHeadModel):
+class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one 
     step beam search with configuration support."""
 
@@ -326,7 +326,7 @@ MODEL_CLASSES = {
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
     'GPT2Model': (MyGPT2Model, 'last_state', True),
     "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True), # defined in gpt2_beamsearch_helper.py
-    "GPT2LMHeadModel_BeamSearchStepConfiguration": (GPT2LMHeadModel_BeamSearchStepConfiguration, "last_state", False), # defined in gpt2_beamsearch_helper.py
+    "GPT2LMHeadModel_ConfigurableOneStepSearch": (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False), # defined in gpt2_beamsearch_helper.py
 }
 
 

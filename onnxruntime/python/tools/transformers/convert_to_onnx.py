@@ -148,8 +148,8 @@ def main():
     model_class = MODEL_CLASSES[args.model_class][0]
     if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
         model_type = "beam_search_step"
-    elif args.model_class == "GPT2LMHeadModel_BeamSearchStepConfiguration":
-        model_type = "beam_search_step_config"
+    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
+        model_type = "configurable_one_step_search"
     else:
         model_type = "default"
 
@@ -162,7 +162,7 @@ def main():
                                             batch_size=1, 
                                             beam_size=args.beam_size, 
                                             cache_dir=cache_dir)
-    elif model_type == 'beam_search_step_config':
+    elif model_type == 'configurable_one_step_search':
         model = model_class.from_pretrained(args.model_name_or_path, 
                                             config=config, 
                                             batch_size=1, 
@@ -271,7 +271,7 @@ def main():
                 else:
                     inputs = {"input_ids": input_ids}
 
-                if model_type.startswith("beam_search_step"):
+                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
 
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])
