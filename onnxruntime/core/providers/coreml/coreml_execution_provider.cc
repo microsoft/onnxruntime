@@ -167,7 +167,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   const auto summary_msg = MakeString(
       "CoreMLExecutionProvider::GetCapability,",
       " number of partitions supported by CoreML: ", num_of_partitions,
-      " number of nodes in the graph: ", graph_view.NumberOfNodes(),
+      " number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
       " number of nodes supported by CoreML: ", num_of_supported_nodes);
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
