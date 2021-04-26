@@ -26,6 +26,11 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   uint32_t GetIntraOpNumThreads();
 
+  STDMETHOD(SetIntraOpThreadSpinning)
+  (bool allowSpinning);
+
+  bool GetIntraOpThreadSpinning();
+
  private:
   // The batch size override property is used to inform the engine when the developer
   // wants to explicitly set the batch size of a model to a fixed batch size.
@@ -61,6 +66,8 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is the maximum number of logical cores to ensure that the default behavior of WinML always runs the fastest.
   // WARNING: Setting a number higher than the maximum number of logical cores may result in an inefficient threadpool
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
+
+  bool allow_thread_spinning_ = true;
 };
 
 }  // namespace WINMLP

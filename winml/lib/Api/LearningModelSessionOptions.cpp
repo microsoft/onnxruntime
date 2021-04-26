@@ -42,4 +42,16 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreadsOverride(uint32_t 
   telemetry_helper.SetIntraOpNumThreadsOverride(intraOpNumThreads);
   return S_OK;
 }
+
+bool LearningModelSessionOptions::GetIntraOpThreadSpinning() {
+  return allow_thread_spinning_;
+}
+
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(bool allowSpinning) noexcept {
+  allow_thread_spinning_ = allowSpinning;
+  // TODO: set telemetry
+  return S_OK;
+}
+
+
 }  // namespace WINMLP

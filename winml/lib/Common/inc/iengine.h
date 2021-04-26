@@ -214,6 +214,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetIntraOpNumThreadsOverride)
   (uint32_t intra_op_num_threads) PURE;
 
+  STDMETHOD(SetIntraOpThreadSpinning)
+  (bool allow_spinning) PURE;
+
   STDMETHOD(CreateEngine)
   (IEngine **out) PURE;
 };
