@@ -113,7 +113,10 @@ def create_model():
                                   initializer=[tensor_float32])
 
     model_def = helper.make_model(graph_def, producer_name='feed_inputs_test')
-    final_model = onnx.utils.polish_model(model_def)
+    onnx.checker.check_model(model_def)
+    onnx.helper.strip_doc_string(model_def)
+    final_model = onnx.shape_inference.infer_shapes(model_def)
+    onnx.checker.check_model(final_model)
     onnx.save(final_model, args.output_file)
 
 

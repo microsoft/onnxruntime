@@ -8,8 +8,17 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+#ifndef _Ret_notnull_
+#define _Ret_notnull_
+#endif
+
+
+#ifndef _Post_writable_byte_size_
+#define _Post_writable_byte_size_(n)
+#endif
+
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+_Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
 void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
@@ -61,6 +70,14 @@ MLDataType DataTypeImpl::GetType<float>() {
 template <>
 MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
+}
+
+Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  return g_host->IDataTransfer__CopyTensor(this, src, dst);
+}
+
+Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
 }
 
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)

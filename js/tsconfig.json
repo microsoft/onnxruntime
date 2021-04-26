@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "module": "ES2015",
+    "moduleResolution": "node",
+    "declaration": true,
+    "esModuleInterop": true,
+    "target": "ES2017",
+    "lib": ["ES2017", "ESNext.BigInt"],
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedParameters": false,
+    "alwaysStrict": true,
+    "strictNullChecks": true,
+    "pretty": true,
+    "allowUnreachableCode": false,
+    "experimentalDecorators": true,
+    "downlevelIteration": true,
+    "incremental": true
+  },
+  "exclude": ["node_modules/"]
+}
