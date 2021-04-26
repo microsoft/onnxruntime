@@ -53,9 +53,10 @@ static SessionOptions session_options = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
+    nullptr,                           //prepacked_weights_cache
     {},                                //session_configurations
     {},                                // initializers_to_share_map
-}; 
+};
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -829,7 +830,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
