@@ -16,6 +16,23 @@ typedef std::function<void(const float* input, float* output, size_t length)> Lo
 // function that transform single value
 typedef std::function<float(float)> LookupTableScalarTransformer;
 
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableArrayTransformer& array_values_transformer);
+
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableScalarTransformer& value_transformer);
+
+void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n);
 
 template <typename T>
 class QLinearLookupBase : public OpKernel {
@@ -24,7 +41,7 @@ class QLinearLookupBase : public OpKernel {
       : OpKernel(info), fixed_lookup_table_() {
   }
 
-//  protected:
+  //  protected:
   template <typename Transformer>
   Status ComputeBase(OpKernelContext* context, Transformer fn) const;
 

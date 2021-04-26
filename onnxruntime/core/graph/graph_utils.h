@@ -298,5 +298,32 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
 */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
+
+// A class helps handle graph edges
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node, int src_arg_index, int dst_arg_index, const std::string& arg_name);
+
+  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge);
+
+  /** Returns a vector of the input GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
+
+  /** Returns a vector of the output GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
+
+  /** Returns a vector of output GraphEdges of a node for the provided output index. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index);
+
+  /** Removes a set of GraphEdges from the graph. */
+  static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges);
+};
+
 }  // namespace graph_utils
 }  // namespace onnxruntime
