@@ -1067,7 +1067,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
       }
     }
   };
-  RunInParallelInternal(*pt, ps, n, std::move(worker_fn));
+  RunInParallelInternal(*pt, ps, n, worker_fn);
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
@@ -1109,7 +1109,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
-  RunInParallelInternal(*pt, ps, n, std::move(fn));  // select dispatcher and do job distribution;
+  RunInParallelInternal(*pt, ps, n, fn);  // select dispatcher and do job distribution;
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
   fn(0);  // run fn(0)
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
