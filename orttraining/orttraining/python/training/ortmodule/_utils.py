@@ -3,8 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils
-
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
@@ -60,6 +58,32 @@ def _check_same_device(device, argument_str, *args):
                     f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
 
+def get_device_index(device):
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        device = torch.device(device)
+    elif isinstance(device, int):
+        return device
+    return 0 if device.index is None else device.index
+
+
+def get_device_str(device):
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        if device.find(':') == -1:
+            device += ':' + str(torch.cuda.current_device())
+    elif isinstance(device, int):
+        device = 'cuda:' + str(device)
+    elif isinstance(device, torch.device):
+        if device.index is None:
+            device = device.type + ':' + str(torch.cuda.current_device())
+        else:
+            device = device.type + ':' + str(device.index)
+    else:
+        raise RuntimeError('Unsupported device type')
+    return device
+
+
 def get_device_from_module(module):
     '''Returns the first device found in the `module`'s parameters or None'''
     device = None
@@ -79,4 +103,4 @@ def _create_iobinding(io_binding, inputs, model, device):
         io_binding.bind_ortvalue_input(value_info.name, OrtValue(_ortvalue_from_torch_tensor(inputs[idx])))
 
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type, device_id=_utils.get_device_index(device))
+        io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
