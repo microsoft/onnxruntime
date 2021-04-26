@@ -185,11 +185,14 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
         std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);
         graph.UpdateProducerNode(cast_output->Name(), producer->Index());
       } else {
-        (void)graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
-                            "Identity",
-                            "Created as a place-holder for a graph output",
-                            {cast_input},
-                            {cast_output});
+        Node& identity = graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
+                                       "Identity",
+                                       "Created as a place-holder for a graph output",
+                                       {cast_input},
+                                       {cast_output});
+        graph.AddEdge(producer->Index(), identity.Index(), output_index, 0);
+        // Add identity to the producer's consumer nodes.
+        graph.AddConsumerNode(cast_input->Name(), &identity);
       }
     }
   }
@@ -212,7 +215,7 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
   }
   for (auto cast : casts) {
     graph_utils::RemoveNodeOutputEdges(graph, *cast);
-    removed_nodes.push_back(cast->Index());
+    removed_nodes.push_front(cast->Index());
   }
   return Status::OK();
 }
