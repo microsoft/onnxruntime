@@ -77,9 +77,17 @@ class TrainingAgent(object):
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, path_or_bytes, session_options=None, providers=None, provider_options=None):
+    def __init__(self, path_or_bytes, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
+                 bw_feed_names, bw_fetches_names, bw_outputs_device_info, session_options=None,
+                 providers=None, provider_options=None):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
+        :param fw_feed_names: Feed names for foward pass.
+        :param fw_fetches_names: Fetch names for forward pass.
+        :param fw_outputs_device_info: Device info for fetches in forward pass.
+        :param bw_feed_names: Feed names for backward pass.
+        :param bw_fetches_names: Fetch names for backward pass.
+        :param bw_outputs_device_info: Device info for fetches in backward pass.
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
@@ -104,36 +112,26 @@ class TrainingAgent(object):
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
-        self._training_agent = None
-        self._inference_session = None
-
-        self.create_training_agent(path_or_bytes, session_options, providers, provider_options)
-
-    def create_training_agent(self, path_or_bytes, session_options, providers, provider_options):
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
                                                                providers, provider_options)
-        self._training_agent = C_TrainingAgent(self._inference_session._sess)
 
-    def io_binding(self):
-        """Return an onnxruntime.IOBinding object`."""
+        self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_fetches_names,
+                                               fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info)
 
-        return IOBinding(self._inference_session)
-
-    def run_forward(self, iobinding, run_options):
+    def run_forward(self, feeds, fetches, state):
         """
-         Compute the forward subgraph until it hits the Yield Op.
-         :param iobinding: the iobinding object that has graph inputs/outputs bind.
-         :param run_options: See :class:`onnxruntime.RunOptions`.
+         Compute the forward subgraph for given feeds and fetches.
+         :param feeds: Inputs to the graph run.
+         :param fetches: Outputs of the graph run.
+         :param state: State of the graph that is used for executing partial graph runs.
         """
+        self._training_agent.run_forward(feeds, fetches, state)
 
-        ortvalues, run_id = self._training_agent.run_forward(iobinding._iobinding, run_options)
-        ortvalues = [OrtValue(ortvalue) for ortvalue in ortvalues]
-        return ExecutionAgentOutput(ortvalues, run_id)
-
-    def run_backward(self, backward_output_grads, run_id):
+    def run_backward(self, feeds, fetches, state):
         """
-         Resume executing the backward subgraph starting from Yield Op.
-         :param backward_output_grads: Output gradients for backward.
+         Compute the backward subgraph for given feeds and fetches.
+         :param feeds: Inputs to the graph run.
+         :param fetches: Outputs of the graph run.
+         :param state: State of the graph that is used for executing partial graph runs.
         """
-
-        self._training_agent.run_backward([ortvalue._ortvalue for ortvalue in backward_output_grads], run_id)
+        self._training_agent.run_backward(feeds, fetches, state)

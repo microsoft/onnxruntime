@@ -8,6 +8,7 @@
 
 #include "core/common/status.h"
 #include "core/graph/model.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -27,7 +28,11 @@ struct OrtModuleGraphBuilderConfiguration {
   bool use_invertible_layernorm_grad = false;
   bool build_gradient_graph = true;
 
-  // TODO: add GraphTransformerConfiguration
+  // Graph transformer configuration
+  TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
+
+  // Log severity
+  logging::Severity loglevel{logging::Severity::kWARNING};
 };
 
 /**
@@ -51,6 +56,7 @@ struct GraphInfo {
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
+  std::vector<std::string> module_output_gradient_name{};
 };
 
 class OrtModuleGraphBuilder {

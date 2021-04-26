@@ -21,8 +21,8 @@ const char* GetGemmTestSuitePrefix<double>() {
 template <typename T, bool Packed>
 class FgemmPackedContext;
 
-template <typename T>
-class FgemmPackedContext<T, false> {
+template <>
+class FgemmPackedContext<float, false> {
  public:
   void
   TestGemm(
@@ -31,21 +31,69 @@ class FgemmPackedContext<T, false> {
       size_t M,
       size_t N,
       size_t K,
-      float alpha,
-      const T* A,
+      size_t BatchSize,
+      const float alpha,
+      const float* A,
       size_t lda,
-      const T* B,
+      const float* B,
       size_t ldb,
-      float beta,
-      T* C,
+      const float beta,
+      float* C,
       size_t ldc,
       MLAS_THREADPOOL* threadpool) {
-    MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = B + K * N * i;
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
   }
 };
 
-template <typename T>
-class FgemmPackedContext<T, true> {
+#ifdef MLAS_TARGET_AMD64
+template <>
+class FgemmPackedContext<double, false> {
+ public:
+  void TestGemm(
+      CBLAS_TRANSPOSE TransA,
+      CBLAS_TRANSPOSE TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      size_t BatchSize,
+      double alpha,
+      const double* A,
+      size_t lda,
+      const double* B,
+      size_t ldb,
+      double beta,
+      double* C,
+      size_t ldc,
+      MLAS_THREADPOOL* threadpool) {
+    std::vector<MLAS_DGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = B + K * N * i;
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+  }
+};
+#endif
+
+template <>
+class FgemmPackedContext<float, true> {
  public:
   void
   TestGemm(
@@ -54,19 +102,34 @@ class FgemmPackedContext<T, true> {
       size_t M,
       size_t N,
       size_t K,
-      float alpha,
-      const T* A,
+      size_t BatchSize,
+      const float alpha,
+      const float* A,
       size_t lda,
-      const T* B,
+      const float* B,
       size_t ldb,
-      float beta,
-      T* C,
+      const float beta,
+      float* C,
       size_t ldc,
       MLAS_THREADPOOL* threadpool) {
     size_t PackedBSize = MlasGemmPackBSize(N, K);
-    void* PackedB = BufferBPacked.GetBuffer(PackedBSize, true);
-    MlasGemmPackB(TransB, N, K, B, ldb, PackedB);
-    MlasGemm(TransA, M, N, K, T(alpha), A, lda, PackedB, T(beta), C, ldc, threadpool);
+    void* PackedB = BufferBPacked.GetBuffer(PackedBSize * BatchSize, true);
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t i = 0; i < BatchSize; i++) {
+      MlasGemmPackB(TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i);
+      data[i].BIsPacked = true;
+      data[i].A = A + M * K * i;
+      data[i].lda = lda;
+      data[i].B = (float*)((uint8_t*)PackedB + PackedBSize * i);
+      data[i].ldb = ldb;
+      data[i].C = C + M * N * i;
+      data[i].ldc = ldc;
+      data[i].alpha = alpha;
+      data[i].beta = beta;
+    }
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+
+    MlasGemm(TransA, M, N, K, alpha, A, lda, PackedB, beta, C, ldc, threadpool);
   }
 
  private:
@@ -89,14 +152,14 @@ class MlasFgemmTest : public MlasTestBase {
 
   MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) { }
 
-  void Test(size_t M, size_t N, size_t K, float alpha, float beta) {
-    Test(false, false, M, N, K, alpha, beta);
-    Test(false, true, M, N, K, alpha, beta);
-    Test(true, false, M, N, K, alpha, beta);
-    Test(true, true, M, N, K, alpha, beta);
+  void Test(size_t M, size_t N, size_t K, size_t BatchSize, T alpha, T beta) {
+    Test(false, false, M, N, K, BatchSize, alpha, beta);
+    Test(false, true, M, N, K, BatchSize, alpha, beta);
+    Test(true, false, M, N, K, BatchSize, alpha, beta);
+    Test(true, true, M, N, K, BatchSize, alpha, beta);
   }
 
-  void Test(bool trans_a, bool trans_b, size_t M, size_t N, size_t K, float alpha, float beta) {
+  void Test(bool trans_a, bool trans_b, size_t M, size_t N, size_t K, size_t BatchSize, T alpha, T beta) {
     //
     // Skip the test if the B buffer cannot be packed.
     //
@@ -105,14 +168,14 @@ class MlasFgemmTest : public MlasTestBase {
       return;
     }
 
-    const T* A = BufferA.GetBuffer(K * M);
-    const T* B = BufferB.GetBuffer(N * K);
-    T* C = BufferC.GetBuffer(N * M);
-    T* CReference = BufferCReference.GetBuffer(N * M);
+    const T* A = BufferA.GetBuffer(K * M * BatchSize);
+    const T* B = BufferB.GetBuffer(N * K * BatchSize);
+    T* C = BufferC.GetBuffer(N * M * BatchSize);
+    T* CReference = BufferCReference.GetBuffer(N * M * BatchSize);
 
     Test(trans_a ? CblasTrans : CblasNoTrans,
          trans_b ? CblasTrans : CblasNoTrans,
-         M, N, K, alpha, A, trans_a ? M : K, B, trans_b ? K : N,
+         M, N, K, BatchSize, alpha, A, trans_a ? M : K, B, trans_b ? K : N,
          beta, C, CReference, N);
   }
 
@@ -121,33 +184,36 @@ class MlasFgemmTest : public MlasTestBase {
             size_t M,
             size_t N,
             size_t K,
-            float alpha,
+            size_t BatchSize,
+            T alpha,
             const T* A,
             size_t lda,
             const T* B,
             size_t ldb,
-            float beta,
+            T beta,
             T* C,
             T* CReference,
             size_t ldc) {
-    std::fill_n(C, M * N, -0.5f);
-    std::fill_n(CReference, M * N, -0.5f);
+    std::fill_n(C, M * N * BatchSize, -0.5f);
+    std::fill_n(CReference, M * N * BatchSize, -0.5f);
 
-    PackedContext.TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool_);
-    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
+    PackedContext.TestGemm(TransA, TransB, M, N, K, BatchSize, alpha, A, lda, B, ldb, beta, C, ldc, threadpool_);
+    ReferenceGemm(TransA, TransB, M, N, K, BatchSize, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
-    for (size_t m = 0, f = 0; m < M; m++) {
-      for (size_t n = 0; n < N; n++) {
-        // Sensitive to comparing positive/negative zero.
-        ASSERT_EQ(C[f], CReference[f])
-            << " Diff @[" << m << ", " << n << "] f=" << f << ", "
-            << (Packed ? "Packed" : "NoPack") << "."
-            << (Threaded ? "SingleThread" : "Threaded") << "/"
-            << (TransA == CblasTrans ? "TransA" : "A") << "/"
-            << (TransB == CblasTrans ? "TransB" : "B") << "/"
-            << "M" << M << "xN" << N << "xK" << K << "/"
-            << "Alpha" << alpha << "/"
-            << "Beta" << beta;
+    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++, f++) {
+          // Sensitive to comparing positive/negative zero.
+          ASSERT_EQ(C[f], CReference[f])
+              << " Diff @[" << batch << ", " << m << ", " << n << "] f=" << f << ", "
+              << (Packed ? "Packed" : "NoPack") << "."
+              << (Threaded ? "SingleThread" : "Threaded") << "/"
+              << (TransA == CblasTrans ? "TransA" : "A") << "/"
+              << (TransB == CblasTrans ? "TransB" : "B") << "/"
+              << "M" << M << "xN" << N << "xK" << K << "/"
+              << "Alpha" << alpha << "/"
+              << "Beta" << beta;
+        }
       }
     }
   }
@@ -157,111 +223,120 @@ class MlasFgemmTest : public MlasTestBase {
                      size_t M,
                      size_t N,
                      size_t K,
-                     float alpha,
+                     size_t BatchSize,
+                     T alpha,
                      const T* A,
                      size_t lda,
                      const T* B,
                      size_t ldb,
-                     float beta,
+                     T beta,
                      T* C,
                      size_t ldc) {
-    if (TransA == CblasNoTrans) {
-      if (TransB == CblasNoTrans) {
-        for (size_t m = 0; m < M; m++) {
-          for (size_t n = 0; n < N; n++) {
-            const T* a = A + (m * lda);
-            const T* b = B + n;
-            T* c = C + (m * ldc) + n;
-            T sum = 0.0f;
+    for (size_t batch = 0; batch < BatchSize; batch++) {
+      if (TransA == CblasNoTrans) {
+        if (TransB == CblasNoTrans) {
+          for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+              const T* a = A + (m * lda);
+              const T* b = B + n;
+              T* c = C + (m * ldc) + n;
+              T sum = 0.0f;
 
-            for (size_t k = 0; k < K; k++) {
-              sum += (*b * *a);
-              b += ldb;
-              a += 1;
+              for (size_t k = 0; k < K; k++) {
+                sum += (*b * *a);
+                b += ldb;
+                a += 1;
+              }
+
+              *c = (*c * beta) + (sum * alpha);
             }
+          }
 
-            *c = (*c * beta) + (sum * alpha);
+        } else {
+          for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+              const T* a = A + (m * lda);
+              const T* b = B + (n * ldb);
+              T* c = C + (m * ldc) + n;
+              T sum = 0.0f;
+
+              for (size_t k = 0; k < K; k++) {
+                sum += (*b * *a);
+                b += 1;
+                a += 1;
+              }
+
+              *c = (*c * beta) + (sum * alpha);
+            }
           }
         }
 
       } else {
-        for (size_t m = 0; m < M; m++) {
-          for (size_t n = 0; n < N; n++) {
-            const T* a = A + (m * lda);
-            const T* b = B + (n * ldb);
-            T* c = C + (m * ldc) + n;
-            T sum = 0.0f;
+        if (TransB == CblasNoTrans) {
+          for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+              const T* a = A + m;
+              const T* b = B + n;
+              T* c = C + (m * ldc) + n;
+              T sum = 0.0f;
 
-            for (size_t k = 0; k < K; k++) {
-              sum += (*b * *a);
-              b += 1;
-              a += 1;
+              for (size_t k = 0; k < K; k++) {
+                sum += (*b * *a);
+                b += ldb;
+                a += lda;
+              }
+
+              *c = (*c * beta) + (sum * alpha);
             }
+          }
 
-            *c = (*c * beta) + (sum * alpha);
+        } else {
+          for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+              const T* a = A + m;
+              const T* b = B + (n * ldb);
+              T* c = C + (m * ldc) + n;
+              T sum = 0.0f;
+
+              for (size_t k = 0; k < K; k++) {
+                sum += (*b * *a);
+                b += 1;
+                a += lda;
+              }
+
+              *c = (*c * beta) + (sum * alpha);
+            }
           }
         }
       }
-
-    } else {
-      if (TransB == CblasNoTrans) {
-        for (size_t m = 0; m < M; m++) {
-          for (size_t n = 0; n < N; n++) {
-            const T* a = A + m;
-            const T* b = B + n;
-            T* c = C + (m * ldc) + n;
-            T sum = 0.0f;
-
-            for (size_t k = 0; k < K; k++) {
-              sum += (*b * *a);
-              b += ldb;
-              a += lda;
-            }
-
-            *c = (*c * beta) + (sum * alpha);
-          }
-        }
-
-      } else {
-        for (size_t m = 0; m < M; m++) {
-          for (size_t n = 0; n < N; n++) {
-            const T* a = A + m;
-            const T* b = B + (n * ldb);
-            T* c = C + (m * ldc) + n;
-            T sum = 0.0f;
-
-            for (size_t k = 0; k < K; k++) {
-              sum += (*b * *a);
-              b += 1;
-              a += lda;
-            }
-
-            *c = (*c * beta) + (sum * alpha);
-          }
-        }
-      }
+      A += M * K;
+      B += K * N;
+      C += M * N;
     }
   }
 
   void ExecuteLong() override {
-    static const float multipliers[] = {0.0f, -0.0f, 0.25f, -0.5f, 1.0f, -1.0f};
+    static const T multipliers[] = {0.0f, -0.0f, 0.25f, -0.5f, 1.0f, -1.0f};
 
     for (size_t N = 1; N < 128; N++) {
       for (size_t K = 1; K < 128; K++) {
         for (size_t a = 0; a < _countof(multipliers); a++) {
           for (size_t b = 0; b < _countof(multipliers); b++) {
-            Test(1, N, K, multipliers[a], multipliers[b]);
-            Test(N, 1, K, multipliers[a], multipliers[b]);
+            Test(1, N, K, 1, multipliers[a], multipliers[b]);
+            Test(N, 1, K, 1, multipliers[a], multipliers[b]);
+            if (!Packed) {
+              Test(1, N, K, 3, multipliers[a], multipliers[b]);
+            }
           }
         }
       }
     }
 
     for (size_t a = 0; a < _countof(multipliers); a++) {
-      float alpha = multipliers[a];
+      T alpha = multipliers[a];
 
       for (size_t b = 0; b < _countof(multipliers); b++) {
-        float beta = multipliers[b];
+        T beta = multipliers[b];
 
         for (size_t M = 16; M < 160; M += 32) {
           for (size_t N = 16; N < 160; N += 32) {
@@ -269,21 +344,25 @@ class MlasFgemmTest : public MlasTestBase {
             for (size_t k = 0; k < _countof(ks); k++) {
               size_t K = ks[k];
 
-              Test(M, N, K, alpha, beta);
-              Test(M + 1, N, K, alpha, beta);
-              Test(M, N + 1, K, alpha, beta);
-              Test(M + 1, N + 1, K, alpha, beta);
-              Test(M + 3, N + 2, K, alpha, beta);
-              Test(M + 4, N, K, alpha, beta);
-              Test(M, N + 4, K, alpha, beta);
-              Test(M + 4, N + 4, K, alpha, beta);
-              Test(M + 3, N + 7, K, alpha, beta);
-              Test(M + 8, N, K, alpha, beta);
-              Test(M, N + 8, K, alpha, beta);
-              Test(M + 12, N + 12, K, alpha, beta);
-              Test(M + 13, N, K, alpha, beta);
-              Test(M, N + 15, K, alpha, beta);
-              Test(M + 15, N + 15, K, alpha, beta);
+              Test(M, N, K, 1, alpha, beta);
+              Test(M + 1, N, K, 1, alpha, beta);
+              Test(M, N + 1, K, 1, alpha, beta);
+              Test(M + 1, N + 1, K, 1, alpha, beta);
+              Test(M + 3, N + 2, K, 1, alpha, beta);
+              Test(M + 4, N, K, 1, alpha, beta);
+              Test(M, N + 4, K, 1, alpha, beta);
+              Test(M + 4, N + 4, K, 1, alpha, beta);
+              Test(M + 3, N + 7, K, 1, alpha, beta);
+              Test(M + 8, N, K, 1, alpha, beta);
+              Test(M, N + 8, K, 1, alpha, beta);
+              Test(M + 12, N + 12, K, 1, alpha, beta);
+              Test(M + 13, N, K, 1, alpha, beta);
+              Test(M, N + 15, K, 1, alpha, beta);
+              Test(M + 15, N + 15, K, 1, alpha, beta);
+              if (!Packed) {
+                Test(M + 3, N + 1, K, 7, multipliers[a], multipliers[b]);
+                Test(M + 13, N + 2, K, 9, multipliers[a], multipliers[b]);
+              }
             }
           }
           printf("a %zd/%zd b %zd/%zd M %zd\n", a, _countof(multipliers), b, _countof(multipliers), M);
@@ -294,7 +373,7 @@ class MlasFgemmTest : public MlasTestBase {
     for (size_t M = 0; M < 160; M++) {
       for (size_t N = 0; N < 160; N++) {
         for (size_t K = 0; K < 160; K++) {
-          Test(M, N, K, 1.0f, 0.0f);
+          Test(M, N, K, 1, 1.0f, 0.0f);
         }
       }
       printf("M %zd\n", M);
@@ -303,10 +382,10 @@ class MlasFgemmTest : public MlasTestBase {
     for (size_t M = 160; M < 320; M += 24) {
       for (size_t N = 112; N < 320; N += 24) {
         for (size_t K = 0; K < 16; K++) {
-          Test(M, N, K, 1.0f, 0.0f);
+          Test(M, N, K, 1, 1.0f, 0.0f);
         }
         for (size_t K = 16; K < 160; K += 32) {
-          Test(M, N, K, 1.0f, 0.0f);
+          Test(M, N, K, 1, 1.0f, 0.0f);
         }
       }
       printf("M %zd\n", M);

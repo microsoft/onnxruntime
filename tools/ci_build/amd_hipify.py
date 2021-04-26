@@ -231,6 +231,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
         s = s.replace('CUDA_CALL', 'HIP_CALL')
         s = s.replace('SliceCuda', 'SliceRocm')
+        s = s.replace('thrust::cuda', 'thrust::hip')
         s = s.replace('cuda', 'rocm')
         # s = s.replace('Cuda', 'Rocm')
         s = s.replace('CUDA', 'ROCM')

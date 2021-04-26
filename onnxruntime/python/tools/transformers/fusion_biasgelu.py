@@ -30,6 +30,7 @@ class FusionBiasGelu(Fusion):
             return
         (add, matmul) = nodes
 
+        bias_weight = None
         # bias should be one dimension
         bias_index = -1
         for i, input in enumerate(add.input):

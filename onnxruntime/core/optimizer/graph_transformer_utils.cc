@@ -24,6 +24,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -39,6 +40,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/qdq_transformer.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -69,6 +71,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<DivMulFusion>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
+      rules.push_back(onnxruntime::make_unique<GemmTransposeFusion>());
       rules.push_back(onnxruntime::make_unique<NotWhereFusion>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
@@ -168,6 +171,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(onnxruntime::make_unique<QDQS8ToU8Transformer>(cpu_ep));
+        transformers.emplace_back(onnxruntime::make_unique<QDQPropagationTransformer>(cpu_ep));
         transformers.emplace_back(onnxruntime::make_unique<QDQTransformer>());
       }
 

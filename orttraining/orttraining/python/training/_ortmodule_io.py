@@ -1,21 +1,58 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 from collections import abc
 import copy
-import functools
 import inspect
 import torch
 import warnings
 
 
 class _InputInfo(object):
-    def __init__(self, names, shape, require_grad_names=None, dynamic_axes=None, schema=None):
+    def __init__(self,
+                 names,
+                 shape,
+                 require_grad_names=None,
+                 dynamic_axes=None,
+                 schema=None,
+                 num_positionals=0,
+                 keyword_names=None):
         self.names = names
         self.shape = shape
         self.require_grad_names = require_grad_names if require_grad_names else []
         self.dynamic_axes = dynamic_axes if dynamic_axes else {}
         self.schema = schema if schema else []
+        self.num_positionals = num_positionals
+        self.keyword_names = keyword_names
 
+    def __repr__(self) -> str:
+        return f'''_InputInfo class:
+            \tNames:            {self.names}
+            \tShape:            {self.shape}
+            \tRequire gradient: {self.require_grad_names}
+            \tDynamic axes:     {self.dynamic_axes}
+            \tSchema:           {self.schema}
+            \t#Positionals:     {self.num_positionals}
+            \tKeyword names:    {self.keyword_names}'''
 
-def _convert_input_to_list(param_names, user_input_names, buffer_names, inputs, kwargs):
+    def flatten(self, args, kwargs):
+        '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
+
+        ret = list(args)
+        for _, kwarg in kwargs.items():
+            ret.append(kwarg)
+        return tuple(ret)
+
+    def unflatten(self, flat_args):
+        '''Unflatten tuple of tensors into args and kwargs'''
+
+        args = tuple(flat_args[:self.num_positionals])
+        kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
+        return args, kwargs
+
+def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -27,12 +64,19 @@ def _convert_input_to_list(param_names, user_input_names, buffer_names, inputs, 
     non_none_inputs = [inp for inp in inputs if inp is not None]
     named_buffers_iter = iter(buffer_names)
     result = []
-    for input_idx, name in enumerate(user_input_names):
+
+    for input_idx, name in enumerate(onnx_input_names):
         inp = None
-        if input_idx < len(non_none_inputs):
-            inp = non_none_inputs[input_idx]
-        elif name in kwargs and kwargs[name] is not None:
+        if name in kwargs and kwargs[name] is not None:
+            # Only use keywords coming from user that are expected by ONNX model
             inp = kwargs[name]
+        elif input_idx < len(non_none_inputs):
+            # Only use positionals coming from user that are expected by ONNX model
+            if name != input_info.names[input_idx]:
+                # When ONNX drops unused inputs, get correct index from user input
+                input_idx = input_info.names.index(name)
+            inp = non_none_inputs[input_idx]
+
         elif input_idx >= len(non_none_inputs):
             # Registered buffers are translated to user_input+initializer in ONNX
             buffer_name, inp = next(named_buffers_iter)
@@ -106,7 +150,7 @@ class _TensorStub(object):
         return True
 
 
-def populate_user_output_from_schema_and_outputs(output_schema, output_names, outputs):
+def unflatten_user_output(output_schema, output_names, outputs):
     """Follows the schema to generate an output that is expected by the user"""
 
     def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
@@ -210,51 +254,60 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
     return output_names, output_dynamic_axes
 
 
-def get_flattened_module(original_module):
-    """Returns a torch.nn.Module that flattens the output of the original module in its forward method"""
+def _transform_output_to_flat_tuple(data):
+    """Converts the data to a flat tuple by iterating over the entire data structure"""
 
-    def _transform_output_to_flat_tuple(output):
-        """Converts the output to a flat tuple by iterating over the entire output structure"""
+    def _flatten_data(data, flat_data):
+        # Recursively traverse over the data and populate the flat_data with torch.Tensors
 
-        def _flatten_output(output, flat_output):
-            # Recursively traverse over the output and populate the flat_output with torch.Tensors
+        if data is None:
+            return
+        elif isinstance(data, torch.Tensor):
+            flat_data.append(data)
+        elif isinstance(data, abc.Sequence):
+            for value in data:
+                _flatten_data(value, flat_data)
+        elif isinstance(data, abc.Mapping):
+            for _, value in sorted(data.items()):
+                _flatten_data(value, flat_data)
+        else:
+            raise TypeError(f'ORTModule does not support the following data type {type(data)}.')
 
-            if output is None:
-                return
-            elif isinstance(output, torch.Tensor):
-                flat_output.append(output)
-            elif isinstance(output, abc.Sequence):
-                for value in output:
-                    _flatten_output(value, flat_output)
-            elif isinstance(output, abc.Mapping):
-                for _, value in sorted(output.items()):
-                    _flatten_output(value, flat_output)
-            else:
-                raise TypeError(f'ORTModule does not support the following output type {type(output)}.')
+    flat_data = []
+    _flatten_data(data, flat_data)
+    return tuple(flat_data)
 
-        flat_output = []
-        _flatten_output(output, flat_output)
-        return tuple(flat_output)
 
-    class FlattenedOutputModule(torch.nn.Module):
-        def __init__(self, module):
-            super(FlattenedOutputModule, self).__init__()
-            self._base_module = module
+class _FlattenedModule(torch.nn.Module):
+    def __init__(self, original_module):
+        super(_FlattenedModule, self).__init__()
+        self._original_module = original_module
 
-            def _forward(self, *args, **kwargs):
-                return _transform_output_to_flat_tuple(self._base_module(*args, **kwargs))
+        # Before `forward` is called, _ort_module must be assigned
+        # Updated input info is needed to expand args into *args, **kwargs
+        self._input_info = None
 
-            # Exporter does not support use of **kwargs in the forward method.
-            # Work around it by making the signature of the forward method to resemble that of the
-            # original model
-            # Copy the forward signature from the original PyTorch module.
-            self.forward = _forward.__get__(self)
-            functools.update_wrapper(self.forward.__func__, module.forward.__func__)
-
-    return FlattenedOutputModule(original_module)
+    def forward(self, *args):
+        new_args, new_kwargs = self._input_info.unflatten(args)
+        return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
 
 def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwargs):
+
+    def _add_dynamic_shape(name, input):
+        dynamic_axes[name] = {}
+        for dim_idx in range(len(input.shape)):
+            dynamic_axes[name].update({dim_idx: f'{name}_dim{dim_idx}'})
+        return dynamic_axes
+
+    def _add_input(name, input, onnx_graph, onnx_graph_input_names):
+        if input is not None and (onnx_graph is None or name in onnx_graph_input_names):
+            if input.requires_grad:
+                input_names_require_grad.append(name)
+            input_names.append(name)
+            dynamic_axes.update(_add_dynamic_shape(name, input))
+            input_shape.append(list(input.size()))
+
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
@@ -265,46 +318,34 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     dynamic_axes = {}
     input_names_require_grad = []
     input_shape = []
+    var_positional_idx = 0
 
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
             # VAR_POSITIONAL parameter carries all *args parameters from original forward method
-            var_positional_idx = 0
-            for args_i in range(input_idx, len(inputs)):
-                name = f'var_positional_{input_parameter.name}{var_positional_idx}'
 
+            for args_i in range(input_idx, len(inputs)):
+                name = f'{input_parameter.name}_{var_positional_idx}'
                 var_positional_idx += 1
                 inp = inputs[args_i]
-                if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-                    if inp.requires_grad:
-                        # input_names_require_grad holds all input tensors that have requires_grad
-                        input_names_require_grad.append(name)
-
-                    input_names.append(name)
-                    dynamic_axes[name] = {}
-                    for dim_idx in range(len(inp.shape)):
-                        dynamic_axes[name].update({dim_idx: f'input{input_idx}_dim{dim_idx}'})
-
-                    input_shape.append(list(inp.size()))
-        else:
-            # All positional non-*args are processed here
+                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+        elif input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY or\
+             input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or\
+             input_parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+            # All positional non-*args and non-**kwargs are processed here
             name = input_parameter.name
             inp = None
+            input_idx += var_positional_idx
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-            if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-                if inp.requires_grad:
-                    # input_names_require_grad holds all input tensors that have requires_grad
-                    input_names_require_grad.append(name)
-
-                input_names.append(name)
-                dynamic_axes[name] = {}
-                for dim_idx in range(len(inp.shape)):
-                    dynamic_axes[name].update({dim_idx: f'input{input_idx}_dim{dim_idx}'})
-
-                input_shape.append(list(inp.size()))
+            _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+        elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            # **kwargs is always the last argument of forward()
+            for name,inp in kwargs.items():
+                if name not in input_names:
+                    _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
     # Shallow copy is ok as we need the data structure, not the content
     schema = _extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
@@ -313,7 +354,9 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       shape=input_shape,
                       require_grad_names=input_names_require_grad,
                       dynamic_axes=dynamic_axes,
-                      schema=schema)
+                      schema=schema,
+                      num_positionals=len(inputs),
+                      keyword_names=kwargs.keys())
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
