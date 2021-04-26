@@ -122,6 +122,8 @@ class TrainingManager(GraphExecutionManager):
 
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
+                # affect peak memory usage in a subsequent graph run.
                 del ctx.run_info.state
                 # Return input and initializer gradients
                 num_user_input_grads = len(self._input_info.require_grad_names)
