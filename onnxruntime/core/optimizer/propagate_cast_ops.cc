@@ -8,6 +8,32 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
+/*********************************************************************************************************************************
+* PropagateCastOps transformation tries to exapand float16 computation regions in the graph by converting float operations to float16.
+* In order to perform the the transformation, certain operations are considered FP16 safe, i.e. the computation may be performed
+* without effecting the numerical result, ex. transpose, shape, etc. The transformation supports three levels of optimization, 0, 1
+* and 2. Level 2 being the most agressive, may consider moving float operations to float16 which may result in different numerical results 
+* due to loss of precision. The user may choose level 0, whereby the user choosed the opcodes which are "FP16 Safe" instead of a list
+* predetermined opcodes as in levels 1 and 2.
+* Currently two strategies are available, InsertAndReduce and FloodFill.
+* InsertAndReduce :
+* The transformation first 
+*   1. Inserts float16 cast operation on all the float inputs
+*   2. Change all float outputs to float16
+*   3. Insert float cast operations on all float outputs as expected
+*   After inserting the FP16 and FP32 cast operation nodes around all the nodes with FP16 Safe opcodes, the transformation reduces the
+*   cast operations, using the following operations on the graph, iteratively until no more reduction is possible.
+*   1. Remove back-to-back casts
+*   2. Remove redundant casts
+*   3. Fuse sibling subgraphs with same cast operation
+* FloodFill:
+    Operations are converted from float to float16 by propagating float16 cast operation up the graph or float cast perations down the
+*   graph. Using this strategy, for eatch pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
+*   float16 region up/down the graph using DFS/ReverseDFS and (TODO) identifies loss/gain by performing such expansion, considering 
+*   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (TODO).
+*   In addition to propagating cast operations up/down the graph, in this strategy, the above mentioned cast op reduction functions
+*   are also used.
+*********************************************************************************************************************************/
 namespace onnxruntime {
 // NodeArg to Select consumer node map.
 typedef std::unordered_map<NodeArg*, std::vector<Node*>> NodeArgToConsumerMap;
@@ -23,11 +49,14 @@ static std::string ConcatNames(
   return std::accumulate(names.begin(), names.end(), std::string(), [](const std::string& a, const std::string& b) { return a + ", " + b; });
 }
 
+// GetName
+// Collect the node-arg names and the correspnding consumers name for reporting
 static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& p) {
   return p.first->Name() + " feeding " + ConcatNames(p.second) + "; ";
 };
+
 // The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that
-// the code is allowed to propage Cast operations cross. The user may specify a custom list of optypes using level 0.
+// the code is allowed to propage Cast operations across. The user may specify a custom list of optypes using level 0.
 // The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
 // list includes Level 1 list also.
 static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
@@ -36,6 +65,7 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
 static std::unordered_set<std::string> converted_node_names;  // Names of the nodes converted to FP16
+
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level) {
   bool fp16_allow = false;
@@ -45,6 +75,7 @@ static bool IsFP16Allow(const std::string& op_type, size_t level) {
   return fp16_allow;
 }
 
+// Check whether the node is cast operation to the specified data type
 static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
   if (node->OpType() == "Cast") {
     const NodeAttributes& attributes = node->GetAttributes();
@@ -54,12 +85,13 @@ static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
   return false;
 }
 
+// Check whether the node-arg element type is same the specified data type
 static bool IsType(const NodeArg& node_arg, TensorProto_DataType data_type) {
   return node_arg.TypeAsProto()->tensor_type().elem_type() == data_type;
 }
 
 // InsertCastNodes
-// Insert a new Cast node after each NodeArg in the require_cast map, feeding the nodes in the vector mapped to
+// Insert a new Cast node after each NodeArg in the require_cast map, feeding the nodes (consumer) in the vector mapped to
 // the NodeArg. The other consumers of the NodeArg will not be changed. The cast node is FLOAT16 if is_fp16 is True
 // and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
 static Status InsertCastNodes(Graph& graph,
@@ -162,8 +194,33 @@ static Status InsertCastNodes(Graph& graph,
   return Status::OK();
 }
 
-// RemoveCastNodesChain
-// Remove the cast nodes specified in casts vector and fix the graph edges accordingly.
+/* RemoveCastNodesChain
+* Remove the cast nodes specified in casts vector and fix the graph edges accordingly. If the output of the cast
+* is also a graph output then insert an Identity node if the input of the cast node feeds other nodes. In the
+* trivial case the chain has only one cast node. The caller is responsible for the validity of removing casts.
+*
+*                         _____|______
+*                         | Opcode1  |
+*                         |__________|
+*                              |
+*                         _____V______                         ____________
+*                         |  Cast    |                         | Opcode 1 |  
+*                         |__________|                         |__________|
+*                              |                                    |
+*                              .                                    |
+*                              .                  ---\         _____V______
+*                              .                  ---/         | Opcode2  |
+*                         _____V______                         |__________|
+*                         |  Cast    |
+*                         |__________|
+*                              |
+*                         _____V______
+*                         |  Opcode2 |
+*                         |__________|
+*                              |
+*                              V
+*/
+
 static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::deque<NodeIndex>& removed_nodes) {
   ORT_ENFORCE(casts.size() > 0);
   Node* lead_cast = casts.front();
@@ -220,11 +277,60 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
   return Status::OK();
 }
 
-// RemoveBackToBackCasts
-// Remove FLOAT and FLOAT16 casts back-to-back, only if a first cast is from FLOAT16 to FLOAT
-// and the second cast is from FLOAT to FLOAT16.
-// Condition: The parent cast should have only one output
-// The inputs is Cast to FLOAT16
+/*
+* RemoveBackToBackCasts
+* Remove FLOAT and FLOAT16 casts back-to-back, only if the parent cast is from FLOAT16 to FLOAT
+* and the child cast is from FLOAT to FLOAT16 or from FLOAT to FLOAT.
+* The tirivial case is parent cast has only one output. A non-trivial case handled by this function
+* is, parent has multiple children and one or more child node output is also a graph output.
+* In the non-trivial case, when a child-cast nullfies the parent cast, the consumer nodes are moved
+* from the child-cast to the producer of the parent-cast input. The code handles cornercases suchas
+* the child-cast output is also a graph output, in addition to possibly other nodes, and the
+* parent-cast has other output nodes. The first check CanRemoveNode rules-out the possibility of
+* parent-cast output also being the graph output.
+* The inputs is Cast to FLOAT16
+* With the possiblility of child/parent cast feeding other nodes/graph-output, the transformation is either
+*                         _____|______
+*                         | Opcode1  |
+*                         |__________|
+*                              |
+*                         _____V______                         ____________
+*                         | Cast FP16|                         | Opcode 1 |  
+*                         |__________|                         |__________|
+*                              |                                    |
+*                              |                                    |
+*                              |                  ---\         _____V______
+*                              |                  ---/         | Opcode2  |
+*                         _____V______                         |__________|
+*                         | Cast FP32|
+*                         |__________|
+*                              |
+*                         _____V______
+*                         |  Opcode2 |
+*                         |__________|
+*
+*   or
+*
+*                         _____|______
+*                         | Opcode1  |
+*                         |__________|
+*                              |
+*                         _____V______                         ____________
+*                         | Cast FP32|                         | Opcode 1 |  
+*                         |__________|                         |__________|
+*                              |                                    |
+*                              |                                    |
+*                              |                  ---\         _____V______
+*                              |                  ---/         | Cast FP32|
+*                         _____V______                         |__________|
+*                         | Cast FP32|                              |
+*                         |__________|                         _____V______
+*                              |                               | Opcode2  |
+*                         _____V______                         |___________|
+*                         |  Opcode2 |
+*                         |__________|
+
+*/
 static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
                                   std::deque<NodeIndex>& removed_nodes,
                                   const logging::Logger& logger) {
@@ -297,6 +403,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
         }
       }
       if (children_count == 0) {
+        // No more children nodes exists, and the parent-cast output is not a graph output. Remove it!
         RemoveCastNodesChain(graph, {parent}, removed_nodes);
       }
       if (new_consumers.size() > 0) {
@@ -314,6 +421,8 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
 // inorder to move an FP16 Cast operation up the graph.
 // Visited float NodeArgs are either in require_cast or require_type_change so that the same
 // nodearg is traversed not more than once.
+// If the level is 2, the functions traverses up the graph identifying required FP32 casts even if 
+// multiple consumers for the node outputs are found while level 0 or 1 quit traversing up.
 static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
                            NodeArgToConsumerMap& require_cast,
                            NodeArgToConsumerMap& require_cast_fp32,
@@ -324,6 +433,8 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
   // If the Cast input feeds more than one node or the cast node feeds a graph output and at least one
   // node then it cannot propagate.
   size_t consumer_node_count = graph.GetConsumerNodes(node_arg->Name()).size();
+  // Do not traverse up the graph if the node produces a graph output as well as feeds other nodes
+  // or if the node has more than one consumers.
   if (level < 2 && (consumer_node_count > 1 ||
                     nullptr != node &&
                         consumer_node_count > 0 &&
@@ -389,6 +500,8 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
 // inorder to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
 // be converted from float to float16 along the way.
 // The recursion only traverses an
+// TODO same as SearchUpstream impelement level 2, travesing down the tree identifying FP32 casts 
+// required instead of quitting, as in the case of level 0 or 1.
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
                              NodeArgToConsumerMap& require_cast,
                              std::unordered_set<NodeArg*>& require_type_change,
@@ -497,10 +610,10 @@ static bool PropagateForwards(Graph& graph, Node* node,
 // Using SearchUpstream search the graph for Cast FP16 safe/allowed operations and expand
 // float16 computation regsion and
 // find the frontiers of the float16 computation region.
-// The required_cast vector is the collection of
-// FP16-cast-frontiers of the cast node. All nodeargs on the path from any of the
+// The required_cast or require_cast_fp32 vector is a collection of
+// FP16-cast-frontiers of the cast node. All node-args on the path from any of the
 // frontier nodes to the cast node require type change from  FLOAT to FLOAT16.
-// Each of the frontier nodes requires an fp16 cast.
+// Each of the frontier nodes requires an fp16 cast or fp32 cast.
 // The input node is expected be non-nullptr.
 static bool PropagateBackwards(Graph& graph, Node* node,
                                std::deque<NodeIndex>& removed_nodes,
@@ -537,10 +650,28 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   return modified;
 }
 
-// Fuse all nodes, replace with a single node.
-// Assumptions:
-// 1. all nodes are Cast ops and are of the same Cast type
-// 2. all the nodes have the same input
+/*
+* FuseNodes
+* Fuse all (cast) nodes, and replace with a single (cast) node.
+* Assumptions:
+* 1. all nodes are Cast ops and are of the same Cast type
+* 2. all the nodes have the same input
+*                Input0/NodeArg
+*               ___ ____|______                               Input0/NodeArg
+*               |             |                                     |
+*          _____V____    _____V______                          _____V______
+*          |Cast FP16|    | Cast FP16|                         | CastFP16 |  
+*          |or_FP32__|    |_or_FP32 _|                         |_or_FP32__|
+*               |              |                                    |
+*               |              |                             _______|___________
+*               |              |                             |                 |
+*               |              |                ---\    _____V______      _____V_____
+*               |              |                ---/    | Opcode0  |      | Opcode1 |
+*          _____V_____    _____V______                  |__________|      |_________|
+*          | Opcode0 |    | Opcode1  |                       |                 |
+*          |_________|    |__________|
+*               |              |
+*/
 static void FuseNodes(Graph& graph, const NodeArg* input, std::vector<Node*> nodes,
                       std::deque<NodeIndex>& removed_nodes) {
   ORT_ENFORCE(nodes.size() > 0);
@@ -610,6 +741,7 @@ static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg,
   return modified;
 }
 
+// Overloaded function which goes through all the output args of a node and calls FuseSiblingCasts
 static bool FuseSiblingCasts(Graph& graph, const Node* parent,
                              std::deque<NodeIndex>& removed_nodes,
                              const logging::Logger& logger) {
@@ -639,10 +771,44 @@ static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
   return modified;
 }
 
-// PropagateFP32CastsFromInputsToOutputs
-// This non-recursive fusion, checks whether the given node is fp16 safe op and
-// whether all floatingpoint inputs are cast to fp32
-// and propagates cast op to the floatingpoint outputs.
+/*
+* PropagateFP32CastsFromInputsToOutputs
+* This non-recursive fusion, checks whether the given node is fp16 safe op and
+* whether all floatingpoint inputs are cast to fp32
+* and propagates cast op to the floatingpoint outputs.
+* Convert the following graph
+*
+*        Input0/NodeArg  Input1/NodeArg
+*               |             |
+*          _____V____    _____V______                         
+*          |Cast FP32|   | Cast FP32| 
+*          |_________|   |__________|                        
+*               |              |             
+*             __V______________V___                         
+*            |       Opcode        |
+*            |(operation performed |
+*            |    in float32)      |
+*            |_____________________|                               
+*              |             |
+*              |             |
+*
+*  and produce the following output
+*
+*          Input0/NodeArg  Input1/NodeArg
+*                |               |
+*              __V_______________V___                         
+*             |       Opcode        |
+*             |(operation performed |
+*             |    in float16)      |
+*             |_____________________|                                  
+*               |             |
+*          _____V____    _____V______                         
+*          |Cast FP32|   | Cast FP32| 
+*          |_________|   |__________|                        
+*               |              |             
+*
+*                     
+*/
 static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
                                                   std::deque<NodeIndex>& removed_nodes,
                                                   size_t level,
@@ -696,11 +862,44 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
   }
   return modified;
 }
-
-// PropagateFP16CastsFromOutputsToInputs
-// This non-recursive fusion, checks whether the given node is fp16 safe op and
-// whether all floatingpoint outputs are cast to fp16
-// and propagates cast op to the floatingpoint inputs.
+/*
+* PropagateFP16CastsFromOutputsToInputs
+* This non-recursive fusion, checks whether the given node is fp16 safe op and
+* whether all floatingpoint outputs are cast to fp16
+* and propagates cast op to the floatingpoint inputs.
+* Convert the following graph
+*
+*        Input0/NodeArg  Input1/NodeArg
+*               |             |
+*             __V______________V___                         
+*            |       Opcode        |
+*            |(operation performed |
+*            |    in float32)      |
+*            |_____________________|                               
+*               |             |
+*          _____V____    _____V______                         
+*          |Cast FP16|   | Cast FP16| 
+*          |_________|   |__________|                        
+*               |              |             
+*               |              |
+*               V              V
+*
+*  and produce the following output
+*
+*        Input0/NodeArg   Input1/NodeArg
+*               |               |
+*          _____V____      _____V______                         
+*          |Cast FP16|     | Cast FP16| 
+*          |_________|     |__________|                        
+*                |              |             
+*              __V______________V___                         
+*             |       Opcode        |
+*             |(operation performed |
+*             |    in float16)      |
+*             |_____________________|                                  
+*                 |             |
+*                 V             V
+*/
 static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
                                                   std::deque<NodeIndex>& removed_nodes,
                                                   size_t level,
