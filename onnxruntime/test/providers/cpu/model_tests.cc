@@ -535,6 +535,7 @@ TEST_P(ModelTest, Run) {
       }
 
       ASSERT_STATUS_OK(session_object.Load(model_path));
+      std::cout<<model_path<<std::endl;
       auto st = session_object.Initialize();
       if (st.Code() == NOT_IMPLEMENTED)
         return;
@@ -839,7 +840,7 @@ TEST_P(ModelTest, Run) {
 #endif
 
     std::vector<std::basic_string<ORTCHAR_T>> paths;
-#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
+#if 0
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
 #else
