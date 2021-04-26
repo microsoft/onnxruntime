@@ -512,9 +512,6 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   NodeArgToConsumerMap require_cast_fp32;
   NodeArg* cast_input = node->MutableInputDefs()[0];
   std::unordered_set<NodeArg*> require_type_change;
-  if (graph.IsOutput(cast_input)) {
-    return false;
-  }
   SearchUpstream(graph, cast_input, node, require_cast, require_cast_fp32, require_type_change, removed_nodes, level);
   if (require_cast_fp32.empty()) {
     require_type_change.insert(cast_input);
@@ -544,7 +541,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
 // Assumptions:
 // 1. all nodes are Cast ops and are of the same Cast type
 // 2. all the nodes have the same input
-static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
+static void FuseNodes(Graph& graph, const NodeArg* input, std::vector<Node*> nodes,
                       std::deque<NodeIndex>& removed_nodes) {
   ORT_ENFORCE(nodes.size() > 0);
   Node* node = nodes[0];
@@ -553,7 +550,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
   Node& new_cast = graph.AddNode(graph.GenerateNodeName(node->Name() + "_replace"),
                                  node->OpType(),
                                  "Created to replace a node",
-                                 {input},
+                                 {graph.GetNodeArg(input->Name())},
                                  {&new_output},
                                  &node->GetAttributes(),
                                  node->Domain());
@@ -581,36 +578,44 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
 }
 
 // Traverse the graph recursively searching/collecting sibling Cast op nodes to fuse and call FuseNodes.
-static bool FuseSiblingCasts(Graph& graph, Node* parent,
+static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg,
                              std::deque<NodeIndex>& removed_nodes,
                              const logging::Logger& logger) {
   bool modified = false;
-  for (NodeArg* output : parent->MutableOutputDefs()) {
-    std::vector<Node*> cast_fp16_siblings;
-    std::vector<Node*> cast_fp32_siblings;
-    for (Node* node : graph.GetMutableConsumerNodes(output->Name())) {
-      // If a cast node feeds a graph output then it is not a candidate for fusion.
-      if (nullptr == node || node->OpType() != "Cast" ||
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
-          graph.IsOutput(node->OutputDefs()[0])) {
-        continue;
-      }
-      if (IsCastTo(node, TensorProto::FLOAT16)) {
-        cast_fp16_siblings.push_back(node);
-      } else if (IsCastTo(node, TensorProto::FLOAT)) {
-        cast_fp32_siblings.push_back(node);
-      }
+  std::vector<Node*> cast_fp16_siblings;
+  std::vector<Node*> cast_fp32_siblings;
+  for (Node* node : graph.GetMutableConsumerNodes(node_arg->Name())) {
+    // If a cast node feeds a graph output then it is not a candidate for fusion.
+    if (nullptr == node || node->OpType() != "Cast" ||
+        std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) != removed_nodes.end() ||
+        graph.IsOutput(node->OutputDefs()[0])) {
+      continue;
     }
-    if (cast_fp16_siblings.size() > 1) {
-      modified = true;
-      FuseNodes(graph, output, cast_fp16_siblings, removed_nodes);
-      LOGS(logger, VERBOSE) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp16_siblings);
+    if (IsCastTo(node, TensorProto::FLOAT16)) {
+      cast_fp16_siblings.push_back(node);
+    } else if (IsCastTo(node, TensorProto::FLOAT)) {
+      cast_fp32_siblings.push_back(node);
     }
-    if (cast_fp32_siblings.size() > 1) {
-      modified = true;
-      FuseNodes(graph, output, cast_fp32_siblings, removed_nodes);
-      LOGS(logger, VERBOSE) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp32_siblings);
-    }
+  }
+  if (cast_fp16_siblings.size() > 1) {
+    modified = true;
+    FuseNodes(graph, node_arg, cast_fp16_siblings, removed_nodes);
+    LOGS(logger, VERBOSE) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp16_siblings);
+  }
+  if (cast_fp32_siblings.size() > 1) {
+    modified = true;
+    FuseNodes(graph, node_arg, cast_fp32_siblings, removed_nodes);
+    LOGS(logger, VERBOSE) << "FusedSubgraphs: Fused Cast nodes : " << ConcatNames<std::vector<Node*>>(cast_fp32_siblings);
+  }
+  return modified;
+}
+
+static bool FuseSiblingCasts(Graph& graph, const Node* parent,
+                             std::deque<NodeIndex>& removed_nodes,
+                             const logging::Logger& logger) {
+  bool modified = false;
+  for (const NodeArg* output : parent->OutputDefs()) {
+    modified |= FuseSiblingCasts(graph, output, removed_nodes, logger);
   }
   return modified;
 }
@@ -773,12 +778,14 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
   NodeArg& cast_output = is_graph_output ? *node_arg : new_node_arg;
   std::vector<NodeArg*> inputs = {&cast_input};
   std::vector<NodeArg*> outputs = {&cast_output};
-  return graph.AddNode(graph.GenerateNodeName(node_arg->Name() + "_cast"),
-                       "Cast",
-                       "Created a new Cast node",
-                       inputs,
-                       outputs,
-                       &attributes);
+  Node& node = graph.AddNode(graph.GenerateNodeName(node_arg->Name() + "_cast"),
+                             "Cast",
+                             "Created a new Cast node",
+                             inputs,
+                             outputs,
+                             &attributes);
+  inserted_node_names.insert(node.Name());
+  return node;
 }
 
 static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node, const logging::Logger& logger) {
@@ -868,6 +875,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce) {
         if (IsFP16Allow(node.OpType(), level_)) {
           // Insert FP16 Cast on all float inputs
+          converted_node_names.insert(node.Name());
           for (NodeArg* input_arg : node.MutableInputDefs()) {
             if (IsType(*input_arg, TensorProto::FLOAT)) {
               InsertFP16Cast(graph, input_arg, node_ptr, logger);
@@ -916,6 +924,10 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         local_modified |= FuseSiblingCasts(graph, node, removed_nodes, logger);
       }
     }
+    for (const NodeArg* node_arg : graph.GetInputs()) {
+      local_modified |= FuseSiblingCasts(graph, node_arg, removed_nodes, logger);
+    }
+
     // Remove back to back Casts, with FLOAT->FLOAT16 followed by FLOAT16->FLOAT, but not the other way.
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
@@ -994,6 +1006,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   converted_node_names.clear();
   return Status::OK();
 }
+
 PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
                                    size_t level, const std::vector<std::string>& _allow_list,
                                    const std::unordered_set<std::string>& compatible_execution_providers) noexcept
