@@ -966,7 +966,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 void RunInParallelInternal(PerThread& pt,
                            ThreadPoolParallelSection& ps,
                            unsigned n,
-                           const std::function<void(unsigned)>& worker_fn) {
+                           std::function<void(unsigned)> worker_fn) {
   // init a few env variables
   ps.dispatch_q_idx = -1;
   ps.dispatch_done = false;
@@ -1053,7 +1053,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 
   // Increase the worker count if needed.  Each worker will pick up
   // loops to execute from the current parallel section.
-  const auto worker_fn = [&ps](unsigned my_idx) {
+  std::function<void(unsigned)> worker_fn = [&ps](unsigned my_idx) {
     while (ps.active) {
       if (!ps.current_loop) {
         onnxruntime::concurrency::SpinPause();
@@ -1067,7 +1067,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
       }
     }
   };
-  RunInParallelInternal(*pt, ps, n, worker_fn);
+  RunInParallelInternal(*pt, ps, n, std::move(worker_fn));
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
@@ -1109,7 +1109,7 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
-  RunInParallelInternal(*pt, ps, n, fn);  // select dispatcher and do job distribution;
+  RunInParallelInternal(*pt, ps, n, std::move(fn));  // select dispatcher and do job distribution;
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
   fn(0);  // run fn(0)
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
