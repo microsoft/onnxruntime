@@ -140,3 +140,31 @@ graph_def_4 = helper.make_graph(
 
 model = helper.make_model(graph_def_4, opset_imports=[helper.make_operatorsetid("", 13)])
 onnx.save_model(model, "cpu_fallback_pattern_4.onnx")
+
+graph_def_5 = helper.make_graph(
+    nodes=[
+        helper.make_node(op_type="Shape", inputs=['A'], outputs=['A_shape'], name='shape0'),
+        helper.make_node(op_type="Gather", inputs=['A_shape', 'zero'], outputs=['batch'], name='gather0'),
+        helper.make_node(op_type="Concat", inputs=['batch', 'seq_len'], outputs=['shape'], name='concat', axis=0),
+        helper.make_node(op_type="Shape", inputs=['B'], outputs=['B_shape'], name='shape1'),
+        helper.make_node(op_type="Gather", inputs=['B_shape', 'one'], outputs=['seq_len'], name='gather1'),
+        helper.make_node(op_type="Reshape", inputs=['C','shape'], outputs=['D'], name='reshape'),
+        
+    ],
+    name='test-model',
+    inputs=[
+        # create inputs with symbolic dims
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, None),
+        helper.make_tensor_value_info("B", TensorProto.INT64, None),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, None),
+    ],
+    outputs=[
+        helper.make_tensor_value_info('D', TensorProto.FLOAT, None)
+    ],
+    initializer=[
+        helper.make_tensor('zero', TensorProto.INT64, [1], [0]),
+        helper.make_tensor('one', TensorProto.INT64, [1], [1]),
+    ])
+
+model = helper.make_model(graph_def_5, opset_imports=[helper.make_operatorsetid("", 13)])
+onnx.save_model(model, "cpu_fallback_pattern_5.onnx")

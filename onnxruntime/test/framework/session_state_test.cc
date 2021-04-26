@@ -218,9 +218,9 @@ static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri,
     ASSERT_TRUE(!node.GetExecutionProviderType().empty());
     auto& ep = node.GetExecutionProviderType();
     if (ep == onnxruntime::kCudaExecutionProvider || ep == onnxruntime::kRocmExecutionProvider) {
-      ASSERT_TRUE(expected_gpu_nodes.count(node.Name()));
+      ASSERT_TRUE(expected_gpu_nodes.count(node.Name())) << "Node not found in expected gpu nodes: " << node.Name();
     } else if (ep == onnxruntime::kCpuExecutionProvider) {
-      ASSERT_TRUE(expected_cpu_nodes.count(node.Name()));
+      ASSERT_TRUE(expected_cpu_nodes.count(node.Name())) << "Node not found in expected cpu nodes: " << node.Name();
     } else {
       ASSERT_TRUE(false) << "Invalid execution provider assigned to node: " << node.Name() << " , value: " << ep;
     }
@@ -251,6 +251,11 @@ TEST(SessionStateTest, CPUPlacementTest4) {
   std::unordered_set<std::string> expected_cpu_nodes = {"range", "reduce", "const1"};
   std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand"};
   TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest5) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"gather0", "gather1", "concat"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "shape1", "reshape"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_5.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 #endif
 
