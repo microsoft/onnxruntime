@@ -173,6 +173,7 @@ __launch_bounds__(blockSize)
       output_block[i] = (T)(recip_sum * x);
     }
   }
+  __syncthreads();
 
   // #pragma unroll 16
   for (int i = tid + col_start; i < col_end; i += blockSize) {
