@@ -843,6 +843,9 @@ void StartParallelSectionInternal(PerThread &pt,
   if (!pt.tag.Get()) {
     pt.tag = Tag::GetNext();
   }
+  ps.dispatch_q_idx = -1;
+  ps.dispatch_done = false;
+  ps.work_done = false;
   ps.active = true;
 }
 
@@ -863,21 +866,23 @@ void EndParallelSectionInternal(PerThread &pt,
   // Notify workers to exit from the section
   ps.active = false;
 
+  // Synchronize with task dispatch.  Either we successfully revoke
+  // the dispatch task (prior to it running), or we observe that task
+  // dispatch is complete.
   if (ps.dispatch_q_idx > -1) {
     Queue& q = worker_data_[ps.dispatch_q_idx].queue;
     if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
-      ps.dispatch_q_idx = -1; // cancel dispatch if not started yet
+      ps.dispatch_q_idx = -1; 
     } else {
-      // if dispatch task started, wait for its dispatch completion
       while (!ps.dispatch_done.load(std::memory_order_acquire)) {
         onnxruntime::concurrency::SpinPause();
       }
     }
   }
 
-  profiler_.LogStart();
   // Attempt to revoke any tasks that were sent to workers but not
   // started.
+  profiler_.LogStart();
   unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
   while (!ps.tasks.empty()) {
@@ -895,16 +900,17 @@ void EndParallelSectionInternal(PerThread &pt,
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
-  // Clear status to allow the ThreadPoolParallelSection to be
-  // re-used.
-  ps.tasks_finished = 0;
 
+  // Wait for the dispatcher to finish its own work
   if (ps.dispatch_q_idx > -1) {
-    // if dispatch task started, wait for its work completion
     while (!ps.work_done.load(std::memory_order_acquire)) {
       onnxruntime::concurrency::SpinPause();
     }
   }
+
+  // Clear status to allow the ThreadPoolParallelSection to be
+  // re-used.
+  ps.tasks_finished = 0;
 }
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
@@ -968,77 +974,74 @@ void RunInParallelInternal(PerThread& pt,
     preferred_workers.push_back(next_worker++ % num_threads_);
   }
   
-  // init a few env variables
-  ps.dispatch_q_idx = -1;
-  ps.dispatch_done = false;
-  ps.work_done = false;
-
   // Identify whether we need to create additional workers.
   // Throughout the threadpool implementation, degrees of parallelism
   // ("n" here) refer to the total parallelism including the main
   // thread.  Hence we consider the number of existing tasks + 1.
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
-  unsigned extra_needed = n > current_dop ? n - current_dop : 0;
-  if (0 == extra_needed) {
-    return; // do nothing if no more workers required
-  }
- 
-  // define task for each worker
-  Task call_worker_fn = [worker_fn, &ps]() {
-    worker_fn(++ps.worker_idx);
-    ps.tasks_finished++;
-  };
-
-  // define dispatch task for dispatcher
-  Task dispatch_task = [extra_needed, call_worker_fn, worker_fn, &ps, &pt, this]() {
-    unsigned good_hints_size = static_cast<unsigned>(ps.good_hints.size());
-    for (auto i = 1u; i < extra_needed; ++i) {  // dispatcher do dispatch
-      // Use preferred hints from the worker threads that ran the
-      // previous loop from this thread.  Note that the hints may have
-      // been from a different thread pool, hence we keep within the
-      // current range [0,num_threads_).
-      idx = current_dop + i - 1;
-      assert(idx >= 0 && idx < num_threads_);
-      unsigned q_idx = preferred_workers[idx] % num_threads_;
-      assert(q_idx >= 0 && q_idx < num_threads_);
-      WorkerData& td = worker_data_[q_idx];
-      Queue& q = td.queue;
-      unsigned w_idx;
-      auto pr = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-
-      // Queue accepted the task; wake the thread that owns the queue.
-      // In addition, if the queue was non-empty, attempt to wake
-      // another thread (which may then steal the task).
-      if (pr == PushResult::ACCEPTED_IDLE || pr == PushResult::ACCEPTED_BUSY) {
-        ps.tasks.push_back({q_idx, w_idx});
-        td.EnsureAwake();
-        if (pr == PushResult::ACCEPTED_BUSY) {
-          worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
+  if (n > current_dop) {
+    // define dispatch task for dispatcher
+    unsigned extra_needed = n - current_dop;
+    Task dispatch_task = [current_dop, extra_needed, worker_fn, &preferred_workers, &ps, &pt, this]() {
+      for (auto i = 1u; i < extra_needed; ++i) {
+        // Use preferred hints from the worker threads that ran the
+        // previous loop from this thread.  Note that the hints may have
+        // been from a different thread pool, hence we keep within the
+        // current range [0,num_threads_).
+        unsigned idx = current_dop + i - 1;
+        assert(idx >= 0 && idx < num_threads_);
+        unsigned q_idx = preferred_workers[idx] % num_threads_;
+        assert(q_idx >= 0 && q_idx < num_threads_);
+        WorkerData& td = worker_data_[q_idx];
+        Queue& q = td.queue;
+        unsigned w_idx;
+        auto pr = q.PushBackWithTag([worker_fn, idx, &ps]() {
+            worker_fn(idx);
+            ps.tasks_finished++;
+          },
+          pt.tag,
+          w_idx);
+        
+        // Queue accepted the task; wake the thread that owns the queue.
+        // In addition, if the queue was non-empty, attempt to wake
+        // another thread (which may then steal the task).
+        if (pr == PushResult::ACCEPTED_IDLE || pr == PushResult::ACCEPTED_BUSY) {
+          ps.tasks.push_back({q_idx, w_idx});
+          td.EnsureAwake();
+          if (pr == PushResult::ACCEPTED_BUSY) {
+            worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
+          }
         }
       }
+      ps.dispatch_done.store(true, std::memory_order_release);  // dispatch complete
+      {
+        unsigned idx = current_dop - 1;
+        assert(idx >= 0 && idx < num_threads_);
+        unsigned q_idx = preferred_workers[idx] % num_threads_;
+        assert(q_idx >= 0 && q_idx < num_threads_);
+        worker_fn(idx);                                             // dispatcher also needs to do its part
+      }
+      ps.work_done.store(true, std::memory_order_release);      // work complete
+    };                                                          // dispatch_task
+    profiler_.LogStart();
+    if (!ps.good_hints.empty()) {                               // get dispatcher
+      ps.dispatch_q_idx = ps.good_hints[0];
+    } else if (!ps.alt_hints.empty()) {
+      ps.dispatch_q_idx = ps.alt_hints[0];
+    } else {
+      ps.dispatch_q_idx = Rand(&pt.rand) % num_threads_;
     }
-    ps.dispatch_done.store(true, std::memory_order_release);  // dispatch complete
-    worker_fn(++ps.worker_idx);                               // dispatcher also needs to do its part
-    ps.work_done.store(true, std::memory_order_release);      // work complete
-  };                                                          // dispatch_task
-  profiler_.LogStart();
-  if (!ps.good_hints.empty()) {                               // get dispatcher
-    ps.dispatch_q_idx = ps.good_hints[0];
-  } else if (!ps.alt_hints.empty()) {
-    ps.dispatch_q_idx = ps.alt_hints[0];
-  } else {
-    ps.dispatch_q_idx = Rand(&pt.rand) % num_threads_;
+    WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
+    Queue& dispatch_que = dispatch_td.queue;
+    // assign dispatch task to selected dispatcher
+    auto pr = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+    if (pr == PushResult::REJECTED) {
+      ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
+    } else {
+      dispatch_td.EnsureAwake();  // make sure that dipatch worker is awake
+    }
+    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
-  WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
-  Queue& dispatch_que = dispatch_td.queue;
-  // assign dispatch task to selected dispatcher
-  Task t = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
-  if (t) {
-    ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
-  } else {
-    dispatch_td.EnsureAwake();  // make sure that dipatch worker is awake
-  }
-  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
 }
 
 // Run a single parallel loop in an existing parallel section.  This
