@@ -467,8 +467,8 @@ class RunQueue {
   }
  private:
   ORT_ALIGN_TO_AVOID_FALSE_SHARING Slot slots_[Capacity];
-  std::atomic_int32_t size_{0};
-  std::atomic_int32_t base_{Base};
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic_int32_t size_{0};
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic_int32_t base_{Base};
 };
 
 static std::atomic<uint32_t> next_tag{1};
