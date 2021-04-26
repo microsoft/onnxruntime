@@ -2013,3 +2013,72 @@ def test_repro_iscontiguous():
     prediction = model(one)
     prediction = prediction.sum()
     prediction.backward()
+
+
+def test_forward_call_default_input():
+    class UnusedNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.zeros = torch.nn.Parameter(torch.zeros(1,1))
+
+        def forward(self, a, b, c, d, *args, kw_0=None, **kwargs):
+            result = a + d + self.zeros.sum()
+            if args:
+                result += args[-1]
+            if kw_0:
+                result += kw_0
+            if kwargs:
+                assert 'kwargs_1' in kwargs
+                result += kwargs['kwargs_1']
+            return result
+
+    # Modeling
+    device = 'cuda'
+    model = UnusedNet().to(device)
+    model = ORTModule(model)
+
+    # Dummy data
+    one = torch.FloatTensor([1]).to(device)
+    two = 2*one
+    three = 3*one
+    four = 4*one
+    args = [two]*5
+    kw_0 = 6*one
+    kwargs = {'kwargs_0': 7*one, 'kwargs_1': 8*one}
+
+    # Make sure model runs without any exception
+    for i in range(2):
+        # Test both train and inference mode
+        if i % 2 == 0:
+            model.train()
+        else:
+            model.eval()
+
+        # Model only uses a,d out of a,b,c,d
+        out = model(one, two, three, four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
+
+        out = model(one, two, c=three, d=four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1] out of a,b,c,d,*args
+        out = model(one, two, three, four, *args)
+        assert out.item() == 7.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1],kw_0 out of a,b,c,d,*args,kw_0
+        out = model(one, two, three, four, *args, kw_0=kw_0)
+        assert out.item() == 13.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1],kwargs['kwargs_1'] out of a,b,c,d,*args,kw_0,**kwargs
+        out = model(one, two, three, four, *args, **kwargs)
+        assert out.item() == 15.0
+        if model.training:
+            out.sum().backward()
