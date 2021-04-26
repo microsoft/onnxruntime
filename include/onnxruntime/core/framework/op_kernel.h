@@ -57,7 +57,7 @@ class OpKernel {
   //       is_packed = true;
   //       auto alloc =  alloc_for_caching ? alloc_for_caching : this.GetAllocator();
   //       this.Pack(tensor, this.buffer_, alloc);
-  //       if (alloc) {
+  //       if (alloc_for_caching) {
   //           // LOGIC TO CACHE `this.buffer_` SINCE THE KERNEL DOESN"T OWN THE PACKED WEIGHT
   //       }
   //     }
@@ -90,11 +90,11 @@ class OpKernel {
   // Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
   //                                        int input_idx,
   //                                        /*out*/ bool& read_from_cache) {
+  //     read_from_cache = false;
   //     if(cached_prepacked_weight.has_cached_) {
   //     read_from_cache = true;
   //     // LOGIC TO USE PREPACKED WEIGHT AND ASSIGN IT TO this.buffer_
   //     }
-  //     read_from_cache = false;
   //     return Status::OK();
   //   }
   // Please refer to MatMulIntegerToFloatBase for a complete example
