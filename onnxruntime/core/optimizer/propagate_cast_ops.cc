@@ -253,6 +253,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
       const Node* producer = graph.GetProducerNode(parent_input->Name());
       int producer_output_index = producer ? optimizer_utils::IndexOfNodeOutput(*producer, *parent_input) : -1;
       std::vector<Node*> new_consumers;
+      size_t children_count = children.size();
       for (Node* child : children) {
         if (std::find(removed_nodes.begin(), removed_nodes.end(), child->Index()) == removed_nodes.end()) {
           if (IsCastTo(child, TensorProto::FLOAT16)) {
@@ -272,15 +273,31 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
               }
               new_consumers.push_back(consumer);
             }
+            if (graph.IsOutput(child_output)) {
+              Node& identity = graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
+                                             "Identity",
+                                             "Created as a place-holder for a graph output",
+                                             {parent_input},
+                                             {child_output});
+              graph.AddEdge(producer->Index(), identity.Index(), producer_output_index, 0);
+              graph.AddConsumerNode(parent_input->Name(), &identity);
+              graph.UpdateProducerNode(child_output->Name(), identity.Index());
+            }
             modified = true;
+            graph.RemoveEdge(parent->Index(), child->Index(), 0, 0);
             removed_nodes.push_front(child->Index());
+            children_count--;
           } else if (IsCastTo(child, TensorProto::FLOAT)) {
             // Child is a duplicate of parent
             LOGS(logger, VERBOSE) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
+            graph.RemoveEdge(parent->Index(), child->Index(), 0, 0);
             RemoveCastNodesChain(graph, {child}, removed_nodes);
             modified = true;
           }
         }
+      }
+      if (children_count == 0) {
+        RemoveCastNodesChain(graph, {parent}, removed_nodes);
       }
       if (new_consumers.size() > 0) {
         std::vector<Node*> consumers = graph.GetMutableConsumerNodes(parent_input->Name());
