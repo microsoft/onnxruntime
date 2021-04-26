@@ -180,7 +180,9 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri, size_t expected_cpu_cnt, size_t expected_gpu_cnt) {
+static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri,
+                                 const std::unordered_set<std::string>& expected_cpu_nodes,
+                                 const std::unordered_set<std::string>& expected_gpu_nodes) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()));
   Graph& graph = model->MainGraph();
@@ -210,38 +212,45 @@ static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri, 
   GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
 
-  // check how many nodes are assigned to CPU and GPU
-  size_t actual_cpu_cnt = 0, actual_gpu_cnt = 0;
+  // check which nodes are assigned to CPU and GPU
   for (auto& node : graph.Nodes()) {
     // assert that EP is assigned
     ASSERT_TRUE(!node.GetExecutionProviderType().empty());
     auto& ep = node.GetExecutionProviderType();
     if (ep == onnxruntime::kCudaExecutionProvider || ep == onnxruntime::kRocmExecutionProvider) {
-      ++actual_gpu_cnt;
+      ASSERT_TRUE(expected_gpu_nodes.count(node.Name()));
     } else if (ep == onnxruntime::kCpuExecutionProvider) {
-      ++actual_cpu_cnt;
+      ASSERT_TRUE(expected_cpu_nodes.count(node.Name()));
     } else {
       ASSERT_TRUE(false) << "Invalid execution provider assigned to node: " << node.Name() << " , value: " << ep;
     }
   }
-  ASSERT_EQ(expected_cpu_cnt, actual_cpu_cnt);
-  ASSERT_EQ(expected_gpu_cnt, actual_gpu_cnt);
 }
 
 TEST(SessionStateTest, CPUPlacementTest0) {
-  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_0.onnx"), 6, 2);
+  std::unordered_set<std::string> expected_cpu_nodes = {"reshape", "shape1", "const1", "mul", "equal", "where"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "expand"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_0.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 TEST(SessionStateTest, CPUPlacementTest1) {
-  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_1.onnx"), 1, 2);
+  std::unordered_set<std::string> expected_cpu_nodes = {"const1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "expand"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_1.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 TEST(SessionStateTest, CPUPlacementTest2) {
-  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_2.onnx"), 1, 2);
+  std::unordered_set<std::string> expected_cpu_nodes = {"range"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "reduce"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_2.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 TEST(SessionStateTest, CPUPlacementTest3) {
-  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_3.onnx"), 2, 6);
+  std::unordered_set<std::string> expected_cpu_nodes = {"range0", "range1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "reduce0", "identity", "size1", "reduce1", "sum"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_3.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 TEST(SessionStateTest, CPUPlacementTest4) {
-  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), 3, 2);
+  std::unordered_set<std::string> expected_cpu_nodes = {"range", "reduce", "const1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 #endif
 

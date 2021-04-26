@@ -7,7 +7,10 @@
 
 #include "onnx/defs/data_type_utils.h"
 
+#include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 using namespace ONNX_NAMESPACE::Utils;
 
@@ -57,12 +60,29 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   std::unordered_set<const NodeArg*> cpu_args;
   std::unordered_set<NodeIndex> provider_nodes;
   std::unordered_map<NodeIndex, const KernelCreateInfo*> node_to_kernel;
+  std::unordered_set<NodeIndex> cpu_kernel_available;
 
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
     const KernelCreateInfo* kernel_info = nullptr;
+
+    // Get the CPU kernel availability for this node
+    KernelRegistryManager mgr;
+    ExecutionProviders cpu_ep;
+    CPUExecutionProviderInfo epi{false};
+    ORT_ENFORCE(cpu_ep.Add(kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
+    ORT_ENFORCE(mgr.RegisterKernels(cpu_ep).IsOK());
+    std::vector<const KernelRegistry*> cpu_kernel_registries = mgr.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+    for (auto registry : cpu_kernel_registries) {
+      auto st = registry->TryFindKernel(*node, kCpuExecutionProvider, &kernel_info);
+      if (st.IsOK()) {
+        cpu_kernel_available.insert(node_id);
+        break;
+      }
+    }
+
     for (auto registry : kernel_registries) {
       auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
       if (st.IsOK())
@@ -90,8 +110,8 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     // then, find all the direct producers of cpu tensors.
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->InputDefs(),
-        [&](const NodeArg& node_arg, size_t ip_index) {
-          if (kernel_info->kernel_def->IsInputOnCpu(ip_index)) {
+        [&](const NodeArg& node_arg, size_t in_index) {
+          if (kernel_info->kernel_def->IsInputOnCpu(in_index)) {
             cpu_args.insert(&node_arg);
             auto producer_node = graph.GetProducerNode(node_arg.Name());
             if (producer_node != nullptr) {
@@ -151,7 +171,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
     }
 
-    if (place_in_cpu) {
+    if (place_in_cpu && cpu_kernel_available.count(cur) != 0) {
       cpu_nodes.insert(cur);
       LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
                          << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
@@ -168,8 +188,10 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   visited.clear();
   // Trace the graph backwards to find additional CPU nodes
   // Starting from nodes that must produce an output on CPU, trace the producer nodes
-  // The trace stops when 1) we find that the node is already picked for CPU
-  // 2) Output type is unsupported on CPU(float16/bfloat16) 3) The output is not a CPU tensor
+  // The trace stops when we find that
+  // 1) The node is already picked for CPU
+  // 2) Input/Output type is unsupported on CPU(float16/bfloat16)
+  // 3) The output is not a CPU tensor
   // 4) The search hits a node that produces a CPU output
   while (!candidates_bw.empty()) {
     NodeIndex cur = candidates_bw.top();
@@ -209,8 +231,21 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
         break;
       }
     }
-
+    // Next, check if the node inputs are of supported type
     if (place_in_cpu) {
+      for (size_t i = 0; i < node->InputDefs().size(); ++i) {
+        auto* input = node->InputDefs()[i];
+
+        // skip placing on CPU if the data typs is float16 or bfloat16
+        if (input->Type() == DataTypeUtils::ToType("float16") ||
+            input->Type() == DataTypeUtils::ToType("bfloat16")) {
+          place_in_cpu = false;
+          break;
+        }
+      }
+    }
+
+    if (place_in_cpu && cpu_kernel_available.count(cur) != 0) {
       cpu_nodes.insert(cur);
       LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
                          << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
