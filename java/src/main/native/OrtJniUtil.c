@@ -1030,6 +1030,7 @@ void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
         size_t len = strlen(message)+1;
         char* copy = malloc(sizeof(char)*len);
         if (copy == NULL) {
+          api->ReleaseStatus(status);
           throwOrtException(jniEnv, 1, "Not enough memory");
         }
         memcpy(copy,message,len);
