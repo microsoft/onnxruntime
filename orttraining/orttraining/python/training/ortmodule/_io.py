@@ -41,15 +41,15 @@ class _InputInfo(object):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
 
         ret = list(args)
-        for _, kwarg in kwargs.items():
-            ret.append(kwarg)
-        return tuple(ret)
+        ret += [kwargs[name] for name in self.names if name in kwargs]
+        return ret
 
     def unflatten(self, flat_args):
         '''Unflatten tuple of tensors into args and kwargs'''
 
         args = tuple(flat_args[:self.num_positionals])
-        kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
+        kwargs = {name: arg for name, arg in zip(self.names, flat_args[self.num_positionals:]) \
+            if name in self.keyword_names}
         return args, kwargs
 
 def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):

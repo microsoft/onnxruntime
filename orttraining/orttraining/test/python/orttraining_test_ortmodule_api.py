@@ -2082,3 +2082,62 @@ def test_forward_call_default_input():
         assert out.item() == 15.0
         if model.training:
             out.sum().backward()
+
+
+def test_forward_call_kwargs_input_unexpected_order():
+    class OrderlyNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(OrderlyNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1=None, input2=None):
+            print(input1.shape)
+            print(input2.shape)
+            # import pdb; pdb.set_trace()
+            assert input1.shape != input2.shape
+            input2 = torch.transpose(input2, 0, 1)
+            assert input1.shape == input2.shape
+
+            model_input = input1 + input2
+            out1 = self.fc1(model_input)
+            out1 = self.relu(out1)
+            out2 = self.fc2(out1)
+            return out1, out2
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = OrderlyNet(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+
+    input1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    input2 = torch.randn(D_in, N, device=device, requires_grad=False)
+
+    # Make sure model runs without any exception
+    for i in range(2):
+        # Test both train and inference mode
+        if i % 2 == 0:
+            model.train()
+        else:
+            model.eval()
+
+        # This is expected to work because
+        y1, y2 = model(**{'input1': input1, 'input2': input2})
+        assert y1 is not None
+        assert y2 is not None
+        if model.training:
+            loss = y1.sum() + y2.sum()
+            loss.backward()
+
+        # Force model export to validate (un)flattening with new input
+        model._execution_manager(model._is_training())._onnx_model = None
+
+        # This is expected to work too
+        y1, y2 = model(**{'input2': input2, 'input1': input1})
+        assert y1 is not None
+        assert y2 is not None
+        if model.training:
+            loss = y1.sum() + y2.sum()
+            loss.backward()
