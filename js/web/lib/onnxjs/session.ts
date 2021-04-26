@@ -67,20 +67,20 @@ export class Session {
           // browser
           const response = await fetch(arg);
           const buf = await response.arrayBuffer();
-          this.initialize(Buffer.from(buf));
+          this.initialize(new Uint8Array(buf));
         }
       } else if (!ArrayBuffer.isView(arg)) {
         // load model from ArrayBuffer
         const arr = new Uint8Array(arg, byteOffset || 0, length || arg.byteLength);
-        this.initialize(Buffer.from(arr));
+        this.initialize(arr);
       } else {
         // load model from Uint8array
-        this.initialize(Buffer.from(arg));
+        this.initialize(arg);
       }
     });
   }
 
-  private initialize(modelProtoBlob: Buffer): void {
+  private initialize(modelProtoBlob: Uint8Array): void {
     if (this._initialized) {
       throw new Error('already initialized');
     }

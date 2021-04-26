@@ -11,7 +11,7 @@ export class Model {
   // empty model
   constructor() {}
 
-  load(buf: Buffer, graphInitializer?: Graph.Initializer): void {
+  load(buf: Uint8Array, graphInitializer?: Graph.Initializer): void {
     const modelProto = onnx.ModelProto.decode(buf);
     const irVersion = LongUtil.longToNumber(modelProto.irVersion);
     if (irVersion < 3) {
