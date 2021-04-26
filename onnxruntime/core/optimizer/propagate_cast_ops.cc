@@ -733,6 +733,90 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
   return modified;
 }
 
+static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type, bool is_graph_output = false) {
+  TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? TensorProto::FLOAT16 : TensorProto::FLOAT) : data_type);
+  NodeArg& new_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), &type_proto);
+  ONNX_NAMESPACE::AttributeProto to_attribute;
+  to_attribute.set_name("to");
+  to_attribute.set_type(ONNX_NAMESPACE::AttributeProto::INT);
+  to_attribute.set_i(static_cast<int64_t>(data_type));
+  NodeAttributes attributes({{"to", to_attribute}});
+  NodeArg& cast_input = is_graph_output ? new_node_arg : *node_arg;
+  NodeArg& cast_output = is_graph_output ? *node_arg : new_node_arg;
+  std::vector<NodeArg*> inputs = {&cast_input};
+  std::vector<NodeArg*> outputs = {&cast_output};
+  return graph.AddNode(graph.GenerateNodeName(node_arg->Name() + "_cast"),
+                       "Cast",
+                       "Created a new Cast node",
+                       inputs,
+                       outputs,
+                       &attributes);
+}
+
+static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node, const logging::Logger& logger) {
+  Node& cast = CreateCast(graph, input_arg, TensorProto::FLOAT16);
+  NodeArg* new_input_arg = cast.MutableOutputDefs()[0];
+  std::vector<NodeArg*>& inputs = node->MutableInputDefs();
+  Node* producer = graph.GetMutableProducerNode(input_arg->Name());
+  if (nullptr != producer) {
+    int output_index = optimizer_utils::IndexOfNodeOutput(*producer, *input_arg);
+    int input_index = optimizer_utils::IndexOfNodeInput(*node, *input_arg);
+    graph.RemoveEdge(producer->Index(), node->Index(), output_index, input_index);
+    std::replace(inputs.begin(), inputs.end(), input_arg, new_input_arg);
+    graph.AddEdge(cast.Index(), node->Index(), 0, input_index);
+  } else {
+    std::replace(inputs.begin(), inputs.end(), input_arg, new_input_arg);
+  }
+  graph.RemoveConsumerNode(input_arg->Name(), node);
+  graph.AddConsumerNode(input_arg->Name(), &cast);
+  graph.UpdateConsumerNodes(new_input_arg->Name(), {node});
+  LOGS(logger, VERBOSE) << "Inserted FP16 Cast " << cast.Name() << " for the node arg " << input_arg->Name() << " feeding " << node->Name();
+}
+
+static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, const logging::Logger& logger) {
+  NodeArg* orig_output_arg = output_arg;
+  Node* producer = graph.GetMutableProducerNode(output_arg->Name());
+  std::vector<Node*> consumers = graph.GetMutableConsumerNodes(output_arg->Name());
+  // First remove all the edges from the producer to the consumers.
+  std::vector<Node*> new_consumers;
+  for (Node* consumer : consumers) {
+    int output_index = optimizer_utils::IndexOfNodeOutput(*producer, *output_arg);
+    int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *output_arg);
+    graph.RemoveEdge(producer->Index(), consumer->Index(), output_index, input_index);
+  }
+  // Create a new output_arg on the producer if the output_arg is a graph output
+  if (graph.IsOutput(output_arg)) {
+    Node& cast = CreateCast(graph, output_arg, TensorProto::FLOAT, true);
+    graph.UpdateProducerNode(output_arg->Name(), cast.Index());
+    output_arg = cast.MutableInputDefs()[0];
+    graph.UpdateProducerNode(output_arg->Name(), producer->Index());
+    new_consumers.push_back(&cast);
+    std::vector<NodeArg*>& outputs = producer->MutableOutputDefs();
+    std::replace(outputs.begin(), outputs.end(), orig_output_arg, output_arg);
+    LOGS(logger, VERBOSE) << "Inserted FP32 Cast " << cast.Name() << " for the node arg " << output_arg->Name();
+  } else {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
+    output_arg->UpdateTypeAndShape(type_proto, true, true, logger);
+  }
+  // Create a new cast node for each consumer
+  for (Node* consumer : consumers) {
+    Node& cast = CreateCast(graph, output_arg, TensorProto::FLOAT);
+    NodeArg* new_output_arg = cast.MutableOutputDefs()[0];
+    std::vector<NodeArg*>& inputs = consumer->MutableInputDefs();
+    int output_index = optimizer_utils::IndexOfNodeOutput(cast, *new_output_arg);
+    std::replace(inputs.begin(), inputs.end(), orig_output_arg, new_output_arg);
+    int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *new_output_arg);
+    graph.AddEdge(cast.Index(), consumer->Index(), output_index, input_index);
+    new_consumers.push_back(&cast);
+    graph.UpdateConsumerNodes(new_output_arg->Name(), {consumer});
+    LOGS(logger, VERBOSE) << "Inserted FP32 Cast " << cast.Name() << " for the node arg " << output_arg->Name() << " feeding " << consumer->Name();
+  }
+  // Update the consumers of the original output_arg
+  graph.UpdateConsumerNodes(orig_output_arg->Name(), new_consumers);
+}
+
 // Expand FP16 compute regions on the graph by example float16 compute nodes,
 // propagating float32 Cast operation down the graph and propagating float16
 // Cast operations up the graph. The following functions are performed
@@ -804,17 +888,6 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         local_modified |= FuseSiblingCasts(graph, node, removed_nodes, logger);
       }
     }
-
-    // Propagate FP32 Casts forward
-    for (auto node_index : node_topology_list) {
-      Node* node = graph.GetNode(node_index);
-      if (nullptr != node &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
-          IsCastTo(node, TensorProto::FLOAT)) {
-        local_modified |= PropagateForwards(graph, node, removed_nodes, level_, logger);
-      }
-    }
-
     // Remove back to back Casts, with FLOAT->FLOAT16 followed by FLOAT16->FLOAT, but not the other way.
     for (auto node_index : node_topology_list) {
       Node* node = graph.GetNode(node_index);
@@ -825,34 +898,45 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
     }
 
-    // Propagate FP16 Casts from outputs to inputs
-    for (auto node_index : node_topology_list) {
-      Node* node = graph.GetNode(node_index);
-      if (nullptr != node &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-        local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
+    if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill) {
+      // Propagate FP16 Casts from outputs to inputs
+      for (auto node_index : node_topology_list) {
+        Node* node = graph.GetNode(node_index);
+        if (nullptr != node &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+          local_modified |= PropagateFP16CastsFromOutputsToInputs(graph, node, removed_nodes, level_, logger);
+        }
+      }
+
+      // Propagate FP32 Casts forward
+      for (auto node_index : node_topology_list) {
+        Node* node = graph.GetNode(node_index);
+        if (nullptr != node &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+            IsCastTo(node, TensorProto::FLOAT)) {
+          local_modified |= PropagateForwards(graph, node, removed_nodes, level_, logger);
+        }
+      }
+
+      // Propagate FP16 Casts
+      for (auto node_index : node_topology_list) {
+        Node* node = graph.GetNode(node_index);
+        if (nullptr != node &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
+            IsCastTo(node, TensorProto::FLOAT16)) {
+          local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
+        }
+      }
+
+      // Propagate FP32 Casts from inputs to outputs
+      for (auto node_index : node_topology_list) {
+        Node* node = graph.GetNode(node_index);
+        if (nullptr != node &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+          local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
+        }
       }
     }
-
-    // Propagate FP16 Casts
-    for (auto node_index : node_topology_list) {
-      Node* node = graph.GetNode(node_index);
-      if (nullptr != node &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end() &&
-          IsCastTo(node, TensorProto::FLOAT16)) {
-        local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, logger);
-      }
-    }
-
-    // Propagate FP32 Casts from inputs to outputs
-    for (auto node_index : node_topology_list) {
-      Node* node = graph.GetNode(node_index);
-      if (nullptr != node &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-        local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
-      }
-    }
-
     for (NodeIndex removed_node : removed_nodes) {
       removed_node_names.insert(graph.GetNode(removed_node)->Name());
       graph.RemoveNode(removed_node);
