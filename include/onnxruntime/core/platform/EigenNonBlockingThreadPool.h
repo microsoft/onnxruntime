@@ -956,7 +956,7 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 void RunInParallelInternal(PerThread& pt,
                            ThreadPoolParallelSection& ps,
                            unsigned n,
-                           const std::function<void(unsigned)>& worker_fn) {
+                           std::function<void(unsigned)> worker_fn) {
   // init a few env variables
   ps.dispatch_q_idx = -1;
   ps.dispatch_done = false;
@@ -1043,7 +1043,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 
   // Increase the worker count if needed.  Each worker will pick up
   // loops to execute from the current parallel section.
-  const auto worker_fn = [&ps](unsigned my_idx) {
+  std::function<void(unsigned)> worker_fn = [&ps](unsigned my_idx) {
     while (ps.active) {
       if (!ps.current_loop) {
         onnxruntime::concurrency::SpinPause();
@@ -1057,13 +1057,23 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
       }
     }
   };
-  RunInParallelInternal(*pt, ps, n, worker_fn);
+  RunInParallelInternal(*pt, ps, n, std::move(worker_fn));
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   loop.fn(0);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-
+  if (ps.dispatch_q_idx > -1) {
+    Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, ps.dispatch_w_idx)) {
+      ps.dispatch_q_idx = -1;  // cancel dispatch if not started yet
+    } else {
+      // if dispatch task started, wait for its dispatch completion
+      while (!ps.dispatch_done.load(std::memory_order_acquire)) {
+        onnxruntime::concurrency::SpinPause();
+      }
+    }
+  }
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
