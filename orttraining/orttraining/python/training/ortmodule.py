@@ -79,12 +79,6 @@ class ORTModule(torch.nn.Module):
     def _is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
 
-    def eval(self: T) -> T:
-        self._flattened_module.eval()
-
-    def train(self: T, mode: bool = True) -> T:
-        self._flattened_module.train(mode)
-
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         """Override original method to delegate execution to the base module"""
 
