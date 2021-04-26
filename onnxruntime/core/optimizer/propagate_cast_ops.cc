@@ -1142,7 +1142,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce) {
         // Using InsertFP16Cast and InsertFP32Casts insert float16 casts on all inputs and float casts on all outputs.
         // Each consumer of each output gets a seperate float cast inserted. Doing so will convert the computation of 
-        // currenly node from 32 bit float to 16 bit float operation. These cast operations will be eventually reduced.
+        // curren node from 32 bit float to 16 bit float operation. These cast operations will be eventually reduced.
         if (IsFP16Allow(node.OpType(), level_)) {
           // Insert FP16 Cast on all float inputs
           converted_node_names.insert(node.Name());
