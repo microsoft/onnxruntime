@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io
-from ._graph_execution_manager import GraphExecutionManager, RunStateInfo\
+from ._graph_execution_manager import GraphExecutionManager, RunStateInfo
 from ._execution_agent import TrainingAgent
 
 from onnxruntime.capi import _pybind_state as C
@@ -109,8 +109,9 @@ class TrainingManager(GraphExecutionManager):
                                                                                            self._device,
                                                                                            *inputs)
 
-                # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
-                # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                # Disable materializing grads then None object will not be
+                # converted to a tensor filled with zeros prior to calling backward.
+                # Save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                 ctx.set_materialize_grads(False)
                 return user_outputs
 

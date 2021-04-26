@@ -20,6 +20,6 @@ try:
     if torch_version < minimum_torch_version:
         raise RuntimeError(
             f'ONNXRuntime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
-            f'but version {torch.__version__} was found instead!')
+            f'but version {torch.__version__} was found instead.')
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNXRuntime ORTModule frontend!')
