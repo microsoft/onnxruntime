@@ -549,7 +549,7 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
   ORT_ENFORCE(nodes.size() > 0);
   Node* node = nodes[0];
   NodeArg* node_arg = node->MutableOutputDefs()[0];
-  NodeArg& new_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), node_arg->TypeAsProto());
+  NodeArg& new_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(input->Name()), node_arg->TypeAsProto());
   Node& new_cast = graph.AddNode(graph.GenerateNodeName(node->Name() + "_replace"),
                                  node->OpType(),
                                  "Created to replace a node",
@@ -558,17 +558,24 @@ static void FuseNodes(Graph& graph, NodeArg* input, std::vector<Node*> nodes,
                                  &node->GetAttributes(),
                                  node->Domain());
   inserted_node_names.insert(new_cast.Name());
+  std::vector<Node*> consumers;
   for (Node* cast : nodes) {
     for (NodeArg* output : cast->MutableOutputDefs()) {
       for (Node* consumer : graph.GetMutableConsumerNodes(output->Name())) {
         int input_index = optimizer_utils::IndexOfNodeInput(*consumer, *output);
+        auto& inputs = consumer->MutableInputDefs();
         graph.RemoveEdge(cast->Index(), consumer->Index(), 0, input_index);
+        std::replace(inputs.begin(), inputs.end(), output, &new_output);
         graph.AddEdge(new_cast.Index(), consumer->Index(), 0, input_index);
+        consumers.push_back(consumer);
       }
     }
+    graph.RemoveConsumerNode(input->Name(), cast);
   }
+  graph.AddConsumerNode(input->Name(), &new_cast);
+  graph.UpdateConsumerNodes(new_output.Name(), consumers);
   for (Node* n : nodes) {
-    removed_nodes.push_back(n->Index());
+    removed_nodes.push_front(n->Index());
     graph_utils::RemoveNodeOutputEdges(graph, *n);
   }
 }
