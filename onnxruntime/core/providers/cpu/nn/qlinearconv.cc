@@ -186,7 +186,6 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
 Status QLinearConv::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                              int input_idx,
                                              /*out*/ bool& read_from_cache) {
-  // Support packing the weight matrix.
   if (input_idx != 3) {
     return Status::OK();
   }
