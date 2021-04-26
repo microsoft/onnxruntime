@@ -33,6 +33,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 import copy
 import numpy as np
+import threading
 
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
@@ -1104,7 +1105,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
 class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
-        print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function) forward")
+        print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function) forward, process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
         ctx.save_for_backward(inplace_update_input, bias)
         ctx.mark_dirty(inplace_update_input)
         # Be noted: if we make the input dirty, we must also put the input in outputs, otherwise, we will get such an error:
@@ -1113,6 +1114,7 @@ class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.
 
     @staticmethod
     def backward(ctx, grad_output):
+        print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function) backward, process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
         return grad_output, grad_output
 
 class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(torch.nn.Module):
@@ -1205,7 +1207,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
                     #print(self.y.grad_fn.saved_tensors)
                     return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
                     print(return_vals)
-                    print("==== Exiting InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
+                    print("==== Exiting InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
                     return tuple(return_vals)
             except Exception as e:
                 print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule:", e)
@@ -1227,6 +1229,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
 
                 return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
                 print(return_vals)
+                print("==== Exiting InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
                 return tuple(return_vals)
             except Exception as e:
                 print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule backward_compute:", e)
