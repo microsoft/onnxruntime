@@ -349,7 +349,7 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-template <typename Elem, int32_t Capacity, int32_t Base = 8>
+template <typename Elem, int32_t Capacity, int32_t Base = 16>
 class RunQueue {
  public:
   RunQueue() {
@@ -359,17 +359,18 @@ class RunQueue {
   ~RunQueue() {
     assert(Empty());
   }
-  Elem Push(Elem e, size_t tag, unsigned& at) {
+  Elem Push(Elem e, size_t tag, unsigned& at, int32_t count = 1) {
     if (Size() < Capacity) {
       int32_t base = base_.load(std::memory_order_relaxed);
       for (int32_t i = 0; i < base; i++) {
         Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
         if (State::empty == signature.state_) {
-          if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_relaxed)) {
+          if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
             slots_[i].elem_ = std::move(e);
+            slots_[i].count_ = count;
             size_.fetch_add(1, std::memory_order_relaxed);
             at = i;
-            slots_[i].signature_.store({State::ready, 0}, std::memory_order_release);
+            slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
             return {};
           }
         }
@@ -381,6 +382,7 @@ class RunQueue {
           if (State::empty == signature.state_) {
             if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
               slots_[i].elem_ = std::move(e);
+              slots_[i].count_ = count;
               size_.fetch_add(1, std::memory_order_relaxed);
               at = i;
               slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
@@ -399,12 +401,16 @@ class RunQueue {
       for (int32_t i = base - 1; i > -1; i--) {
         Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
         if (State::ready == signature.state_) {
-          if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_acquire)) {
+          if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, signature.tag_}, std::memory_order_acquire)) {
             Elem e = slots_[i].elem_;
-            size_.fetch_sub(1, std::memory_order_relaxed);
-            slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
-            if (i < half_base && half_base >= Base) {
-              base_.compare_exchange_weak(base, half_base, std::memory_order_relaxed);
+            if (0 == --slots_[i].count_) {
+              size_.fetch_sub(1, std::memory_order_relaxed);
+              slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
+              if (i < half_base && half_base >= Base) {
+                base_.compare_exchange_weak(base, half_base, std::memory_order_relaxed);
+              }
+            } else {
+              slots_[i].signature_.store({State::ready, signature.tag_}, std::memory_order_release);
             }
             return e;
           }
@@ -426,6 +432,7 @@ class RunQueue {
   struct Slot {
     std::atomic<Signature> signature_;
     Elem elem_;
+    int32_t count_{0};
   };
   Elem PushFront(Elem e) {
     unsigned at = 0;
@@ -441,17 +448,19 @@ class RunQueue {
   Elem PopBack() {
     return Pop();
   }
-  Elem PushBackWithTag(Elem e, size_t tag, unsigned& at) {
-    return Push(e, tag, at);
+  Elem PushBackWithTag(Elem e, size_t tag, unsigned& at, int32_t count = 1) {
+    return Push(e, tag, at, count);
   }
-  bool RevokeWithTag(size_t tag, unsigned at) {
+  int32_t RevokeWithTag(size_t tag, unsigned at) {
     Signature signature{State::ready, tag};
     if (at < Capacity &&
-        slots_[at].signature_.compare_exchange_weak(signature, {State::empty, 0}, std::memory_order_relaxed)) {
+        slots_[at].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_relaxed)) {
+      int32_t count = slots_[at].count_;
       size_.fetch_sub(1, std::memory_order_relaxed);
-      return true;
+      slots_[at].signature_.store({State::empty, 0}, std::memory_order_relaxed);
+      return count;
     } else {
-      return false;
+      return 0;
     }
   }
   unsigned Size() const {
