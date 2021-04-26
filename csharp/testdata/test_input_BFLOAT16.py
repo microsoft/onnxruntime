@@ -22,6 +22,9 @@ graph_def = helper.make_graph(nodes=[node_def], name='test_types_BLOAT16',
 model_def = helper.make_model(graph_def, producer_name='AIInfra',
      opset_imports=[make_opsetid('', 13)])
 
-final_model = onnx.utils.polish_model(model_def)
+onnx.checker.check_model(model_def)
+onnx.helper.strip_doc_string(model_def)
+final_model = onnx.shape_inference.infer_shapes(model_def)
+onnx.checker.check_model(final_model)
 onnx.save(final_model, 'test_types_BFLOAT16.onnx')
 

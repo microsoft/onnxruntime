@@ -428,7 +428,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
 
   // check allocation kind:
   CheckAllocKind(X1, AllocKind::kPreExisting);
-  CheckAllocKind(X2, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocatedExternally);
   CheckAllocKind(X3, AllocKind::kAllocate);
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 

@@ -4,7 +4,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -16,7 +16,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -52,7 +52,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -65,7 +65,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -154,7 +154,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-gpu-winbuild'
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86

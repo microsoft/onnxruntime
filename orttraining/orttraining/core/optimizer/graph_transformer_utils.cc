@@ -15,6 +15,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -23,6 +24,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
@@ -30,6 +32,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -37,13 +40,14 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
-#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -55,7 +59,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const std::unordered_set<std::string>& weights_to_train,
     const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
-    const std::vector<std::string>& transformers_and_rules_to_enable) {
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
@@ -73,8 +77,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
       rule_transformer->Register(make_unique<ExpandElimination>());
       rule_transformer->Register(make_unique<CastElimination>());
+      rule_transformer->Register(make_unique<DivMulFusion>());
       rule_transformer->Register(make_unique<EliminateDropout>());
-      rule_transformer->Register(make_unique<NonZeroShapeSetter>());
+      rule_transformer->Register(make_unique<GemmTransposeFusion>());
+      rule_transformer->Register(make_unique<NotWhereFusion>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
@@ -82,19 +88,21 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
       }
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(
+          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
@@ -108,6 +116,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.transformer_layer_recompute) {
         transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
+      }
+      if (config.propagate_cast_ops_level >= 0) {
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
+        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
+                                                                             config.propagate_cast_ops_allow,
+                                                                             cuda_execution_provider));
       }
     } break;
 
@@ -126,64 +140,64 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       break;
   }
 
-  // if the custom list to enable transformers\rules is empty then return the default generated transformers and rules
-  // otherwise generate a filtered list based on the provided custom list.
   // Note that some rule-based transformers are depending on some custom transformers,
   // e.g., ExpandElimination and CastElimination are depending on ConstantFolding to fold the constant first,
-  // so we should always push the rule-based transformer to the end, this is expecially important when transformation step is 1.
-  if (transformers_and_rules_to_enable.empty()) {
-    if (rule_transformer != nullptr) {
-      transformers.emplace_back(std::move(rule_transformer));
-    }
-    return transformers;
+  // so we should always push the rule-based transformer to the end, this is especially important when the number of
+  // transformation steps is 1.
+  if (rule_transformer != nullptr) {
+    transformers.emplace_back(std::move(rule_transformer));
   }
-  std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-  // pick custom transformers enabled for this session
-  for (const auto& t_name : transformers_and_rules_to_enable) {
+
+  if (rules_and_transformers_to_disable.empty()) {
+    return transformers;
+  } else {
+    // filter out any disabled transformers
+    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
+    auto end = rules_and_transformers_to_disable.cend();
     std::for_each(transformers.begin(), transformers.end(),
                   [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (item->Name() == t_name)) {
+                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
                       filtered_list.push_back(std::move(item));
                     }
                   });
+
+    return filtered_list;
   }
-  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-  if (rule_transformer != nullptr) {
-    filtered_list.emplace_back(std::move(rule_transformer));
-  }
-  return filtered_list;
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
-    const std::vector<std::string>& transformers_and_rules_to_enable) {
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
+                                                                       onnxruntime::kRocmExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
       //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
-      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
+      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
+                                                                            l1_execution_providers);
     } break;
 
     case TransformerLevel::Level2: {
       std::unordered_set<std::string> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
       // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, cpu_execution_providers);
+      rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
+                                                                            cpu_execution_providers);
 
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
@@ -201,29 +215,26 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       break;
   }
 
+  if (rule_transformer != nullptr) {
+    transformers.emplace_back(std::move(rule_transformer));
+  }
+
   // if the custom list to enable transformers\rules is empty then return the default generated transformers and rules
   // otherwise generate a filtered list based on the provided custom list.
-  if (transformers_and_rules_to_enable.empty()) {
-    if (rule_transformer != nullptr) {
-      transformers.emplace_back(std::move(rule_transformer));
-    }
+  if (rules_and_transformers_to_disable.empty()) {
     return transformers;
-  }
-  std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-  if (rule_transformer != nullptr) {
-    filtered_list.emplace_back(std::move(rule_transformer));
-  }
-  // pick custom transformers enabled for this session
-  for (const auto& t_name : transformers_and_rules_to_enable) {
+  } else {
+    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
+    auto end = rules_and_transformers_to_disable.cend();
     std::for_each(transformers.begin(), transformers.end(),
                   [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (item->Name() == t_name)) {
+                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
                       filtered_list.push_back(std::move(item));
                     }
                   });
+
+    return filtered_list;
   }
-  return filtered_list;
 }
 
 }  // namespace transformer_utils

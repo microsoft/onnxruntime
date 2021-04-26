@@ -32,10 +32,6 @@ contrib_ops_excluded_files = [
                     'bert/longformer_attention_impl.h',
                     'bert/longformer_global_impl.cu',
                     'bert/longformer_global_impl.h',
-                    'bert/skip_layer_norm.cc',
-                    'bert/skip_layer_norm.h',
-                    'bert/skip_layer_norm_impl.cu',
-                    'bert/skip_layer_norm_impl.h',
                     'math/bias_softmax.cc',
                     'math/bias_softmax.h',
                     'math/bias_softmax_impl.cu',
@@ -155,6 +151,7 @@ provider_excluded_files = [
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
+                'cuda_common.cc',
                 'cuda_common.h',
                 'cuda_execution_provider_info.cc',
                 'cuda_execution_provider_info.h',
@@ -202,14 +199,10 @@ training_ops_excluded_files = [
                     'math/softmax_grad.cc',
                     'nn/batch_norm_grad.cc',
                     'nn/batch_norm_grad.h',
-                    'optimizer/adam.cc',
-                    'optimizer/adam.cu',
-                    'optimizer/lamb.cc',
+                    'nn/conv_grad.cc',
+                    'nn/conv_grad.h',
                     'reduction/reduction_all.cc',
                     'reduction/reduction_ops.cc',
-                    'tensor/gather_grad.cc',
-                    'tensor/gather_grad_impl.cu',
-                    'tensor/gather_grad_impl.h',
                     'tensor/gather_nd_grad_impl.cu',
                     'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
@@ -238,6 +231,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
         s = s.replace('CUDA_CALL', 'HIP_CALL')
         s = s.replace('SliceCuda', 'SliceRocm')
+        s = s.replace('thrust::cuda', 'thrust::hip')
         s = s.replace('cuda', 'rocm')
         # s = s.replace('Cuda', 'Rocm')
         s = s.replace('CUDA', 'ROCM')
@@ -245,8 +239,18 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
         s = s.replace('std::exp', 'expf')
         s = s.replace('std::log', 'logf')
-        s = s.replace('#include <cub/device/device_radix_sort.cuh>', '#include <hipcub/hipcub.hpp>')
-        s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>', '')
+        s = s.replace('#include <cub/device/device_radix_sort.cuh>',
+                      '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
+        s = s.replace('#include <cub/device/device_reduce.cuh>',
+                      '#include <hipcub/backend/rocprim/device/device_reduce.hpp>')
+        s = s.replace('#include <cub/device/device_run_length_encode.cuh>',
+                      '#include <hipcub/backend/rocprim/device/device_run_length_encode.hpp>')
+        s = s.replace('#include <cub/device/device_scan.cuh>',
+                      '#include <hipcub/backend/rocprim/device/device_scan.hpp>')
+        s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>',
+                      '#include <hipcub/backend/rocprim/iterator/counting_input_iterator.hpp>')
+        s = s.replace('#include <cub/iterator/discard_output_iterator.cuh>',
+                      '#include <hipcub/backend/rocprim/iterator/discard_output_iterator.hpp>')
         s = s.replace('typedef half MappedType', 'typedef __half MappedType')
         # CUBLAS -> ROCBLAS
         # s = s.replace('CUBLAS', 'HIPBLAS')

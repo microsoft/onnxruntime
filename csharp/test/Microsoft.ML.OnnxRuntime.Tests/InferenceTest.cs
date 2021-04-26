@@ -790,6 +790,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_identity_sequence", "data type not supported"},
+                { "test_gru_batchwise", "opset14 version not implemented yet"},
+                { "test_gru_defaults", "opset14 version not implemented yet"}, 
+                { "test_gru_seq_length", "opset14 version not implemented yet"}, 
+                { "test_gru_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_batchwise", "opset14 version not implemented yet"},
+                { "test_lstm_defaults", "opset14 version not implemented yet"},
+                { "test_lstm_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_with_peepholes", "opset14 version not implemented yet"},
+                { "test_rnn_seq_length", "opset14 version not implemented yet"},
+                { "test_simple_rnn_batchwise", "opset14 version not implemented yet"},
+                { "test_simple_rnn_defaults", "opset14 version not implemented yet"},
+                { "test_simple_rnn_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_sub_uint8", "data type not supported"},
+                { "test_mul_uint8", "data type not supported"},
+                { "test_add_uint8", "data type not supported"},
+                { "test_div_uint8", "data type not supported"},
+                { "test_batchnorm_epsilon", "opset14 version not implemented yet"},
+                { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
+                { "test_batchnorm_example", "opset14 version not implemented yet"},
+                { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI
@@ -1022,7 +1043,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             catch (Exception ex)
             {
                 var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                throw new Exception(msg + "\n" + ex.StackTrace);
+                if(ex.Message.Contains("ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions"))
+                {
+                    // If the exception is thrown because the opset version of the test model is
+                    // not supported by ONNXRuntime yet, then ignore the test and proceed.
+                    // ORT allows commits from ONNX master and in such cases we do come across new opsets which are
+                    // not supported in ORT yet. In order to force these tests to run set env var ALLOW_RELEASED_ONNX_OPSET_ONLY=0
+                    output.WriteLine("Skipping the model test as the latest ONNX opset is not supported yet. Error Message: " + msg);
+                }
+                else
+                {
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
             }
         }
 

@@ -16,6 +16,11 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#ifdef ENABLE_TRAINING
+#include "core/session/IOBinding.h"
+#include "orttraining/core/agent/training_agent.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace std;
 
@@ -254,7 +259,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
 }
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#ifdef ENABLE_TRAINING
 TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_type = cpu_xp->Type();
