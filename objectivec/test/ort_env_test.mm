@@ -13,8 +13,10 @@ NS_ASSUME_NONNULL_BEGIN
 @implementation ORTEnvTest
 
 - (void)testInitOk {
-  ORTEnv* env = [[ORTEnv alloc] initWithError:nil];
+  NSError* err = nil;
+  ORTEnv* env = [[ORTEnv alloc] initWithError:&err];
   XCTAssertNotNil(env);
+  XCTAssertNil(err);
 }
 
 @end

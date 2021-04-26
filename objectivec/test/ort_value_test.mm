@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 @implementation ORTValueTest
 
 - (void)setUp {
+  [super setUp];
+
   self.continueAfterFailure = NO;
 }
 
