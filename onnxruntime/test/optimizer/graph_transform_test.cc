@@ -4248,7 +4248,6 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   for (auto strategy : strategies) {
     for (PropagateCastOpsTestSpecs test_case : test_cases) {
       std::shared_ptr<Model> p_model;
-      std::cout << test_case.model_uri << " " << test_case.level << std::endl;
       ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
       Graph& graph = p_model->MainGraph();
       ASSERT_STATUS_OK(graph.Resolve());

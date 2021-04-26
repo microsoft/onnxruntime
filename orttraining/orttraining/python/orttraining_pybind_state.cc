@@ -528,8 +528,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("propagate_cast_ops_allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
 
   py::class_<GraphTransformerConfiguration> graph_transformer_config(
-      m, "TrainingGraphTransformerConfiguration",
-      R"pbdoc(Training Graph transformer configuration.)pbdoc");
+      m, "GraphTransformerConfiguration",
+      R"pbdoc(Graph transformer configuration.)pbdoc");
 
   py::class_<TrainingGraphTransformerConfiguration> training_graph_transformer_config(
       m, "TrainingGraphTransformerConfiguration",
