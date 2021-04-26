@@ -65,6 +65,8 @@ class SparseRep {
   virtual Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
                       int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const = 0;
 
+  virtual Status Copy(const AllocatorPtr& allocator, std::unique_ptr<SparseRep>& dst_rep) const = 0;
+
  private:
 };
 
@@ -205,7 +207,22 @@ class SparseTensor final {
     return allocator_ != nullptr;
   }
 
+  /// <summary>
+  /// X-device copy
+  /// </summary>
+  /// <param name="data_transfer_manager"></param>
+  /// <param name="exec_q_id"></param>
+  /// <param name="dst_tensor"></param>
+  /// <returns></returns>
   Status Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const;
+
+  /// <summary>
+  /// CPU only copy
+  /// </summary>
+  /// <param name="dst_tensor"></param>
+  /// <returns></returns>
+  Status Copy(SparseTensor& dst_tensor) const;
+  
 
  private:
   // New API members

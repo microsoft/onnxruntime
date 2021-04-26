@@ -4,11 +4,14 @@
 #pragma once
 
 #include "core/common/status.h"
-#ifndef SHARED_PROVIDER
-#include "core/framework/tensor.h"
-#endif
+#include <vector>
+
+struct OrtDevice;
 
 namespace onnxruntime {
+
+class Tensor;
+class SparseTensor;
 
 // Data transfer interface.
 class IDataTransfer {

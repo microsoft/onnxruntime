@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_transfer.h"
+#ifndef SHARED_PROVIDER
+#include "core/framework/tensor.h"
+#include "core/framework/sparse_tensor.h"
+#endif
+
+#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 

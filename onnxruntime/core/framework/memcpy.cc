@@ -19,6 +19,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
     Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
 
     if (!retval.IsOK()) {
+      // XXX: Can LOGS really log something that is on device?
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
                                                " Copying ", Node().InputDefs()[0]->Name(),
                                                " to ", Node().OutputDefs()[0]->Name(),
@@ -29,6 +30,12 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
     const auto* X = ctx->Input<SparseTensor>(0);
     SparseTensor* Y = ctx->Output(0, X->NumValues(), X->Shape());
     retval = X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+    if (!retval.IsOK()) {
+      LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
+                                               " Copying ", Node().InputDefs()[0]->Name(),
+                                               " to ", Node().OutputDefs()[0]->Name(),
+                                               " Input shape:", X->Shape(), " Output shape:", Y->Shape());
+    }
   } else {
     ORT_NOT_IMPLEMENTED("Input type no supported: ", DataTypeImpl::ToString(input_type_0));
   }

@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/framework/sparse_tensor.h"
-#include "core/common/optional.h"
 
 namespace onnxruntime {
 /// <summary>
@@ -32,6 +31,8 @@ class SparseCooFomatRep : public SparseRep {
 
   Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
               int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const override;
+
+  Status Copy(const AllocatorPtr& allocator, std::unique_ptr<SparseRep>& dst_rep) const override;
 
  private:
   Tensor indices_;  // may be 1-D or 2-D.

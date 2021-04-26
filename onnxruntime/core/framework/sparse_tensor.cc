@@ -38,10 +38,22 @@ Status onnxruntime::SparseTensor::Copy(const DataTransferManager& data_transfer_
   ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
   ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
   ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
-  ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have an allocator available");
+  ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have an allocator set");
   std::unique_ptr<SparseRep> rep_copy;
   ORT_RETURN_IF_ERROR(rep_->Copy(data_transfer_manager, dst_tensor.allocator_, exec_q_id, rep_copy));
   ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(values_, dst_tensor.MutableValues(), exec_q_id));
+  dst_tensor.rep_ = std::move(rep_copy);
+  dst_tensor.format_flags_ = format_flags_;
+  return Status::OK();
+}
+
+Status SparseTensor::Copy(SparseTensor& dst_tensor) const {
+  ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
+  std::unique_ptr<SparseRep> rep_copy;
+  ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have a CPU allocator set");
+  ORT_RETURN_IF_ERROR(rep_->Copy(dst_tensor.allocator_, rep_copy));
   dst_tensor.rep_ = std::move(rep_copy);
   dst_tensor.format_flags_ = format_flags_;
   return Status::OK();
