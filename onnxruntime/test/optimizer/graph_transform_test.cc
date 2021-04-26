@@ -4236,32 +4236,47 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose.onnx", 1, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 2, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add}};
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add, 2}};
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
-
-  for (PropagateCastOpsTestSpecs test_case : test_cases) {
-    std::shared_ptr<Model> p_model;
-    ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
-    Graph& graph = p_model->MainGraph();
-    ASSERT_STATUS_OK(graph.Resolve());
-    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-        onnxruntime::make_unique<PropagateCastOps>(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
-                                                   test_case.level, test_case.allow_ops),
-        TransformerLevel::Level1));
-    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-    Path p = Path::Parse(test_case.model_uri);
-    ASSERT_FALSE(p.GetComponents().empty());
-    PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
-    Model::Save(*p_model, transformed_model_uri);
-    // Load the transformed model to validate
-    ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
-    Graph& transformed_graph = p_model->MainGraph();
-    ASSERT_STATUS_OK(transformed_graph.Resolve());
-    std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
-    ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
+  logger_->SetSeverity(logging::Severity::kVERBOSE);
+  std::vector<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy> strategies = {
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill
+  };
+  for (auto strategy : strategies) {
+    for (PropagateCastOpsTestSpecs test_case : test_cases) {
+      std::shared_ptr<Model> p_model;
+      std::cout << test_case.model_uri << " " << test_case.level << std::endl;
+      ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
+      Graph& graph = p_model->MainGraph();
+      ASSERT_STATUS_OK(graph.Resolve());
+      onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+      ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+          onnxruntime::make_unique<PropagateCastOps>(strategy, test_case.level, test_case.allow_ops),
+          TransformerLevel::Level1));
+      ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+      Path p = Path::Parse(test_case.model_uri);
+      ASSERT_FALSE(p.GetComponents().empty());
+      PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+      Model::Save(*p_model, transformed_model_uri);
+      // Load the transformed model to validate
+      ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
+      Graph& transformed_graph = p_model->MainGraph();
+      ASSERT_STATUS_OK(transformed_graph.Resolve());
+      std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
+      if (strategy == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill) {
+         ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
+      } else {
+#ifndef NDEBUG
+        if (op_to_count["Cast"] != test_case.casts_count) {
+          std::cout << op_to_count["Cast"] << " " << test_case.casts_count << std::endl;
+          Model::Save(*p_model, ORT_TSTR("transformed_") + p.GetComponents().back());
+        }
+#endif
+      }
+    }
   }
 }
 

@@ -789,11 +789,12 @@ static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, const logging::Lo
   if (graph.IsOutput(output_arg)) {
     Node& cast = CreateCast(graph, output_arg, TensorProto::FLOAT, true);
     graph.UpdateProducerNode(output_arg->Name(), cast.Index());
-    output_arg = cast.MutableInputDefs()[0];
-    graph.UpdateProducerNode(output_arg->Name(), producer->Index());
+    NodeArg* new_output_arg = cast.MutableInputDefs()[0];
+    graph.UpdateProducerNode(new_output_arg->Name(), producer->Index());
     new_consumers.push_back(&cast);
     std::vector<NodeArg*>& outputs = producer->MutableOutputDefs();
-    std::replace(outputs.begin(), outputs.end(), orig_output_arg, output_arg);
+    std::replace(outputs.begin(), outputs.end(), output_arg, new_output_arg);
+    output_arg = new_output_arg;
     LOGS(logger, VERBOSE) << "Inserted FP32 Cast " << cast.Name() << " for the node arg " << output_arg->Name();
   } else {
     ONNX_NAMESPACE::TypeProto type_proto;
@@ -814,7 +815,7 @@ static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, const logging::Lo
     LOGS(logger, VERBOSE) << "Inserted FP32 Cast " << cast.Name() << " for the node arg " << output_arg->Name() << " feeding " << consumer->Name();
   }
   // Update the consumers of the original output_arg
-  graph.UpdateConsumerNodes(orig_output_arg->Name(), new_consumers);
+  graph.UpdateConsumerNodes(output_arg->Name(), new_consumers);
 }
 
 // Expand FP16 compute regions on the graph by example float16 compute nodes,
