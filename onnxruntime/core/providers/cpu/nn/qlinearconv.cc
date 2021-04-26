@@ -23,10 +23,14 @@ class QLinearConv : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                 /*out*/ bool& read_from_cache,
+
+  Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
+                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                  AllocatorPtr alloc_for_caching) override;
+
+  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                  int input_idx,
+                                  /*out*/ bool& read_from_cache) override;
 
  private:
   static void ReorderFilter(const uint8_t* input,
@@ -86,9 +90,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                            /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                            /*out*/ bool& read_from_cache,
+Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
+                            /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                             AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
@@ -98,19 +101,6 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   }
 
   is_W_signed_ = tensor.IsDataType<int8_t>();
-
-  // Cached pre-packed weights
-  if (cached_prepacked_tensor.has_cached_) {
-    read_from_cache = true;
-    is_W_packed_ = true;
-    is_packed = true;
-
-    // These are cached pre-packed buffers and this kernel doesn't own these and hence the deleter is null
-    packed_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
-    reordered_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[1].get(), BufferDeleter(nullptr));
-    packed_W_size_ = cached_prepacked_tensor.weights_sizes_[0];
-    return Status::OK();
-  }
 
   const auto& shape = tensor.Shape().GetDims();
   size_t rank = shape.size();
@@ -165,10 +155,11 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
       }
 
       if (!kernel_owns_prepacked_buffer) {
-        cached_prepacked_tensor.buffers_.push_back(std::move(packed_W_buffer_));
-        cached_prepacked_tensor.weights_sizes_.push_back(packed_W_size_);
-        cached_prepacked_tensor.has_cached_ = true;
-        packed_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+        prepacked_weight_for_caching.buffers_.push_back(std::move(packed_W_buffer_));
+        prepacked_weight_for_caching.weights_sizes_.push_back(packed_W_size_);
+        prepacked_weight_for_caching.has_cached_ = true;
+        prepacked_weight_for_caching.flags_.push_back(is_W_signed_);
+        packed_W_buffer_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
       }
 
       is_W_packed_ = true;
@@ -183,12 +174,34 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
   if (!kernel_owns_prepacked_buffer) {
-    cached_prepacked_tensor.buffers_.push_back(std::move(reordered_W_buffer_));
-    reordered_W_buffer_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[1].get(), BufferDeleter(nullptr));
+    prepacked_weight_for_caching.buffers_.push_back(std::move(reordered_W_buffer_));
+    reordered_W_buffer_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[1].get(), BufferDeleter(nullptr));
   }
 
   is_W_packed_ = true;
   is_packed = true;
+  return Status::OK();
+}
+
+Status QLinearConv::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                             int input_idx,
+                                             /*out*/ bool& read_from_cache) {
+  // Support packing the weight matrix.
+  if (input_idx != 3) {
+    return Status::OK();
+  }
+
+  // Cached pre-packed weights
+  if (cached_prepacked_weight.has_cached_) {
+    is_W_packed_ = true;
+    read_from_cache = true;
+
+    // These are cached pre-packed buffers and this kernel doesn't own these and hence the deleter is null
+    packed_W_buffer_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+    reordered_W_buffer_ = BufferUniquePtr(cached_prepacked_weight.buffers_[1].get(), BufferDeleter(nullptr));
+    packed_W_size_ = cached_prepacked_weight.weights_sizes_[0];
+    is_W_signed_ = cached_prepacked_weight.flags_[0];
+  }
   return Status::OK();
 }
 

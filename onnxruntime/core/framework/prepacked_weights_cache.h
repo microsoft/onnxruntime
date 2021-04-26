@@ -3,19 +3,27 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/allocatormgr.h"
-#include "core/framework/tensor.h"
+#include "core/framework/buffer_deleter.h"
+#include "core/framework/tensor_shape.h"
+#include "core/framework/allocator.h"
+#include <unordered_map>
+#include <string>
 
 namespace onnxruntime {
 
-struct PackedWeight {
+struct PrepackedWeight {
   // Some weights may be associated with multiple pre-packed buffers.
-  // Hence we hold them in containers. It is upto the dev implementing each PrePack()
-  // method to define what gets stored in which position.
-  std::vector<BufferUniquePtr> buffers_;
-  std::vector<size_t> weights_sizes_;
-  std::vector<TensorShape> shapes_;
+  // Hence we hold them in containers. It is upto the developer implementing each PrePack()
+  // method to define what gets stored in which position of the containers.
+
+  // NOTE: Not all fields may be filled in and not all containers will have the same number of elements
+  // It is upto the developer of the kernel to decide which fields to cache for re-use.
+
+  std::vector<std::unique_ptr<void, BufferDeleter>> buffers_;  // cache pre-packed buffers associated with the kernel
+  std::vector<size_t> weights_sizes_;                          // cache sizes associated with pre-packed buffers
+  std::vector<TensorShape> shapes_;                            // cache tensor shapes associates with pre-packed buffers
+  std::vector<bool> flags_;                                    // cache some flags associated with the pre-packed buffers
+
   bool has_cached_ = false;
 };
 
@@ -27,42 +35,13 @@ class PrepackedWeightsCache {
 
   ~PrepackedWeightsCache() = default;
 
-  AllocatorPtr GetAllocator(const char* device_name) {
-    auto name = std::string(device_name);
+  AllocatorPtr GetAllocator(const std::string& device_name);
 
-    auto iter = allocators_.find(name);
+  const PrepackedWeight& GetCachedWeight(const std::string& initializer_name);
 
-    if (iter != allocators_.end())
-      return iter->second;
+  void WriteCachedWeight(const std::string& initializer_name, PrepackedWeight&& packed_weight);
 
-    // Support only CPU based allocators for now.
-    // as pre-packing is only supported by CPU kernels for now.
-    if (name == CPU) {
-      /*we do not need an arena based allocator*/
-      AllocatorCreationInfo device_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
-                                        0, false};
-      auto allocator = CreateAllocator(device_info);
-
-      allocators_[name] = allocator;
-    } else {
-      ORT_THROW("Unsupported device allocator in the context of pre-packed weights caching: ", name);
-    }
-
-    return allocators_[name];
-  }
-
-  PackedWeight& GetOrCreateCachedWeight(const std::string& initializer_name, /*out*/ bool& is_cached) {
-    auto iter = initialized_tensor_name_to_prepacked_weights_.find(initializer_name);
-    if (iter != initialized_tensor_name_to_prepacked_weights_.end()) {
-      is_cached = true;
-      return iter->second;
-    } else {
-      is_cached = false;
-      PackedWeight temp;
-      initialized_tensor_name_to_prepacked_weights_.insert({initializer_name, std::move(temp)});
-    }
-    return initialized_tensor_name_to_prepacked_weights_[initializer_name];
-  }
+  bool HasCachedWeight(const std::string& initializer_name);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsCache);
 
@@ -71,7 +50,7 @@ class PrepackedWeightsCache {
   // needs to destructed after the container containing the pre-packed cached tensors
   // because the Tensor buffers will be de-allocated using these allocators
   std::unordered_map<std::string, AllocatorPtr> allocators_;
-  std::unordered_map<std::string, PackedWeight> initialized_tensor_name_to_prepacked_weights_;
+  std::unordered_map<std::string, PrepackedWeight> initialized_tensor_name_to_prepacked_weights_;
 };
 
 }  // namespace onnxruntime

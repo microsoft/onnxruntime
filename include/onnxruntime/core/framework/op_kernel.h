@@ -4,7 +4,6 @@
 #pragma once
 
 #include "boost/mp11.hpp"
-
 #include "core/framework/prepacked_weights_cache.h"
 
 #ifndef SHARED_PROVIDER
@@ -50,17 +49,17 @@ class OpKernel {
 
   // Override this function to PrePack initialized constant tensor to the format as needed.
   // For example, MatMul kernel can pack the input B if it is constant like code below.
-  //   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-  //                  /*in_out*/ PackedWeight& /*cached_prepacked_tensor*/,
-  //                  /*out*/ bool& /*read_from_cache*/,
-  //                  AllocatorPtr /*alloc_for_caching*/) override {
+  //   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+  //                  /*out*/ PrepackedWeight& prepacked_weight_for_caching,
+  //                  AllocatorPtr alloc_for_caching) override {
   //     is_packed = false;
   //     if (input_idx == 1) {
-  //       // LOGIC TO USE CACHED WEIGHTS IF PROVIDED AND SET `read_from_cache` to TRUE.
+  //       is_packed = true;
   //       auto alloc =  alloc_for_caching ? alloc_for_caching : this.GetAllocator();
   //       this.Pack(tensor, this.buffer_, alloc);
-  //       // LOGIC TO CACHE `this.buffer_` IF THE KERNEL DOESN"T OWN THE BUFFER
-  //       is_packed = true;
+  //       if (alloc) {
+  //           // LOGIC TO CACHE `this.buffer_` SINCE THE KERNEL DOESN"T OWN THE PACKED WEIGHT
+  //       }
   //     }
   //     return Status::OK();
   //   }
@@ -71,21 +70,41 @@ class OpKernel {
   //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   and the original initialized constant tensor will be released and not accessible anymore in
   //                   the Compute function.
-  // @param cached_prepacked_tensor: A cached pre-packed weight will be provided to the kernel (if available)
-  //                   The kernel must use contents of the cached weights if provided.
-  //                   `cached_prepacked_tensor` will have a boolean flag set to true (has_cached_) if it has
-  //                   cached weights available.
-  // @param read_from_cache: The kernel's PrePack() method MUST have logic to read from the provided cached weights
-  //                         and the code path MUST set `read_from_cache` to true which will be validated.
+  // @param prepacked_weight_for_caching: A packed weight instance will be provided to the kernel
+  //                   that needs to be filled in by the kernel and set a boolean flag (has_cached_) to true.
+  //                   This must be done by the kernel only if the kernel is provided with `alloc_for_caching` (i.e.)
+  //                   if an allocator for caching is provided - the user has requested that pre-packed weights be cached
+  //                   and re-used across sessions where prossible.
   // @param alloc_for_caching: The kernel's PrePack() method MUST use this allocator if provided for allocating the pre-packed
   //                            weights' buffers. If this is provided to the kernel, it means that the pre-packed weights'
   //                            will be cached and is not to be owned by the kernel itself.
 
-  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed,
-                         /*in_out*/ PackedWeight& /*cached_prepacked_tensor*/,
-                         /*out*/ bool& /*read_from_cache*/,
+  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*out*/ bool& is_packed,
+                         /*out*/ PrepackedWeight& /*prepacked_weight_for_caching*/,
                          AllocatorPtr /*alloc_for_caching*/) {
     is_packed = false;
+    return Status::OK();
+  }
+
+  // Override this function to use cached pre-packed weight.
+  // Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+  //                                        int input_idx,
+  //                                        /*out*/ bool& read_from_cache) {
+  //     if(cached_prepacked_weight.has_cached_) {
+  //     read_from_cache = true;
+  //     // LOGIC TO USE PREPACKED WEIGHT AND ASSIGN IT TO this.buffer_
+  //     }
+  //     read_from_cache = false;
+  //     return Status::OK();
+  //   }
+  // Please refer to MatMulIntegerToFloatBase for a complete example
+  // @param cached_prepacked_weight: The cached pre-packed weight for this kernel
+  // @param input_idx: The input index of the tensor in this kernel
+  // @param read_from_cache: Boolean flag set by the implementation indicating that the cached weight has been read.
+  virtual Status UseCachedPrePackedWeight(const PrepackedWeight& /*cached_prepacked_weight*/,
+                                          int /*input_idx*/,
+                                          /*out*/ bool& read_from_cache) {
+    read_from_cache = false;
     return Status::OK();
   }
 

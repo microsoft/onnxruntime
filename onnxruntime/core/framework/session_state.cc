@@ -274,46 +274,53 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
           int ort_value_idx;
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+
             if (constant_initialized_tensors.count(ort_value_idx)) {
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
 
               auto iter = session_options.initializers_to_share_map.find(input_name);
               bool is_shared_initializer = (iter != session_options.initializers_to_share_map.end());
+
               // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
               if (is_shared_initializer && cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
-                bool cache_contains_packed_weight = false;
-                PackedWeight& cached_weight = session_options.prepacked_weights_cache->GetOrCreateCachedWeight(input_name, cache_contains_packed_weight);
+                auto* prepacked_weights_cache = session_options.prepacked_weights_cache;
+                bool cache_contains_packed_weight = prepacked_weights_cache->HasCachedWeight(input_name);
 
-                AllocatorPtr allocator_for_caching = session_options.prepacked_weights_cache->GetAllocator(CPU);
-                ORT_ENFORCE(allocator_for_caching.get() != nullptr);
-
-                bool read_from_cache = false;
-                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
-                                                    cached_weight,
-                                                    read_from_cache,
-                                                    allocator_for_caching));
-
-                // If the cache contained the pre-packed weight pertaining to this shared initializer, validate that the kernel
-                // has read this cached weight
                 if (cache_contains_packed_weight) {
-                  // TODO: Log that we used a cached pre-packed weight for this shared initializer
-                  ORT_ENFORCE(read_from_cache, "The kernel's PrePack implementation lacks logic for using pre-packed weights of shared initializers");
+                  bool read_from_cache = false;
+                  ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_cache->GetCachedWeight(input_name),
+                                                                       input_idx, read_from_cache));
+
+                  // BUG CHECK: Ensure that the kernel read the cached weight (or atleast has an implementation that can consume the cached weight)
+                  ORT_ENFORCE(read_from_cache, "The kernel corresponding to the node ", node.Name(),
+                              " doesn't have an implementation that can consume cached pre-packed weights");
+                } else {
+                  AllocatorPtr allocator_for_caching = prepacked_weights_cache->GetAllocator(CPU);
+                  ORT_ENFORCE(allocator_for_caching.get() != nullptr);
+
+                  // Invoke PrePack()
+                  PrepackedWeight weight_to_be_filled_in;
+                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
+                                                      weight_to_be_filled_in,
+                                                      allocator_for_caching));
+
+                  if (is_packed) {
+                    // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight to be cached if the weight was pre-packed
+                    ORT_ENFORCE(weight_to_be_filled_in.has_cached_, "The kernel corresponding to the node ", node.Name(),
+                                " doesn't have an implementation that can caches computed pre-packed weights");
+
+                    // Write into the pre-packed weights cache
+                    prepacked_weights_cache->WriteCachedWeight(input_name, std::move(weight_to_be_filled_in));
+                  }
                 }
-
-                // If `has_cached_` had been set, validate that it has not been changed accidentally.
-                // If `has_cached_` had not been set, validate that it has run into the logic in the kernel's PrePack() method
-                // that caches the pre-packed weight computed by the kernel.
-                ORT_ENFORCE(cached_weight.has_cached_, "The kernel's PrePack implementation lacks logic for caching pre-packed weights of shared initializers");
               } else {
-                bool dummy_read_from_cache = false;
-                PackedWeight dummy_cached_weight;
-
+                PrepackedWeight dummy_cached_weight;
                 ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
                                                     dummy_cached_weight,
-                                                    dummy_read_from_cache,
                                                     nullptr));
 
+                // BUG CHECK: There should be no caching in this execution flow
                 ORT_ENFORCE(!dummy_cached_weight.has_cached_, "The kernel's PrePack implementation should not be caching pre-packed weights of this initializer");
               }
 

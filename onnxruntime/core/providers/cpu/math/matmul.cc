@@ -126,21 +126,10 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                              /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                              /*out*/ bool& read_from_cache,
+Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+                              /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                               AllocatorPtr alloc_for_caching) {
   is_packed = false;
-
-  // Cached pre-packed weight
-  if (cached_prepacked_tensor.has_cached_) {
-    read_from_cache = true;
-    is_packed = true;
-    b_shape_ = cached_prepacked_tensor.shapes_[0];
-    // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
-    packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
-    return Status::OK();
-  }
 
   bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
   AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
@@ -148,13 +137,31 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
   if (input_idx == 1) {
     is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, b_shape_);
     if (is_packed && !kernel_owns_prepacked_buffer) {
-      cached_prepacked_tensor.buffers_.push_back(std::move(packed_b_));
-      cached_prepacked_tensor.shapes_.push_back(b_shape_);
-      cached_prepacked_tensor.weights_sizes_.push_back(b_shape_.Size());
-      cached_prepacked_tensor.has_cached_ = true;
-      packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+      prepacked_weight_for_caching.buffers_.push_back(std::move(packed_b_));
+      prepacked_weight_for_caching.shapes_.push_back(b_shape_);
+      prepacked_weight_for_caching.weights_sizes_.push_back(b_shape_.Size());
+      prepacked_weight_for_caching.has_cached_ = true;
+      packed_b_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
     }
   }
+  return Status::OK();
+}
+
+Status MatMul<float>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                               int input_idx,
+                                               /*out*/ bool& read_from_cache) {
+  read_from_cache = false;
+
+  // Cached pre-packed weight
+  if (cached_prepacked_weight.has_cached_) {
+    if (input_idx == 1) {
+      read_from_cache = true;
+      // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
+      packed_b_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+      b_shape_ = cached_prepacked_weight.shapes_[0];
+    }
+  }
+
   return Status::OK();
 }
 
@@ -201,7 +208,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].beta = 0.0f;
   }
   MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-      M, N, K, data.data(), max_len, thread_pool);
+                M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }

@@ -11,9 +11,8 @@ class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                 /*out*/ bool& read_from_cache,
+  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                  AllocatorPtr alloc_for_caching) override {
     is_packed = false;
 
@@ -27,15 +26,6 @@ class MatMulIntegerBase : public OpKernel {
       }
 
       b_is_signed_ = tensor.IsDataType<int8_t>();
-
-      // Cached pre-packed weight
-      if (cached_prepacked_tensor.has_cached_) {
-        read_from_cache = true;
-        is_packed = true;
-        b_shape_ = cached_prepacked_tensor.shapes_[0];
-        packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
-        return Status::OK();
-      }
 
       const size_t K = static_cast<size_t>(b_shape_[0]);
       const size_t N = static_cast<size_t>(b_shape_[1]);
@@ -55,14 +45,33 @@ class MatMulIntegerBase : public OpKernel {
       MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
 
       if (!kernel_owns_prepacked_buffer) {
-        cached_prepacked_tensor.buffers_.push_back(std::move(packed_b_));
-        cached_prepacked_tensor.shapes_.push_back(b_shape_);
-        cached_prepacked_tensor.has_cached_ = true;
-        packed_b_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+        prepacked_weight_for_caching.buffers_.push_back(std::move(packed_b_));
+        prepacked_weight_for_caching.shapes_.push_back(b_shape_);
+        prepacked_weight_for_caching.flags_.push_back(b_is_signed_);
+        prepacked_weight_for_caching.has_cached_ = true;
+        packed_b_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
       }
 
       is_packed = true;
     }
+    return Status::OK();
+  }
+
+  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                  int input_idx,
+                                  /*out*/ bool& read_from_cache) {
+    read_from_cache = false;
+
+    // Cached pre-packed weight
+    if (cached_prepacked_weight.has_cached_) {
+      if (input_idx == GetBIdx()) {
+        read_from_cache = true;
+        packed_b_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+        b_shape_ = cached_prepacked_weight.shapes_[0];
+        b_is_signed_ = cached_prepacked_weight.flags_[0];
+      }
+    }
+
     return Status::OK();
   }
 

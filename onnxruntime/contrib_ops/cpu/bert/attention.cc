@@ -21,10 +21,14 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed,
-                 /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                 /*out*/ bool& read_from_cache,
+
+  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                  AllocatorPtr alloc_for_caching) override;
+
+  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                  int input_idx,
+                                  /*out*/ bool& read_from_cache) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -201,23 +205,12 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 }
 
 template <typename T>
-Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed,
-                             /*in_out*/ PackedWeight& cached_prepacked_tensor,
-                             /*out*/ bool& read_from_cache,
+Status Attention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool& is_packed,
+                             /*out*/ PrepackedWeight& prepacked_weight_for_caching,
                              AllocatorPtr alloc_for_caching) {
   is_packed = false;
 
   if (1 != input_idx) {
-    return Status::OK();
-  }
-
-  // Cached pre-packed weight
-  if (cached_prepacked_tensor.has_cached_) {
-    read_from_cache = true;
-    is_packed = true;
-    weight_shape_ = cached_prepacked_tensor.shapes_[0];
-    packed_weights_size_ = cached_prepacked_tensor.weights_sizes_[0];
-    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
     return Status::OK();
   }
 
@@ -258,14 +251,35 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   }
 
   if (!kernel_owns_prepacked_buffer) {
-    cached_prepacked_tensor.buffers_.push_back(std::move(packed_weights_));
-    cached_prepacked_tensor.shapes_.push_back(weight_shape_);
-    cached_prepacked_tensor.weights_sizes_.push_back(packed_weights_size_);
-    cached_prepacked_tensor.has_cached_ = true;
-    packed_weights_ = BufferUniquePtr(cached_prepacked_tensor.buffers_[0].get(), BufferDeleter(nullptr));
+    prepacked_weight_for_caching.buffers_.push_back(std::move(packed_weights_));
+    prepacked_weight_for_caching.shapes_.push_back(weight_shape_);
+    prepacked_weight_for_caching.weights_sizes_.push_back(packed_weights_size_);
+    prepacked_weight_for_caching.has_cached_ = true;
+    packed_weights_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
   }
 
   is_packed = true;
+  return Status::OK();
+}
+
+template <typename T>
+Status Attention<T>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                              int input_idx,
+                                              /*out*/ bool& read_from_cache) {
+  read_from_cache = false;
+
+  if (1 != input_idx) {
+    return Status::OK();
+  }
+
+  // Cached pre-packed weight
+  if (cached_prepacked_weight.has_cached_) {
+    read_from_cache = true;
+    weight_shape_ = cached_prepacked_weight.shapes_[0];
+    packed_weights_size_ = cached_prepacked_weight.weights_sizes_[0];
+    packed_weights_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+  }
+
   return Status::OK();
 }
 
