@@ -144,5 +144,29 @@ TEST(ReverseSequenceTest, InvalidInput) {
   }
 }
 
+TEST(ReverseSequenceTest, BadLength) {
+  auto run_test = [](bool use_negative) {
+    OpTester test("ReverseSequence", 10);
+    std::vector<int64_t> input = {0, 1, 2, 3,
+                                  4, 5, 6, 7};
+
+    std::vector<int64_t> sequence_lens = {4, 3};
+
+    // make sequence_lens invalid for the input
+    sequence_lens[1] = use_negative ? -2 : 6;
+
+    test.AddAttribute("batch_axis", int64_t(0));
+    test.AddAttribute("time_axis", int64_t(1));
+
+    test.AddInput<int64_t>("input", {2, 4, 1}, input);
+    test.AddInput<int64_t>("sequence_lens", {2}, sequence_lens);
+    test.AddOutput<int64_t>("Y", {0}, {});
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence length");
+  };
+
+  run_test(true);
+  run_test(false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
