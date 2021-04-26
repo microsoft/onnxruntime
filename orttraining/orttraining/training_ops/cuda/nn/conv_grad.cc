@@ -24,25 +24,40 @@ REGISTER_GRADIENT_KERNEL_TYPED(float)
 REGISTER_GRADIENT_KERNEL_TYPED(double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 
-// template <typename T>
-// const cudnnConvolutionBwdDataAlgo_t ConvGrad<T>::kAllBwdDataAlgo[] = {
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
-//     CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED,
-// };
-
-// template <typename T>
-// const cudnnConvolutionBwdFilterAlgo_t ConvGrad<T>::kAllBwdFilterAlgo[] = {
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED,
-//     CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING,
-// };
+// NB: This can't be a constructor, because then ConvolutionParams
+// would not be a POD anymore.
+// TODO: Use TensorGeometry here instead of the entire Tensor, which we
+// don't actually need.  (OTOH: We can always pass in
+// grad_input/grad_output, so this is not very pressing)
+void setConvolutionParams(
+    ConvolutionParams* params,
+    cudnnDataType_t dataType,
+    const std::vector<int64_t>& input_dim, const std::vector<int64_t>& weight_dim,
+    const std::vector<int64_t>& padding, const std::vector<int64_t>& stride, const std::vector<int64_t>& dilation,
+    int64_t groups, bool deterministic, bool allow_tf32) {
+  memset(params, 0, sizeof(ConvolutionParams));
+  params->device_id = at::cuda::current_device();
+  params->dataType = dataType;
+  // ASSERT(weight.dim() == input.dim())
+  params->input_dim = input_dim.size();
+  // params->memory_format = input.suggest_memory_format();
+  for (int i = 0; i != params->input_dim; ++i) {
+    params->input_size[i] = (int)input_dim[i];
+    params->weight_size[i] = (int)weight_dim[i];
+  }
+  // ASSERT(padding.size() == stride.size())
+  // ASSERT(padding.size() == dilation.size())
+  for (size_t i = 0; i != padding.size(); ++i) {
+    params->padding[i] = padding[i];
+    params->stride[i] = stride[i];
+    params->dilation[i] = dilation[i];
+  }
+  // In principle, we shouldn't parametrize by groups for legacy
+  // CuDNN, but it doesn't seem worth the effort to actually do this.
+  params->groups = groups;
+  params->deterministic = deterministic;
+  params->allow_tf32 = allow_tf32;
+}
 
 cudnnStatus_t getWorkspaceSize(
     const ConvolutionArgs& args,
@@ -119,11 +134,12 @@ struct BenchmarkCache {
 BenchmarkCache<cudnnConvolutionBwdDataAlgoPerf_t> bwd_data_algos;
 BenchmarkCache<cudnnConvolutionBwdFilterAlgoPerf_t> bwd_filter_algos;
 
-cudnnConvolutionBwdDataAlgoPerf_t getBwdDataAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo,
-                                                     const void* w, const void* dy, void* dx) {
-  cudnnConvolutionBwdDataAlgoPerf_t perf;
+template <typename T>
+Status ConvGrad<T>::getBwdDataAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo_search,
+                                       const void* w, const void* dy, void* dx, cudnnConvolutionBwdDataAlgoPerf_t& perf) const {
+  // cudnnConvolutionBwdDataAlgoPerf_t perf;
   if (bwd_data_algos.find(x_dims, &perf)) {
-    return perf;
+    return Status::OK();
   }
 
   static const cudnnConvolutionBwdDataAlgo_t kAllBwdDataAlgo[] = {
@@ -135,11 +151,11 @@ cudnnConvolutionBwdDataAlgoPerf_t getBwdDataAlgoPerf(const std::vector<int64_t>&
       CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED,
   };
 
-  ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
+  ORT_ENFORCE(cudnn_conv_algo_search > -1 && cudnn_conv_algo_search < 3,
+              "cudnn_conv_algo_search should be 0, 1 or 2, but got ", cudnn_conv_algo_search);
 
   int algo_count = 1;
-
-  if (cudnn_conv_algo == 0) {  // EXHAUSTIVE
+  if (cudnn_conv_algo_search == 0) {  // EXHAUSTIVE
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     size_t max_ws_size = getMaxWorkspaceSize(args, kAllBwdDataAlgo, num_algos);
     IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(max_ws_size);
@@ -154,7 +170,7 @@ cudnnConvolutionBwdDataAlgoPerf_t getBwdDataAlgoPerf(const std::vector<int64_t>&
         &perf,
         algo_search_workspace.get(),
         max_ws_size));
-  } else if (cudnn_conv_algo == 1) {  // HEURISTIC
+  } else if (cudnn_conv_algo_search == 1) {  // HEURISTIC
     CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(
         args.handle,
         args.w_desc,
@@ -175,7 +191,68 @@ cudnnConvolutionBwdDataAlgoPerf_t getBwdDataAlgoPerf(const std::vector<int64_t>&
   }
 
   bwd_data_algos.insert(x_dims, perf);
-  return perf;
+
+  return Status::OK();
+}
+
+template <typename T>
+Status ConvGrad<T>::getBwdFilterAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo_search,
+                                         const void* x, const void* dy, void* dw, cudnnConvolutionBwdFilterAlgoPerf_t& perf) const {
+  // cudnnConvolutionBwdFilterAlgoPerf_t perf;
+  if (bwd_filter_algos.find(x_dims, &perf)) {
+    return Status::OK();
+  }
+
+  static const cudnnConvolutionBwdFilterAlgo_t kAllBwdFilterAlgo[] = {
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING,
+  };
+
+  ORT_ENFORCE(cudnn_conv_algo_search > -1 && cudnn_conv_algo_search < 3,
+              "cudnn_conv_algo_search should be 0, 1 or 2, but got ", cudnn_conv_algo_search);
+
+  int algo_count = 1;
+  if (cudnn_conv_algo_search == 0) {  // EXHAUSTIVE
+    static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
+    size_t max_ws_size = getMaxWorkspaceSize(args, kAllBwdFilterAlgo, num_algos);
+    IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(max_ws_size);
+    CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardFilterAlgorithmEx(
+        args.handle,
+        args.i_desc, x,
+        args.o_desc, dy,
+        args.c_desc,
+        args.w_desc, dw,
+        1,            // requestedAlgoCount
+        &algo_count,  // returnedAlgoCount
+        &perf,
+        algo_search_workspace.get(),
+        max_ws_size));
+  } else if (cudnn_conv_algo_search == 1) {  // HEURISTIC
+    CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(
+        args.handle,
+        args.i_desc,
+        args.o_desc,
+        args.c_desc,
+        args.w_desc,
+        1,            // requestedAlgoCount
+        &algo_count,  // returnedAlgoCount
+        &perf));
+  } else {  // DEFAULT
+    perf.algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
+    CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args, perf.algo, &perf.memory));
+    if (args.data_type == CUDNN_DATA_HALF) {
+      perf.mathType = CUDNN_TENSOR_OP_MATH;
+    } else {
+      perf.mathType = CUDNN_DEFAULT_MATH;
+    }
+  }
+
+  bwd_filter_algos.insert(x_dims, perf);
+  return Status::OK();
 }
 
 // TODO: we can cache the descriptors, and only update if the input shape changes
@@ -233,6 +310,8 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& input, const Tensor& output, const
   ORT_RETURN_IF_ERROR(args_.c_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                        gsl::narrow_cast<int>(conv_attrs_.group),
                                        CUDNN_CROSS_CORRELATION, args_.data_type));
+  setConvolutionParams(&args_.params, i_dims, w_dims, pads, strides, dilations,
+                       conv_attrs_.group, false, false);
 
   if (bias) {
     const TensorShape& b_shape = bias->Shape();
@@ -270,20 +349,32 @@ template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const {
   if (dW == nullptr) return Status::OK();
 
-  // TODO: implement the algoritm search
-  cudnnConvolutionBwdFilterAlgoPerf_t perf;
-  perf.algo = kDefaultConvBwdFilterAlgo;
-  if (args_.data_type == CUDNN_DATA_HALF) {
-    perf.mathType = CUDNN_TENSOR_OP_MATH;
-  } else {
-    perf.mathType = CUDNN_DEFAULT_MATH;
-  }
-  CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
-
   void* dw_data = dW->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
   const void* x_data = X->template Data<T>();
+
+  const TensorShape& x_shape = X->Shape();
+  const auto& x_dims = x_shape.GetDims();
+
+  // TODO: implement the algoritm search
+
+  const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+  int cudnn_conv_algo_search = cuda_ep->GetCudnnConvAlgoSearch();
+
+  cudnnConvolutionBwdFilterAlgoPerf_t perf;
+  ORT_RETURN_IF_ERROR(getBwdFilterAlgoPerf(x_dims, args_, cudnn_conv_algo_search,
+                                           x_data, dy_data, dw_data, perf));
+
+  // cudnnConvolutionBwdFilterAlgoPerf_t perf;
+  // perf.algo = kDefaultConvBwdFilterAlgo;f
+  // if (args_.data_type == CUDNN_DATA_HALF) {
+  //   perf.mathType = CUDNN_TENSOR_OP_MATH;
+  // } else {
+  //   perf.mathType = CUDNN_DEFAULT_MATH;
+  // }
+  // CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
+
   IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(perf.memory);
 
   const auto one = Consts<CudaT>::One;
@@ -304,20 +395,31 @@ template <typename T>
 Status ConvGrad<T>::ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const {
   if (dX == nullptr) return Status::OK();
 
-  // TODO: implement the algoritm search
-  cudnnConvolutionBwdDataAlgoPerf_t perf;
-  perf.algo = kDefaultConvBwdDataAlgo;
-  if (args_.data_type == CUDNN_DATA_HALF) {
-    perf.mathType = CUDNN_TENSOR_OP_MATH;
-  } else {
-    perf.mathType = CUDNN_DEFAULT_MATH;
-  }
-  CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
-  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
-
   void* dx_data = dX->template MutableData<T>();
   const void* dy_data = dY->template Data<T>();
   const void* w_data = W->template Data<T>();
+
+  const TensorShape& x_shape = dX->Shape();
+  const auto& x_dims = x_shape.GetDims();
+
+  const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+  int cudnn_conv_algo_search = cuda_ep->GetCudnnConvAlgoSearch();
+
+  cudnnConvolutionBwdDataAlgoPerf_t perf;
+  ORT_RETURN_IF_ERROR(getBwdDataAlgoPerf(x_dims, args_, cudnn_conv_algo_search,
+                                         w_data, dy_data, dx_data, perf));
+
+  // TODO: implement the algoritm search
+  // cudnnConvolutionBwdDataAlgoPerf_t perf;
+  // perf.algo = kDefaultConvBwdDataAlgo;
+  // if (args_.data_type == CUDNN_DATA_HALF) {
+  //   perf.mathType = CUDNN_TENSOR_OP_MATH;
+  // } else {
+  //   perf.mathType = CUDNN_DEFAULT_MATH;
+  // }
+  // CUDNN_RETURN_IF_ERROR(getWorkspaceSize(args_, perf.algo, &perf.memory));
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(args_.c_desc, perf.mathType));
+
   IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(perf.memory);
 
   const auto one = Consts<CudaT>::One;

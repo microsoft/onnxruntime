@@ -12,8 +12,42 @@
 namespace onnxruntime {
 namespace cuda {
 
+constexpr int max_dim = 3;
+
+// This POD struct is used to let us easily compute hashes of the
+// parameters
+struct ConvolutionParams {
+  // c10::DeviceIndex device_id;
+  cudnnDataType_t dataType;
+  int input_size[2 + max_dim];
+  uint8_t input_dim;
+  // at::MemoryFormat memory_format;
+  int weight_size[2 + max_dim];
+  int padding[max_dim];
+  int stride[max_dim];
+  int dilation[max_dim];
+  int64_t groups;
+  bool deterministic;
+  bool allow_tf32;
+  // NB: transposed purposely omitted: transposed just swaps
+  // forward and backward, so you can reuse the benchmark entry,
+};
+
+// NB: This can't be a constructor, because then ConvolutionParams
+// would not be a POD anymore.
+// TODO: Use TensorGeometry here instead of the entire Tensor, which we
+// don't actually need.  (OTOH: We can always pass in
+// grad_input/grad_output, so this is not very pressing)
+void setConvolutionParams(
+    ConvolutionParams* params,
+    const at::Tensor& input, const at::Tensor& weight,
+    const std::vector<int64_t>& padding, const std::vector<int64_t>& stride, const std::vector<int64_t>& dilation,
+    int64_t groups, bool deterministic, bool allow_tf32);
+
 struct ConvolutionArgs {
   cudnnHandle_t handle;
+  ConvolutionParams params;
+
   cudnnDataType_t data_type;
 
   CudnnTensor i_desc, o_desc, b_desc;
@@ -47,6 +81,12 @@ class ConvGrad final : public CudaKernel {
   // https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn_742/cudnn-developer-guide/index.html#tensor_ops
   static constexpr auto kDefaultConvBwdDataAlgo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
   static constexpr auto kDefaultConvBwdFilterAlgo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
+
+  Status getBwdDataAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo_search,
+                            const void* w, const void* dy, void* dx, cudnnConvolutionBwdDataAlgoPerf_t& perf) const;
+
+  Status getBwdFilterAlgoPerf(const std::vector<int64_t>& x_dims, const ConvolutionArgs& args, int cudnn_conv_algo_search,
+                              const void* x, const void* dy, void* dw, cudnnConvolutionBwdFilterAlgoPerf_t& perf) const;
 
   // static const cudnnConvolutionBwdDataAlgo_t kAllBwdDataAlgo[];
   // static const cudnnConvolutionBwdFilterAlgo_t kAllBwdFilterAlgo[];
