@@ -8,6 +8,15 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+#ifndef _Ret_notnull_
+#define _Ret_notnull_
+#endif
+
+
+#ifndef _Post_writable_byte_size_
+#define _Post_writable_byte_size_(n)
+#endif
+
 #if 0
 namespace onnxruntime {
 ProviderHost* g_host = Provider_GetHost();
@@ -16,10 +25,7 @@ ProviderHost* g_host = Provider_GetHost();
 
 #ifdef _WIN32
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) {
-  //  onnxruntime::g_host = Provider_GetHost();
-  return Provider_GetHost()->HeapAllocate(n);
-}
+_Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
 void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 #endif

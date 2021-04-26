@@ -15,7 +15,7 @@ namespace onnxruntime {
 using namespace common;
 
 template <typename ERRTYPE>
-const char* CudaErrString(ERRTYPE x) {
+const char* CudaErrString(ERRTYPE) {
   ORT_NOT_IMPLEMENTED();
 }
 

@@ -3,6 +3,7 @@
 
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
+#include "core/providers/shared_library/provider_host_api.h"
 
 #include "core/providers/shared/common.h"
 
@@ -103,17 +104,6 @@ struct Node__EdgeIterator {
   virtual const Node& GetNode() const = 0;
   virtual int GetSrcArgIndex() const = 0;
   virtual int GetDstArgIndex() const = 0;
-};
-
-struct Provider {
-  // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
-  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }
-
-  // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
-  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
-
-  virtual void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
-  virtual void Shutdown() = 0;
 };
 
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)

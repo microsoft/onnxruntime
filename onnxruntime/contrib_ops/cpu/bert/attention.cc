@@ -301,6 +301,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_dest = QKV[qkv_index];
         int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
+        // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;

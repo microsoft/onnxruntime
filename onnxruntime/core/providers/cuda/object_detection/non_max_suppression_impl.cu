@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
 
 #include "non_max_suppression_impl.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include <thrust/device_vector.h>
-#include <thrust/execution_policy.h>
 
 #include <cub/cub.cuh>
 //TODO:fix the warnings
@@ -394,13 +394,12 @@ Status NonMaxSuppressionImpl(
   // STEP 2. filter boxes by scores
   int limited_num_boxes = num_boxes;
   if (pc.score_threshold_ != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     thrust::device_ptr<float> sorted_scores_device_ptr(d_sorted_scores);
     limited_num_boxes = thrust::count_if(
+        thrust::cuda::par.on(stream),
         sorted_scores_device_ptr,
         sorted_scores_device_ptr + num_boxes,
         DeviceGreaterThan(score_threshold));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(0));
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (limited_num_boxes == 0) {

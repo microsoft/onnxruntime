@@ -9,6 +9,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -893,6 +894,10 @@ struct ProviderSharedLibrary {
 };
 
 static ProviderSharedLibrary s_library_shared;
+
+bool InitProvidersSharedLibrary(){
+  return s_library_shared.Ensure();
+}
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}
