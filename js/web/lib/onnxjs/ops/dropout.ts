@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
+
 import {Attribute} from '../attribute';
 import {InferenceHandler} from '../backend';
 import {Operator} from '../operators';

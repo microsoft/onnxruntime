@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {AveragePool, GlobalAveragePool, GlobalMaxPool, MaxPool} from '../../../ops/pool';
 import {Tensor} from '../../../tensor';

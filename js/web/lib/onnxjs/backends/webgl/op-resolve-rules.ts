@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {FLOAT_TYPES, NUMBER_TYPES} from '../../operators';
 import {OpSet} from '../../opset';

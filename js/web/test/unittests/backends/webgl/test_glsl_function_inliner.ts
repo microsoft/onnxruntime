@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {expect} from 'chai';
 import {replaceInlines} from '../../../../lib/onnxjs/backends/webgl/glsl-function-inliner';

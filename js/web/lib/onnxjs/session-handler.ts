@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 import {Session} from './session';
 import {Tensor as OnnxjsTensor} from './tensor';

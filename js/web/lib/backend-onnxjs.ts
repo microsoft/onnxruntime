@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 /* eslint-disable import/no-internal-modules */
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
 import {Session} from './onnxjs/session';

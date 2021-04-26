@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {onnx} from 'onnx-proto';
 import {InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
 import {getInstance} from './binding';

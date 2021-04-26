@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
 
 import {init, OnnxruntimeWebAssemblySessionHandler} from './wasm';

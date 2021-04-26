@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 /* eslint-disable guard-for-in */
 /* eslint-disable @typescript-eslint/no-use-before-define */

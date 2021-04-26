@@ -1,4 +1,5 @@
-// Licensed under the MIT license.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 import {Slice, SliceV10} from '../../../ops/slice';
 import {Tensor} from '../../../tensor';
