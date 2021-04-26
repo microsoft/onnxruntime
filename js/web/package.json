@@ -1,9 +1,9 @@
 {
-  "name": "onnxjs",
+  "name": "onnxruntime-web",
   "version": "1.7.0",
   "description": "A Javascript library for running ONNX models on browsers and on Node.js",
   "main": "./lib/index.js",
-  "browser": "./dist/ort.min.js",
+  "browser": "./dist/ort-web.min.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
     "prepare": "tsc && node ./script/prepare-test-data.js",
@@ -12,10 +12,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Microsoft/onnxjs.git"
+    "url": "https://github.com/Microsoft/onnxruntime.git"
   },
   "keywords": [
-    "ONNX.js"
+    "ONNX Runtime Web"
   ],
   "author": "fs-eire",
   "license": "MIT",
