@@ -260,7 +260,7 @@ void SessionState::CleanInitializedTensorsFromGraph() {
 
 Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                                        SessionOptions& session_options) {
-  bool cache_prepacked_weights_for_shared_initializers = (session_options.prepacked_weights_cache != nullptr);
+  bool should_cache_prepacked_weights_for_shared_initializers = (session_options.prepacked_weights_cache != nullptr);
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
     int input_idx = 0;
@@ -283,7 +283,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
               bool is_shared_initializer = (iter != session_options.initializers_to_share_map.end());
 
               // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-              if (is_shared_initializer && cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
+              if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
                 auto* prepacked_weights_cache = session_options.prepacked_weights_cache;
                 bool cache_contains_packed_weight = prepacked_weights_cache->HasCachedWeight(input_name);
 

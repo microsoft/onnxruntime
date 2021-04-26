@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "core/framework/prepacked_weights_cache.h"
 #include "core/framework/allocatormgr.h"
 
@@ -23,11 +21,12 @@ AllocatorPtr PrepackedWeightsCache::GetAllocator(const std::string& device_name)
     auto allocator = CreateAllocator(device_info);
 
     allocators_[device_name] = allocator;
+
+    return allocator;
+
   } else {
     ORT_THROW("Unsupported device allocator in the context of pre-packed weights caching: ", device_name);
   }
-
-  return allocators_[device_name];
 }
 
 const PrepackedWeight& PrepackedWeightsCache::GetCachedWeight(const std::string& initializer_name) {
