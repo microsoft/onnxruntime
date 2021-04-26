@@ -963,6 +963,10 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
   }
   return modified;
 }
+// CreateCast
+// Create a cast node based on the node_arg for the given data tpye. If the node_arg is a graph output is_graph_outut is set.
+// If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
+// of the new cast node.
 
 static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type, bool is_graph_output = false) {
   TypeProto type_proto;
@@ -986,7 +990,36 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
   inserted_node_names.insert(node.Name());
   return node;
 }
-
+/* InsertFP16Cast
+* Insert a new cast input for the given float input for the give node.
+*
+*        Input0/NodeArg  Input1/NodeArg
+*               |              |
+*             __V______________V___                         
+*            |       Opcode        |
+*            |(operation performed |
+*            |    in float32)      |
+*            |_____________________|                               
+*               |             |
+*               V             V
+*
+* Is eventually translated to the following, after all inputs are casted
+*
+*        Input0/NodeArg   Input1/NodeArg
+*               |               |
+*          _____V____      _____V______                         
+*          |Cast FP16|     | Cast FP16| 
+*          |_________|     |__________|                        
+*                |              |             
+*              __V______________V___                         
+*             |       Opcode        |
+*             |(operation performed |
+*             |    in float16)      |
+*             |_____________________|                                  
+*                 |             |
+*                 V             V
+*
+*/ 
 static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node, const logging::Logger& logger) {
   Node& cast = CreateCast(graph, input_arg, TensorProto::FLOAT16);
   NodeArg* new_input_arg = cast.MutableOutputDefs()[0];
@@ -1007,6 +1040,41 @@ static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node, const l
   LOGS(logger, VERBOSE) << "Inserted FP16 Cast " << cast.Name() << " for the node arg " << input_arg->Name() << " feeding " << node->Name();
 }
 
+/* InsertFP32Casts
+*  Insert float casts on the given output for each consumer.
+*
+*                |               |
+*              __V_______________V___                         
+*             |       Opcode        |
+*             |(operation performed |
+*             |    in float16)      |
+*             |_____________________|                                  
+*               _______|_______             
+*               |             |
+*          _____V____    _____V______                         
+*          |Consumer0|   |Consumer1 | 
+*          |_________|   |__________|                        
+*               |              |             
+*
+*  will be translated to the following
+*
+*                |               |
+*              __V_______________V___                         
+*             |       Opcode        |
+*             |(operation performed |
+*             |    in float16)      |
+*             |_____________________|                                  
+*               _______|_______             
+*               |             |
+*          _____V____    _____V______                         
+*          |Cast FP32|   | Cast FP32| 
+*          |_________|   |__________|                        
+*               |             |             
+*          _____V____    _____V______                         
+*          |Consumer0|   |Consumer1 | 
+*          |_________|   |__________|                        
+*               |              |             
+*/
 static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, const logging::Logger& logger) {
   NodeArg* orig_output_arg = output_arg;
   Node* producer = graph.GetMutableProducerNode(output_arg->Name());
@@ -1072,6 +1140,9 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
       if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce) {
+        // Using InsertFP16Cast and InsertFP32Casts insert float16 casts on all inputs and float casts on all outputs.
+        // Each consumer of each output gets a seperate float cast inserted. Doing so will convert the computation of 
+        // currenly node from 32 bit float to 16 bit float operation. These cast operations will be eventually reduced.
         if (IsFP16Allow(node.OpType(), level_)) {
           // Insert FP16 Cast on all float inputs
           converted_node_names.insert(node.Name());
@@ -1080,7 +1151,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
               InsertFP16Cast(graph, input_arg, node_ptr, logger);
             }
           }
-          // Convert all output args to FP16 and insert FP32 cast for all consumer
+          // Convert all output args to FP16 and insert FP32 cast for all consumers
           for (NodeArg* output_arg : node.MutableOutputDefs()) {
             if (IsType(*output_arg, TensorProto::FLOAT)) {
               InsertFP32Casts(graph, output_arg, logger);
