@@ -54,31 +54,6 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
-static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger);
-  ASSERT_STATUS_OK(ret);
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-
-  ASSERT_EQ(op_to_count["Add"], add_count);
-  ASSERT_EQ(op_to_count["Dropout"], 0);
-  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], 1);
-}
-
-TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion1.onnx", *logger_);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion2.onnx", *logger_);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
-}
-
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
