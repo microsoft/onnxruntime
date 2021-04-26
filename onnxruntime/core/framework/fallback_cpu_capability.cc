@@ -62,6 +62,14 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   std::unordered_map<NodeIndex, const KernelCreateInfo*> node_to_kernel;
   std::unordered_set<NodeIndex> cpu_kernel_available;
 
+  // create a temp CPU kernel registry
+  KernelRegistryManager mgr;
+  ExecutionProviders cpu_ep;
+  CPUExecutionProviderInfo epi{false};
+  ORT_ENFORCE(cpu_ep.Add(kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ORT_ENFORCE(mgr.RegisterKernels(cpu_ep).IsOK());
+  std::vector<const KernelRegistry*> cpu_kernel_registries = mgr.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
@@ -69,12 +77,6 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     const KernelCreateInfo* kernel_info = nullptr;
 
     // Get the CPU kernel availability for this node
-    KernelRegistryManager mgr;
-    ExecutionProviders cpu_ep;
-    CPUExecutionProviderInfo epi{false};
-    ORT_ENFORCE(cpu_ep.Add(kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
-    ORT_ENFORCE(mgr.RegisterKernels(cpu_ep).IsOK());
-    std::vector<const KernelRegistry*> cpu_kernel_registries = mgr.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
     for (auto registry : cpu_kernel_registries) {
       auto st = registry->TryFindKernel(*node, kCpuExecutionProvider, &kernel_info);
       if (st.IsOK()) {
