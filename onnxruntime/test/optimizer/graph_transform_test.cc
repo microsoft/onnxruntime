@@ -4193,8 +4193,8 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 1, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", 1, allow_matmul_transpose},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul_add_products.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", 1, allow_matmul, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", 1, allow_matmul_transpose, 2},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", 3, allow_matmul, 2},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", 3, allow_matmul_transpose, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast.onnx", 3, allow_matmul_transpose, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul.onnx", 2, allow_matmul_transpose, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose.onnx", 3, allow_matmul_transpose, 2},
@@ -4222,10 +4222,10 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose.onnx", 1, allow_matmul_transpose_add},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs.onnx", 2, allow_matmul_transpose_add, 2},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs.onnx", 1, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul_add_products.onnx", 2, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast.onnx", 2, allow_matmul_transpose_add, 2},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast.onnx", 1, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul_add_products.onnx", 2, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
       {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose.onnx", 1, allow_matmul_transpose_add, 2},
@@ -4240,7 +4240,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
-  logger_->SetSeverity(logging::Severity::kVERBOSE);
+  logger_->SetSeverity(logging::Severity::kINFO);
   std::vector<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy> strategies = {
     GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
     GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill
@@ -4270,6 +4270,8 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
          ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
       } else {
 #ifndef NDEBUG
+        // TODO The number of cast nodes after CastPropagation using InsertAndReduce strategy currently is not matching the expected number.
+        // Remove this condition when InsertAndReduce is improved.
         if (op_to_count["Cast"] != test_case.casts_count) {
           std::cout << op_to_count["Cast"] << " " << test_case.casts_count << std::endl;
           Model::Save(*p_model, ORT_TSTR("transformed_") + p.GetComponents().back());
