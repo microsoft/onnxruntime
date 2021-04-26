@@ -59,7 +59,7 @@ class MatMulIntegerBase : public OpKernel {
 
   Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                   int input_idx,
-                                  /*out*/ bool& read_from_cache) {
+                                  /*out*/ bool& read_from_cache) override {
     read_from_cache = false;
 
     // Cached pre-packed weight

@@ -53,6 +53,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
+    nullptr,                           //prepacked_weights_cache
     {},                                //session_configurations
     {},                                // initializers_to_share_map
 };
