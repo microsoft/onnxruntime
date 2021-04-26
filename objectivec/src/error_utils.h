@@ -7,7 +7,6 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-void ORTThrowNotImplementedException(const char* description);
 void ORTSaveCodeAndDescriptionToError(int code, const char* description, NSError** error);
 void ORTSaveExceptionToError(const Ort::Exception& e, NSError** error);
 

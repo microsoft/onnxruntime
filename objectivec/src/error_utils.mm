@@ -7,10 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 static NSString* const kOrtErrorDomain = @"onnxruntime";
 
-void ORTThrowNotImplementedException(const char* description) {
-  throw Ort::Exception{description, ORT_NOT_IMPLEMENTED};
-}
-
 void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSError** error) {
   if (!error) return;
 

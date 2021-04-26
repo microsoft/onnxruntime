@@ -8,14 +8,6 @@ NS_ASSUME_NONNULL_BEGIN
 @class ORTEnv;
 @class ORTValue;
 
-// TODO
-@interface ORTSessionOptions : NSObject
-@end
-
-// TODO
-@interface ORTRunOptions : NSObject
-@end
-
 /**
  * An ORT session loads and runs a model.
  */
