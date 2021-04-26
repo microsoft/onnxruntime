@@ -137,8 +137,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
 #endif  //USE_CUDA
 
 DeviceProfiler* DeviceProfiler::GetDeviceProfiler() {
-#if 0
-//#ifdef USE_CUDA
+#ifdef USE_CUDA
   static CudaProfiler cuda_profiler;
   return &cuda_profiler;
 #else
