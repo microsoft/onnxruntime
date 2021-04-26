@@ -11,7 +11,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& X_shape = X->Shape().GetDims();
   const auto X_rank = X_shape.size();
-  ORT_ENFORCE(X_rank >= 2);
+  ORT_ENFORCE(X_rank == 4);
 
   const int64_t batch_count = X_shape[0];
   const int64_t channels = X_shape[channels_last_ ? X_rank - 1 : 1];
