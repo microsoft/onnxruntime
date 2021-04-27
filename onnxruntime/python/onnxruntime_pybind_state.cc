@@ -828,6 +828,36 @@ void addGlobalMethods(py::module& m, Environment& env) {
     PyObject* x = h.ptr();
     pool.RegisterBackward(name, x);
   });
+  m.def("register_python_object", [](py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    py::handle h = obj.release();
+    PyObject* x = h.ptr();
+    pool.RegisterObject(x);
+  });
+  m.def("register_forward_runner", [](py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    py::handle h = obj.release();
+    PyObject* x = h.ptr();
+    pool.RegisterForwardRunner(x);
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    py::handle h = obj.release();
+    PyObject* x = h.ptr();
+    pool.RegisterBackwardRunner(x);
+  });
+  m.def("register_forward_core", [](std::string key, py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    py::handle h = obj.release();
+    PyObject* x = h.ptr();
+    pool.RegisterForwardCore(key, x);
+  });
+  m.def("register_backward_core", [](std::string key, py::object obj) -> void {
+    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    py::handle h = obj.release();
+    PyObject* x = h.ptr();
+    pool.RegisterBackwardCore(key, x);
+  });
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config

@@ -3,6 +3,7 @@
 
 #pragma once
 #include <unordered_map>
+#include <vector>
 #include <mutex>
 #include <Python.h>
 
@@ -17,6 +18,15 @@ class OrtTorchFunctionPool final {
   }
   void RegisterForward(const std::string& custom_function_name, PyObject* forward_fn);
   void RegisterBackward(const std::string& custom_function_name, PyObject* backward_fn);
+  void RegisterObject(PyObject* obj);
+  void RegisterForwardCore(const std::string& key, PyObject* obj);
+  void RegisterBackwardCore(const std::string& key, PyObject* obj);
+  void RegisterForwardRunner(PyObject* obj);
+  void RegisterBackwardRunner(PyObject* obj);
+  PyObject* GetForwardRunner();
+  PyObject* GetBackwardRunner();
+  PyObject* GetForwardCore(const std::string& key);
+  PyObject* GetBackwardCore(const std::string& key);
   PyObject* GetForward(const std::string& custom_function_name);
   PyObject* GetBackward(const std::string& custom_function_name);
 
@@ -31,6 +41,12 @@ class OrtTorchFunctionPool final {
   OrtTorchFunctionPool(const OrtTorchFunctionPool&) = delete;
 
   OrtTorchFunctionPool& operator=(const OrtTorchFunctionPool&) = delete;
+
+  std::vector<PyObject*> obj_pool;
+  PyObject* forward_runner;
+  PyObject* backward_runner;
+  std::unordered_map<std::string, PyObject*> forward_core_pool;
+  std::unordered_map<std::string, PyObject*> backward_core_pool;
 
   std::unordered_map<std::string, PyObject*> forward_pool;
   std::unordered_map<std::string, PyObject*> backward_pool;
