@@ -22,7 +22,7 @@ set(nuphar_extern_srcs
     ${extern_avx2_srcs}
 )
 
-add_library(onnxruntime_nuphar_extern  ${nuphar_extern_srcs})
+onnxruntime_add_static_library(onnxruntime_nuphar_extern  ${nuphar_extern_srcs})
 
 if (onnxruntime_USE_MKLML)
   add_definitions(-DNUPHAR_USE_MKL)

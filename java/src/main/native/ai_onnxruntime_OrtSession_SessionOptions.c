@@ -26,7 +26,7 @@
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
-#ifdef USE_DIRECTML
+#ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
 
@@ -92,6 +92,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOpt
     const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
     size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
     wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+    if (newString == NULL) {
+        throwOrtException(jniEnv, 1, "Not enough memory");
+        return;
+    }
     wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, (const wchar_t*) newString));
     free(newString);
@@ -162,6 +166,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_enable
   const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
   size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
   wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+  if(newString == NULL) throwOrtException(jniEnv, 1, "Not enough memory");
   wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
   checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->EnableProfiling(options, (const wchar_t*) newString));
   free(newString);
