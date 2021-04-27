@@ -10,7 +10,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
-#include <sstream>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -1097,8 +1096,8 @@ void RunInParallelInternal(PerThread& pt,
       ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop, new_dop, std::move(worker_fn));
     }
     ps.current_dop = new_dop;
-    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
+  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
 }
 
 // Run a single parallel loop in an existing parallel section.  This
