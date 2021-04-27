@@ -700,7 +700,7 @@ class OnnxModel:
                 if os.path.isfile(data_file):
                     os.remove(data_file)
                 external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
+                                                                    all_tensors_to_one_file=False,
                                                                     location=data_file)
             save_model(self.model, output_path)
 

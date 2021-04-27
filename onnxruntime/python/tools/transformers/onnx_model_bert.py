@@ -49,7 +49,7 @@ class BertOptimizationOptions:
 class BertOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         """Initialize BERT ONNX Model.
-           
+
         Args:
             model (ModelProto): the ONNX model
             num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
@@ -265,40 +265,42 @@ class BertOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: BertOptimizationOptions = None, add_dynamic_axes=False):
+        print("fusion: fuse_layer_norm")
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
-
+        print("fusion: fuse_gelu")
         if (options is None) or options.enable_gelu:
             self.fuse_gelu()
 
         self.preprocess()
-
+        print("fusion: fuse_reshape")
         self.fuse_reshape()
-
+        print("fusion: fuse_skip_layer_norm")
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
-
+        print("fusion: fuse_attention")
         if (options is None) or options.enable_attention:
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
-
+        print("fusion: fuse_embed_layer")
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
         # Post-processing like removing extra reshape nodes.
+        print("post processing")
         self.postprocess()
-
+        print("fusion: fuse_bias_gelu")
         # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization
         if (options is None) or options.enable_bias_gelu:
             # Fuse Gelu and Add Bias before it.
             self.fuse_bias_gelu(is_fastgelu=True)
             self.fuse_bias_gelu(is_fastgelu=False)
-
+        print("fusion: fuse_add_bias_skip_layer_norm")
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
-
+        print("fusion: gelu_approximation")
         if (options is not None and options.enable_gelu_approximation):
             self.gelu_approximation()
 

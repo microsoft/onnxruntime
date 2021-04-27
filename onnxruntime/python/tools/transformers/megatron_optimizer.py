@@ -37,20 +37,31 @@ def create_dummy_inputs(batch_size, sequence_length, past_sequence_length,
 
 onnx_model_path = "/bert_ort/wy/Megatron/scripts/scripts_after_change/fp16_merge.onnx"
 #onnx_model_path = "/bert_ort/wy/Megatron/ChitChatONNX/megatron_onnx_partial/fp16_merge.onnx"
-optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_optimized/fp16_merge_optimized.onnx"
+#onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge/ChitChat_fp16_merge.onnx"
+#optimized_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_split_op14_optimized/ChitChat_fp16_op14.onnx"
+optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_gpt2/optimized.onnx"
+
+# Try create session
+# print("try create inference session")
+# import os
+# os.environ["ALLOW_RELEASED_ONNX_OPSET_ONLY"] = 0
+# import onnxruntime as ort
+# sess_options = ort.SessionOptions()
+# ort_session = ort.InferenceSession(onnx_model_path, sess_options)
 
 print("optimizing")
 from optimizer import optimize_model
 from onnx_model_bert import BertOptimizationOptions
 optimization_options = BertOptimizationOptions('gpt2')
+optimization_options.disable_embed_layer_norm = True
 #optimization_options.use_raw_attention_mask(use_raw_attention_mask)
 opt_model = optimize_model(onnx_model_path,
                            'gpt2',
-                           num_heads=16,
-                           hidden_size=1024,
+                           num_heads=32,
+                           hidden_size=4096,
                            opt_level=1,
                            optimization_options=optimization_options,
-                           use_gpu=True,
+                           use_gpu=False,
                            only_onnxruntime=False)
 
 opt_model.save_model_to_file(optimized_model_path, use_external_data_format = True)
