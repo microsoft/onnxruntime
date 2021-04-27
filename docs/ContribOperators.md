@@ -2984,6 +2984,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 This version of the operator has been available since version 1 of the 'com.microsoft.nchwc' operator set.
 
+#### Attributes
+
+<dl>
+<dt><tt>channels_last</tt> : int</dt>
+<dd></dd>
+</dl>
+
 #### Inputs
 
 <dl>
