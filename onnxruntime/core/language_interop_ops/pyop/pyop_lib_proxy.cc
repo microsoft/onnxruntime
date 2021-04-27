@@ -26,6 +26,7 @@
 #endif
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "numpy/arrayobject.h"
+#include "core/torch_custom_function/torch_custom_function_register.h"
 
 namespace onnxruntime {
 
@@ -302,6 +303,14 @@ bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
   return true;
 }  //bool InvokePythonFunc
 
+void PyOpLibProxy::InvokePythonFunction(void* function) {
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* callback = reinterpret_cast<PyObject*>(function);
+  Py_INCREF(callback);
+  PyObject_CallObject(callback, nullptr);
+  PyGILState_Release(gstate);
+}
+
 bool PyOpLibProxy::InvokePythonFunc(const char* module,
                                     const char* function,
                                     const std::vector<const OrtValue*>& inputs,
@@ -474,6 +483,133 @@ bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
   }
 
   return true;
+}
+
+void PyOpLibProxy::InvokeForward(
+    void* callback,
+    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<int64_t>& tensor_indices,
+    std::vector<void*>& obj_args,
+    const std::vector<int64_t>& obj_indices,
+    std::vector<void*>& returned_args) {
+  // Set tensor indicators.
+  std::cout << "[PyOpLibProxy::InvokeForward] 1" << std::endl;
+  const auto len = tensor_args.size() + obj_args.size();
+  PyObject* tensor_flags = PyList_New(len);
+  for (size_t i = 0; i < len; ++i) {
+    PyObject* zero = PyLong_FromLong(0);
+    PyList_SetItem(tensor_flags, i, zero);
+  }
+  std::cout << "[PyOpLibProxy::InvokeForward] 2" << std::endl;
+  for (const auto i : tensor_indices) {
+    PyObject* one = PyLong_FromLong(1);
+    PyList_SetItem(tensor_flags, i, one);
+  }
+
+  // Store them in tuple.
+  std::cout << "[PyOpLibProxy::InvokeForward] 3" << std::endl;
+  auto args = PyTuple_New(2 + len);
+  PyTuple_SetItem(args, 0, reinterpret_cast<PyObject*>(callback));
+  PyTuple_SetItem(args, 1, tensor_flags);
+
+  std::cout << "[PyOpLibProxy::InvokeForward] 4" << std::endl;
+  for (size_t i = 0; i < tensor_args.size(); ++i) {
+    // Wrap with DLPack, then transfer to Python for its release.
+    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
+    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+    PyTuple_SetItem(args, 2 + tensor_indices[i], dltensor);
+  }
+
+  std::cout << "[PyOpLibProxy::InvokeForward] 5" << std::endl;
+  for (size_t i = 0; i < obj_args.size(); ++i) {
+    PyTuple_SetItem(args, 2 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
+  }
+
+  PyObject* runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardRunner();
+
+  std::cout << "[PyOpLibProxy::InvokeForward] 6" << std::endl;
+  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(runner), args);
+
+  std::cout << "[PyOpLibProxy::InvokeForward] 6-1" << std::endl;
+  PyObject_Print(result, stdout, 0);
+  std::cout << std::endl;
+
+  std::string err;
+  GetLastErrorMessage(err);
+  std::cout << "Error: " << err << std::endl;
+
+  std::cout << "[PyOpLibProxy::InvokeForward] 7" << std::endl;
+  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
+  for (int i = 0; i < PyTuple_Size(result); ++i) {
+    std::cout << "[PyOpLibProxy::InvokeForward] 7-1: elem " << i << std::endl;
+    PyObject_Print(PyTuple_GetItem(result, i), stdout, 0);
+    std::cout << std::endl;
+    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
+  }
+
+  GetLastErrorMessage(err);
+  std::cout << "Error: " << err << std::endl;
+  std::cout << "[PyOpLibProxy::InvokeForward] 8" << std::endl;
+}
+
+void PyOpLibProxy::InvokeBackward(
+    void* callback,
+    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<int64_t>& tensor_indices,
+    std::vector<void*>& obj_args,
+    const std::vector<int64_t>& obj_indices,
+    std::vector<void*>& returned_args) {
+  // Set tensor indicators.
+  std::cout << "[PyOpLibProxy::InvokeBackward] 1" << std::endl;
+  const auto len = tensor_args.size() + obj_args.size();
+  PyObject* tensor_flags = PyList_New(len);
+  for (size_t i = 0; i < len; ++i) {
+    PyObject* zero = PyLong_FromLong(0);
+    PyList_SetItem(tensor_flags, i, zero);
+  }
+  std::cout << "[PyOpLibProxy::InvokeBackward] 2" << std::endl;
+  for (const auto i : tensor_indices) {
+    PyObject* one = PyLong_FromLong(1);
+    PyList_SetItem(tensor_flags, i, one);
+  }
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 3" << std::endl;
+  // Store them in tuple.
+  auto args = PyTuple_New(2 + len);
+  PyTuple_SetItem(args, 0, reinterpret_cast<PyObject*>(callback));
+  PyTuple_SetItem(args, 1, tensor_flags);
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 4" << std::endl;
+  for (size_t i = 0; i < tensor_args.size(); ++i) {
+    // Wrap with DLPack, then transfer to Python for its release.
+    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
+    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+    PyTuple_SetItem(args, 2 + tensor_indices[i], dltensor);
+  }
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 5" << std::endl;
+  for (size_t i = 0; i < obj_args.size(); ++i) {
+    PyTuple_SetItem(args, 2 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
+  }
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 6" << std::endl;
+  PyObject* runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 7" << std::endl;
+  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(runner), args);
+
+  std::string err;
+  GetLastErrorMessage(err);
+  std::cout << "Error: " << err << std::endl;
+  PyObject_Print(result, stdout, 0);
+  std::cout << std::endl;
+
+  std::cout << "[PyOpLibProxy::InvokeBackward] 8" << std::endl;
+  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
+  for (int i = 0; i < PyTuple_Size(result); ++i) {
+    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
+  }
+  std::cout << "[PyOpLibProxy::InvokeBackward] 9" << std::endl;
 }
 
 }  // namespace onnxruntime
