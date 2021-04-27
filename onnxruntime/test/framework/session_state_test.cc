@@ -297,7 +297,8 @@ class PrePackingTestOpKernel : public OpKernel {
                                   /*out*/ bool& read_from_cache) override {
     ORT_UNUSED_PARAMETER(cached_prepacked_weight);
     ORT_UNUSED_PARAMETER(input_idx);
-    read_from_cache = false;
+    read_from_cache = true;
+    ++use_cached_pre_packed_weight_calls_count;
     return Status::OK();
   }
 
@@ -306,11 +307,17 @@ class PrePackingTestOpKernel : public OpKernel {
                  AllocatorPtr alloc) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
-    ORT_UNUSED_PARAMETER(prepacked_weight_for_caching);
+    if (prepacked_weight_for_caching) {
+      prepacked_weight_for_caching->is_filled_ = true;
+    }
     ORT_UNUSED_PARAMETER(alloc);
     is_packed = true;
+    ++prepack_calls_count;
     return Status::OK();
   }
+
+  int prepack_calls_count = 0;
+  int use_cached_pre_packed_weight_calls_count = 0;
 };
 
 static void CreateSimpleGraph(Graph& graph) {
@@ -509,6 +516,239 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
   ASSERT_EQ(const_initialized_tensors.size(), size_t(test_param.test_prepacking ? 0 : 1));
+}
+
+TEST(SessionStateTest, SharedInitalizersWithPrePackedTest) {
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  ONNX_OPERATOR_SCHEMA(PrePackingTest)
+      .SetDoc("Faking Node for PrePacking")
+      .Input(0, "Input_0", "input 0", "tensor(float)")
+      .Input(1, "Input_1", "input 1", "tensor(float)")
+      .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+
+  ExecutionProviders execution_providers;
+  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+
+  KernelRegistryManager kernel_registry_manager;
+  Status status = kernel_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
+  ASSERT_STATUS_OK(kernel_registry->Register(
+      KernelCreateInfo(std::move(kernel_def),
+                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+
+  // Part 1: Pre-packing enabled + no shared initializers = no pre-packed weights caching
+  {
+    SessionOptions sess_options;
+    // Enable pre-packing
+    sess_options.session_configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    // First session/model
+    Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_1.MainGraph());
+    PlaceAllNodesToCPUEP(model_1.MainGraph());
+    SessionState session_state_1(model_1.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
+    // Assert that a pre-pack call was made and that no mechanism reading from cache was invoked
+    ASSERT_EQ(kernel->prepack_calls_count, 1);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 0);
+
+    // Second session/model
+    Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_2.MainGraph());
+    PlaceAllNodesToCPUEP(model_2.MainGraph());
+    SessionState session_state_2(model_2.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    // Assert that a pre-pack call was made and that no mechanism reading from cache was invoked
+    kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
+    ASSERT_EQ(kernel->prepack_calls_count, 1);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 0);
+  }
+
+  // Part 2: Pre-packing enabled + shared initializers + no pre-packed weights container = no pre-packed weights caching
+  {
+    SessionOptions sess_options;
+    // Enable pre-packing
+    sess_options.session_configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    // Enable shared initializer
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> float_data(1, 1);
+    std::unique_ptr<Tensor> tensor =
+        onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
+
+    auto value = onnxruntime::make_unique<OrtValue>();
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    value->Init(tensor.release(),
+                ml_tensor,
+                ml_tensor->GetDeleteFunc());
+
+    sess_options.AddInitializer("node_0_input_1", value.get());
+
+    // First session/model
+    Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_1.MainGraph());
+    PlaceAllNodesToCPUEP(model_1.MainGraph());
+    SessionState session_state_1(model_1.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
+    // Assert that a pre-pack call was made and that no mechanism reading from cache was invoked
+    ASSERT_EQ(kernel->prepack_calls_count, 1);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 0);
+
+    // Second session/model
+    Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_2.MainGraph());
+    PlaceAllNodesToCPUEP(model_2.MainGraph());
+    SessionState session_state_2(model_2.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    // Assert that a pre-pack call was made and that no mechanism reading from cache was invoked
+    kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
+    ASSERT_EQ(kernel->prepack_calls_count, 1);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 0);
+  }
+
+  // Part 3: Pre-packing enabled + shared initializers + pre-packed weights container = pre-packed weights caching enabled
+  {
+    SessionOptions sess_options;
+    // Enable pre-packing
+    sess_options.session_configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    // Enable shared initializer
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> float_data(1, 1);
+    std::unique_ptr<Tensor> tensor =
+        onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
+
+    auto value = onnxruntime::make_unique<OrtValue>();
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    value->Init(tensor.release(),
+                ml_tensor,
+                ml_tensor->GetDeleteFunc());
+
+    sess_options.AddInitializer("node_0_input_1", value.get());
+
+    // Enable pre-packed weights container
+    PrepackedWeightsContainer prepacked_weights_container;
+    sess_options.prepacked_weights_container = &prepacked_weights_container;
+
+    // First session/model
+    Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_1.MainGraph());
+    PlaceAllNodesToCPUEP(model_1.MainGraph());
+    SessionState session_state_1(model_1.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
+    // Assert that a pre-pack call was made and that no mechanism reading from cache was invoked
+    ASSERT_EQ(kernel->prepack_calls_count, 1);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 0);
+
+    // Second session/model
+    Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateSimpleGraph(model_2.MainGraph());
+    PlaceAllNodesToCPUEP(model_2.MainGraph());
+    SessionState session_state_2(model_2.MainGraph(),
+                                 execution_providers,
+                                 true, /*enable_mem_pattern*/
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler);
+
+    ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          sess_options));
+
+    // Assert that no pre-pack call was made and that cache reading mechanism was invoked
+    kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
+    ASSERT_EQ(kernel->prepack_calls_count, 0);
+    ASSERT_EQ(kernel->use_cached_pre_packed_weight_calls_count, 1);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests,

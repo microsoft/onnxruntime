@@ -288,6 +288,8 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                 bool cache_contains_packed_weight = prepacked_weights_container->HasCachedWeight(input_name);
 
                 if (cache_contains_packed_weight) {
+                  LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: ", input_name;
+
                   bool read_from_cache = false;
                   ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_container->GetCachedWeight(input_name),
                                                                        input_idx, read_from_cache));
