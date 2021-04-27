@@ -1819,12 +1819,12 @@ TEST_F(GraphTest, LoadModelMissingInput) {
   node->set_op_type("Reshape");
   node->set_domain("");
 
-  // add 'x' and a graph input but not 'y'
+  // add 'x' as a graph input but not 'y'
   ValueInfoProto* input1 = g.add_input();
   input1->set_name("x");
   SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {4});
   ValueInfoProto* output = g.add_output();
-  output->set_name("x");
+  output->set_name("z");
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {2, 2});
 
   std::shared_ptr<Model> model;
