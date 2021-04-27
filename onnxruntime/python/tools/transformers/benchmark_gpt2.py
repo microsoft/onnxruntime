@@ -112,15 +112,36 @@ def parse_arguments(argv=None):
 
     search_option_group = parser.add_argument_group("configurable one step search options")
 
-    search_option_group.add_argument('--ignore_eos', type=bool, default=False, help='If ignore end of sentence token in model inference.')
-    search_option_group.add_argument('--repetition_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage.')
-    search_option_group.add_argument('--temperature', type=float, default=1, help='Softmax temperature for output logits.')
-    search_option_group.add_argument('--excluded_token_ids', required=False, nargs='+', type=float, help='A list of token ids to be excluded in inference.')
-    search_option_group.add_argument('--length_penalty', type=float, default=1, help='Positive. >1 to penalize and <1 to encorage short sentence.')
-    
+    search_option_group.add_argument('--ignore_eos',
+                                     type=bool,
+                                     default=False,
+                                     help='If ignore end of sentence token in model inference.')
+    search_option_group.add_argument('--repetition_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage.')
+    search_option_group.add_argument('--temperature',
+                                     type=float,
+                                     default=1,
+                                     help='Softmax temperature for output logits.')
+    search_option_group.add_argument('--excluded_token_ids',
+                                     required=False,
+                                     nargs='+',
+                                     type=float,
+                                     help='A list of token ids to be excluded in inference.')
+    search_option_group.add_argument('--length_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage short sentence.')
+
     sampling_option_group = parser.add_argument_group("one step sampling options")
-    sampling_option_group.add_argument('--do_sample', action='store_true', help='If to do sampling instead of beam search or greedy.')
-    sampling_option_group.add_argument('--do_sample_top_p', type=float, default=0.95, help='Nuclear/top-p sampling accumulation probability.')
+    sampling_option_group.add_argument('--do_sample',
+                                       action='store_true',
+                                       help='If to do sampling instead of beam search or greedy.')
+    sampling_option_group.add_argument('--do_sample_top_p',
+                                       type=float,
+                                       default=0.95,
+                                       help='Nuclear/top-p sampling accumulation probability.')
     sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
 
     args = parser.parse_args(argv)
@@ -130,7 +151,8 @@ def parse_arguments(argv=None):
 
 def main(args):
     from transformers import __version__ as transformers_version
-    if version.parse(transformers_version) < version.parse("3.1.0"): # past_key_values name does not exist in 3.0.2 or older
+    if version.parse(transformers_version) < version.parse(
+            "3.1.0"):  # past_key_values name does not exist in 3.0.2 or older
         raise RuntimeError("This tool requires transformers 3.1.0 or later.")
 
     logger.info(f"Arguments:{args}")
@@ -158,23 +180,23 @@ def main(args):
     gpt2helper = Gpt2HelperFactory.create_helper(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir)
     if model_type == 'beam_search_step':
-        model = model_class.from_pretrained(args.model_name_or_path, 
-                                            config=config, 
-                                            batch_size=1, 
-                                            beam_size=args.beam_size, 
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
                                             cache_dir=cache_dir)
     elif model_type == 'configurable_one_step_search':
-        model = model_class.from_pretrained(args.model_name_or_path, 
-                                            config=config, 
-                                            batch_size=1, 
-                                            beam_size=args.beam_size, 
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
                                             ignore_eos=args.ignore_eos,
                                             temperature=args.temperature,
-                                            repetition_penalty=args.repetition_penalty, 
-                                            excluded_token_ids=args.excluded_token_ids, 
-                                            length_penalty=args.length_penalty, 
-                                            do_sample=args.do_sample, 
-                                            do_sample_top_p=args.do_sample_top_p, 
+                                            repetition_penalty=args.repetition_penalty,
+                                            excluded_token_ids=args.excluded_token_ids,
+                                            length_penalty=args.length_penalty,
+                                            do_sample=args.do_sample,
+                                            do_sample_top_p=args.do_sample_top_p,
                                             do_sample_top_k=args.do_sample_top_k,
                                             cache_dir=cache_dir)
     else:
@@ -232,26 +254,15 @@ def main(args):
 
     # Allocate output buffers for IO Binding
     if model_type == 'beam_search_step' or model_type == 'configurable_one_step_search':
-        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes), 
-                                                         max(args.past_sequence_lengths),
-                                                         max(args.past_sequence_lengths),
-                                                         max(args.sequence_lengths), 
-                                                         4,
-                                                         0,
-                                                         config, 
-                                                         args.model_class)
-        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, 
-                                                       device, 
-                                                       args.precision == Precision.FLOAT16)
+        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths),
+                                                         max(args.past_sequence_lengths), max(args.sequence_lengths), 4,
+                                                         0, config, args.model_class)
+        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     else:
-        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes), 
-                                                        max(args.past_sequence_lengths),
-                                                        max(args.sequence_lengths), config, 
-                                                        args.model_class)
-        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, 
-                                                    device, 
-                                                    args.precision == Precision.FLOAT16)
+        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths),
+                                                         max(args.sequence_lengths), config, args.model_class)
+        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -272,37 +283,33 @@ def main(args):
                     )
                     if model_type == 'beam_search_step' or model_type == 'configurable_one_step_search':
                         dummy_inputs = gpt2helper.get_dummy_inputs(batch_size,
-                                                                past_sequence_length,
-                                                                sequence_length,
-                                                                config.num_attention_heads,
-                                                                config.hidden_size,
-                                                                config.n_layer,
-                                                                config.vocab_size,
-                                                                device,
-                                                                float16=(args.precision == Precision.FLOAT16),
-                                                                has_position_ids=use_padding,
-                                                                has_attention_mask=use_padding)
-                        output_shapes = gpt2helper.get_output_shapes(batch_size,        
-                                                                     past_sequence_length, 
-                                                                     past_sequence_length,
-                                                                     sequence_length,
-                                                                     4, 0, config, args.model_class)
+                                                                   past_sequence_length,
+                                                                   sequence_length,
+                                                                   config.num_attention_heads,
+                                                                   config.hidden_size,
+                                                                   config.n_layer,
+                                                                   config.vocab_size,
+                                                                   device,
+                                                                   float16=(args.precision == Precision.FLOAT16),
+                                                                   has_position_ids=use_padding,
+                                                                   has_attention_mask=use_padding)
+                        output_shapes = gpt2helper.get_output_shapes(batch_size, past_sequence_length,
+                                                                     past_sequence_length, sequence_length, 4, 0,
+                                                                     config, args.model_class)
                     else:
                         dummy_inputs = gpt2helper.get_dummy_inputs(batch_size,
-                                                                past_sequence_length,
-                                                                sequence_length,
-                                                                config.num_attention_heads,
-                                                                config.hidden_size,
-                                                                config.n_layer,
-                                                                config.vocab_size,
-                                                                device,
-                                                                float16=(args.precision == Precision.FLOAT16),
-                                                                has_position_ids=use_padding,
-                                                                has_attention_mask=use_padding)
-                        output_shapes = gpt2helper.get_output_shapes(batch_size,        
-                                                                    past_sequence_length, 
-                                                                    sequence_length,
-                                                                    config, args.model_class)
+                                                                   past_sequence_length,
+                                                                   sequence_length,
+                                                                   config.num_attention_heads,
+                                                                   config.hidden_size,
+                                                                   config.n_layer,
+                                                                   config.vocab_size,
+                                                                   device,
+                                                                   float16=(args.precision == Precision.FLOAT16),
+                                                                   has_position_ids=use_padding,
+                                                                   has_attention_mask=use_padding)
+                        output_shapes = gpt2helper.get_output_shapes(batch_size, past_sequence_length, sequence_length,
+                                                                     config, args.model_class)
 
                     try:
                         outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
@@ -367,7 +374,7 @@ def main(args):
     return csv_filename
 
 
-if __name__ == '__main__':       
+if __name__ == '__main__':
     args = parse_arguments()
     setup_logger(args.verbose)
     main(args)
