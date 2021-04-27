@@ -6,6 +6,7 @@ import os
 import argparse
 from azure.storage.blob import BlockBlobService, ContentSettings
 
+
 def parse_local_version_from_whl_name(blob_name):
     start = blob_name.find("+")
     if start == -1:
@@ -15,6 +16,7 @@ def parse_local_version_from_whl_name(blob_name):
     if end == -1:
         return None
     return blob_name[start:end]
+
 
 def upload_whl(python_wheel_path, account_name, account_key, container_name):
     block_blob_service = BlockBlobService(
