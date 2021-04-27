@@ -1,0 +1,36 @@
+[
+  {
+    "name": "Softmax with no attributes",
+    "operator": "Softmax",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [1.0, 2.0, 3.0, 4.0],
+            "dims": [2, 2],
+            "type": "float32"
+          },
+          {
+            "data": 1,
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              0.2689414322376251,
+              0.7310585975646973,
+              0.2689414322376251,
+              0.7310585975646973
+            ],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]
