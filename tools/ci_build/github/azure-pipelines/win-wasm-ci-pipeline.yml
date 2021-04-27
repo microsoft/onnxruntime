@@ -2,12 +2,25 @@ jobs:
 - job: 'build'
   pool: 'Win-CPU-2019'
   strategy:
-    maxParallel: 2
+    maxParallel: 4
     matrix:
-      debug:
+      'debug':
         BuildConfig: 'Debug'
-      release:
+        CmdParams: ''
+        WasmFileName: 'onnxruntime_wasm'
+      'release':
         BuildConfig: 'Release'
+        CmdParams: ''
+        WasmFileName: 'onnxruntime_wasm'
+      'threads debug'
+        BuildConfig: 'Debug'
+        CmdParams: '--enable_wasm_threads'
+        WasmFileName: 'onnxruntime_wasm_threads'
+      'threads release'
+        BuildConfig: 'Release'
+        CmdParams: '--enable_wasm_threads'
+        WasmFileName: 'onnxruntime_wasm_threads'
+      
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     EnvSetupScript: setup_env.bat
@@ -42,8 +55,18 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019"'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
+
+    - script: |
+       copy $(Build.BinariesDirectory)/$(BuildConfig)/$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '$(BuildConfig)_$(WasmFileName)'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
