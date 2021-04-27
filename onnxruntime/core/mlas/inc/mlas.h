@@ -147,10 +147,102 @@ MlasActivation(
 
 //
 // Matrix/matrix multiply routines.
+// C := alpha * op(A) * op(B) + beta * C
+// op(X) = X or op(X) = transpose(X) or op(X) = conjg(transpose(X))
 //
 
+/**
+ * @brief Supply matrices data information to single precision gemm functions
+ */
+struct MLAS_SGEMM_DATA_PARAMS {
+    const float* A = nullptr; /**< Supplies the address of matrix A */
+    size_t lda = 0;           /**< Supplies the first dimension of matrix A. */
+    const float* B = nullptr; /**< Supplies the address of matrix B */
+    size_t ldb = 0;           /**< Supplies the first dimension of matrix B. */
+    float* C = nullptr;       /**< Supplies the address of matrix C */
+    size_t ldc = 0;           /**< Supplies the first dimension of matrix C. */
+    float alpha = 1.0f;       /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
+    float beta = 0.0f;        /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+    bool BIsPacked = false;   /**< Whether B is pre-packed */
+};
+
+/**
+ * @brief  Batched single precision matrix/matrix multiply operation (SGEMM)
+ * 
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number
+                     of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
 void
 MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief  Single precision matrix/matrix multiply operation (SGEMM)
+ * 
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param Data    Supplies the matrices data parameters
+ * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
+
+/**
+ * @brief  Single precision matrix/matrix multiply operation (SGEMM)
+ * 
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
+ * @param A       Supplies the address of matrix A 
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param beta    Supplies the scalar beta multiplier (see SGEMM definition)
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -166,10 +258,41 @@ MlasGemm(
     float* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_SGEMM_DATA_PARAMS Data;
+    Data.alpha = alpha;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.beta = beta;
+    Data.C = C;
+    Data.ldc = ldc;
 
+    MlasGemm(TransA, TransB, M, N, K, Data, ThreadPool);
+}
+
+/**
+ * @brief the single precision matrix/matrix multiply operation (SGEMM) with pre-packed B
+ *
+ * @param TransA      - Supplies the transpose operation for matrix A.
+ * @param M           - Supplies the number of rows of matrix A and matrix C.
+ * @param N           - Supplies the number of columns of matrix B and matrix C.
+ * @param K           - Supplies the number of columns of matrix A and the number
+                        of rows of matrix B.
+ * @param alpha       - Supplies the scalar alpha multiplier (see SGEMM definition).
+ * @param A           - Supplies the address of matrix A.
+ * @param lda         - Supplies the first dimension of matrix A.
+ * @param PackedB     - Supplies the address of packed matrix B.
+ * @param beta        - Supplies the scalar beta multiplier (see SGEMM definition).
+ * @param C           - Supplies the address of matrix C.
+ * @param ldc         - Supplies the first dimension of matrix C.
+ * @param ThreadPool  - Supplies the thread pool object to use, else nullptr if the
+                        base library threading support should be used.
+ */
+inline
 void
-MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     size_t M,
@@ -183,10 +306,117 @@ MlasGemm(
     float* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_SGEMM_DATA_PARAMS DataParams;
+    DataParams.A = A;
+    DataParams.lda = lda;
+    DataParams.B = static_cast<const float*>(PackedB);
+    DataParams.ldb = 0;
+    DataParams.C = C;
+    DataParams.ldc = ldc;
+    DataParams.alpha = alpha;
+    DataParams.beta = beta;
+    DataParams.BIsPacked = true;
 
+    MlasGemmBatch(TransA,
+                  CblasTrans,  // deos not matter when B is packed
+                  M, N, K, &DataParams, 1, ThreadPool);
+}
+
+
+/**
+ * @brief Supply matrices data information to double precision gemm functions
+ */
+struct MLAS_DGEMM_DATA_PARAMS {
+    const double* A = nullptr; /**< Supplies the address of matrix A */
+    size_t lda = 0;            /**< Supplies the first dimension of matrix A. */
+    const double* B = nullptr; /**< Supplies the address of matrix B */
+    size_t ldb = 0;            /**< Supplies the first dimension of matrix B. */
+    double* C = nullptr;       /**< Supplies the address of matrix C */
+    size_t ldc = 0;            /**< Supplies the first dimension of matrix C. */
+    double alpha = 1.0;        /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
+    double beta = 0.0;         /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+};
+
+/**
+ * @brief  Batched double precision matrix/matrix multiply operation (DGEMM)
+ * 
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number
+                     of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
 void
 MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+
+/**
+ * @brief  Double precision matrix/matrix multiply operation (DGEMM)
+ * 
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param Data    Supplies the matrices data parameters
+ * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
+
+/**
+ * @brief  Double precision matrix/matrix multiply operation (DGEMM)
+ * 
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
+ * @param A       Supplies the address of matrix A 
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param beta    Supplies the scalar beta multiplier (see SGEMM definition)
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -202,7 +432,19 @@ MlasGemm(
     double* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_DGEMM_DATA_PARAMS Data;
+    Data.alpha = alpha;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.beta = beta;
+    Data.C = C;
+    Data.ldc = ldc;
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
 
 enum class MLAS_QUANTIZATION_GRANULARITY {
     PerMatrix,
@@ -310,12 +552,12 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-/** 
- * @brief Batched GEMM, for multiplying multiple pairs of matrices. 
+/**
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices.
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same: M, N, K, BIsSigned must be the
- *        same across all parameter blocks. 
- * 
+ *        same across all parameter blocks.
+ *
  * @param [IN]  Shape        A single shape descriptor for all the multiplications
  * @param [IN]  DataParams   Array of data descriptors for the matrices.
  * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
@@ -592,10 +834,21 @@ MlasTranspose(
 
 void
 MLASCALL
-MlasReorderInput(
-    const int64_t* InputShape,
+MlasReorderInputNchw(
     const float* S,
-    float* D
+    float* D,
+    size_t InputChannels,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderInputNhwc(
+    const float* S,
+    float* D,
+    size_t InputChannels,
+    size_t RowCount,
+    size_t FullRowCount
     );
 
 void

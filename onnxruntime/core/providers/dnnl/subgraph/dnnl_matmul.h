@@ -75,7 +75,6 @@ class DnnlMatmul : public DnnlKernel {
     auto wdim = wtensor_shape.size();
     TensorShape w_shape(wshape, wdim);
 
-    AdjustSrcWeightsShape(x_shape, w_shape);
     weights_shape_ = w_shape;
     weights_format_ = GetSourceFormat(static_cast<int>(w_shape.NumDimensions()));
 
@@ -303,12 +302,10 @@ class DnnlMatmul : public DnnlKernel {
 
  private:
   dnnl::memory::format_tag weights_format_;
-
   std::shared_ptr<dnnl::memory> src_mem_from_;
 
   size_t weights_size_;
   size_t dst_size_;
-
   TensorShape weights_shape_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
@@ -330,25 +327,12 @@ class DnnlMatmul : public DnnlKernel {
     output_shape = input_shape.GetDims();
     output_shape.pop_back();
     output_shape.emplace_back(weight_shape.GetDims().back());
-  }
-
-  void AdjustSrcWeightsShape(TensorShape& input_shape, TensorShape& weights_shape) const {
-    
-    if (input_shape.NumDimensions() > weights_shape.NumDimensions()) {
-      auto dims = weights_shape.GetDims();
-      for (size_t i = 0; i < input_shape.NumDimensions() - weights_shape.NumDimensions(); i++) {
-        dims.insert(dims.begin(), 1);
+    for (size_t i = 0; i < output_shape.size() - 2; i++) {
+      if (output_shape[i] == 1) {
+        output_shape[i] = weight_shape[i];
       }
-      weights_shape = TensorShape(dims);
-    } else if (input_shape.NumDimensions() < weights_shape.NumDimensions()) {
-      auto dims = input_shape.GetDims();
-      for (size_t i = 0; i < weights_shape.NumDimensions() - input_shape.NumDimensions(); i++) {
-        dims.insert(dims.begin(), 1);
-      }
-      input_shape = TensorShape(dims);
     }
   }
-
 };
 }  // namespace ort_dnnl
 }  // namespace onnxruntime
