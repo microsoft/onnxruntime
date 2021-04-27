@@ -277,7 +277,7 @@ void _ReduceAggregator::FastReduceKRK(const Tensor&, const std::vector<int64_t>&
   OrtEnforceMustBeOverloaded();
 }
 
-TensorOpCost _ReduceAggregator::ParallelReduceCost(int64_t n_row, int64_t n_col, int64_t element_size) {
+TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size) {
   return TensorOpCost{static_cast<double>(n_col * n_row * element_size),
                       static_cast<double>(n_row * element_size),
                       static_cast<double>(n_col * n_row * element_size * 2)};
