@@ -11,8 +11,10 @@
 
 #ifdef OPENVINO_2021_4
 using Exception = InferenceEngine::Exception;
+using WaitMode = InferenceEngine::InferRequest::WaitMode;
 #else
 using Exception = InferenceEngine::details::InferenceEngineException;
+using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 #endif
 
 #include "core/providers/shared_library/provider_api.h"
@@ -20,7 +22,8 @@ using Exception = InferenceEngine::details::InferenceEngineException;
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)  || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
 #include <vpu/hddl_config.hpp>
 #else
 #include <vpu/hddl_plugin_config.hpp>
@@ -74,7 +77,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
       InferenceEngine::ExecutableNetwork exe_network;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
       config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
 #else
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
@@ -107,7 +111,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
 #else
     config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
@@ -177,7 +182,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
 
   // Wait for Async inference completion
   try {
-    infer_request->Wait(InferenceEngine::InferRequest::WaitMode::RESULT_READY);
+    infer_request->Wait(WaitMode::RESULT_READY);
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
   } catch (...) {
@@ -252,7 +257,8 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
   if (subgraph_context_.is_constant) {
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
