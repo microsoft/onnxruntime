@@ -431,6 +431,7 @@ find_package(Threads)
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
+  string(APPEND CMAKE_CXX_FLAGS " /wd4324")
   if (onnxruntime_MSVC_STATIC_RUNTIME)
     # set all of our submodules to static runtime
     set(ONNX_USE_MSVC_STATIC_RUNTIME ON)
