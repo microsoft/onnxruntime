@@ -392,22 +392,6 @@ class RunQueue {
     assert(Size() == 0);
   }
 
-  // PushFront inserts w at the beginning of the queue.
-  // If queue is full returns w, otherwise returns default-constructed Work.
-  Work PushFront(Work w) {
-    unsigned front = front_.load(std::memory_order_relaxed);
-    Elem& e = array_[front & kMask];
-    ElemState s = e.state.load(std::memory_order_relaxed);
-    if (s != ElemState::kEmpty ||
-        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
-      return w;
-    front_.store(front + 1 + (kSize << 1), std::memory_order_relaxed);
-    e.w = std::move(w);
-    e.tag = Tag();
-    e.state.store(ElemState::kReady, std::memory_order_release);
-    return Work();
-  }
-
   // PopFront removes and returns the first element in the queue.
   // If the queue was empty returns default-constructed Work.
   Work PopFront() {
@@ -574,13 +558,6 @@ class RunQueue {
   // Can be called by any thread at any time.
   bool Empty() const {
     return SizeOrNotEmpty<false>() == 0;
-  }
-
-  // Delete all the elements from the queue.
-  void Flush() {
-    while (!Empty()) {
-      PopFront();
-    }
   }
 
  private:
