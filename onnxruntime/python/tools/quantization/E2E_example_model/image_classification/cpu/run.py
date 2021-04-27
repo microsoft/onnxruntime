@@ -78,7 +78,8 @@ def main():
                     dr,
                     quant_format=args.quant_format,
                     per_channel=args.per_channel,
-                    weight_type=QuantType.QInt8)
+                    weight_type=QuantType.QInt8,
+                    nodes_to_quantize={'Conv','MatMul','Add'})
     print('Calibrated and quantized model saved.')
 
     print('benchmarking fp32 model...')
