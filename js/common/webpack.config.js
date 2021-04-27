@@ -40,8 +40,10 @@ function buildConfig({
 
 module.exports = (env, argv) => {
   return [
-    buildConfig({ format: 'umd', mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
-    buildConfig({ format: 'umd', suffix: '.min', target: 'es5' }),
+    buildConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+    buildConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
+    buildConfig({ suffix: '.es6.min', target: 'es6' }),
+    buildConfig({ suffix: '.min', target: 'es5' }),
     buildConfig({ format: 'commonjs', suffix: '.node', target: 'es5' }),
   ];
 };

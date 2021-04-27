@@ -552,12 +552,12 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-/** 
- * @brief Batched GEMM, for multiplying multiple pairs of matrices. 
+/**
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices.
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same: M, N, K, BIsSigned must be the
- *        same across all parameter blocks. 
- * 
+ *        same across all parameter blocks.
+ *
  * @param [IN]  Shape        A single shape descriptor for all the multiplications
  * @param [IN]  DataParams   Array of data descriptors for the matrices.
  * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
@@ -834,10 +834,21 @@ MlasTranspose(
 
 void
 MLASCALL
-MlasReorderInput(
-    const int64_t* InputShape,
+MlasReorderInputNchw(
     const float* S,
-    float* D
+    float* D,
+    size_t InputChannels,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderInputNhwc(
+    const float* S,
+    float* D,
+    size_t InputChannels,
+    size_t RowCount,
+    size_t FullRowCount
     );
 
 void

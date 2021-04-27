@@ -26,7 +26,9 @@
     "common/lib/**/*.js.map": true,
     "common/lib/**/*.js": true,
     "node/lib/**/*.js.map": true,
-    "node/lib/**/*.js": true
+    "node/lib/**/*.js": true,
+    "web/lib/**/*.js.map": true,
+    "web/lib/**/*.js": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
