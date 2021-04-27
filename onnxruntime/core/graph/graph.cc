@@ -1496,7 +1496,10 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             }
           } else {
             if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
-                resolve_context_.inputs_and_initializers.cend()) {
+                    resolve_context_.inputs_and_initializers.cend() &&
+                // if we're manually creating a Graph for use as a subgraph the outer scope names are manually set here
+                outer_scope_node_arg_names_.find(input_arg_name) ==
+                    outer_scope_node_arg_names_.cend()) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid model. Node input '", input_arg_name,
                                      "' is not a graph input, initializer, or output of a previous node.");
             }
