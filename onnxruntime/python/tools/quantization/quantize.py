@@ -42,7 +42,7 @@ def optimize_model(model_path: Path):
     return optimized_model
 
 
-def load_model(model_path: Path, optimize=True):
+def load_model(model_path, optimize=True):
     if optimize:
         #optimize the original model
         onnx_model = ONNXModel(optimize_model(Path(model_path)))
@@ -50,7 +50,7 @@ def load_model(model_path: Path, optimize=True):
         onnx_model.replace_gemm_with_matmul()
         return onnx_model.model
 
-    return onnx.load(Path(model_path))
+    return onnx.load(model_path)
 
 
 def quantize(model,
@@ -188,7 +188,7 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(model_input, optimize_model)
 
     calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method)
     calibrator.collect_data(calibration_data_reader)
@@ -265,7 +265,7 @@ def quantize_dynamic(model_input: Path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(model_input, optimize_model)
     quantizer = ONNXQuantizer(
         model,
         per_channel,

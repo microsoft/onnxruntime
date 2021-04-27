@@ -29,7 +29,14 @@ class ONNXQuantizer:
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
 
         # run shape inference on the model
-        model = onnx.shape_inference.infer_shapes(model)
+        #try:
+        #    model = onnx.shape_inference.infer_shapes(model)
+        #except:
+        #    logging.warning(
+        #        '''Failed to do onnx shape inference. Looks like your model size is larger than 2G.
+        #           If it is the case, please call onnx.shape_inference.infer_shapes_path on the model to generate a shape inferred model, 
+        #           and call quantization API with the shape inferred model.
+        #        ''')
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
         self.value_infos.update({it.name: it for it in model.graph.input})
