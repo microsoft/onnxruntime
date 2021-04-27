@@ -70,3 +70,8 @@ The [autopep8](https://pypi.org/project/autopep8/) tool can be used to automatic
 
 Editors such as PyCharm [(see here)](https://www.jetbrains.com/help/pycharm/code-inspection.html) and Visual Studio Code [(see here)](https://code.visualstudio.com/docs/python/linting#_flake8) can be configured to check for PEP8 issues. 
 
+## Objective-C/C++ Code Style
+
+Please follow the [Google Objective-C/C++ Style Guide](https://google.github.io/styleguide/objcguide.html).
+
+Clang-format can be used to format Objective-C/C++ code. The .clang-format file is in the repository root directory.
