@@ -840,8 +840,9 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   FastReduceKind fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, reduce_axes, fast_shape, output_shape, fast_axes, keep_dims, false);
 
+  Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+
   if (fast_kind == FastReduceKind::kEmpty) {
-    Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
     if (new_input_shape.Size() == 1) {
       const T* from_data = input.template Data<T>();
       T* to_data = output.template MutableData<T>();
@@ -850,20 +851,19 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
       OrtEnforceKeepDims(new_input_shape, keep_dims);
     }
     return output;
-  } else if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
+  }
+
+  if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
     switch (fast_kind) {
       case FastReduceKind::kKR: {
-        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
         ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
         return output;
       }
       case FastReduceKind::kRK: {
-        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
         ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
         return output;
       }
       case FastReduceKind::kKRK: {
-        Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
         ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
         return output;
       }
@@ -877,7 +877,6 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   }
 
   ResultsNoTransposePrepareForReduce last_results;
-  Tensor output(input.DataType(), output_shape, allocator);
   NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(&output, fast_shape, input, fast_axes, tp, last_results);
   return output;
 }
@@ -917,9 +916,17 @@ template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
 
-template class ReduceLogSumExp<float>;
-template class ReduceLogSumExp<int32_t>;
-template class ReduceLogSumExp<double>;
-template class ReduceLogSumExp<int64_t>;
+template void CommonReduce1Loop<ReduceAggregatorSum<float>>(OpKernelContext* ctx,
+                                                            const std::vector<int64_t>& axes_, int64_t keepdims_,
+                                                            bool noop_with_empty_axes);
+template void CommonReduce1Loop<ReduceAggregatorSum<int32_t>>(OpKernelContext* ctx,
+                                                              const std::vector<int64_t>& axes_, int64_t keepdims_,
+                                                              bool noop_with_empty_axes);
+template void CommonReduce1Loop<ReduceAggregatorSum<double>>(OpKernelContext* ctx,
+                                                             const std::vector<int64_t>& axes_, int64_t keepdims_,
+                                                             bool noop_with_empty_axes);
+template void CommonReduce1Loop<ReduceAggregatorSum<int64_t>>(OpKernelContext* ctx,
+                                                              const std::vector<int64_t>& axes_, int64_t keepdims_,
+                                                              bool noop_with_empty_axes);
 
 }  // namespace onnxruntime
