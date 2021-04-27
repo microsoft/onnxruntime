@@ -499,11 +499,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
 // Recursively DFS traverse the graph downstream collecting all the NodeArgs that require a cast
 // inorder to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
 // be converted from float to float16 along the way.
-// The recursion only traverses an
-// TODO same as SearchUpstream impelement level 2, travesing down the tree identifying FP32 casts 
-// required instead of quitting, as in the case of level 0 or 1.
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
                              NodeArgToConsumerMap& require_cast,
+                             NodeArgToConsumerMap& require_cast_fp16,
                              std::unordered_set<NodeArg*>& require_type_change,
                              std::deque<NodeIndex>& removed_nodes,
                              size_t level) {
@@ -521,13 +519,21 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
           }
         } else {
           // If the node has other float32 inputs then stop the search
-          for (const auto* input_def : node->InputDefs()) {
+          for (NodeArg* input_def : node->MutableInputDefs()) {
             // TODO: If the specified level of the optimization is greater than 1 then
             // convert initializers if any from float to float16.
             if (input_def != node_arg) {
               if (IsType(*input_def, TensorProto_DataType_FLOAT)) {
-                require_cast[node_arg].push_back(node);
-                return;
+                if (level < 2) {
+                  require_cast[node_arg].push_back(node);
+                  return;
+                } else {
+                  if (graph_utils::IsGraphInput(graph, input_def)) {
+                    require_cast_fp16[input_def] = std::vector<Node*>();
+                  } else {
+                    require_cast_fp16[input_def].push_back(node);
+                  }
+                }
               }
             }
           }
@@ -535,7 +541,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
             if (IsType(*node_output, TensorProto_DataType_FLOAT) &&
                 require_cast.find(node_output) == require_cast.end() &&
                 require_type_change.find(node_output) == require_type_change.end()) {
-              SearchDownstream(graph, node_output, require_cast, require_type_change, removed_nodes, level);
+              SearchDownstream(graph, node_output, require_cast, require_cast_fp16, require_type_change, removed_nodes, level);
               if (require_cast.find(node_output) == require_cast.end()) {
                 require_type_change.insert(node_output);
               }
@@ -589,14 +595,20 @@ static bool PropagateForwards(Graph& graph, Node* node,
   ORT_ENFORCE(nullptr != node);
   bool modified = false;
   NodeArgToConsumerMap require_cast;
+  NodeArgToConsumerMap require_cast_fp16;
   std::unordered_set<NodeArg*> require_type_change;
   NodeArg* cast_output = node->MutableOutputDefs()[0];
-  SearchDownstream(graph, cast_output, require_cast, require_type_change, removed_nodes, level);
+  SearchDownstream(graph, cast_output, require_cast, require_cast_fp16, require_type_change, removed_nodes, level);
   if (require_cast.size() > 0 && require_cast.find(cast_output) == require_cast.end()) {
-    // Remove Cast operation
+    if (require_cast_fp16.size() > 0) {
+      InsertCastNodes(graph, require_cast_fp16, true, removed_nodes);
+      LOGS(logger, VERBOSE) << "PropagateForwards: Inserted FP16 Cast nodes "
+                            << ConcatNames<NodeArgToConsumerMap>(require_cast_fp16, GetName);
+    }    // Remove Cast operation
     LOGS(logger, VERBOSE) << "PropagateForwards: Removed Cast node  " << node->Name();
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     InsertCastNodes(graph, require_cast, false, removed_nodes);
+    InsertCastNodes(graph, require_cast_fp16, true, removed_nodes);
     ChangeTypeToFP16(graph, require_type_change, true, logger);
     LOGS(logger, VERBOSE) << "PropagateForwwards: Inserted Cast nodes "
                           << ConcatNames<NodeArgToConsumerMap>(require_cast, GetName);
@@ -631,12 +643,12 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   }
   // TODO need a huristic when to insert FP32 Cast
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end() /* && require_cast.size() >= require_cast_fp32.size() */) {
-    // Remove Cast operation
     if (require_cast_fp32.size() > 0) {
       InsertCastNodes(graph, require_cast_fp32, false, removed_nodes);
       LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted FP32 Cast nodes "
                             << ConcatNames<NodeArgToConsumerMap>(require_cast_fp32, GetName);
     }
+    // Remove Cast operations
     RemoveCastNodesChain(graph, {node}, removed_nodes);
     LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
     InsertCastNodes(graph, require_cast, true, removed_nodes);
@@ -676,6 +688,8 @@ static void FuseNodes(Graph& graph, const NodeArg* input, std::vector<Node*> nod
                       std::deque<NodeIndex>& removed_nodes) {
   ORT_ENFORCE(nodes.size() > 0);
   Node* node = nodes[0];
+  const Node* producer = graph.GetProducerNode(input->Name());
+  int output_index = nullptr != producer ? optimizer_utils::IndexOfNodeOutput(*producer, *input) : -1;
   NodeArg* node_arg = node->MutableOutputDefs()[0];
   NodeArg& new_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(input->Name()), node_arg->TypeAsProto());
   Node& new_cast = graph.AddNode(graph.GenerateNodeName(node->Name() + "_replace"),
@@ -685,6 +699,9 @@ static void FuseNodes(Graph& graph, const NodeArg* input, std::vector<Node*> nod
                                  {&new_output},
                                  &node->GetAttributes(),
                                  node->Domain());
+  if (nullptr != producer) {
+    graph.AddEdge(producer->Index(), new_cast.Index(), output_index, 0);
+  }
   inserted_node_names.insert(new_cast.Name());
   std::vector<Node*> consumers;
   for (Node* cast : nodes) {
@@ -697,6 +714,10 @@ static void FuseNodes(Graph& graph, const NodeArg* input, std::vector<Node*> nod
         graph.AddEdge(new_cast.Index(), consumer->Index(), 0, input_index);
         consumers.push_back(consumer);
       }
+    }
+    if (nullptr != producer) {
+      int input_index = optimizer_utils::IndexOfNodeInput(*cast, *input);
+      graph.RemoveEdge(producer->Index(), cast->Index(), output_index, input_index);
     }
     graph.RemoveConsumerNode(input->Name(), cast);
   }
