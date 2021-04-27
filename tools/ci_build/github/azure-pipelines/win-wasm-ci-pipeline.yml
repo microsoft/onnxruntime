@@ -12,11 +12,11 @@ jobs:
         BuildConfig: 'Release'
         CmdParams: ''
         WasmFileName: 'onnxruntime_wasm'
-      'threads debug'
+      'threads debug':
         BuildConfig: 'Debug'
         CmdParams: '--enable_wasm_threads'
         WasmFileName: 'onnxruntime_wasm_threads'
-      'threads release'
+      'threads release':
         BuildConfig: 'Release'
         CmdParams: '--enable_wasm_threads'
         WasmFileName: 'onnxruntime_wasm_threads'
