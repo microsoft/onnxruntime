@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training import _utils, ORTModule
+from onnxruntime.training.ortmodule import ORTModule, _utils
 import _test_helpers
 
 # Import autocasting libs

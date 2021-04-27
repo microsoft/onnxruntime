@@ -36,7 +36,7 @@ class MlasNchwcPool2DTest : public MlasPool2DTest<PoolingKind, Threaded> {
     size_t NchwcOutputElements = size_t(NchwcOutputShape[0]) * size_t(NchwcOutputShape[1]) * size_t(NchwcOutputShape[2]) * size_t(NchwcOutputShape[3]);
     float* NchwcOutput = BufferNchwcOutput.GetBuffer(NchwcOutputElements);
 
-    MlasReorderInput(InputShape, Input, NchwcInput);
+    ReorderInputNchw(InputShape, Input, NchwcInput);
 
     MlasNchwcPool(PoolingKind,
                   NchwcInputShape,
