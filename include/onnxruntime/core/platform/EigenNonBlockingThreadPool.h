@@ -1001,9 +1001,9 @@ void RunInParallelInternal(PerThread& pt,
           Queue& q = td.queue;
           unsigned w_idx;
           auto pr = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
-              unsigned my_idx = GetPerThread()->thread_id;
-              assert(my_idx >= 0 && my_idx < num_threads_);
-              preferred_workers[par_idx] = my_idx;
+              unsigned ran_on_idx = GetPerThread()->thread_id;
+              assert(ran_on_idx >= 0 && ran_on_idx < num_threads_);
+              preferred_workers[par_idx] = ran_on_idx;
               worker_fn(par_idx);
               ps.tasks_finished++;
             },
@@ -1025,9 +1025,9 @@ void RunInParallelInternal(PerThread& pt,
         {
           unsigned par_idx = current_dop;
           assert(par_idx >= 1 && par_idx < preferred_workers.size());
-          unsigned my_idx = GetPerThread()->thread_id;
-          assert(my_idx >= 0 && my_idx < num_threads_);
-          preferred_workers[par_idx] = my_idx;
+          unsigned ran_on_idx = GetPerThread()->thread_id;
+          assert(ran_on_idx >= 0 && ran_on_idx < num_threads_);
+          preferred_workers[par_idx] = ran_on_idx;
           worker_fn(par_idx);                                             // dispatcher also needs to do its part
         }
         ps.work_done.store(true, std::memory_order_release);      // work complete
@@ -1057,9 +1057,9 @@ void RunInParallelInternal(PerThread& pt,
         Queue& q = td.queue;
         unsigned w_idx;
         auto pr = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps]() {
-            unsigned my_idx = GetPerThread()->thread_id;
-            assert(my_idx >= 0 && my_idx < preferred_workers.size());
-            preferred_workers[par_idx] = my_idx;
+            unsigned ran_on_idx = GetPerThread()->thread_id;
+            assert(ran_on_idx >= 0 && ran_on_idx < preferred_workers.size());
+            preferred_workers[par_idx] = ran_on_idx;
             worker_fn(par_idx);
             ps.tasks_finished++;
           },
@@ -1105,15 +1105,15 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 
   // Increase the worker count if needed.  Each worker will pick up
   // loops to execute from the current parallel section.
-  std::function<void(unsigned)> worker_fn = [&ps](unsigned my_idx) {
+  std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
     while (ps.active) {
       if (!ps.current_loop) {
         onnxruntime::concurrency::SpinPause();
       } else {
         ps.workers_in_loop++;
         ThreadPoolLoop *work_item = ps.current_loop;
-        if (work_item && my_idx < work_item->threads_needed) {
-          work_item->fn(my_idx);
+        if (work_item && par_idx < work_item->threads_needed) {
+          work_item->fn(par_idx);
         }
         ps.workers_in_loop--;
       }
