@@ -6,6 +6,7 @@ INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
+CU_VER="111"
 
 while getopts p:d:v:tmur parameter_Option
 do case "${parameter_Option}"
