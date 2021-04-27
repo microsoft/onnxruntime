@@ -518,7 +518,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   ASSERT_EQ(const_initialized_tensors.size(), size_t(test_param.test_prepacking ? 0 : 1));
 }
 
-TEST(SessionStateTest, SharedInitalizersWithPrePackedTest) {
+TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
   ONNX_OPERATOR_SCHEMA(PrePackingTest)
