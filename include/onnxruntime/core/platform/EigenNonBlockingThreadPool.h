@@ -937,10 +937,10 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 
 void RunInParallelInternal(PerThread& pt,
                            ThreadPoolParallelSection& ps,
-                           unsigned n,
+                           unsigned new_dop,
                            bool dispatch_async,
                            std::function<void(unsigned)> worker_fn) {
-  assert(n <= (unsigned)(num_threads_+1));
+  assert(new_dop <= (unsigned)(num_threads_+1));
 
   // Initialize the set of hints for preferred worker threads we will
   // use.  We do this once, covering the maximum num_threads_ items,
@@ -964,7 +964,7 @@ void RunInParallelInternal(PerThread& pt,
   // time.
   std::vector<int> &preferred_workers = pt.preferred_workers;
   static std::atomic<unsigned> next_worker;
-  while (preferred_workers.size() < num_threads_) {
+  while (preferred_workers.size() < new_dop) {
     preferred_workers.push_back(next_worker++ % num_threads_);
   }
   
@@ -973,41 +973,38 @@ void RunInParallelInternal(PerThread& pt,
   // ("n" here) refer to the total parallelism including the main
   // thread.  Hence we consider the number of existing tasks + 1.
   unsigned current_dop = ps.current_dop;
-  if (n > current_dop) {
+  if (current_dop < new_dop) {
     // Multi-loop parallel sections dispatch tasks directly, assuming
     // that the work of doing so will be amortized over several loops.
     // This avoids complexity from having multiple dispatch tasks,
     // possibly concurrently.
     assert((!dispatch_async) || current_dop == 1);
 
-    unsigned extra_needed = n - current_dop;
-
     if (dispatch_async) {
       //......................................................................
       // define dispatch task for dispatcher
-      Task dispatch_task = [current_dop, extra_needed, worker_fn, &preferred_workers, &ps, &pt, this]() {
+      Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
         // Record prior to starting dispatch.  This is required at the
         // end of a parallel section to disambiguate whether a revoked
         // task is the dispatcher (dispatch_started==false) or a task
         // created below (hence dispatch_started==true).
         ps.dispatch_started.store(true, std::memory_order_seq_cst);
-        for (auto i = 1u; i < extra_needed; ++i) {
+        for (auto par_idx = current_dop + 1; par_idx < new_dop; ++par_idx) {
           // Use preferred hints from the worker threads that ran the
           // previous loop from this thread.  Note that the hints may have
           // been from a different thread pool, hence we keep within the
           // current range [0,num_threads_).
-          unsigned idx = current_dop + i - 1;
-          assert(idx >= 0 && idx < num_threads_);
-          unsigned q_idx = preferred_workers[idx] % num_threads_;
+          assert(par_idx > 1 && par_idx < preferred_workers.size());
+          unsigned q_idx = preferred_workers[par_idx] % num_threads_;
           assert(q_idx >= 0 && q_idx < num_threads_);
           WorkerData& td = worker_data_[q_idx];
           Queue& q = td.queue;
           unsigned w_idx;
-          auto pr = q.PushBackWithTag([worker_fn, idx, &preferred_workers, &ps]() {
+          auto pr = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
               unsigned my_idx = GetPerThread()->thread_id;
-              assert(my_idx >= 0 && my_idx < preferred_workers.size());
-              preferred_workers[idx] = my_idx;
-              worker_fn(idx+1);
+              assert(my_idx >= 0 && my_idx < num_threads_);
+              preferred_workers[par_idx] = my_idx;
+              worker_fn(par_idx);
               ps.tasks_finished++;
             },
             pt.tag,
@@ -1026,12 +1023,12 @@ void RunInParallelInternal(PerThread& pt,
         }
         ps.dispatch_done.store(true, std::memory_order_release);  // dispatch complete
         {
-          unsigned idx = current_dop - 1;
-          assert(idx >= 0 && idx < num_threads_);
+          unsigned par_idx = current_dop;
+          assert(par_idx >= 1 && par_idx < preferred_workers.size());
           unsigned my_idx = GetPerThread()->thread_id;
-          assert(my_idx >= 0 && my_idx < preferred_workers.size());
-          preferred_workers[idx] = my_idx;
-          worker_fn(idx+1);                                             // dispatcher also needs to do its part
+          assert(my_idx >= 0 && my_idx < num_threads_);
+          preferred_workers[par_idx] = my_idx;
+          worker_fn(par_idx);                                             // dispatcher also needs to do its part
         }
         ps.work_done.store(true, std::memory_order_release);      // work complete
       };                                                          // dispatch_task
@@ -1045,27 +1042,25 @@ void RunInParallelInternal(PerThread& pt,
         ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
       } else {
         dispatch_td.EnsureAwake();  // make sure that dipatch worker is awake
-        ps.current_dop = n;
       }
     } else {
       //......................................................................
-      for (auto i = 0u; i < extra_needed; ++i) {
+      for (auto par_idx = current_dop + 1; par_idx < new_dop; ++par_idx) {
         // Use preferred hints from the worker threads that ran the
         // previous loop from this thread.  Note that the hints may have
         // been from a different thread pool, hence we keep within the
         // current range [0,num_threads_).
-        unsigned idx = current_dop + i - 1;
-        assert(idx >= 0 && idx < num_threads_);
-        unsigned q_idx = preferred_workers[idx] % num_threads_;
+        assert(par_idx > 1 && par_idx < preferred_workers.size());
+        unsigned q_idx = preferred_workers[par_idx] % num_threads_;
         assert(q_idx >= 0 && q_idx < num_threads_);
         WorkerData& td = worker_data_[q_idx];
         Queue& q = td.queue;
         unsigned w_idx;
-        auto pr = q.PushBackWithTag([worker_fn, idx, &preferred_workers, &ps]() {
+        auto pr = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps]() {
             unsigned my_idx = GetPerThread()->thread_id;
             assert(my_idx >= 0 && my_idx < preferred_workers.size());
-            preferred_workers[idx] = my_idx;
-            worker_fn(idx+1);
+            preferred_workers[par_idx] = my_idx;
+            worker_fn(par_idx);
             ps.tasks_finished++;
           },
           pt.tag,
@@ -1083,6 +1078,7 @@ void RunInParallelInternal(PerThread& pt,
         }
       }
     }
+    ps.current_dop = new_dop;
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
 }
