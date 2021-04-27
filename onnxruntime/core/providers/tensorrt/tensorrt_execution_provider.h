@@ -84,11 +84,11 @@ struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>* engine = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
+  nvonnxparser::IParser* parser = nullptr;
+  nvinfer1::ICudaEngine* engine = nullptr;
+  nvinfer1::IExecutionContext* context = nullptr;
+  nvinfer1::IBuilder* builder = nullptr;
+  nvinfer1::INetworkDefinition* network = nullptr;
   std::vector<std::unordered_map<std::string, int>> input_info;
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
