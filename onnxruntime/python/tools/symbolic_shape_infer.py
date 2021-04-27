@@ -1144,17 +1144,26 @@ class SymbolicShapeInference:
 
     def _infer_Squeeze(self, node): 
         input_shape = self._get_shape(node, 0)
+        op_set = get_opset(self.out_mp_)
 
-        # Depending on op-version 'axes' are provided as attribute or via 2nd input      
-        axes = get_attribute(node, 'axes')
-        if axes == None:
+        # Depending on op-version 'axes' are provided as attribute or via 2nd input
+        if op_set < 13:    
+            axes = get_attribute(node, 'axes')
+            assert self._try_get_value(node, 1) is None
+        else:
             axes = self._try_get_value(node, 1)
+            assert get_attribute(node, 'axes') is None
 
-        if axes == None:
+        if axes is None:
             # No axes have been provided (neither via attribute nor via input).
             # In this case the 'Shape' op should remove all axis with dimension 1.
             # For symbolic dimensions we guess they are !=1.
             output_shape = [s for s in input_shape if s != 1]
+            if self.verbose_ > 0:
+                symbolic_dimensions = [s for s in input_shape if type(s) != int]
+                if len(symbolic_dimensions) > 0:
+                    print(f"Variable dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
+                          f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}")
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
             output_shape = []
