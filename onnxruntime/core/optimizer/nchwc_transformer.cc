@@ -91,7 +91,7 @@ class NchwcTransformerImpl {
     const int64_t channels_;
 
     // Stores the proto shape for the NCHWc output.
-    NchwcArgument::Shape shape_;
+    const NchwcArgument::Shape shape_;
 
     NchwcArgument(Node& output_node, NodeArg* output_nchwc_arg, size_t original_uses, size_t channels, const NchwcArgument::Shape& shape)
         : output_node_(output_node),
@@ -112,6 +112,7 @@ class NchwcTransformerImpl {
                               const NchwcArgument::Shape& input_shape,
                               NchwcArgument::Shape& output_shape,
                               const ONNX_NAMESPACE::TensorProto* filter_shape);
+  Node& InsertReshape(NodeArg* input_arg, NodeArg* output_arg, int64_t channels, bool split_channels);
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
@@ -119,8 +120,9 @@ class NchwcTransformerImpl {
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
-  void TransformTranspose(Node& node);
+  void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
+  void TrackTransposeFromNhwc(Node& node);
 
   Graph& graph_;
 
@@ -143,6 +145,16 @@ class NchwcTransformerImpl {
   // Stores a mapping of NodeArg biases that have already been aligned to the
   // NCHWc block size, so multiple nodes can share the NCHWc biases.
   std::unordered_map<NodeArg*, NodeArg*> aligned_biases_;
+
+  // Stores a mapping of shape initializers for use by Reshape when splitting
+  // or unsplitting the channels dimension of a tensor.
+  std::unordered_map<int64_t, NodeArg*> reshape_split_;
+  std::unordered_map<int64_t, NodeArg*> reshape_unsplit_;
+
+  // Tracks the last Transpose node and output NodeArg that transposed from
+  // NHWC to NCHW format.
+  Node* transpose_from_nhwc_node_{nullptr};
+  NodeArg* transpose_from_nhwc_output_arg_{nullptr};
 };
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
@@ -203,6 +215,20 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               kMSNchwcDomain);
     reorder_input_node.SetExecutionProviderType(kCpuExecutionProvider);
     input_defs[0] = input_nchwc_arg;
+
+    // Attempt to fuse the ReorderInput with a previous Transpose of NHWC->NCHW.
+    // If the last known node to transpose from NHWC is the same as this input
+    // argument, then the Transpose node can be removed and the ReorderInput node
+    // is modified to consume a tensor with NHWC layout order. The transpose was
+    // already determined to have a single use and not be a graph output.
+    if (transpose_from_nhwc_output_arg_ == input_original_arg) {
+      reorder_input_node.MutableInputDefs()[0] = transpose_from_nhwc_node_->MutableInputDefs()[0];
+      reorder_input_node.AddAttribute("channels_last", static_cast<int64_t>(1));
+      graph_utils::RemoveNodeOutputEdges(graph_, *transpose_from_nhwc_node_);
+      removed_nodes_.push_front(transpose_from_nhwc_node_->Index());
+      transpose_from_nhwc_node_ = nullptr;
+    }
+
   } else {
     input_defs[0] = it->second;
   }
@@ -318,14 +344,21 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   bool do_reorder_input = true;
   bool reorder_filter_OIHWBo = false;
+  int64_t filter_input_channels = input_channels;
+  int64_t nchwc_group_count = group_count;
+
+  // The current implementation of ReorderInput requires the channel count to be
+  // aligned to this value.
+  constexpr int64_t channel_alignment = 4;
 
   if (group_count > 1) {
-    if ((output_channels % nchwc_block_size) != 0) {
+    if ((output_channels % channel_alignment) != 0) {
       return;
     }
     if (input_channels == 1 && output_channels == group_count) {
       // Depthwise convolution.
       reorder_filter_OIHWBo = true;
+      nchwc_group_count = nchwc_output_channels;
     } else if (((input_channels % nchwc_block_size) != 0) ||
                ((output_channels % group_count) != 0) ||
                (((output_channels / group_count) % nchwc_block_size) != 0)) {
@@ -336,8 +369,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Use NCHW input buffer directly.
       reorder_filter_OIHWBo = true;
       do_reorder_input = false;
-    } else if ((input_channels % nchwc_block_size) != 0) {
-      return;
+    } else {
+      if ((input_channels % channel_alignment) != 0) {
+        return;
+      }
+      filter_input_channels = (input_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
     }
   }
 
@@ -368,15 +404,19 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_arg = filters_it->second;
   } else {
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
+    const auto& conv_W_dims = conv_W.dims();
 
-    int64_t reordered_filter_vec_size = conv_W.size() / output_channels * nchwc_output_channels;
-    std::vector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_vec_size));
+    int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
+    for (size_t i = 2; i < 4; i++) {
+      reordered_filter_size *= conv_W_dims[i];
+    }
+    std::vector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_size));
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
-      MlasReorderFilterOIHWBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     } else {
-      MlasReorderFilterOIHWBiBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBiBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     }
 
     ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
@@ -386,8 +426,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
-    for (size_t i = 1; i < 4; i++) {
-      nchwc_conv_W_tensor_proto.add_dims(conv_W.dims()[i]);
+    nchwc_conv_W_tensor_proto.add_dims(filter_input_channels);
+    for (size_t i = 2; i < 4; i++) {
+      nchwc_conv_W_tensor_proto.add_dims(conv_W_dims[i]);
     }
 
     nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
@@ -430,6 +471,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  if (nchwc_group_count != group_count) {
+    nchwc_node.AddAttribute("group", nchwc_group_count);
+  }
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
@@ -510,11 +554,55 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
-// The existing Add/Sum operator implementations can be used with tensors
-// in NCHWc format if the tensor shapes are exactly the same (elementwise
-// add).
+Node& NchwcTransformerImpl::InsertReshape(NodeArg* input_arg,
+                                          NodeArg* output_arg,
+                                          int64_t channels,
+                                          bool split_channels) {
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+
+  // Reuse the shape initializer across reshapes for the same channel configuration.
+  auto& shape_arg_map = split_channels ? reshape_split_ : reshape_unsplit_;
+  NodeArg* shape_arg = shape_arg_map[nchwc_channels];
+  if (shape_arg == nullptr) {
+    ONNX_NAMESPACE::TensorProto shape_tensor_proto;
+    shape_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    shape_tensor_proto.set_name(graph_.GenerateNodeArgName("Reshape"));
+    // Passthrough the batch dimension.
+    shape_tensor_proto.add_int64_data(0);
+    if (split_channels) {
+      shape_tensor_proto.add_int64_data(nchwc_channels / nchwc_block_size);
+    } else {
+      shape_tensor_proto.add_int64_data(nchwc_channels);
+    }
+    // Passthrough the spatial dimensions.
+    for (int i = 0; i < kNchwcSpatialDims; i++) {
+      shape_tensor_proto.add_int64_data(0);
+    }
+    if (split_channels) {
+      shape_tensor_proto.add_int64_data(nchwc_block_size);
+      shape_tensor_proto.add_dims(kNchwcDims + 1);
+    } else {
+      shape_tensor_proto.add_dims(kNchwcDims);
+    }
+
+    shape_arg = &graph_utils::AddInitializer(graph_, shape_tensor_proto);
+    shape_arg_map[nchwc_channels] = shape_arg;
+  }
+
+  Node& reshape_node = graph_.AddNode(graph_.GenerateNodeName("Reshape"),
+                                      "Reshape",
+                                      "Reshape",
+                                      {input_arg, shape_arg},
+                                      {output_arg});
+  reshape_node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  return reshape_node;
+}
+
 void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
   auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
 
   // Verify that all of the inputs to this operator are from NCHWc outputs.
   std::vector<NchwcArgument*> nchwc_inputs;
@@ -528,74 +616,125 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
     nchwc_inputs.push_back(it->second.get());
   }
 
-  // Test if all of the NCHWc inputs have a compatible shape.
   auto* nchwc_input_0 = nchwc_inputs[0];
-  auto* nchwc_input_0_shape = input_defs[0]->Shape();
+  const int64_t channels = nchwc_inputs[0]->channels_;
+
+  // Test if all of the NCHWc inputs have an equal shape.
+  bool all_shapes_match = true;
+  auto* input_0_shape = input_defs[0]->Shape();
   for (size_t n = 1; n < input_defs_count; n++) {
     auto* nchwc_input_n = nchwc_inputs[n];
+    // Require that all inputs have the same logical number of channels.
+    if (nchwc_input_n->channels_ != channels) {
+      return;
+    }
     for (int i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
       if (!nchwc_input_0->shape_.IsDimEqual(nchwc_input_n->shape_, i)) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
-        auto* nchwc_input_n_shape = input_defs[n]->Shape();
-        if ((nchwc_input_0_shape == nullptr) || (nchwc_input_n_shape == nullptr)) {
-          return;
-        }
-        auto& nchwc_input_0_dim = nchwc_input_0_shape->dim(i);
-        auto& nchwc_input_n_dim = nchwc_input_n_shape->dim(i);
-        if (!utils::HasDimValue(nchwc_input_0_dim) ||
-            !utils::HasDimValue(nchwc_input_n_dim) ||
-            (nchwc_input_0_dim.dim_value() <= 0) ||
-            (nchwc_input_0_dim.dim_value() != nchwc_input_n_dim.dim_value())) {
-          return;
+        auto* input_n_shape = input_defs[n]->Shape();
+        if ((input_0_shape == nullptr) || (input_n_shape == nullptr)) {
+          all_shapes_match = false;
+        } else {
+          auto& input_0_dim = input_0_shape->dim(i);
+          auto& input_n_dim = input_n_shape->dim(i);
+          if (!utils::HasDimValue(input_0_dim) ||
+              !utils::HasDimValue(input_n_dim) ||
+              (input_0_dim.dim_value() <= 0) ||
+              (input_0_dim.dim_value() != input_n_dim.dim_value())) {
+            if (!utils::HasDimParam(input_0_dim) ||
+                !utils::HasDimParam(input_n_dim) ||
+                (input_0_dim.dim_param() != input_n_dim.dim_param())) {
+              all_shapes_match = false;
+              break;
+            }
+          }
         }
       }
     }
   }
 
-  // Update the node to directly use the NCHWc inputs directly and decrement
-  // the original use counts of the NCHWc inputs.
-  for (size_t n = 0; n < input_defs_count; n++) {
-    input_defs[n] = nchwc_inputs[n]->nchwc_arg_;
-    nchwc_inputs[n]->remaining_original_uses_--;
-  }
+  if (all_shapes_match) {
+    // Update the node to directly use the NCHWc inputs directly and decrement
+    // the original use counts of the NCHWc inputs.
+    for (size_t n = 0; n < input_defs_count; n++) {
+      input_defs[n] = nchwc_inputs[n]->nchwc_arg_;
+      nchwc_inputs[n]->remaining_original_uses_--;
+    }
 
-  // If one of the inputs to the Add/Sum node is a NCHWc convolution, then
-  // attempt to fuse the addition into the convolution itself.
-  if (add_node && input_defs_count == 2) {
-    for (size_t n = 0; n < 2; n++) {
-      auto* nchwc_input_n = nchwc_inputs[n];
-      auto& nchwc_node = nchwc_input_n->output_node_;
-      auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
-      auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
-      size_t nchwc_input_defs_count = nchwc_input_defs.size();
-      // Check if this is a single use NCHWc convolution that hasn't already
-      // been fused with another Add/Sum node. The Add/Sum can also only be
-      // fused if the convolution isn't itself fused with an activation.
-      if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-          (nchwc_input_defs_count < 4) && (nchwc_input_args_count.size() < 4) &&
-          (nchwc_input_n->starting_original_uses_ == 1) &&
-          (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
-        // Feed the output of the other NCHWc node into the selected convolution
-        // node.
-        nchwc_input_defs.resize(4);
-        nchwc_input_args_count.resize(4);
-        if (nchwc_input_defs_count < 3) {
-          // The optional bias parameter is empty so set to an empty string.
-          nchwc_input_defs[2] = &graph_.GetOrCreateNodeArg("", nullptr);
-          nchwc_input_args_count[2] = 1;
+    // If one of the inputs to the Add/Sum node is a NCHWc convolution, then
+    // attempt to fuse the addition into the convolution itself.
+    if (add_node && input_defs_count == 2) {
+      for (size_t n = 0; n < 2; n++) {
+        auto* nchwc_input_n = nchwc_inputs[n];
+        auto& nchwc_node = nchwc_input_n->output_node_;
+        auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
+        auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
+        size_t nchwc_input_defs_count = nchwc_input_defs.size();
+        // Check if this is a single use NCHWc convolution that hasn't already
+        // been fused with another Add/Sum node. The Add/Sum can also only be
+        // fused if the convolution isn't itself fused with an activation.
+        if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
+            (nchwc_input_defs_count < 4) && (nchwc_input_args_count.size() < 4) &&
+            (nchwc_input_n->starting_original_uses_ == 1) &&
+            (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
+          // Feed the output of the other NCHWc node into the selected convolution
+          // node.
+          nchwc_input_defs.resize(4);
+          nchwc_input_args_count.resize(4);
+          if (nchwc_input_defs_count < 3) {
+            // The optional bias parameter is empty so set to an empty string.
+            nchwc_input_defs[2] = &graph_.GetOrCreateNodeArg("", nullptr);
+            nchwc_input_args_count[2] = 1;
+          }
+          nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
+          nchwc_input_args_count[3] = 1;
+
+          FuseNchwcArgument(node, *nchwc_input_n);
+          removed_nodes_.push_front(node.Index());
+          return;
         }
-        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
-        nchwc_input_args_count[3] = 1;
-
-        FuseNchwcArgument(node, *nchwc_input_n);
-        removed_nodes_.push_front(node.Index());
-        return;
       }
     }
+
+    CreateNchwcArgument(node, node, nchwc_input_0->channels_, nchwc_input_0->shape_);
+    return;
   }
 
-  CreateNchwcArgument(node, node, nchwc_input_0->channels_, nchwc_input_0->shape_);
+  if (add_node) {
+    // The input shapes cannot be shown to be identical, but the channel dimension
+    // is the same. Reshape the tensors to explicitly use the true NCHWc shape in
+    // order to perform the binary operation.
+    //
+    // Typically, both tensors are of the same shape at inferencing time, but this
+    // could not be proven using symbolic dimensions. This reshaping avoids the
+    // alternative of reordering the tensors back to NCHW.
+    //
+    // This optimization is restricted to Add/Sum nodes. Mul nodes would also work
+    // using this code, however the common case here is multiplying a NxCxHxW
+    // matrix by a NxCx1x1 vector. The implementation of Mul does not currently
+    // vectorize well for the case of broadcasting a NCHWc sized channel block.
+    // This case should be handled by a ScaleShift kernel that can broadcast a
+    // multiply/add vector (BatchNormalization can also be reimplemented with this).
+    for (size_t n = 0; n < input_defs_count; n++) {
+      std::string reshape_input_def_name = graph_.GenerateNodeArgName("reshape");
+      auto* reshape_input_arg = &graph_.GetOrCreateNodeArg(reshape_input_def_name, nullptr);
+      InsertReshape(nchwc_inputs[n]->nchwc_arg_, reshape_input_arg, channels, true);
+
+      input_defs[n] = reshape_input_arg;
+      nchwc_inputs[n]->remaining_original_uses_--;
+    }
+
+    std::string output_reshaped_def_name = graph_.GenerateNodeArgName("reshape");
+    auto* output_reshaped_arg = &graph_.GetOrCreateNodeArg(output_reshaped_def_name, nullptr);
+    Node& nchwc_node = InsertReshape(output_reshaped_arg, output_defs[0], channels, false);
+
+    NchwcArgument::Shape output_shape(output_defs[0]);
+
+    CreateNchwcArgument(node, nchwc_node, channels, output_shape);
+    output_defs[0] = output_reshaped_arg;
+    return;
+  }
 }
 
 void NchwcTransformerImpl::TransformConcat(Node& node) {
@@ -791,7 +930,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
-void NchwcTransformerImpl::TransformTranspose(Node& node) {
+void NchwcTransformerImpl::TransformTransposeToNhwc(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -851,13 +990,15 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
   }
 
-  NodeArg* scales_arg;
+  NodeArg* sizes_arg = nullptr;
+  NodeArg* scales_arg = nullptr;
+
   if (node.SinceVersion() >= 11) {
-    // Bail out if Resize has the optional "sizes" tensor.
-    if (input_defs.size() == 3) {
+    if (input_defs.size() >= 4) {
+      sizes_arg = input_defs[3];
+    }
+    if (sizes_arg == nullptr) {
       scales_arg = input_defs[2];
-    } else {
-      return;
     }
 
     // Only support the asymmetric coordinate transformation mode.
@@ -879,28 +1020,68 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     scales_arg = input_defs[1];
   }
 
-  // Require that the scales tensor be static.
-  const ONNX_NAMESPACE::TensorProto* scales_tensor_proto = nullptr;
-  if (!graph_utils::NodeArgIsConstant(graph_, *scales_arg) ||
-      !graph_.GetInitializedTensor(scales_arg->Name(), scales_tensor_proto) ||
-      (scales_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
-      (scales_tensor_proto->dims_size() != 1) ||
-      (scales_tensor_proto->dims(0) != 4)) {
-    return;
-  }
-
-  Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
-  auto* scales_data = scales.template data<float>();
-
-  // Cast the scales to integers and verify that the scales are positive and
-  // round trip back to floating point.
   std::vector<int64_t> scales_attr(4);
-  for (size_t n = 0; n < 4; n++) {
-    int64_t scale_value = static_cast<int64_t>(scales_data[n]);
-    if (scale_value <= 0 || static_cast<float>(scale_value) != scales_data[n]) {
+
+  if (sizes_arg != nullptr) {
+    // Require that the sizes tensor be static.
+    const auto* sizes_tensor_proto = graph_utils::GetConstantInitializer(graph_, sizes_arg->Name());
+    if ((sizes_tensor_proto == nullptr) ||
+        (sizes_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) ||
+        (sizes_tensor_proto->dims_size() != 1) ||
+        (sizes_tensor_proto->dims(0) != 4)) {
       return;
     }
-    scales_attr[n] = scale_value;
+
+    const auto* input_shape = input_defs[0]->Shape();
+    if (input_shape == nullptr) {
+      return;
+    }
+
+    Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
+    auto* sizes_data = sizes.template data<int64_t>();
+
+    // The sizes data can only be used if the input shape is static and the
+    // effective scaling must be an integer.
+    for (int i = 0; i < 4; i++) {
+      const auto& dim = input_shape->dim(i);
+      if (!utils::HasDimValue(dim)) {
+        return;
+      }
+      int64_t dim_value = dim.dim_value();
+      if (dim_value <= 0) {
+        return;
+      }
+      scales_attr[i] = sizes_data[i] / dim_value;
+      if (scales_attr[i] * dim_value != sizes_data[i]) {
+        return;
+      }
+    }
+
+  } else if (scales_arg != nullptr) {
+    // Require that the scales tensor be static.
+    const auto* scales_tensor_proto = graph_utils::GetConstantInitializer(graph_, scales_arg->Name());
+    if ((scales_tensor_proto == nullptr) ||
+        (scales_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+        (scales_tensor_proto->dims_size() != 1) ||
+        (scales_tensor_proto->dims(0) != 4)) {
+      return;
+    }
+
+    Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
+    auto* scales_data = scales.template data<float>();
+
+    // Cast the scales to integers and verify that the scales are positive and
+    // round trip back to floating point.
+    for (size_t n = 0; n < 4; n++) {
+      int64_t scale_value = static_cast<int64_t>(scales_data[n]);
+      if (scale_value <= 0 || static_cast<float>(scale_value) != scales_data[n]) {
+        return;
+      }
+      scales_attr[n] = scale_value;
+    }
+
+  } else {
+    return;
   }
 
   // Only support spatial scaling at this time (batch and channel are unscaled).
@@ -927,7 +1108,33 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
+void NchwcTransformerImpl::TrackTransposeFromNhwc(Node& node) {
+  const auto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
+  if (perm_attr == nullptr || perm_attr->ints_size() != 4) {
+    return;
+  }
+
+  // Test if this transposes from NHWC to NCHW layout order.
+  const int64_t* perm_data = perm_attr->ints().data();
+  if (perm_data[0] != 0 || perm_data[1] != 3 || perm_data[2] != 1 || perm_data[3] != 2) {
+    return;
+  }
+
+  // Verify that the node does not produce a graph output and produces output
+  // for a single node.
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty() || node.GetOutputEdgesCount() != 1) {
+    return;
+  }
+
+  transpose_from_nhwc_node_ = &node;
+  transpose_from_nhwc_output_arg_ = node.MutableOutputDefs()[0];
+}
+
 void NchwcTransformerImpl::Transform(Node& node) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
+    TrackTransposeFromNhwc(node);
+  }
+
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
@@ -954,7 +1161,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
-      TransformTranspose(node);
+      TransformTransposeToNhwc(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);

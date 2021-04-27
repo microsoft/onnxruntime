@@ -49,6 +49,14 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
+#ifdef ENABLE_TRAINING
+  // Override the index-th output with ort_value
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
+  void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
+  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
+  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+#endif
+
   // TO DO: make it thread safe
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
@@ -95,6 +103,10 @@ class IExecutionFrame {
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
+  virtual bool IsAllocatedExternally(int /*ort_value_idx*/) {
+    return false;
+  }
+
   const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
@@ -104,7 +116,7 @@ class IExecutionFrame {
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
-  const std::vector<int> fetch_mlvalue_idxs_;
+  std::vector<int> fetch_mlvalue_idxs_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {
@@ -181,6 +193,8 @@ class ExecutionFrame final : public IExecutionFrame {
   void TraceFree(int ort_value_idx);
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
+
+  bool IsAllocatedExternally(int ort_value_idx) override;
 
   const SessionState& session_state_;
 

@@ -218,7 +218,7 @@ def run_test_dir(model_or_dir):
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
             if len(output_names) == 1 and output_names[0] == '':
                 output_names = [o.name for o in sess.get_outputs()]
-                assert(len(output_names) == 1)
+                assert len(output_names) == 1, 'There should be single output_name.'
                 expected_outputs[output_names[0]] = expected_outputs['']
                 expected_outputs.pop('')
 

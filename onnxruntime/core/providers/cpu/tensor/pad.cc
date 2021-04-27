@@ -53,6 +53,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint64_t,
     int8_t,
     uint8_t);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
@@ -244,7 +247,7 @@ static Status PadImpl(OpKernelContext* ctx,
                       const std::vector<int64_t>& slices,
                       const Mode& mode,
                       T value) {
-  if (!utils::HasType<AllEnabledPadTypes, T>()) {
+  if (!utils::HasTypeWithSameSize<AllEnabledPadTypes, T>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type not supported in this build.");
   }
 
@@ -532,7 +535,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
       break;
   }
-
   return pad_status;
 }
 };  // namespace onnxruntime

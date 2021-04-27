@@ -60,8 +60,18 @@ namespace perftest {
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_vpu_fast_compile]: Optionally enabled to speeds up the model's compilation on VPU device targets.\n"
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists. currently this feature is only supported on MyriadX(VPU) hardware device target.\n"
+      "\t    [OpenVINO only] [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
-      "\t [Example] [For OpenVINO EP] -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
+      "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 use_compiled_network|true blob_dump_path|\"<path>\"\"\n"
+      "\t    [TensorRT only] [use_trt_options]: Overrides TensorRT environment variables (if any) with following settings at runtime.\n"		  
+      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"	  
+      "\t    [TensorRT only] [trt_fp16_enable]: Enable TensorRT FP16 precision.\n"
+      "\t    [TensorRT only] [trt_int8_enable]: Enable TensorRT INT8 precision.\n"
+      "\t    [TensorRT only] [trt_int8_calibration_table_name]: Specify INT8 calibration table name.\n"
+      "\t    [TensorRT only] [trt_int8_use_native_calibration_table]: Use Native TensorRT calibration table.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
+      "\t [Example] [For TensorRT EP] -e tensorrt -i 'use_trt_options|true trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false'\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32

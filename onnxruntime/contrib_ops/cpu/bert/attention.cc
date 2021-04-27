@@ -154,6 +154,19 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   return Status::OK();
 }
 
+Status AttentionBase::CheckInputs(const TensorShape& input_shape,
+                                  const TensorShape& weights_shape,
+                                  const TensorShape& bias_shape,
+                                  const Tensor*& mask_index,
+                                  const Tensor* past,
+                                  const int max_threads_per_block) const {
+  if (num_heads_ > max_threads_per_block) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
+  }
+
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past);
+}
+
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,
                                   const Tensor* past,
                                   int batch_size,
@@ -238,7 +251,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
+  const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights_shape,
                                   bias->Shape(),
@@ -296,6 +309,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_dest = QKV[qkv_index];
         int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
+        // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;

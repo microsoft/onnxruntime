@@ -296,11 +296,11 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
-
 def write_calibration_table(calibration_cache):
     '''
     Helper function to write calibration table to files.   
     '''
+
     import json
     import flatbuffers
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable

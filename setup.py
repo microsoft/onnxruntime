@@ -19,52 +19,58 @@ featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
-# Any combination of the following arguments can be applied
-if '--use_featurizers' in sys.argv:
-    featurizers_build = True
-    sys.argv.remove('--use_featurizers')
+def parse_arg_remove_boolean(argv, arg_name):
+    arg_value = False
+    if arg_name in sys.argv:
+        arg_value = True
+        argv.remove(arg_name)
 
-if '--nightly_build' in sys.argv:
+    return arg_value
+
+def parse_arg_remove_string(argv, arg_name_equal):
+    arg_value = None
+    for arg in sys.argv[1:]:
+        if arg.startswith(arg_name_equal):
+            arg_value = arg[len(arg_name_equal):]
+            sys.argv.remove(arg)
+            break
+
+    return arg_value
+
+# Any combination of the following arguments can be applied
+featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
+
+if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
     nightly_build = True
-    sys.argv.remove('--nightly_build')
 
-for arg in sys.argv[1:]:
-    if arg.startswith("--wheel_name_suffix="):
-        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
+wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
-        sys.argv.remove(arg)
-
-        break
-
+cuda_version = None
+rocm_version = None
 # The following arguments are mutually exclusive
-if '--use_tensorrt' in sys.argv:
+if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-    sys.argv.remove('--use_tensorrt')
-elif '--use_cuda' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
-    sys.argv.remove('--use_cuda')
-elif '--use_openvino' in sys.argv:
+    cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+    package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
+    rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
-    sys.argv.remove('--use_openvino')
-elif '--use_dnnl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
-    sys.argv.remove('--use_dnnl')
-elif '--use_nuphar' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-    sys.argv.remove('--use_nuphar')
-elif '--use_vitisai' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
-    sys.argv.remove('--use_vitisai')
-elif '--use_acl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
     package_name = 'onnxruntime-acl'
-    sys.argv.remove('--use_acl')
-elif '--use_armnn' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
-    sys.argv.remove('--use_armnn')
-elif '--use_dml' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_dml'):
     package_name = 'onnxruntime-dml'
-    sys.argv.remove('--use_dml')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -129,6 +135,7 @@ try:
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
                 cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                cuda_dependencies.extend(['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so'])
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -157,7 +164,7 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
@@ -168,7 +175,7 @@ if platform.system() == 'Linux':
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.2.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   # DNNL & TensorRT EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.dylib'])
   libs.extend(['libonnxruntime_providers_dnnl.dylib'])
@@ -227,15 +234,38 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
     'onnxruntime.transformers.longformer',
 ]
 
-if '--enable_training' in sys.argv:
+requirements_file = "requirements.txt"
+
+local_version = None
+enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
-                     'onnxruntime.training.optim'])
-    sys.argv.remove('--enable_training')
+                     'onnxruntime.training.optim',
+                     'onnxruntime.training.ortmodule'])
+    requirements_file = "requirements-training.txt"
+    # with training, we want to follow this naming convention:
+    # stable:
+    # onnxruntime-training-1.7.0+cu111-cp36-cp36m-linux_x86_64.whl
+    # nightly:
+    # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
+    # this is needed immediately by pytorch/ort so that the user is able to
+    # install an onnxruntime training package with matching torch cuda version.
+    package_name = 'onnxruntime-training'
+    if cuda_version:
+        # removing '.' to make Cuda version number in the same form as Pytorch.
+        cuda_version = cuda_version.replace('.', '')
+        local_version = '+cu' + cuda_version
+    if rocm_version:
+        # removing '.' to make Cuda version number in the same form as Pytorch.
+        rocm_version = rocm_version.replace('.', '')
+        local_version = '+rocm' + rocm_version
+
 
 package_data = {}
 data_files = []
@@ -291,30 +321,47 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
     build_suffix = environ.get('BUILD_BUILDNUMBER')
     if build_suffix is None:
-      #The following line is only for local testing
-      build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+        # The following line is only for local testing
+        build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      build_suffix = build_suffix.replace('.','')
+        build_suffix = build_suffix.replace('.', '')
+
+    if enable_training:
+        from packaging import version
+        from packaging.version import Version
+        # with training package, we need to bump up version minor number so that
+        # nightly releases take precedence over the latest release when --pre is used during pip install.
+        # eventually this shall be the behavior of all onnxruntime releases.
+        # alternatively we may bump up version number right after every release.
+        ort_version = version.parse(version_number)
+        if isinstance(ort_version, Version):
+            version_number = '{major}.{minor}.{macro}'.format(
+                major=ort_version.major,
+                minor=ort_version.minor + 1,
+                macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
+
+if local_version:
+    version_number = version_number + local_version
 
 if wheel_name_suffix:
     package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
-if bdist_wheel is not None :
+if bdist_wheel is not None:
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-requirements_path = path.join(getcwd(), "requirements.txt")
+requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
-    requirements_path = path.join(this, "requirements.txt")
+    requirements_path = path.join(this, requirements_file)
 if not path.exists(requirements_path):
-    raise FileNotFoundError("Unable to find 'requirements.txt'")
+    raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 

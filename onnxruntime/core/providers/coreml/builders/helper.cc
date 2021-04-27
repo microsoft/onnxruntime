@@ -73,8 +73,8 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
       return false;
     }
 
-    // For some undocuemented reason, apple CoreML lib will fail loading the model if the model has
-    // dimension > 16384
+    // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
+    // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
     if (dim.dim_value() > 16384) {
       LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name

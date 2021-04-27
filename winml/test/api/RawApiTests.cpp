@@ -24,7 +24,7 @@ auto CreateModelAsBuffer(const wchar_t* model_path)
 }
 
 static void RawApiTestsApiTestsClassSetup() {
-  RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
+  WINML_EXPECT_HRESULT_SUCCEEDED(RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED));
 }
 
 static void CreateModelFromFilePath() {

@@ -94,6 +94,30 @@ namespace Microsoft.ML.OnnxRuntime
             return options;
         }
 
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider()
+        {
+            return MakeSessionOptionWithRocmProvider(0);
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
+        {
+            SessionOptions options = new SessionOptions();
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
+        }
+
         #endregion
 
         #region ExecutionProviderAppends
@@ -156,6 +180,15 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
         }
 
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_ROCM(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
+        }
+       
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
