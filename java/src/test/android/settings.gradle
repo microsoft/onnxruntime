@@ -1,2 +1,2 @@
 include ':app'
-rootProject.name = "ort_image_classifier"
+rootProject.name = "JavaValidater"

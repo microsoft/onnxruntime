@@ -1,12 +1,12 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
-    ext.kotlin_version = "1.3.72"
+    ext.kotlin_version = "1.4.32"
     repositories {
         google()
         jcenter()
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:4.1.2"
+        classpath "com.android.tools.build:gradle:4.1.3"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
 
         // NOTE: Do not place your application dependencies here; they belong
@@ -27,13 +27,13 @@ def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeAndroidTestDir = "${cmakeJavaDir}/androidtest"
 def cmakeBuildOutputDir = "${cmakeAndroidTestDir}/android/app/build"
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
-
 if (cmakeBuildDir != null) {
     task cmakeBuild(type: Copy) {
         from rootProject.buildDir
         into cmakeBuildOutputDir
+    }
+
+    task clean(type: Delete) {
+        delete rootProject.buildDir
     }
 }
