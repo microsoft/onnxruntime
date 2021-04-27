@@ -970,10 +970,10 @@ TEST(NchwcOptimizerTests, MixedOutputUsage) {
 
 TEST(NchwcOptimizerTests, TensorAlignment) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    // Input channel count must currently be a multiple of the NCHWc block size.
-    auto* input1_arg = helper.MakeInput<float>({1, 60, 28, 42});
+    // Input channel count must currently be a multiple of 4.
+    auto* input1_arg = helper.MakeInput<float>({1, 62, 28, 42});
     auto* output1_arg = helper.MakeOutput();
-    helper.AddConvNode(input1_arg, output1_arg, {128, 60, 1, 1});
+    helper.AddConvNode(input1_arg, output1_arg, {128, 62, 1, 1});
 
     // Grouped input channel count must be a multiple of the NCHWc block size.
     auto* input2_arg = helper.MakeInput<float>({1, 48, 28, 42});
@@ -1114,6 +1114,34 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
   // outputs supplied.
   test_case(false);
   test_case(true);
+}
+
+TEST(NchwcOptimizerTests, ConvReorderInputNhwc) {
+  auto test_case = [&](int64_t channels) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({5, 27, 29, channels});
+      auto* transpose_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddTransposeToNchwNode(input_arg, transpose_output_arg);
+      helper.AddConvNode(transpose_output_arg, output_arg, {34, channels, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 0);
+    };
+
+    // Verify that a NHWC->NCHW transpose is fused into ReorderInput.
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  for (int64_t channels = 16; channels <= 32; channels += 4) {
+    test_case(channels);
+  }
 }
 
 TEST(NchwcOptimizerTests, ConvReorderOutputNhwc) {

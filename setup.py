@@ -47,12 +47,16 @@ if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
+rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
 elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+    package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
+    rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
 elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
@@ -131,6 +135,7 @@ try:
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
                 cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                cuda_dependencies.extend(['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so'])
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -241,7 +246,8 @@ enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
-                     'onnxruntime.training.optim'])
+                     'onnxruntime.training.optim',
+                     'onnxruntime.training.ortmodule'])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -255,6 +261,11 @@ if enable_training:
         # removing '.' to make Cuda version number in the same form as Pytorch.
         cuda_version = cuda_version.replace('.', '')
         local_version = '+cu' + cuda_version
+    if rocm_version:
+        # removing '.' to make Cuda version number in the same form as Pytorch.
+        rocm_version = rocm_version.replace('.', '')
+        local_version = '+rocm' + rocm_version
+
 
 package_data = {}
 data_files = []

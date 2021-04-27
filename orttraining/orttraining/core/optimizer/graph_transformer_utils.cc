@@ -24,6 +24,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
@@ -47,7 +48,6 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
-#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -79,8 +79,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<DivMulFusion>());
       rule_transformer->Register(make_unique<EliminateDropout>());
+      rule_transformer->Register(make_unique<GemmTransposeFusion>());
       rule_transformer->Register(make_unique<NotWhereFusion>());
-      rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
@@ -88,7 +88,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)

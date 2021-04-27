@@ -120,8 +120,9 @@ class NchwcTransformerImpl {
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
-  void TransformTranspose(Node& node);
+  void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
+  void TrackTransposeFromNhwc(Node& node);
 
   Graph& graph_;
 
@@ -149,6 +150,11 @@ class NchwcTransformerImpl {
   // or unsplitting the channels dimension of a tensor.
   std::unordered_map<int64_t, NodeArg*> reshape_split_;
   std::unordered_map<int64_t, NodeArg*> reshape_unsplit_;
+
+  // Tracks the last Transpose node and output NodeArg that transposed from
+  // NHWC to NCHW format.
+  Node* transpose_from_nhwc_node_{nullptr};
+  NodeArg* transpose_from_nhwc_output_arg_{nullptr};
 };
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
@@ -209,6 +215,20 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               kMSNchwcDomain);
     reorder_input_node.SetExecutionProviderType(kCpuExecutionProvider);
     input_defs[0] = input_nchwc_arg;
+
+    // Attempt to fuse the ReorderInput with a previous Transpose of NHWC->NCHW.
+    // If the last known node to transpose from NHWC is the same as this input
+    // argument, then the Transpose node can be removed and the ReorderInput node
+    // is modified to consume a tensor with NHWC layout order. The transpose was
+    // already determined to have a single use and not be a graph output.
+    if (transpose_from_nhwc_output_arg_ == input_original_arg) {
+      reorder_input_node.MutableInputDefs()[0] = transpose_from_nhwc_node_->MutableInputDefs()[0];
+      reorder_input_node.AddAttribute("channels_last", static_cast<int64_t>(1));
+      graph_utils::RemoveNodeOutputEdges(graph_, *transpose_from_nhwc_node_);
+      removed_nodes_.push_front(transpose_from_nhwc_node_->Index());
+      transpose_from_nhwc_node_ = nullptr;
+    }
+
   } else {
     input_defs[0] = it->second;
   }
@@ -324,14 +344,21 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   bool do_reorder_input = true;
   bool reorder_filter_OIHWBo = false;
+  int64_t filter_input_channels = input_channels;
+  int64_t nchwc_group_count = group_count;
+
+  // The current implementation of ReorderInput requires the channel count to be
+  // aligned to this value.
+  constexpr int64_t channel_alignment = 4;
 
   if (group_count > 1) {
-    if ((output_channels % nchwc_block_size) != 0) {
+    if ((output_channels % channel_alignment) != 0) {
       return;
     }
     if (input_channels == 1 && output_channels == group_count) {
       // Depthwise convolution.
       reorder_filter_OIHWBo = true;
+      nchwc_group_count = nchwc_output_channels;
     } else if (((input_channels % nchwc_block_size) != 0) ||
                ((output_channels % group_count) != 0) ||
                (((output_channels / group_count) % nchwc_block_size) != 0)) {
@@ -342,8 +369,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Use NCHW input buffer directly.
       reorder_filter_OIHWBo = true;
       do_reorder_input = false;
-    } else if ((input_channels % nchwc_block_size) != 0) {
-      return;
+    } else {
+      if ((input_channels % channel_alignment) != 0) {
+        return;
+      }
+      filter_input_channels = (input_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
     }
   }
 
@@ -374,15 +404,19 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_arg = filters_it->second;
   } else {
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
+    const auto& conv_W_dims = conv_W.dims();
 
-    int64_t reordered_filter_vec_size = conv_W.size() / output_channels * nchwc_output_channels;
-    std::vector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_vec_size));
+    int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
+    for (size_t i = 2; i < 4; i++) {
+      reordered_filter_size *= conv_W_dims[i];
+    }
+    std::vector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_size));
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
-      MlasReorderFilterOIHWBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     } else {
-      MlasReorderFilterOIHWBiBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBiBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     }
 
     ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
@@ -392,8 +426,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
-    for (size_t i = 1; i < 4; i++) {
-      nchwc_conv_W_tensor_proto.add_dims(conv_W.dims()[i]);
+    nchwc_conv_W_tensor_proto.add_dims(filter_input_channels);
+    for (size_t i = 2; i < 4; i++) {
+      nchwc_conv_W_tensor_proto.add_dims(conv_W_dims[i]);
     }
 
     nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
@@ -436,6 +471,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  if (nchwc_group_count != group_count) {
+    nchwc_node.AddAttribute("group", nchwc_group_count);
+  }
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
@@ -892,7 +930,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
-void NchwcTransformerImpl::TransformTranspose(Node& node) {
+void NchwcTransformerImpl::TransformTransposeToNhwc(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -1070,7 +1108,33 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
+void NchwcTransformerImpl::TrackTransposeFromNhwc(Node& node) {
+  const auto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
+  if (perm_attr == nullptr || perm_attr->ints_size() != 4) {
+    return;
+  }
+
+  // Test if this transposes from NHWC to NCHW layout order.
+  const int64_t* perm_data = perm_attr->ints().data();
+  if (perm_data[0] != 0 || perm_data[1] != 3 || perm_data[2] != 1 || perm_data[3] != 2) {
+    return;
+  }
+
+  // Verify that the node does not produce a graph output and produces output
+  // for a single node.
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty() || node.GetOutputEdgesCount() != 1) {
+    return;
+  }
+
+  transpose_from_nhwc_node_ = &node;
+  transpose_from_nhwc_output_arg_ = node.MutableOutputDefs()[0];
+}
+
 void NchwcTransformerImpl::Transform(Node& node) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
+    TrackTransposeFromNhwc(node);
+  }
+
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
@@ -1097,7 +1161,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
-      TransformTranspose(node);
+      TransformTransposeToNhwc(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11, 13})) {
       TransformResize(node);

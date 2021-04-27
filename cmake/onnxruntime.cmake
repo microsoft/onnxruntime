@@ -33,18 +33,52 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 if(WIN32)
-    onnxruntime_add_shared_library(onnxruntime
-      ${SYMBOL_FILE}
-      "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
-      "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
+  onnxruntime_add_shared_library(onnxruntime
+    ${SYMBOL_FILE}
+    "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+    "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
+  )
+elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  # include both c and cxx api
+  set(APPLE_FRAMEWORK_HEADERS
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+  )
+
+  # need to add header files for enabled EPs
+  foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
+    file(GLOB _provider_headers CONFIGURE_DEPENDS
+      "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
     )
+    list(APPEND APPLE_FRAMEWORK_HEADERS "${_provider_headers}")
+    unset(_provider_headers)
+  endforeach()
+
+  # apple framework requires the header file be part of the library
+  onnxruntime_add_shared_library(onnxruntime
+    ${APPLE_FRAMEWORK_HEADERS}
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
+  )
+
+  set(MACOSX_FRAMEWORK_NAME "onnxruntime")
+  set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
+  configure_file(${REPO_ROOT}/cmake/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
+
+  set_target_properties(onnxruntime PROPERTIES
+    FRAMEWORK TRUE
+    FRAMEWORK_VERSION A
+    PUBLIC_HEADER "${APPLE_FRAMEWORK_HEADERS}"
+    MACOSX_FRAMEWORK_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
+    VERSION ${ORT_VERSION}
+    SOVERSION  ${ORT_VERSION}
+  )
 else()
-    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+  onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 endif()
 
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
-onnxruntime_add_include_to_target(onnxruntime)
 
 target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
@@ -133,9 +167,10 @@ set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 
 install(TARGETS onnxruntime
-        ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+        ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+        FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
