@@ -59,7 +59,7 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - script: |
-      copy $(Build.BinariesDirectory)/$(BuildConfig)/$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts'
 
   - task: PublishPipelineArtifact@0
