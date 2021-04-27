@@ -14,7 +14,6 @@
 
 namespace onnxruntime {
 namespace training {
-class IOBinding;
 
 class TrainingAgent {
  public:

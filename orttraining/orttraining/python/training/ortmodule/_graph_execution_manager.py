@@ -2,11 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from . import _ortmodule_utils as _utils, _ortmodule_io as _io
-from . import _ortmodule_logger as _logger
+
+from . import _utils, _io, _logger
+from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
-
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from abc import ABC, abstractmethod
@@ -20,49 +20,15 @@ import warnings
 
 from torch.utils.cpp_extension import ROCM_HOME
 
-ONNX_OPSET_VERSION = 12
 
-
-def _run_forward(execution_session, onnx_model, device, *inputs, **kwargs):
-    """Runs the forward graph on execution_session with given model inputs and device"""
-
-    # Assert that the input and model device match
-    _utils._check_same_device(device, "Input argument to forward", *inputs)
-
-    # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
-    #   especially the backward graph outputs.
-    # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
-    # have the need for passing IOBinding.
-    if isinstance(execution_session, onnxruntime.training.InferenceAgent):
-        io_binding = execution_session.io_binding()
-        run_options = C.RunOptions()
-
-        # Use IO binding
-        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
-
-        # Run and return module outputs.
-        ort_output = execution_session.run_forward(io_binding, run_options)
-        forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output._ortvalue) for forward_output in forward_outputs)
-        state = None
-    else:
-        state = C.PartialGraphExecutionState()
-        forward_inputs = C.OrtValueVector()
-        for input in inputs:
-            forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
-
-        forward_outputs = C.OrtValueVector()
-        # Run and return module outputs.
-        execution_session.run_forward(forward_inputs, forward_outputs, state)
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
-
-    # Assert that the outputs and model device match
-    _utils._check_same_device(device, "Output argument from forward", *user_outputs)
-
-    output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
-    run_info = onnxruntime.training.RunStateInfo(state, output_info)
-    # Return user outputs and forward run information
-    return user_outputs, run_info
+class RunStateInfo(object):
+    def __init__(self, state, output_info):
+        """
+        :param state: State of partial run that contains intermediate tensors needed to resume the run later.
+        :param output_info: Output info.
+        """
+        self.state = state
+        self.output_info = output_info
 
 class GraphExecutionManager(ABC):
     def __init__(self, module):
@@ -144,6 +110,26 @@ class GraphExecutionManager(ABC):
                                                                                        self.is_rocm_pytorch)
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+
+    @staticmethod
+    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
+        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
+
+        This is a helper that can be called by the actual `GraphExecutionManager.forward` method
+
+        Args:
+            execution_session (InferenceAgent or InferenceAgent): Agent which runs either inference or train
+            onnx_model (onnx.ModelProto): ONNX model
+            device (torch.device): PyTorch device
+            inputs: (torch.Tensor or a container of): User input
+
+        Returns:
+            Returns a tuple (user_outputs, run_info):
+            user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+            run_info: A RunStateInfo which contains extra information about the execution of the graph
+        """
+
+        raise NotImplemented
 
     @abstractmethod
     def forward(self):
