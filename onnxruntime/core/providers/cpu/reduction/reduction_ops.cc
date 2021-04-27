@@ -223,21 +223,46 @@ bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available
   return (static_cast<uint8_t>(scenario) & static_cast<uint8_t>(available)) > 0;
 }
 
-void _ReduceAggregator::OrtEnforceMustBeOverloaded() {
+bool ResultsNoTransposePrepareForReduce::equal(const std::vector<int64_t>& local_input_shape,
+                                               const std::vector<int64_t>& local_reduced_axes) {
+  if (input_shape.size() != local_input_shape.size())
+    return false;
+  if (reduced_axes.size() != local_reduced_axes.size())
+    return false;
+  for (std::vector<int64_t>::const_iterator it1 = input_shape.begin(), it2 = local_input_shape.begin();
+       it1 != input_shape.end(); ++it1, ++it2) {
+    if (*it1 != *it2)
+      return false;
+  }
+  for (std::vector<int64_t>::const_iterator it1 = reduced_axes.begin(), it2 = local_reduced_axes.begin();
+       it1 != reduced_axes.end(); ++it1, ++it2) {
+    if (*it1 != *it2)
+      return false;
+  }
+  return true;
+}
+
+void ResultsNoTransposePrepareForReduce::OrtEnforceNotEmpty() {
+  ORT_ENFORCE(last_loop_red_size > 0);
+  ORT_ENFORCE(last_loop_size > 0);
+  ORT_ENFORCE(projected_index.size() > 0);
+}
+
+static void OrtEnforceMustBeOverloaded() {
   ORT_ENFORCE(false, "must be overloaded.");
 }
 
-void _ReduceAggregator::OrtEnforceKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforce_ReduceAggregatorKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void _ReduceAggregator::OrtEnforceRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforce_ReduceAggregatorRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void _ReduceAggregator::OrtEnforceKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforce_ReduceAggregatorKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
