@@ -9,6 +9,12 @@
 
 #include <inference_engine.hpp>
 
+#ifdef OPENVINO_2021_4
+using Exception = InferenceEngine::Exception;
+#else
+using Exception = InferenceEngine::details::InferenceEngineException;
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 
 #include "../backend_utils.h"
@@ -95,7 +101,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
           throw std::runtime_error("The compiled blob path is not set");
         exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
       }
-    } catch (InferenceEngine::details::InferenceEngineException &e) {
+    } catch (Exception &e) {
       ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
     } catch(...) {
       ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name);
@@ -146,7 +152,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
       try {
         exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
-      } catch (const InferenceEngine::details::InferenceEngineException& e) {
+      } catch (const Exception& e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
       } catch (...) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
@@ -185,7 +191,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     try {
       graph_input_blob = infer_request->GetBlob(input_name);
 
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
@@ -197,7 +203,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
   // Start Async inference
   try {
     infer_request->StartAsync();
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Couldn't start Inference");
@@ -209,8 +215,8 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
   // Wait for Async inference completion
   try {
-    infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    infer_request->Wait(InferenceEngine::InferRequest::WaitMode::RESULT_READY);
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception with completing Inference" + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
@@ -224,7 +230,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     auto output_name = output_info_iter->first;
     try {
       graph_output_blob = infer_request->GetBlob(output_name);
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name);

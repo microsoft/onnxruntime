@@ -9,6 +9,12 @@
 
 #include <inference_engine.hpp>
 
+#ifdef OPENVINO_2021_4
+using Exception = InferenceEngine::Exception;
+#else
+using Exception = InferenceEngine::details::InferenceEngineException;
+#endif
+
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -144,7 +150,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 
   try {
     return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
