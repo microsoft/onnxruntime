@@ -42,5 +42,36 @@ TEST(InvokerTest, Basic) {
     EXPECT_EQ(c_data[i], expected_result[i]);
   }
 }
+
+TEST(InvokerTest, Inplace) {
+  std::unique_ptr<IExecutionProvider> cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  const std::string logger_id{"InvokerTest"};
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+      logging::Severity::kVERBOSE, false,
+      logging::LoggingManager::InstanceType::Default,
+      &logger_id); 
+  std::unique_ptr<Environment> env;
+  Environment::Create(std::move(logging_manager), env);
+  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger());
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue A, B;
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &A);
+  CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &B);
+  std::vector<OrtValue> result;
+  result.push_back(A);
+  auto status = kernel_invoker.Invoke("Add", {A, B}, result, nullptr);
+
+  std::vector<float> expected_result = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+  auto* a_data = A.Get<Tensor>().Data<float>();
+  for (size_t i = 0; i < expected_result.size(); ++i) {
+    EXPECT_EQ(a_data[i], expected_result[i]);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
