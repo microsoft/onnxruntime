@@ -1286,7 +1286,7 @@ struct OrtApi {
   /*
      * Add an OrtPrepackedWeightsContainer instance to an OrtSessionOptions instance.
     */
-  ORT_API2_STATUS(AddPrepackedWeightsContainerToSessionoptions, _Inout_ OrtSessionOptions* options,
+  ORT_API2_STATUS(AddPrepackedWeightsContainer, _Inout_ OrtSessionOptions* options,
                   _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 
   /*

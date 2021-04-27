@@ -1357,7 +1357,7 @@ TEST(CApiTest, TestSharingOfInitializer) {
   std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
       rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
 
-  ASSERT_TRUE(api.AddPrepackedWeightsContainerToSessionoptions(session_options, prepacked_weights_container) == nullptr);
+  ASSERT_TRUE(api.AddPrepackedWeightsContainer(session_options, prepacked_weights_container) == nullptr);
 
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // create session 1

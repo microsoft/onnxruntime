@@ -1880,7 +1880,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepac
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddPrepackedWeightsContainerToSessionoptions, _Inout_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::AddPrepackedWeightsContainer, _Inout_ OrtSessionOptions* options,
                     _In_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
   API_IMPL_BEGIN
   options->value.prepacked_weights_container = reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container);
@@ -2144,7 +2144,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
     &OrtApis::CreatePrepackedWeightsContainer,
-    &OrtApis::AddPrepackedWeightsContainerToSessionoptions,
+    &OrtApis::AddPrepackedWeightsContainer,
     &OrtApis::ReleasePrepackedWeightsContainer,
 };
 

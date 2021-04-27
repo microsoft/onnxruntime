@@ -190,8 +190,16 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
         public IntPtr ModelMetadataGetGraphDescription;
-    }
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
+        public IntPtr SetCurrentGpuDeviceId;
+        public IntPtr GetCurrentGpuDeviceId;
+        public IntPtr KernelInfoGetAttributeArray_float;
+        public IntPtr KernelInfoGetAttributeArray_int64;
+        public IntPtr CreatePrepackedWeightsContainer;
+        public IntPtr AddPrepackedWeightsContainer;
+        public IntPtr ReleasePrepackedWeightsContainer;
 
+    }
     internal static class NativeMethods
     {
         private const string nativeLib = "onnxruntime";
@@ -335,6 +343,11 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
+
+            OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
+            OrtAddPrepackedWeightsContainer = (DOrtAddPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.AddPrepackedWeightsContainer, typeof(DOrtAddPrepackedWeightsContainer));
+            OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
+
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -633,6 +646,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
 
+        /// <summary>
+        /// Add an instance of OrtAddPrepackedWeightsContainer that is shared across sessions using this SessionOptions instance
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddPrepackedWeightsContainer(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                  IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
+        public static DOrtAddPrepackedWeightsContainer OrtAddPrepackedWeightsContainer;
         #endregion
 
         #region RunOptions API
@@ -1161,6 +1182,20 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /* (OrtStatus*) */ DOrtReleaseAvailableProviders(IntPtr /* (char**) */ providers, int /* (int) */ numProviders);
         public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
+
+        /// <summary>
+        /// Create an instance of OrtCreatePrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">(output) Created OrtCreatePrepackedWeightsContainer native instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePrepackedWeightsContainer(out IntPtr /*(OrtCreatePrepackedWeightsContainer**)*/ prepackedWeightsContainer);
+        public static DOrtCreatePrepackedWeightsContainer OrtCreatePrepackedWeightsContainer;
+
+        /// <summary>
+        /// Destroy an instance of OrtCreatePrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">OrtCreatePrepackedWeightsContainer instance to be destroyed</param>
+        public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtCreatePrepackedWeightsContainer*)*/ prepackedWeightsContainer);
+        public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
         #endregion
 
         public static byte[] GetPlatformSerializedString(string str)

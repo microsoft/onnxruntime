@@ -188,7 +188,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
         }
-       
+
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -278,6 +278,20 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, pinnedName.Pointer, ortValue.Handle));
             }
+        }
+
+        /// <summary>
+        /// Add a PrepackedWeightsContainer to this SessionOptions instance. Any session constructed using this SessionOptions instance
+        /// will cache the pre-packed versions of "shared" initializers (which have been added using AddInitializer() API) if not present 
+        /// within the container and will re-use any already available pre-packed versions of shared initializers present within it.
+        /// The idea is to not duplicate the pre-packed versions of shared initializers that are to be shared across sessions and thereby
+        /// provide memory savings.
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public void AddPrepackedWeightsCache(PrepackedWeightsContainer prepackedWeightsContainer)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddPrepackedWeightsContainer(handle, prepackedWeightsContainer.Pointer));
         }
 
         /// <summary>

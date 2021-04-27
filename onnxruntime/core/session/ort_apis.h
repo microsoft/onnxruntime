@@ -265,6 +265,6 @@ ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo*
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
 
 ORT_API_STATUS_IMPL(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
-ORT_API_STATUS_IMPL(AddPrepackedWeightsContainerToSessionoptions, _Inout_ OrtSessionOptions* options, _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+ORT_API_STATUS_IMPL(AddPrepackedWeightsContainer, _Inout_ OrtSessionOptions* options, _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 ORT_API(void, ReleasePrepackedWeightsContainer, _Frees_ptr_opt_ OrtPrepackedWeightsContainer*);
 }  // namespace OrtApis
