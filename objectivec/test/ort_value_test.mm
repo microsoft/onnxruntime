@@ -65,11 +65,11 @@ NS_ASSUME_NONNULL_BEGIN
   NSArray<NSNumber*>* shape = @[ @2, @3 ];  // too large
 
   NSError* err = nil;
-  ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
                                                  elementType:ORTTensorElementDataTypeInt32
                                                        shape:shape
                                                        error:&err];
-  XCTAssertNil(ort_value);
+  XCTAssertNil(ortValue);
   XCTAssertNotNil(err);
 }
 

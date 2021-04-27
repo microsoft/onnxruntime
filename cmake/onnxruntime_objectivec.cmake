@@ -89,7 +89,7 @@ set_target_properties(onnxruntime_objc PROPERTIES
 if(onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)
 
-    # onnxruntime_test_objc target
+    # onnxruntime_objc_test target
 
     file(GLOB onnxruntime_objc_test_srcs
         "${OBJC_ROOT}/test/*.h"
