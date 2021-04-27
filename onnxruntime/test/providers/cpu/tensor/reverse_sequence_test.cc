@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -161,7 +162,12 @@ TEST(ReverseSequenceTest, BadLength) {
     test.AddInput<int64_t>("input", {2, 4, 1}, input);
     test.AddInput<int64_t>("sequence_lens", {2}, sequence_lens);
     test.AddOutput<int64_t>("Y", {0}, {});
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence length");
+
+    // the bad length check is just in the CPU EP
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence length", {}, nullptr, &eps);
   };
 
   run_test(true);
