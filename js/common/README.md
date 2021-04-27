@@ -6,7 +6,7 @@ ONNX Runtime JavaScript API is a unified API for all JavaScript usages. It's dep
 - onnxruntime-web
 - onnxruntime-react-native
 
-ONNX Runtime JavaScript API is not designed for using directly. Please consider to install one of the NPM packages above according to target platform.
+This package (onnxruntime-common) is not designed for using directly. Please consider to install one of the NPM packages above according to target platform.
 
 ## License
 
