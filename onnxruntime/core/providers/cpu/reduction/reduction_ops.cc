@@ -383,7 +383,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
                             const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
                             ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
-  const AGG::input_type* from_data = input.template Data<AGG::input_type>();
+  const typename AGG::input_type* from_data = input.template Data<typename AGG::input_type>();
   typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
   int64_t count = output_shape.Size();
 
@@ -404,8 +404,8 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
     int64_t loop;
-    const AGG::input_type* loop_red_ptr;
-    const AGG::input_type* loop_red_ptr_end;
+    const typename AGG::input_type* loop_red_ptr;
+    const typename AGG::input_type* loop_red_ptr_end;
     int64_t current_index = first * last_results.last_loop_size;
     for (int64_t main_index = first; main_index < end; ++main_index) {
       for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
@@ -423,7 +423,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(AGG::input_type) *
+  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
                                     last_results.last_loop_size * last_results.last_loop_red_size),
                            (double)last_results.last_loop_size * last_results.last_loop_red_size,
                            (double)last_results.projected_index.size() * last_results.last_loop_size *
@@ -436,7 +436,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
                              const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
                              ResultsNoTransposePrepareForReduce& last_results) {
   auto output_shape = output->Shape();
-  const AGG::input_type* from_data = input.template Data<AGG::input_type>();
+  const typename AGG::input_type* from_data = input.template Data<typename AGG::input_type>();
   typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
   int64_t count = output_shape.Size();
 
@@ -457,8 +457,8 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
     int64_t loop;
-    const AGG::input_type* loop_red_ptr;
-    const AGG::input_type* loop_red_ptr_end;
+    const typename AGG::input_type* loop_red_ptr;
+    const typename AGG::input_type* loop_red_ptr_end;
     int64_t current_index = first * last_results.last_loop_size;
     for (int64_t main_index = first; main_index < end; ++main_index) {
       for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
@@ -483,7 +483,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(AGG::input_type) *
+  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
                                     last_results.last_loop_size * last_results.last_loop_red_size),
                            (double)last_results.last_loop_size * last_results.last_loop_red_size,
                            (double)last_results.projected_index.size() * last_results.last_loop_size *
@@ -724,7 +724,7 @@ void CommonReduce1Loop(OpKernelContext* ctx,
   if (fast_kind == FastReduceKind::kEmpty) {
     const TensorShape& new_input_shape = input->Shape();
     if (new_input_shape.Size() == 1) {
-      const AGG::input_type* from_data = input->template Data<AGG::input_type>();
+      const typename AGG::input_type* from_data = input->template Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
       agg.update(*from_data);
@@ -755,7 +755,7 @@ void CommonReduce2Loops(OpKernelContext* ctx,
   if (fast_kind == FastReduceKind::kEmpty) {
     const TensorShape& new_input_shape = input->Shape();
     if (new_input_shape.Size() == 1) {
-      const AGG::input_type* from_data = input->template Data<AGG::input_type>();
+      const typename AGG::input_type* from_data = input->template Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->template MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
       agg.update0(*from_data);
