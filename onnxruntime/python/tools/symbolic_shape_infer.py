@@ -1161,6 +1161,8 @@ class SymbolicShapeInference:
             for i in range(len(input_shape)):
                 if i not in axes:
                     output_shape.append(input_shape[i])
+                else:
+                    assert input_shape[i] == 1 or type(input_shape[i]) != int
 
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
