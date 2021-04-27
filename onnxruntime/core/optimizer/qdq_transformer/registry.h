@@ -41,7 +41,7 @@ class QDQRegistry {
 #define QDQ_CREATOR_BUILDER_NAME(op_type, Transformer) Register_##op_type##_qdq_##Transformer
 
 #define DECLARE_QDQ_CREATOR(op_type, Transformer) \
-  std ::pair<std::string, QDQRegistry::QDQTransformerCreator> QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)();
+  std::pair<std::string, QDQRegistry::QDQTransformerCreator> QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)()
 
 #define DEFINE_QDQ_CREATOR(op_type, Transformer)                                                                \
   std::pair<std::string, QDQRegistry::QDQTransformerCreator> QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)() { \
@@ -51,6 +51,6 @@ class QDQRegistry {
   }
 
 #define REGISTER_QDQ_CREATOR(op_type, Transformer) \
-  QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)  \
-  ()
+  QDQ_CREATOR_BUILDER_NAME(op_type, Transformer)()
+
 }  // namespace onnxruntime

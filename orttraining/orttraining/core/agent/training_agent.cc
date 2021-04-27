@@ -38,7 +38,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   bw_program_counter_end_ = exec_plan_vec.size();
 }
 
-TrainingAgent::~TrainingAgent(){};
+TrainingAgent::~TrainingAgent() = default;
 
 common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                          PartialGraphExecutionState& state) {
