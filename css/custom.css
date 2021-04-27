@@ -227,6 +227,19 @@ h3.blue-text{
     font-size:18px;
 }
 
+.alert{
+    background-color: #E6EFF4;
+    color: #000000;
+    border: 0px solid #666666;
+    text-align: center;
+    border-radius: 0%;
+}
+
+.alert a{
+    color: #0F77D2;
+    font-weight: bold;
+}
+
 
 .news:hover{
 background-color:#fff;
