@@ -1162,7 +1162,7 @@ class SymbolicShapeInference:
             if self.verbose_ > 0:
                 symbolic_dimensions = [s for s in input_shape if type(s) != int]
                 if len(symbolic_dimensions) > 0:
-                    print(f"Variable dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
+                    print(f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
                           f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}")
         else:
             axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
@@ -1172,6 +1172,9 @@ class SymbolicShapeInference:
                     output_shape.append(input_shape[i])
                 else:
                     assert input_shape[i] == 1 or type(input_shape[i]) != int
+                    if self.verbose_ > 0 and type(input_shape[i]) != int:
+                        print(f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
+                              f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1.")
 
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
