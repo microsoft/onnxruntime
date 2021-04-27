@@ -302,12 +302,12 @@ class PrePackingTestOpKernel : public OpKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                 AllocatorPtr alloc_for_caching) override {
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
     ORT_UNUSED_PARAMETER(prepacked_weight_for_caching);
-    ORT_UNUSED_PARAMETER(alloc_for_caching);
+    ORT_UNUSED_PARAMETER(alloc);
     is_packed = true;
     return Status::OK();
   }

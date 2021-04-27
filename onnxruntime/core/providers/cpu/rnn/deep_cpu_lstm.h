@@ -19,8 +19,8 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
   DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                 AllocatorPtr alloc_for_caching) override;
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override;
 
   Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                   int input_idx,

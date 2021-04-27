@@ -8,7 +8,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
-#include "core/framework/prepacked_weights_cache.h"
+#include "core/framework/prepacked_weights_container.h"
 
 namespace onnxruntime {
 
@@ -113,7 +113,7 @@ struct SessionOptions {
   // Cache to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session using this session options instance is still in scope.
-  PrepackedWeightsCache* prepacked_weights_cache = nullptr;
+  PrepackedWeightsContainer* prepacked_weights_container = nullptr;
 
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry

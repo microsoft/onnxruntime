@@ -12,8 +12,8 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                 AllocatorPtr alloc_for_caching) override;
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override;
 
   Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                   int input_idx,
@@ -81,36 +81,34 @@ static void UseCachedPrePackedWeights(const PrepackedWeight& cached_prepacked_te
 }
 
 Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                                    /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                                    AllocatorPtr alloc_for_caching) {
+                                    /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                                    AllocatorPtr alloc) {
   is_packed = false;
 
   if (input_idx == 1) {
-    bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
-    AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
 
     ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_, alloc));
 
     if (is_packed && !kernel_owns_prepacked_buffer) {
-      prepacked_weight_for_caching.buffers_.push_back(std::move(packed_W_.buffer_));
-      prepacked_weight_for_caching.shapes_.push_back(packed_W_.shape_);
-      prepacked_weight_for_caching.weights_sizes_.push_back(packed_W_.weights_size_);
-      prepacked_weight_for_caching.flags_.push_back(is_W_signed_);
-      prepacked_weight_for_caching.has_cached_ = true;
-      packed_W_.buffer_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
+      prepacked_weight_for_caching->buffers_.push_back(std::move(packed_W_.buffer_));
+      prepacked_weight_for_caching->shapes_.push_back(packed_W_.shape_);
+      prepacked_weight_for_caching->weights_sizes_.push_back(packed_W_.weights_size_);
+      prepacked_weight_for_caching->flags_.push_back(is_W_signed_);
+      prepacked_weight_for_caching->is_filled_ = true;
+      packed_W_.buffer_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
     }
   } else if (input_idx == 2) {
-    bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
-    AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_, alloc));
 
     if (is_packed && !kernel_owns_prepacked_buffer) {
-      prepacked_weight_for_caching.buffers_.push_back(std::move(packed_R_.buffer_));
-      prepacked_weight_for_caching.shapes_.push_back(packed_R_.shape_);
-      prepacked_weight_for_caching.weights_sizes_.push_back(packed_R_.weights_size_);
-      prepacked_weight_for_caching.flags_.push_back(is_R_signed_);
-      prepacked_weight_for_caching.has_cached_ = true;
-      packed_R_.buffer_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
+      prepacked_weight_for_caching->buffers_.push_back(std::move(packed_R_.buffer_));
+      prepacked_weight_for_caching->shapes_.push_back(packed_R_.shape_);
+      prepacked_weight_for_caching->weights_sizes_.push_back(packed_R_.weights_size_);
+      prepacked_weight_for_caching->flags_.push_back(is_R_signed_);
+      prepacked_weight_for_caching->is_filled_ = true;
+      packed_R_.buffer_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
     }
   }
 
@@ -122,16 +120,14 @@ Status DynamicQuantizeLSTM::UseCachedPrePackedWeight(const PrepackedWeight& cach
                                                      /*out*/ bool& read_from_cache) {
   read_from_cache = false;
 
-  if (cached_prepacked_weight.has_cached_) {
-    if (input_idx == 1) {
-      read_from_cache = true;
-      UseCachedPrePackedWeights(cached_prepacked_weight, packed_W_);
-      is_W_signed_ = cached_prepacked_weight.flags_[0];
-    } else if (input_idx == 2) {
-      read_from_cache = true;
-      UseCachedPrePackedWeights(cached_prepacked_weight, packed_R_);
-      is_R_signed_ = cached_prepacked_weight.flags_[0];
-    }
+  if (input_idx == 1) {
+    read_from_cache = true;
+    UseCachedPrePackedWeights(cached_prepacked_weight, packed_W_);
+    is_W_signed_ = cached_prepacked_weight.flags_[0];
+  } else if (input_idx == 2) {
+    read_from_cache = true;
+    UseCachedPrePackedWeights(cached_prepacked_weight, packed_R_);
+    is_R_signed_ = cached_prepacked_weight.flags_[0];
   }
 
   return Status::OK();

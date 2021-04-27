@@ -1350,10 +1350,14 @@ TEST(CApiTest, TestSharingOfInitializer) {
   Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
   session_options.AddInitializer("W", val);
 
-  OrtPrepackedWeightsCache* prepacked_weights_cache;
-  ASSERT_TRUE(Ort::GetApi().CreatePrepackedWeightsCache(&prepacked_weights_cache) == nullptr);
+  const auto& api = Ort::GetApi();
 
-  ASSERT_TRUE(Ort::GetApi().AddPrepackedWeightsCacheToSessionoptions(session_options, prepacked_weights_cache) == nullptr);
+  OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr;
+  ASSERT_TRUE(api.CreatePrepackedWeightsContainer(&prepacked_weights_container) == nullptr);
+  std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
+      rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
+
+  ASSERT_TRUE(api.AddPrepackedWeightsContainerToSessionoptions(session_options, prepacked_weights_container) == nullptr);
 
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // create session 1
@@ -1375,8 +1379,6 @@ TEST(CApiTest, TestSharingOfInitializer) {
                     expected_dims_y,
                     expected_values_y,
                     nullptr);
-
-  Ort::GetApi().ReleasePrepackedWeightsCache(prepacked_weights_cache);
 }
 
 #ifndef ORT_NO_RTTI

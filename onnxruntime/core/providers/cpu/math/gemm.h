@@ -28,8 +28,8 @@ class Gemm : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                 AllocatorPtr alloc_for_caching) override;
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override;
 
   Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                   int input_idx,

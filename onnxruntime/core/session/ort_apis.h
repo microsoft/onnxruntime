@@ -264,7 +264,7 @@ ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
 
-ORT_API_STATUS_IMPL(CreatePrepackedWeightsCache, _Outptr_ OrtPrepackedWeightsCache** out);
-ORT_API_STATUS_IMPL(AddPrepackedWeightsCacheToSessionoptions, _Inout_ OrtSessionOptions* options, _In_ OrtPrepackedWeightsCache* prepacked_weights_cache);
-ORT_API(void, ReleasePrepackedWeightsCache, _Frees_ptr_opt_ OrtPrepackedWeightsCache*);
+ORT_API_STATUS_IMPL(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
+ORT_API_STATUS_IMPL(AddPrepackedWeightsContainerToSessionoptions, _Inout_ OrtSessionOptions* options, _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+ORT_API(void, ReleasePrepackedWeightsContainer, _Frees_ptr_opt_ OrtPrepackedWeightsContainer*);
 }  // namespace OrtApis

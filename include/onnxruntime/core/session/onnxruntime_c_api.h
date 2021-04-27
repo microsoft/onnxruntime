@@ -170,7 +170,7 @@ ORT_RUNTIME_CLASS(ModelMetadata);
 ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
-ORT_RUNTIME_CLASS(PrepackedWeightsCache);
+ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -1279,21 +1279,21 @@ struct OrtApi {
                   _Out_ int64_t* out, _Inout_ size_t* size);
 
   /*
-     * Creates an OrtPrepackedWeightsCache instance
+     * Creates an OrtPrepackedWeightsContainer instance
     */
-  ORT_API2_STATUS(CreatePrepackedWeightsCache, _Outptr_ OrtPrepackedWeightsCache** out);
+  ORT_API2_STATUS(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
 
   /*
-     * Add an OrtPrepackedWeightsCache instance to an OrtSessionOptions instance.
+     * Add an OrtPrepackedWeightsContainer instance to an OrtSessionOptions instance.
     */
-  ORT_API2_STATUS(AddPrepackedWeightsCacheToSessionoptions, _Inout_ OrtSessionOptions* options,
-                  _In_ OrtPrepackedWeightsCache* prepacked_weights_cache);
+  ORT_API2_STATUS(AddPrepackedWeightsContainerToSessionoptions, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 
   /*
-     * Release OrtPrepackedWeightsCache instance
-     *  Note: The OrtPrepackedWeightsCache instance must not be released until the sessions using it are released
+     * Release OrtPrepackedWeightsContainer instance
+     *  Note: The OrtPrepackedWeightsContainer instance must not be released until the sessions using it are released
     */
-  ORT_CLASS_RELEASE(PrepackedWeightsCache);
+  ORT_CLASS_RELEASE(PrepackedWeightsContainer);
 };
 
 /*

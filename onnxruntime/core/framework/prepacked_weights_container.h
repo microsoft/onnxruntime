@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-struct PrepackedWeight {
+struct PrepackedWeight final {
   // Some weights may be associated with multiple pre-packed buffers.
   // Hence we hold them in containers. It is upto the developer implementing each PrePack()
   // method to define what gets stored in which position of the containers.
@@ -24,16 +24,16 @@ struct PrepackedWeight {
   std::vector<TensorShape> shapes_;                            // cache tensor shapes associates with pre-packed buffers
   std::vector<bool> flags_;                                    // cache some flags associated with the pre-packed buffers
 
-  bool has_cached_ = false;
+  bool is_filled_ = false;  // By default, an instance of this class is "unfilled"
 };
 
 // TODO: Make this class thread-safe ?
-class PrepackedWeightsCache {
+class PrepackedWeightsContainer final {
  public:
-  PrepackedWeightsCache() {
+  PrepackedWeightsContainer() {
   }
 
-  ~PrepackedWeightsCache() = default;
+  ~PrepackedWeightsContainer() = default;
 
   AllocatorPtr GetAllocator(const std::string& device_name);
 
@@ -43,7 +43,7 @@ class PrepackedWeightsCache {
 
   bool HasCachedWeight(const std::string& initializer_name);
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsCache);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);
 
  private:
   // Define allocators ahead of the container containing tensors because the allocators

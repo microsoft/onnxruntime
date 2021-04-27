@@ -23,8 +23,8 @@ class Attention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                 AllocatorPtr alloc_for_caching) override;
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override;
 
   Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
                                   int input_idx,
@@ -206,8 +206,8 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool& is_packed,
-                             /*out*/ PrepackedWeight& prepacked_weight_for_caching,
-                             AllocatorPtr alloc_for_caching) {
+                             /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                             AllocatorPtr alloc) {
   is_packed = false;
 
   if (1 != input_idx) {
@@ -237,8 +237,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool&
     return Status::OK();
   }
 
-  bool kernel_owns_prepacked_buffer = (alloc_for_caching == nullptr);
-  AllocatorPtr alloc = kernel_owns_prepacked_buffer ? Info().GetAllocator(0, OrtMemTypeDefault) : alloc_for_caching;
+  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
 
   const size_t loop_len = static_cast<size_t>(3) * num_heads_;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
@@ -251,11 +250,11 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool&
   }
 
   if (!kernel_owns_prepacked_buffer) {
-    prepacked_weight_for_caching.buffers_.push_back(std::move(packed_weights_));
-    prepacked_weight_for_caching.shapes_.push_back(weight_shape_);
-    prepacked_weight_for_caching.weights_sizes_.push_back(packed_weights_size_);
-    prepacked_weight_for_caching.has_cached_ = true;
-    packed_weights_ = BufferUniquePtr(prepacked_weight_for_caching.buffers_[0].get(), BufferDeleter(nullptr));
+    prepacked_weight_for_caching->buffers_.push_back(std::move(packed_weights_));
+    prepacked_weight_for_caching->shapes_.push_back(weight_shape_);
+    prepacked_weight_for_caching->weights_sizes_.push_back(packed_weights_size_);
+    prepacked_weight_for_caching->is_filled_ = true;
+    packed_weights_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
   }
 
   is_packed = true;
@@ -272,13 +271,10 @@ Status Attention<T>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prep
     return Status::OK();
   }
 
-  // Cached pre-packed weight
-  if (cached_prepacked_weight.has_cached_) {
-    read_from_cache = true;
-    weight_shape_ = cached_prepacked_weight.shapes_[0];
-    packed_weights_size_ = cached_prepacked_weight.weights_sizes_[0];
-    packed_weights_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-  }
+  read_from_cache = true;
+  weight_shape_ = cached_prepacked_weight.shapes_[0];
+  packed_weights_size_ = cached_prepacked_weight.weights_sizes_[0];
+  packed_weights_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
 
   return Status::OK();
 }
