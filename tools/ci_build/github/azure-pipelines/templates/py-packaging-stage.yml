@@ -557,37 +557,8 @@ stages:
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
           workingDirectory: $(Build.SourcesDirectory)
 
-      #  TODO: without run_dockerbuild (build.py instead), /build/RelWithDebInfo/ is not available after build.py step. need to find a way to do module test within packaging pipeline
-      # - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
-      #   displayName: 'Mount MNIST'
-      #   condition: succeededOrFailed()
-
-      # - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
-      #   displayName: 'Mount bert-data'
-      #   condition: succeededOrFailed()
-
-      # - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-      #   displayName: 'Mount hf-models-cache'
-      #   condition: succeededOrFailed()
-
-      #   # Entry point for all ORTModule tests
-      # - script: |
-      #     docker run \
-      #       --gpus all \
-      #       --shm-size=1024m \
-      #       --rm \
-      #       --volume $(Build.SourcesDirectory):/onnxruntime_src \
-      #       --volume $(Build.BinariesDirectory):/build \
-      #       --volume /mnist:/mnist \
-      #       --volume /bert_data:/bert_data \
-      #       --volume /hf_models_cache:/hf_models_cache \
-      #       onnxruntimetraininggpubuild \
-      #         /build/RelWithDebInfo/launch_test.py \
-      #           --cmd_line_with_args "python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers" \
-      #           --cwd /build/RelWithDebInfo \
-      #   displayName: 'Run orttraining_ortmodule_tests.py'
-      #   condition: succeededOrFailed()
-      #   timeoutInMinutes: 60
+      # TODO: run ortmodule test.
+      # without run_dockerbuild (build.py instead), /build/RelWithDebInfo/ is not available after build.py step. need to find a way to do module test within packaging pipeline
   
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
