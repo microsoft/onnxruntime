@@ -971,7 +971,7 @@ void RunInParallelInternal(PerThread& pt,
       // end of a parallel section to disambiguate whether a revoked
       // task is the dispatcher (dispatch_started==false) or a task
       // created below (hence dispatch_started==true).
-      ps.dispatch_started.store(true, std::memory_order_acq_rel); 
+      ps.dispatch_started.store(true, std::memory_order_seq_cst);
       for (auto i = 1u; i < extra_needed; ++i) {
         // Use preferred hints from the worker threads that ran the
         // previous loop from this thread.  Note that the hints may have
