@@ -1494,6 +1494,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
                 ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
               }
             }
+          } else {
+            if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                resolve_context_.inputs_and_initializers.cend()) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid model. Node input '", input_arg_name,
+                                     "' is not a graph input, initializer, or output of a previous node.");
+            }
           }
         }
       }

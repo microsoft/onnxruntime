@@ -446,8 +446,8 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 }
 
 // Tests the case where function op and function body ops belong to different domains.
-// Tests that such a model can be loaded successfully, function body initialization is 
-// successful and domain and verison mapping for each node is successful (by verifying 
+// Tests that such a model can be loaded successfully, function body initialization is
+// successful and domain and verison mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -1806,5 +1806,33 @@ TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
       << "expected new output sum_with_z";
 }
+
+TEST_F(GraphTest, LoadModelMissingInput) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  ImportOpset(m, "", 13);
+  GraphProto& g = *m.mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_input() = "y";
+  *node->add_output() = "z";
+  node->set_op_type("Reshape");
+  node->set_domain("");
+
+  // add 'x' and a graph input but not 'y'
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {4});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("x");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {2, 2});
+
+  std::shared_ptr<Model> model;
+  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
+  ASSERT_FALSE(st.IsOK());
+  ASSERT_THAT(st.ErrorMessage(), testing::HasSubstr("Invalid model. Node input 'y' is not a graph input, "
+                                                    "initializer, or output of a previous node."));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
