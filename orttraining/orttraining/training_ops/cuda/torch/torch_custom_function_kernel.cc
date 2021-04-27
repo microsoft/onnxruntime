@@ -46,10 +46,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
 
-  auto log_func = [&](const char* msg) {
-    std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
-    //LOGS_DEFAULT(WARNING) << msg << std::endl;
-  };
+  //auto log_func = [&](const char* msg) {
+  //  std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
+  //  //LOGS_DEFAULT(WARNING) << msg << std::endl;
+  //};
 
   std::vector<void*> const_args;
   std::vector<int64_t> const_arg_positions;
@@ -126,21 +126,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
-  {
-    auto callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForward("Foo");
-    PyOpLibProxy::GetInstance().InvokePythonFunction(callback);
-  }
 
-  if (name_ == "GeLUFunction" || name_ == "FusedLayerNormAffineFunction") {
-    std::cout << "[torch_kernel.cc] Try my kernel!!!!!!!!!!!! " << name_ << std::endl;
-    void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-    PyOpLibProxy::GetInstance().InvokeForward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
-  } else {
-    std::cout << "[torch_kernel.cc] Try old kernel!!!!!!!!!!!! " << name_ << std::endl;
-    ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "compute", inputs, arg_positions, outputs,
-                                                                     log_func, const_args, const_arg_positions),
-                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
-  }
+  void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
+  PyOpLibProxy::GetInstance().InvokeForward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
 
   PyOpLibProxy::GetInstance()
       .PutGil(state);
@@ -219,10 +207,10 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
 
-  auto log_func = [&](const char* msg) {
-    std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
-    //LOGS_DEFAULT(WARNING) << msg << std::endl;
-  };
+  //auto log_func = [&](const char* msg) {
+  //  std::cout << "InvokePythonAutoGradFunc logging:" << msg << std::endl;
+  //  //LOGS_DEFAULT(WARNING) << msg << std::endl;
+  //};
 
   std::cout << "context_address_value_ptr got within PythonOpGrad::Compute:" << reinterpret_cast<void*>(ctx_ptr) << std::endl;
   //int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
@@ -244,16 +232,8 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::cout << "[torch_kernel.cc] " << Node().Name() << " ctx_ptr " << ctx_ptr << std::endl;
   auto state = PyOpLibProxy::GetInstance().GetGil();
 
-  if (name_ == "GeLUFunction" || name_ == "FusedLayerNormAffineFunction") {
-    std::cout << "[torch_kernel.cc] Try my kernel!!!!!!!!!!!! " << name_ << std::endl;
-    void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
-    PyOpLibProxy::GetInstance().InvokeBackward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
-  } else {
-    std::cout << "[torch_kernel.cc] Try old kernel!!!!!!!!!!!! " << name_ << std::endl;
-    ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonAutoGradFunc(instance_, "backward_compute", inputs, arg_positions, outputs,
-                                                                     log_func, const_args, const_arg_positions),
-                PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
-  }
+  void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
+  PyOpLibProxy::GetInstance().InvokeBackward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
 
   PyOpLibProxy::GetInstance().PutGil(state);
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
