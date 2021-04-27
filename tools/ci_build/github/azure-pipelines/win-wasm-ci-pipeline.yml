@@ -58,15 +58,15 @@ jobs:
       arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
-    - script: |
-       copy $(Build.BinariesDirectory)/$(BuildConfig)/$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts'
+  - script: |
+      copy $(Build.BinariesDirectory)/$(BuildConfig)/$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        artifactName: '$(BuildConfig)_$(WasmFileName)'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '$(BuildConfig)_$(WasmFileName)'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
