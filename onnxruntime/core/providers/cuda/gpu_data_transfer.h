@@ -26,7 +26,6 @@ class GPUDataTransfer : public IDataTransfer {
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-  // common::Status CopyTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const override;
 
   cudaStream_t GetStream(int queue_id) const {
     ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);

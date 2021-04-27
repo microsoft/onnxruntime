@@ -32,7 +32,7 @@ class SparseCooFomatRep : public SparseRep {
   Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
               int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const override;
 
-  Status Copy(const AllocatorPtr& allocator, std::unique_ptr<SparseRep>& dst_rep) const override;
+  Status Copy(const IDataTransfer& data_transfer, const AllocatorPtr& allocator, int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const override;
 
  private:
   Tensor indices_;  // may be 1-D or 2-D.

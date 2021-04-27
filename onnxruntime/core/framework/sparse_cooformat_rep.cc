@@ -15,9 +15,9 @@ Status SparseCooFomatRep::Copy(const DataTransferManager& data_transfer_manager,
   return Status::OK();
 }
 
-Status SparseCooFomatRep::Copy(const AllocatorPtr& allocator, std::unique_ptr<SparseRep>& dst_rep) const {
+Status SparseCooFomatRep::Copy(const IDataTransfer& data_transfer, const AllocatorPtr& allocator, int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const {
   auto rep_copy = make_unique<SparseCooFomatRep>(indices_.Shape(), allocator);
-  memcpy(rep_copy->MutableIndices().MutableDataRaw(), indices_.DataRaw(), indices_.SizeInBytes());
+  data_transfer.CopyTensor(rep_copy->Indices(), rep_copy->MutableIndices(), exec_q_id);
   dst_rep = std::move(rep_copy);
   return Status::OK();
 }

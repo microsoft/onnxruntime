@@ -127,6 +127,24 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   return Status::OK();
 }
 
+static common::Status AllocateHelper(const AllocatorPtr& allocator,
+                                     const SparseTensor& fetched_tensor, OrtValue& output_mlvalue) {
+  if (!allocator) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
+  }
+
+  auto p_tensor = onnxruntime::make_unique<SparseTensor>(fetched_tensor.DataType(),
+                                                                            fetched_tensor.Shape(),
+                                                                            fetched_tensor.NumValues(),
+                                                                            allocator);
+  auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
+  output_mlvalue.Init(p_tensor.release(),
+                      ml_tensor,
+                      ml_tensor->GetDeleteFunc());
+
+  return Status::OK();
+}
+
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) {
   // the input index will be std::numeric_limits<size_t>::max() if it's an implicit input to a control flow node.
   // the input will be processed fully when executing the subgraph that consumes the implicit input.
@@ -550,7 +568,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state) {
-
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
   PartialExecutor executor{state};

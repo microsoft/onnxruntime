@@ -9,6 +9,7 @@
 
 namespace onnxruntime {
 
+class IDataTransfer;
 class DataTransferManager;
 
 /**
@@ -65,7 +66,7 @@ class SparseRep {
   virtual Status Copy(const DataTransferManager& data_transfer_manager, const AllocatorPtr& allocator,
                       int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const = 0;
 
-  virtual Status Copy(const AllocatorPtr& allocator, std::unique_ptr<SparseRep>& dst_rep) const = 0;
+  virtual Status Copy(const IDataTransfer& data_transfer, const AllocatorPtr& allocator, int exec_q_id, std::unique_ptr<SparseRep>& dst_rep) const = 0;
 
  private:
 };
@@ -221,7 +222,7 @@ class SparseTensor final {
   /// </summary>
   /// <param name="dst_tensor"></param>
   /// <returns></returns>
-  Status Copy(SparseTensor& dst_tensor) const;
+  Status Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor, int exec_q_id) const;
   
 
  private:
