@@ -38,6 +38,7 @@
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
+  * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
   * <a href="#com.microsoft.QLinearConv">com.microsoft.QLinearConv</a>
   * <a href="#com.microsoft.QLinearGlobalAveragePool">com.microsoft.QLinearGlobalAveragePool</a>
   * <a href="#com.microsoft.QLinearLeakyRelu">com.microsoft.QLinearLeakyRelu</a>
@@ -56,6 +57,7 @@
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
 * com.microsoft.nchwc
   * <a href="#com.microsoft.nchwc.AveragePool">com.microsoft.nchwc.AveragePool</a>
   * <a href="#com.microsoft.nchwc.Conv">com.microsoft.nchwc.Conv</a>
@@ -1822,6 +1824,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.QLinearConcat"></a><a name="com.microsoft.qlinearconcat">**com.microsoft.QLinearConcat**</a>
+
+  Concatenate a list of tensors into a single tensor.All input tensors must have the same shape, except for the dimension size of the axis to concatenate on.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int (required)</dt>
+<dd>Which axis to concat on</dd>
+</dl>
+
+#### Inputs (3 - &#8734;)
+
+<dl>
+<dt><tt>Y_scale</tt> : TF</dt>
+<dd>Y's scale.</dd>
+<dt><tt>Y_zero_point</tt> : T8</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : TV</dt>
+<dd>List of tensors/scale/zero_point for concatenation</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T8</dt>
+<dd>Concatenated tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T8</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain scale types to any float tensor type.</dd>
+<dt><tt>TV</tt> : tensor(uint8), tensor(int8), tensor(float)</dt>
+<dd>Sequence of (Tensor, Scale, ZeroPoint) tuples. The type is sequence of (T8, TF, T8).</dd>
+</dl>
+
+
 ### <a name="com.microsoft.QLinearConv"></a><a name="com.microsoft.qlinearconv">**com.microsoft.QLinearConv**</a>
 
 #### Version
@@ -2673,6 +2720,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <sub>experimental</sub> <a name="com.microsoft.IsAllFinite"></a><a name="com.microsoft.isallfinite">**com.microsoft.IsAllFinite**</a>
+
+  IsAllFinite
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>isinf_only</tt> : int</dt>
+<dd>If true, check only for Inf, -Inf.</dd>
+<dt><tt>isnan_only</tt> : int</dt>
+<dd>If true, check only for NaN.</dd>
+</dl>
+
+#### Inputs (1 - &#8734;)
+
+<dl>
+<dt><tt>input</tt> (variadic) : V</dt>
+<dd>Input tensors to check.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>The output scalar. Its value is true if all input tensors are finite. Otherwise, the output value would be false.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>V</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T</tt> : tensor(bool)</dt>
+<dd>Constrain the output to a boolean tensor.</dd>
+</dl>
+
+
 ## com.microsoft.nchwc
 ### <a name="com.microsoft.nchwc.AveragePool"></a><a name="com.microsoft.nchwc.averagepool">**com.microsoft.nchwc.AveragePool**</a>
 
@@ -2896,6 +2983,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft.nchwc' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>channels_last</tt> : int</dt>
+<dd></dd>
+</dl>
 
 #### Inputs
 
