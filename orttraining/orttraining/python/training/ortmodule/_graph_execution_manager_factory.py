@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._ortmodule_training_manager import TrainingManager
-from ._ortmodule_inference_manager import InferenceManager
+from ._training_manager import TrainingManager
+from ._inference_manager import InferenceManager
 
 
 class GraphExecutionManagerFactory(object):
