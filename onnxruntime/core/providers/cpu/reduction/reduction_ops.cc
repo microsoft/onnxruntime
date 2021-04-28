@@ -242,7 +242,7 @@ bool ResultsNoTransposePrepareForReduce::equal(const std::vector<int64_t>& local
   return true;
 }
 
-void ResultsNoTransposePrepareForReduce::OrtEnforceNotEmpty() {
+void ResultsNoTransposePrepareForReduce::ValidateNotEmpty() {
   ORT_ENFORCE(last_loop_red_size > 0);
   ORT_ENFORCE(last_loop_size > 0);
   ORT_ENFORCE(projected_index.size() > 0);
@@ -252,28 +252,28 @@ static void OrtEnforceMustBeOverloaded() {
   ORT_ENFORCE(false, "must be overloaded.");
 }
 
-void OrtEnforce_ReduceAggregatorKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforceReduceAggregatorBaseKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void OrtEnforce_ReduceAggregatorRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforceReduceAggregatorBaseRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void OrtEnforce_ReduceAggregatorKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void OrtEnforceReduceAggregatorBaseKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void _ReduceAggregator::FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+void ReduceAggregatorBase::FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   OrtEnforceMustBeOverloaded();
 }
-void _ReduceAggregator::FastReduceRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+void ReduceAggregatorBase::FastReduceRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   OrtEnforceMustBeOverloaded();
 }
-void _ReduceAggregator::FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   OrtEnforceMustBeOverloaded();
 }
 
@@ -405,7 +405,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
     if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
-  last_results.OrtEnforceNotEmpty();
+  last_results.ValidateNotEmpty();
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
@@ -458,7 +458,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
     if (last_results.last_loop_red_size == 0 || last_results.last_loop_size == 0)
       return;
   }
-  last_results.OrtEnforceNotEmpty();
+  last_results.ValidateNotEmpty();
   int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {

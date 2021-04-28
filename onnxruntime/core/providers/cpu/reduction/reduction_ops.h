@@ -17,11 +17,11 @@
 namespace onnxruntime {
 
 /* Common verficiations. */
-void OrtEnforce_ReduceAggregatorKR(const std::vector<int64_t>& fast_shape, const Tensor& output);
-void OrtEnforce_ReduceAggregatorRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
-void OrtEnforce_ReduceAggregatorKRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
+void ValidateReduceAggregatorBaseKR(const std::vector<int64_t>& fast_shape, const Tensor& output);
+void ValidateReduceAggregatorBaseRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
+void ValidateReduceAggregatorBaseKRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
 
-typedef enum class FastReduceKind : uint8_t {
+enum FastReduceKind {
   kNone = 0,   // no fast implementation
   kK = 1,      // kept dim = no reduce
   kR = 2,      // reduced dim = all reduced
@@ -29,7 +29,7 @@ typedef enum class FastReduceKind : uint8_t {
   kRK = 8,     // reduced dim, kept dim
   kKRK = 16,   // kept dim, reduced dim, kept dim
   kEmpty = 32  // empty reduce
-} FastReduceKind;
+};
 
 FastReduceKind operator|(FastReduceKind a, FastReduceKind b);
 
@@ -80,7 +80,7 @@ class ResultsNoTransposePrepareForReduce {
   }
 
   bool equal(const std::vector<int64_t>& local_input_shape, const std::vector<int64_t>& local_reduced_axes);
-  void OrtEnforceNotEmpty();
+  void ValidateNotEmpty();
 };
 
 template <typename T>
@@ -144,7 +144,7 @@ inline bool reduce_isnan<int64_t>(int64_t) { return false; }
 
 TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size);
 
-class _ReduceAggregator {
+class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
   static inline FastReduceKind WhichFastReduce() { return FastReduceKind::kNone; }
@@ -154,7 +154,7 @@ class _ReduceAggregator {
 };
 
 template <typename T, typename TVAL = T>
-class ReduceAggregator : public _ReduceAggregator {
+class ReduceAggregator : public ReduceAggregatorBase {
  public:
   typedef T input_type;
   typedef TVAL value_type;
@@ -190,7 +190,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKR(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -205,7 +205,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseRK(fast_shape, output);
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -224,7 +224,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKRK(fast_shape, output);
     int64_t N = fast_shape[2];
     const T* data = input.Data<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
@@ -319,7 +319,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKR(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -335,7 +335,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseRK(fast_shape, output);
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
@@ -357,7 +357,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKRK(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
@@ -481,7 +481,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKR(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -497,7 +497,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseRK(fast_shape, output);
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
@@ -519,7 +519,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    OrtEnforce_ReduceAggregatorKRK(fast_shape, output);
+    OrtEnforceReduceAggregatorBaseKRK(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
