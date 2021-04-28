@@ -279,6 +279,31 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   test.Run();
 }
 
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{2.0f, 4.0f};
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+  const int64_t H = 2, W = 2;
+  std::vector<uint8_t> X = {1, 3,
+                            4, 8};
+
+  test.AddInput<uint8_t>("X", {H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<uint8_t> Y = {
+      1, 1, 2, 2, 2, 2, 3, 3,
+      2, 2, 3, 3, 4, 4, 4, 5,
+      3, 3, 4, 4, 5, 5, 6, 6,
+      4, 5, 5, 6, 6, 7, 7, 8};
+
+  test.AddOutput<uint8_t>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};

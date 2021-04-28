@@ -28,6 +28,16 @@ REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
+template<typename T, typename std::enable_if<std::is_floating_point<T>::value>::type* = nullptr> 
+T rounding_cast(float f) {
+    return static_cast<T>(f);
+}
+
+template<typename T, typename std::enable_if<std::is_integral<T>::value>::type* = nullptr> 
+T rounding_cast(float f) {
+    return static_cast<T>(std::nearbyint(f));
+}
+
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
                        int64_t num_channels,
@@ -104,7 +114,7 @@ Status UpsampleNearest(const T* input,
       int64_t input_dim0_inx = get_nearest_pixel(original_0_idx, scales[0] < 1);
       if (input_dim0_inx > input_shape[0] - 1) input_dim0_inx = input_shape[0] - 1;
       if (input_dim0_inx < 0) input_dim0_inx = 0;
-      output[output_idx++] = use_extrapolation_value[0] ? static_cast<T>(extrapolation_value) : input[input_dim0_inx];
+      output[output_idx++] = use_extrapolation_value[0] ? rounding_cast<T>(extrapolation_value) : input[input_dim0_inx];
     }
     return Status::OK();
   }
@@ -145,7 +155,7 @@ Status UpsampleNearest(const T* input,
       int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
-        output[output_idx++] = (input_idx_1 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_1];
+        output[output_idx++] = (input_idx_1 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_1];
       }
     }
     return Status::OK();
@@ -164,7 +174,7 @@ Status UpsampleNearest(const T* input,
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
           int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
-          output[output_idx++] = (input_idx_2 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_2];
+          output[output_idx++] = (input_idx_2 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_2];
         }
       }
     }
@@ -192,7 +202,7 @@ Status UpsampleNearest(const T* input,
           int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
           for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
             int64_t input_idx_3 = input_idx_2 + input_mapping_3[output_dim3_inx];
-            output[output_idx++] = (input_idx_3 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_3];
+            output[output_idx++] = (input_idx_3 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_3];
           }
         }
       }
@@ -212,7 +222,7 @@ Status UpsampleNearest(const T* input,
   }
 
   for (int64_t output_size = output_shape.Size(); output_idx < output_size; output_idx++) {
-    output[output_idx] = (input_idx < 0) ? static_cast<T>(extrapolation_value) : input[input_idx];
+    output[output_idx] = (input_idx < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx];
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
       input_idx -= input_mappings[dim_idx][output_dim_counter[dim_idx]];
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
@@ -420,7 +430,7 @@ void UpsampleBilinear(int64_t batch_size,
                                                         if (use_extrapolation &&
                                                             ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
                                                              (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-                                                          Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
+                                                          Ydata[output_width * y + x] = rounding_cast<T>(extrapolation_value);
                                                           continue;
                                                         }
 
@@ -429,7 +439,7 @@ void UpsampleBilinear(int64_t batch_size,
                                                         T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
                                                         T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
 
-                                                        Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                        Ydata[output_width * y + x] = rounding_cast<T>(dx2[x] * dy2[y] * X11 +
                                                                                                      dx1[x] * dy2[y] * X21 +
                                                                                                      dx2[x] * dy1[y] * X12 +
                                                                                                      dx1[x] * dy1[y] * X22);
@@ -603,7 +613,7 @@ void UpsampleTrilinear(int64_t batch_size,
                                                                (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
                                                                (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
                                                             Ydata[output_width * output_height * z + output_width * y + x] =
-                                                                static_cast<T>(extrapolation_value);
+                                                                rounding_cast<T>(extrapolation_value);
                                                             continue;
                                                           }
 
@@ -619,7 +629,7 @@ void UpsampleTrilinear(int64_t batch_size,
                                                           T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
 
                                                           Ydata[output_width * output_height * z + output_width * y + x] =
-                                                              static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
+                                                              rounding_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
                                                                              dx1[x] * dy2[y] * dz2[z] * X211 +
                                                                              dx2[x] * dy1[y] * dz2[z] * X121 +
                                                                              dx1[x] * dy1[y] * dz2[z] * X221 +
@@ -826,7 +836,7 @@ void ResizeBiCubic(
             result += x_interpolation_result * coeff_y[i] / y_coeff_sum;
           }
 
-          Ydata[y * output_width + x] = static_cast<T>(result);
+          Ydata[y * output_width + x] = rounding_cast<T>(result);
         }
       }
 
