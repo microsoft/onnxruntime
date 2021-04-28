@@ -1,5 +1,5 @@
 jobs:
-- job: 'build WASM'
+- job: build_WASM
   pool: 'Win-CPU-2019'
   strategy:
     maxParallel: 4
@@ -83,7 +83,8 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-- job: 'build ort-web'
+- job: build_onnxruntime-web
+  dependsOn: build_WASM
   pool: 'yulongw-test'
   timeoutInMinutes: 120
   workspace:
