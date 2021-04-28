@@ -248,6 +248,14 @@
         18128921553709069152
     ],
     [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        13094179255141648608
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        17832136363477464736
+    ],
+    [
         "BitShift ai.onnx CPUExecutionProvider",
         4758677670685660688
     ],

@@ -83,8 +83,8 @@ class BatchNorm : public OpKernel {
     ORT_ENFORCE(!is_train_ || ((!saved_mean && !saved_inv_std) || (saved_mean && saved_inv_std)), "Invalid number of outputs for BN training");
     Tensor saved_mean_allocated, saved_inv_std_allocated;
     if (is_train_ && !saved_mean) {
-      saved_mean_allocated = std::move(Tensor(DataTypeImpl::GetType<T>(), mean->Shape(), alloc));
-      saved_inv_std_allocated = std::move(Tensor(DataTypeImpl::GetType<T>(), var->Shape(), alloc));
+      saved_mean_allocated = Tensor(DataTypeImpl::GetType<T>(), mean->Shape(), alloc);
+      saved_inv_std_allocated = Tensor(DataTypeImpl::GetType<T>(), var->Shape(), alloc);
       saved_mean = &saved_mean_allocated;
       saved_inv_std = &saved_inv_std_allocated;
     }
