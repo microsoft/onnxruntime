@@ -934,10 +934,28 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 // submitting work to just one pool, but allow for the pool to
 // change over time.  Hence we allow the hints vector to grow over
 // time.
+//
+//
+// A note on terminology used in the variable names here:
+//
+// dop - degree of parallelism, as seen by the user.  For instance
+//       dop=4 means 4 threads in total: 1 main thread that enters the
+//       loop, plus 1 dispatcher thread, plus 2 additional worker
+//       threads.
+//
+// par_idx - a thread's index within the loop, in the range [0,dop).
+//
+// num_threads_ - the number of worker threads in the thread pool.  A
+//       loop with dop=4 will be common on a pool with 3 threads
+//       (given that the main thread will also participate).
+//
+// q_idx - a worker queue index, in the range [0,num_threads_).
  
 void InitializePreferredWorkers(std::vector<int> &preferred_workers) {
   static std::atomic<unsigned> next_worker;
-  while (preferred_workers.size() < num_threads_+1) {
+  // preferred_workers maps from a par_idx to a q_idx, hence we
+  // initialize slots in the range [0,num_threads_]
+  while (preferred_workers.size() <= num_threads_) {
     preferred_workers.push_back(next_worker++ % num_threads_);
   }
 }
@@ -1019,21 +1037,6 @@ void ScheduleOnPreferredWorkers(PerThread& pt,
 // be selected as the dispatcher that distributes tasks.  This removes
 // the O(n) work off the critical path of starting the first loop
 // iteration, helping maintain good performance on very short loops.
-//
-// A note on terminology used in the variable names here:
-//
-// dop - degree of parallelism, as seen by the user.  For instance
-//       dop=4 means 4 threads in total: 1 main thread that enters the
-//       loop, plus 1 dispatcher thread, plus 2 additional worker
-//       threads.
-//
-// par_idx - a thread's index within the loop, in the range [0,dop). 
-//
-// num_threads_ - the number of worker threads in the thread pool.  A
-//       loop with dop=4 will be common on a pool with 3 threads
-//       (given that the main thread will also participate).
-//
-// q_idx - a worker queue index, in the range [0,num_threads_).
 
 void RunInParallelInternal(PerThread& pt,
                            ThreadPoolParallelSection& ps,
@@ -1091,13 +1094,13 @@ void RunInParallelInternal(PerThread& pt,
       } else {
         ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
       }
+      profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
     } else {
       // Synchronous dispatch
       ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop, new_dop, std::move(worker_fn));
     }
     ps.current_dop = new_dop;
   }
-  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
 }
 
 // Run a single parallel loop in an existing parallel section.  This
