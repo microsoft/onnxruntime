@@ -38,6 +38,8 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+#include <iostream>
+
 // ORT thread pool overview
 // ------------------------
 //
@@ -306,7 +308,13 @@ class ThreadPoolParallelSection {
 
   // Tasks successfully submitted to the work queues.  This sets the
   // maximum degree of parallelism that the section will support.
-  std::vector<std::pair<int,unsigned>> tasks;
+
+  struct task_log {
+    int q_idx{0};
+    unsigned w_idx{0};
+    int share{0};
+  };
+  std::vector<task_log> tasks;
 
   // State shared between the main thread and worker threads
   // -------------------------------------------------------
@@ -349,7 +357,7 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-template <typename Elem, int32_t Capacity, int32_t Base = 16>
+template <typename Elem, int32_t Capacity, int32_t Base = 64>
 class RunQueue {
  public:
   RunQueue() {
@@ -360,60 +368,60 @@ class RunQueue {
     assert(Empty());
   }
   Elem Push(Elem e, size_t tag, unsigned& at, int32_t count = 1) {
-    if (Size() < Capacity) {
+    if (count > 0 && Size() < Capacity) {
       int32_t base = base_.load(std::memory_order_relaxed);
       for (int32_t i = 0; i < base; i++) {
         Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-        if (State::empty == signature.state_) {
-          if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
-            slots_[i].elem_ = std::move(e);
-            slots_[i].count_ = count;
-            size_.fetch_add(1, std::memory_order_relaxed);
-            at = i;
-            slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
-            return {};
-          }
+        if (State::empty == signature.state_ &&
+            slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0, 0}, std::memory_order_relaxed)) {
+          slots_[i].elem_ = std::move(e);
+          at = i;
+          slots_[i].signature_.store({State::ready, tag, count}, std::memory_order_release);
+          size_.fetch_add(1, std::memory_order_relaxed);
+          return {};
         }
       }
+      /*
       int32_t doubled_base = base << 1;
       if (base < Capacity && base_.compare_exchange_weak(base, doubled_base, std::memory_order_relaxed)) {
         for (int32_t i = base; i < doubled_base; i++) {
           Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
           if (State::empty == signature.state_) {
-            if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, tag}, std::memory_order_relaxed)) {
+            if (slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0, 0}, std::memory_order_relaxed)) {
               slots_[i].elem_ = std::move(e);
-              slots_[i].count_ = count;
               size_.fetch_add(1, std::memory_order_relaxed);
               at = i;
-              slots_[i].signature_.store({State::ready, tag}, std::memory_order_release);
+              slots_[i].signature_.store({State::ready, tag, count}, std::memory_order_release);
               return {};
             }
           }
         }
-      }
+      }*/
     }
     return e;
   }
   Elem Pop() {
     if (!Empty()) {
       int32_t base = base_.load(std::memory_order_relaxed);
-      int32_t half_base = base >> 1;
+      //int32_t half_base = base >> 1;
       for (int32_t i = base - 1; i > -1; i--) {
-        Signature signature = slots_[i].signature_.load(std::memory_order_relaxed);
-        if (State::ready == signature.state_) {
-          if (slots_[i].signature_.compare_exchange_weak(signature, {State::unloading, signature.tag_}, std::memory_order_acquire)) {
-            Elem e = slots_[i].elem_;
-            if (0 == --slots_[i].count_) {
-              size_.fetch_sub(1, std::memory_order_relaxed);
-              slots_[i].signature_.store({State::empty, 0}, std::memory_order_release);
+        Signature signature = slots_[i].signature_;//.load(std::memory_order_acquire);
+        if (State::ready == signature.state_ &&
+            slots_[i].signature_.compare_exchange_weak(signature, {State::loading, 0, 0}, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+          Elem e = slots_[i].elem_;
+          int32_t left = signature.count_ - 1;
+          if (0 == left) {
+            slots_[i].elem_ = {};
+            slots_[i].signature_.store({State::empty, 0, 0}, std::memory_order_release);
+            size_.fetch_sub(1, std::memory_order_relaxed);
+            /*
               if (i < half_base && half_base >= Base) {
                 base_.compare_exchange_weak(base, half_base, std::memory_order_relaxed);
-              }
-            } else {
-              slots_[i].signature_.store({State::ready, signature.tag_}, std::memory_order_release);
-            }
-            return e;
+              }*/
+          } else {
+            slots_[i].signature_.store({State::ready, signature.tag_, left}, std::memory_order_release);
           }
+          return e;
         }
       }
     }
@@ -422,17 +430,16 @@ class RunQueue {
   enum State {
     empty = 0,
     loading,
-    unloading,
     ready,
   };
   struct Signature {
     State state_{State::empty};
     size_t tag_{0};
+    int32_t count_{0};
   };
   struct Slot {
     std::atomic<Signature> signature_;
     Elem elem_;
-    int32_t count_{0};
   };
   Elem PushFront(Elem e) {
     unsigned at = 0;
@@ -451,10 +458,28 @@ class RunQueue {
   Elem PushBackWithTag(Elem e, size_t tag, unsigned& at, int32_t count = 1) {
     return Push(e, tag, at, count);
   }
+  int32_t RevokeWithTag(size_t, unsigned) {
+    return 0;
+  }
+  /*
+  int32_t RevokeWithTag(size_t tag, unsigned at) {
+    if (at < Capacity) {
+      while (true) {
+        Signature signature = slots_[at].signature_.load(std::memory_order_acquire);
+        //if (tag == signature.tag_ && (State::ready == signature.state_ || State::done == signature.state_) &&
+        if (tag == signature.tag_ && State::done == signature.state_ &&
+            slots_[at].signature_.compare_exchange_weak(signature, {State::empty, 0, 0}, std::memory_order_release)) {
+          break;
+        }
+      }
+    }
+    return 0;
+  }*/
+  /*
   int32_t RevokeWithTag(size_t tag, unsigned at) {
     Signature signature{State::ready, tag};
     if (at < Capacity &&
-        slots_[at].signature_.compare_exchange_weak(signature, {State::unloading, 0}, std::memory_order_relaxed)) {
+        slots_[at].signature_.compare_exchange_weak(signature, {State::loading, 0}, std::memory_order_acquire)) {
       int32_t count = slots_[at].count_;
       size_.fetch_sub(1, std::memory_order_relaxed);
       slots_[at].signature_.store({State::empty, 0}, std::memory_order_relaxed);
@@ -462,9 +487,9 @@ class RunQueue {
     } else {
       return 0;
     }
-  }
+  }*/
   unsigned Size() const {
-    return size_.load(std::memory_order_relaxed);
+    return size_.load();  //size_.load(std::memory_order_relaxed);
   }
   bool Empty() const {
     return Size() == 0;
@@ -475,9 +500,14 @@ class RunQueue {
     }
   }
  private:
+  Slot slots_[Capacity];
+  std::atomic_int32_t size_{0};
+  std::atomic_int32_t base_{Base};
+  /*
   ORT_ALIGN_TO_AVOID_FALSE_SHARING Slot slots_[Capacity];
   ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic_int32_t size_{0};
   ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic_int32_t base_{Base};
+  */
 };
 
 static std::atomic<uint32_t> next_tag{1};
@@ -543,8 +573,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };*/
 
   typedef std::function<void()> Task;
-  //typedef RunQueue<Task, Tag, 1024> Queue;
   typedef RunQueue<Task, 1024> Queue;
+  #define THREAD_PER_QUE 2
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -553,6 +583,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        num_ques(num_threads / THREAD_PER_QUE),
+        queues_(num_ques),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -577,9 +609,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     num_hint_words_ = static_cast<int>((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
     good_worker_hints_ = onnxruntime::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
 
-    worker_data_.resize(num_threads_);
+    //worker_data_.resize(num_threads_);
+    assert(num_ques > 0);
+    assert(num_threads_ % THREAD_PER_QUE == 0);
+    queues_.resize(num_ques);
+
     for (int i = 0; i < num_threads_; i++) {
-      worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+      worker_data_.emplace_back(queues_[i / THREAD_PER_QUE]);
+      worker_data_.back().thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
     }
   }
 
@@ -747,28 +784,61 @@ void EndParallelSectionInternal(PerThread &pt,
   // Notify workers to exit from the section
   ps.active = false;
 
+  /*
   profiler_.LogStart();
   // Attempt to revoke any tasks that were sent to workers but not
   // started.
-  unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
+  unsigned tasks_started = 0;
+  //static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
+  /*
+  for (const auto& t : ps.tasks) {
+    std::cout << t.share << " ";
+  }
+  std::cout << std::endl;
+  */
+  /*
   while (!ps.tasks.empty()) {
     const auto& item = ps.tasks.back();
-    Queue& q = worker_data_[item.first].queue;
-    if (q.RevokeWithTag(pt.tag, item.second)) {
-      tasks_revoked++;
-    }
+    Queue& q = queues_[item.q_idx];
+    tasks_started += item.share;
+    tasks_revoked += q.RevokeWithTag(pt.tag, item.w_idx);
     ps.tasks.pop_back();
   }
   profiler_.LogEnd(ThreadPoolProfiler::WAIT_REVOKE);
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
+  std::cout << "tasks_to_wait_for: " << tasks_to_wait_for << std::endl;
+
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
+  */
+  profiler_.LogStart();
+  unsigned tasks_started = 0;
+  unsigned tasks_revoked = 0;
+  /*
+  for (const auto& t : ps.tasks) {
+    std::cout << t.share << " ";
+  }
+  std::cout << std::endl;
+  */
+  while(!ps.tasks.empty()) {
+    const auto& item = ps.tasks.back();
+    tasks_started += item.share;
+    tasks_revoked += queues_[item.q_idx].RevokeWithTag(pt.tag, item.w_idx);
+    ps.tasks.pop_back();
+  }
+  auto tasks_to_wait_for = tasks_started - tasks_revoked;
+  std::cout << "tasks_to_wait_for: " << tasks_to_wait_for << std::endl;
+  while (ps.tasks_finished < tasks_to_wait_for) {
+    onnxruntime::concurrency::SpinPause();
+  }
+  std::cout << "done" << std::endl; 
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT_REVOKE);
   ps.tasks_finished = 0;
 }
 
@@ -832,6 +902,7 @@ void SummonWorkers(PerThread &pt,
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
     profiler_.LogStart();
 
+    /*
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
@@ -861,6 +932,44 @@ void SummonWorkers(PerThread &pt,
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
+    }*/
+    /*
+    int share_per_que = extra_needed / num_ques;
+    if (extra_needed % num_ques != 0) {
+      share_per_que += 1;
+    }
+    int total = static_cast<int>(extra_needed);
+    for (int i = 0; i < num_ques; i++) {
+      unsigned w_idx;
+      int share = std::min(share_per_que, total - share_per_que * i);
+      if (share > 0) {
+        auto t = queues_[i].PushBackWithTag(call_worker_fn, pt.tag, w_idx, share);
+        if (!t) {
+          ps.tasks.push_back({i, w_idx, share});
+          for (int j = i * THREAD_PER_QUE; j < std::min(num_threads_, (i + 1) * THREAD_PER_QUE); j++) {
+            worker_data_[j].EnsureAwake();
+          }
+        }
+      }
+    }*/
+    int total = static_cast<int>(extra_needed);
+    for (int i = 0; i < num_ques; i++) {
+      int share = std::min(THREAD_PER_QUE, total);
+      if (share > 0) {
+        unsigned w_idx;
+        auto t = queues_[i].PushBackWithTag(call_worker_fn, pt.tag, w_idx, share);
+        if (!t) {
+          ps.tasks.push_back({i, w_idx, share});
+        }
+      }
+      total -= share;
+    }
+    for (const auto& t : ps.tasks) {
+      std::cout << t.share << " ";
+    }
+    std::cout << std::endl;
+    for (int i = 0; i < num_threads_; i++) {
+      worker_data_[i].EnsureAwake();
     }
     profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
@@ -1035,10 +1144,13 @@ int CurrentThreadId() const EIGEN_FINAL {
                 "Per-thread state should be trivially destructible");
 
   struct WorkerData {
-    constexpr WorkerData() : thread(), queue() {
+    /*
+    explicit WorkerData() : thread(), queue(QueueDoNothing) {
+    }*/
+    constexpr WorkerData(const Queue& q) : thread(), queue(const_cast<Queue&>(q)) {
     }
     std::unique_ptr<Thread> thread;
-    Queue queue;
+    Queue& queue;
 
     // Each thread has a status, available read-only without locking, and protected
     // by the mutex field below for updates.  The status is used for three
@@ -1130,6 +1242,8 @@ int CurrentThreadId() const EIGEN_FINAL {
   const int num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
+  int num_ques{0};
+  Eigen::MaxSizeVector<Queue> queues_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
