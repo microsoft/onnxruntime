@@ -150,7 +150,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Build ort-web'
   - script: |
-     npm test
+     npm test -- --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests'
   - script: |
