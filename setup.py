@@ -247,7 +247,8 @@ if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
-                     'onnxruntime.training.ortmodule'])
+                    #  'onnxruntime.training.ortmodule', # breaking on purpose to see if pipeline fails
+    ])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
