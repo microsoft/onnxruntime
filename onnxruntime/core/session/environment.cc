@@ -3,7 +3,6 @@
 
 #include "core/session/environment.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/provider_shutdown.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #if !defined(ORT_MINIMAL_BUILD)
@@ -233,13 +232,6 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
-}
-
-Environment::~Environment() {
-// We don't support any shared providers in the minimal build yet
-#if !defined(ORT_MINIMAL_BUILD)
-  UnloadSharedProviders();
-#endif
 }
 
 }  // namespace onnxruntime

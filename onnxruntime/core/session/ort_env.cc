@@ -10,6 +10,7 @@
 #include "core/session/environment.h"
 #include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/provider_shutdown.h"
 #ifdef __ANDROID__
 #include "core/platform/android/logging/android_log_sink.h"
 #else
@@ -39,6 +40,10 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
+// We don't support any shared providers in the minimal build yet
+#if !defined(ORT_MINIMAL_BUILD)
+  UnloadSharedProviders();
+#endif
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,

@@ -985,7 +985,6 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
-  LOGS_DEFAULT(ERROR) << "Trying to load CUDA provider (RyanHill)";
   if (auto provider = s_library_cuda.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 

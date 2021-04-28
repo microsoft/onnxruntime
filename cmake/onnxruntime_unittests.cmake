@@ -396,17 +396,17 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if(onnxruntime_USE_CUDA)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda onnxruntime_providers_shared)
-endif()
+#if(onnxruntime_USE_CUDA)
+#  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda onnxruntime_providers_shared)
+#endif()
 
-if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
-endif()
+#if(onnxruntime_USE_DNNL)
+#  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
+#endif()
 
-if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
-endif()
+#if(onnxruntime_USE_OPENVINO)
+#  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
+#endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
