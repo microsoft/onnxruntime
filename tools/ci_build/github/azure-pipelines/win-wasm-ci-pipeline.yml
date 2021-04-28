@@ -93,6 +93,11 @@ jobs:
   - checkout: self
     submodules: false
     fetchDepth: 1
+  - script: |
+     git submodule sync -- cmake\external\onnx
+     git submodule update --init -- cmake\external\onnx
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodule onnx'
   - task: NodeTool@0
     inputs:
       versionSpec: '14.x'
