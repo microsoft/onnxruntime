@@ -69,6 +69,14 @@ def get_args():
 def main():
     args = get_args()
     input_model_path = args.input_model
+    ops_to_quantize=["Conv", "MatMul", "Add"]
+    onnx_model = onnx.load(input_model_path)
+    op_names_to_quantize = []
+    for op in onnx_model.graph.node:
+        if op.op_type in ops_to_quantize:
+            print(op.op_type, op.name)
+            op_names_to_quantize.append(op.name)
+
     output_model_path = args.output_model
     input_tensor_shape = args.input_tensor_shape.split(',')
     input_tensor_shape = [int(i) for i in input_tensor_shape] 
@@ -79,7 +87,7 @@ def main():
                     quant_format=args.quant_format,
                     per_channel=args.per_channel,
                     weight_type=QuantType.QInt8,
-                    nodes_to_quantize={'Conv','MatMul','Add'})
+                    nodes_to_quantize=op_names_to_quantize)
     print('Calibrated and quantized model saved.')
 
     print('benchmarking fp32 model...')
