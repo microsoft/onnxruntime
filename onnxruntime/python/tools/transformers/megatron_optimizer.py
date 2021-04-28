@@ -57,8 +57,10 @@ optimization_options.disable_embed_layer_norm = True
 #optimization_options.use_raw_attention_mask(use_raw_attention_mask)
 opt_model = optimize_model(onnx_model_path,
                            'gpt2',
-                           num_heads=32,
-                           hidden_size=4096,
+                           #num_heads=32,
+                           num_heads=16,
+                           #hidden_size=4096,
+                           hidden_size=1024,
                            opt_level=1,
                            optimization_options=optimization_options,
                            use_gpu=False,

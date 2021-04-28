@@ -95,17 +95,17 @@ class FusionGptAttention(Fusion):
         if not concat_present:
             logger.info("expect concat for present")
             return
-        cast_present = self.model.find_first_child_by_type(concat_present,
-                                                           'Cast',
-                                                           input_name_to_nodes,
-                                                           recursive=False)
-        if not cast_present:
-            logger.info("expect concat for present")
-            return
-        present = cast_present.output[0]
-        if not self.model.find_graph_output(present):
-            logger.info("expect present to be graph input")
-            return
+        #cast_present = self.model.find_first_child_by_type(concat_present,
+        #                                                   'Cast',
+        #                                                   input_name_to_nodes,
+        #                                                   recursive=False)
+        #if not cast_present:
+        #    logger.info("expect concat for present")
+        #    return
+        present = concat_present.output[0]
+        #if not self.model.find_graph_output(present):
+        #    logger.info("expect present to be graph input")
+        #    return
 
         layernorm_before_attention = layernorm
         if layernorm_before_attention is None or layernorm_before_attention.op_type != 'LayerNormalization':
@@ -127,6 +127,29 @@ class FusionGptAttention(Fusion):
                 return
 
         gather_mask = mask_nodes[-1]
+
+        self.model.add_node(
+            helper.make_node(
+                "Cast",
+                ["attention_mask"],
+                ['added_cast_output' + gather_mask.name],
+                'added_cast' + gather_mask.name,
+                to=6
+            )
+        )
+        init_axes = helper.make_tensor('added_squeeze_axes', TensorProto.INT64, [1], [1])
+        self.model.add_initializer(init_axes)
+        self.model.add_node(
+            helper.make_node(
+                "Squeeze",
+                #inputs = ['added_cast_output' + gather_mask.name, 'added_squeeze_axes'],
+                inputs = ['added_cast_output' + gather_mask.name],
+                outputs = ['added_squeeze_output' + gather_mask.name],
+                axes=[1],
+                name = 'added_squeeze' + gather_mask.name)
+        )
+        gather_mask.input[0] = 'added_squeeze_output' + gather_mask.name
+
         attention_mask = gather_mask.input[0]
 
         q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Split'], [0, 0, 0, 0])
