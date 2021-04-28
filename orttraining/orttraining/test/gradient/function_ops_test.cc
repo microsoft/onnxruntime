@@ -21,44 +21,47 @@ static void RegisterSchemas() {
   }
 }
 
-static void InitSoftmaxGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
+class FunExpansionTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    RegisterSchemas();
+  }
+};
+
+static void
+InitSoftmaxGradTestCase(FunctionTestCase& testCase, std::vector<int64_t> shape) {
   testCase.AddInput<float>("dY", shape);
   testCase.AddInput<float>("Y", shape);
   testCase.AddOutput("dX");
 }
 
-TEST(SoftmaxGradExpansionTest, DefaultAxis) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_DefaultAxis) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2});
   testCase.RunTest();
 }
 
-TEST(SoftmaxGradExpansionTest, NegativeAxis) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_NegativeAxis) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2});
   testCase.AddAttribute("axis", -1);
   testCase.RunTest();
 }
 
-TEST(SoftmaxGradExpansionTest, PositiveAxis) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_PositiveAxis) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2});
   testCase.AddAttribute("axis", 1);
   testCase.RunTest();
 }
 
-TEST(SoftmaxGradExpansionTest, 3D) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_3D) {
   FunctionTestCase testCase("SoftmaxGrad");
   InitSoftmaxGradTestCase(testCase, {3, 2, 2});
   testCase.RunTest();
 }
 
-TEST(SoftmaxGradExpansionTest, SymbolicShape) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_SymbolicShape) {
   FunctionTestCase testCase("SoftmaxGrad");
   std::vector<int64_t> shape{3, 2, 2};
   std::vector<std::string> sym_shape{"BatchSize", "SeqSize", "2"};
@@ -79,8 +82,7 @@ TEST(SoftmaxGradExpansionTest, SymbolicShape) {
 // models. Test is required since ORT currently generates function-expansion
 // even when op is dispatched to a kernel.
 
-TEST(SoftmaxGradExpansionTest, OpsetTest) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, SoftmaxGrad_OpsetTest) {
   FunctionTestCase testCase("SoftmaxGrad");
   testCase.opsets[kOnnxDomain] = 12;
   testCase.opsets[kMSDomain] = 1;
@@ -108,8 +110,7 @@ void DropoutGradWithoutRatio() {
   testCase.RunTest();
 }
 
-TEST(DropoutGradExpansionTest, WithoutRatio) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, DropoutGrad_WithoutRatio) {
   DropoutGradWithoutRatio<float>();
   DropoutGradWithoutRatio<double>();
 }
@@ -125,8 +126,7 @@ void DropoutGradWithRatio() {
   testCase.RunTest();
 }
 
-TEST(DropoutGradExpansionTest, WithRatio) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, DropoutGrad_WithRatio) {
   DropoutGradWithRatio<float>();
   DropoutGradWithRatio<double>();
 }
@@ -146,8 +146,7 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   }
 }
 
-TEST(CheckDropoutGradExpansionTest, WithoutRatio) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, DropoutGrad_WithoutRatio2) {
   // bfloat16 not yet supported by ONNX op Where
   CheckDropoutGradWithoutRatio<BFloat16>(false);
   CheckDropoutGradWithoutRatio<MLFloat16>(true);
@@ -164,15 +163,13 @@ void CheckDropoutGradWithRatio(bool inline_call) {
   testCase.CreateModel(inline_call);
 }
 
-TEST(CheckDropoutGradExpansionTest, WithRatio) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
   // bfloat16 not yet supported by ONNX op Where
   CheckDropoutGradWithRatio<BFloat16>(false);
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 
-TEST(GeluGradExpansionTest, 2D) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, GeluGrad_2D) {
   FunctionTestCase testCase("GeluGrad");
   std::vector<int64_t> shape{16, 4};
   testCase.AddInput<float>("dY", shape);
@@ -192,8 +189,7 @@ void CheckGeluGrad() {
   testCase.CreateModel(true);
 }
 
-TEST(CheckGeluGradExpansionTest, HalfPrecision) {
-  RegisterSchemas();
+TEST_F(FunExpansionTest, GeluGrad_HalfPrecision) {
   CheckGeluGrad<BFloat16>();
   CheckGeluGrad<MLFloat16>();
 }

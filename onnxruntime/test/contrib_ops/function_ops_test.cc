@@ -19,6 +19,13 @@ static void RegisterSchemas() {
   }
 }
 
+class ContribFunExpansionTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    RegisterSchemas();
+  }
+};
+
 template <typename T, typename U, bool RunTest>
 void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
   FunctionTestCase testCase("LayerNormalization", kOnnxDomain);
@@ -38,16 +45,14 @@ void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
     testCase.CreateModel(true);
 }  // namespace test
 
-TEST(LayerNormExpansionTest, Test0) {
-  RegisterSchemas();
+TEST_F(ContribFunExpansionTest, LayerNorm) {
   // Test expand-and-run
   CheckLayerNorm<float, float, true>();
   // Test expand-and-check-only
   CheckLayerNorm<MLFloat16, BFloat16, false>();
 }
 
-TEST(LayerNormExpansionTest, OptionalOutputs) {
-  RegisterSchemas();
+TEST_F(ContribFunExpansionTest, LayerNorm_OptionalOutputs) {
   // Test expand-and-run
   CheckLayerNorm<float, float, true>(false, false);
   CheckLayerNorm<float, float, true>(false, true);
