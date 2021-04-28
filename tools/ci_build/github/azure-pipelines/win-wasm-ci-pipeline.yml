@@ -1,5 +1,5 @@
 jobs:
-- job: 'build'
+- job: 'build WASM'
   pool: 'Win-CPU-2019'
   strategy:
     maxParallel: 4
@@ -65,7 +65,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
-      artifactName: '$(BuildConfig)_$(WasmFileName)'
+      artifactName: '$(BuildConfig)'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishTestResults@2
@@ -83,3 +83,66 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
+- job: 'build ort-web'
+  pool: 'yulongw-test'
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:    
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '14.x'
+  - task: DownloadBuildArtifacts@0
+    inputs:
+      artifactName: 'Release'
+  - script: |
+     if not exist "$(Build.BinariesDirectory)\js\web\dist\" mkdir "$(Build.BinariesDirectory)\js\web\dist\"
+     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.wasm $(Build.BinariesDirectory)\js\web\dist\
+     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.map $(Build.BinariesDirectory)\js\web\dist\
+     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.js $(Build.BinariesDirectory)\js\web\lib\wasm\binding\
+    workingDirectory: '$(Build.BinariesDirectory)\js'
+    displayName: 'Binplace WebAssembly files'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.BinariesDirectory)\js'
+    displayName: 'npm ci /js/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.BinariesDirectory)\js\common'
+    displayName: 'npm ci /js/common/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.BinariesDirectory)\js\web'
+    displayName: 'npm ci /js/web/'
+  - script: |
+     npm run lint
+    workingDirectory: '$(Build.BinariesDirectory)\js'
+    displayName: 'ESLint'
+  - script: |
+     npm run format
+    workingDirectory: '$(Build.BinariesDirectory)\js'
+    displayName: 'Clang-format'
+  - script: |
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted:\n'+a)"
+    workingDirectory: '$(Build.BinariesDirectory)\js'
+    displayName: 'Check unformatted files'
+  - script: |
+     npm run build
+    workingDirectory: '$(Build.BinariesDirectory)\js\web'
+    displayName: 'Build ort-web'
+  - script: |
+     npm test -- -e=edge
+    workingDirectory: '$(Build.BinariesDirectory)\js\web'
+    displayName: 'Run ort-web tests'
+  - script: |
+     npm pack
+    workingDirectory: '$(Build.BinariesDirectory)\js\web'
+    displayName: 'Generate NPM package'
+  - script: |
+      copy $(Build.BinariesDirectory)\js\web\onnxruntime-web-*.tgz $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'onnxruntime-web'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
