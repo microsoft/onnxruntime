@@ -4082,25 +4082,27 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   struct PropagateCastOpsTestSpecs {
     PathString model_uri;
-    int casts_count;                     // Expected number of casts after the transformation
+    // Expected number of casts after the transformation with different stratigies and optimization levels
+    std::map<std::pair<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, int>, int> casts_count_map;
     vector<std::string> allow_ops = {};  // Allowed ops for PropagateCastOps graph transformer
-    int level = 0;                       // Level of optimization
   };
+  std::pair<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, int> InsertAndReduce0 = std::make_pair(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce, 0);
+  std::pair<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, int> FllodFill1 = std::make_pair(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill, 1);
+  std::pair<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, int> FllodFill2 = std::make_pair(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill, 2);
   std::vector<std::string> allow_matmul = {"MatMul"};
   std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
   std::vector<std::string> allow_matmul_transpose_add = {"Add", "MatMul", "Transpose"};
-
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
       // Test fusing back to back casts functionality
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", 2},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float16.onnx", 0},
-      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float16.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}},
+      {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float_float.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
       // Test fusing subgraph functionality
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float16.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float16.onnx", 1},
-      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float.onnx", 1},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float16.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float16_float.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float16.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
+      {MODEL_FOLDER "propagate_cast/fuse_sibling_casts_float_float.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}},
 
       // Test constant propagation with various combinations
       // 1. Computation is float or float16
@@ -4109,149 +4111,120 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       // These variations help testing the following functions.
       // PropagateForward, PropagateBackward, PropagateFP16FromInputsToOutput, and PropagateFP32FromOutputsToInputs
 
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs.onnx", 1, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs_cast_product.onnx", 0, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_cast_product.onnx", 2, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs.onnx", 1, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product.onnx", 0, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product.onnx", 2, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", 0, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_sum.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_sum.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", 0, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2_cast_sum.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", 1, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul.onnx", 2, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul_add_products.onnx", 2, allow_matmul},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul_add_products.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", 1, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul_add_products.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", 3, allow_matmul, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", 3, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast.onnx", 3, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul.onnx", 2, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose.onnx", 3, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose.onnx", 3, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul.onnx", 2, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul.onnx", 2, allow_matmul_transpose, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul.onnx", 2, allow_matmul_transpose},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast.onnx", 2, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul_add_products.onnx", 4, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs.onnx", 2, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast.onnx", 2, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose.onnx", 1, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", 3, allow_matmul_transpose_add, 2},
-      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", 1, allow_matmul_transpose_add, 2}};
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_product_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_transpose_inputs_transpose_product_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_sum.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_sum.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_inputs_cast_product_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 4}, {FllodFill1, 4}, {FllodFill2, 4}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_cast_product_cast_input2.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_inputs_cast_product_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 4}, {FllodFill1, 4}, {FllodFill2, 4}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_cast_product_cast_input2.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_inputs_cast_product_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 4}, {FllodFill1, 4}, {FllodFill2, 4}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_inputs_transpose_product_cast_product_cast_input2.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 0}, {FllodFill1, 0}, {FllodFill2, 0}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_inputs_cast_product_cast_input2.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2_cast_sum.onnx", {{InsertAndReduce0, 4}, {FllodFill1, 4}, {FllodFill2, 4}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_add_transpose_product_cast_product_cast_input2.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 3}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul.onnx", {{InsertAndReduce0, 3}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_second_matmul_add_products.onnx", {{InsertAndReduce0, 5}, {FllodFill1, 2}, {FllodFill2, 3}}, allow_matmul},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_second_matmul_add_products.onnx", {{InsertAndReduce0, 5}, {FllodFill1, 2}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", {{InsertAndReduce0, 5}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", {{InsertAndReduce0, 5}, {FllodFill1, 1}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_transpose_before_cast_second_matmul_add_products.onnx", {{InsertAndReduce0, 5}, {FllodFill1, 2}, {FllodFill2, 3}}, allow_matmul_transpose},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul_add_products.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 4}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_second_matmul.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul_add_products.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 4}, {FllodFill2, 3}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_second_matmul.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul_add_products.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 3}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_after_cast_transpose_second_matmul.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 2}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul_add_products.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 4}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_second_matmul.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul_add_products.onnx", {{InsertAndReduce0, 2}, {FllodFill1, 3}, {FllodFill2, 2}}, allow_matmul_transpose_add},
+      {MODEL_FOLDER "propagate_cast/matmul_two_outputs_cast_inputs_transpose_before_cast_transpose_second_matmul.onnx", {{InsertAndReduce0, 1}, {FllodFill1, 1}, {FllodFill2, 1}}, allow_matmul_transpose_add}};
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
-  std::vector<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy> strategies = {
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill};
-  for (auto strategy : strategies) {
-    for (PropagateCastOpsTestSpecs test_case : test_cases) {
+  for (PropagateCastOpsTestSpecs test_case : test_cases) {
+    for (auto scenario : test_case.casts_count_map) {
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy = scenario.first.first;
+      int level = scenario.first.second;
+      int expected_casts_count = scenario.second;
       std::shared_ptr<Model> p_model;
       ASSERT_STATUS_OK(Model::Load(test_case.model_uri, p_model, nullptr, *logger_));
       Graph& graph = p_model->MainGraph();
       ASSERT_STATUS_OK(graph.Resolve());
       onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
       ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-          onnxruntime::make_unique<PropagateCastOps>(strategy, test_case.level, test_case.allow_ops),
+          onnxruntime::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
           TransformerLevel::Level1));
       ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
       Path p = Path::Parse(test_case.model_uri);
@@ -4263,18 +4236,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       Graph& transformed_graph = p_model->MainGraph();
       ASSERT_STATUS_OK(transformed_graph.Resolve());
       std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
-      if (strategy == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill) {
-        ASSERT_TRUE(op_to_count["Cast"] == test_case.casts_count);
-      } else {
-#ifndef NDEBUG
-        // TODO The number of cast nodes after CastPropagation using InsertAndReduce strategy currently is not matching the expected number.
-        // Remove this condition when InsertAndReduce is improved.
-        if (op_to_count["Cast"] != test_case.casts_count) {
-          // std::cout << ORT_TSTR(test_case.model_uri) << " " << test_case.level << std::endl;
-          std::cout << op_to_count["Cast"] << " " << test_case.casts_count << std::endl;
-        }
-#endif
-      }
+      ASSERT_TRUE(op_to_count["Cast"] == expected_casts_count);
     }
   }
 }
