@@ -519,19 +519,25 @@ void addObjectMethodsForTraining(py::module& m) {
         }
       });
 
-  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration> propagate_cast_ops(
+  py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local())
+      .value("InsertAndReduce", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
+      .value("FllodFill", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill);
+      
+  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration> propagate_cast_ops_config(
       m, "PropagateCastOpsConfiguration",
       R"pbdoc(Propagate cast ops configuration.)pbdoc");
-  propagate_cast_ops.def(py::init())
-      .def_readwrite("propagate_cast_ops_strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
-      .def_readwrite("propagate_cast_ops_level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
-      .def_readwrite("propagate_cast_ops_allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
+  propagate_cast_ops_config.def(py::init())
+      .def_readwrite("strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
+      .def_readwrite("level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
+      .def_readwrite("allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
 
   py::class_<GraphTransformerConfiguration> graph_transformer_config(
       m, "GraphTransformerConfiguration",
       R"pbdoc(Graph transformer configuration.)pbdoc");
+  graph_transformer_config.def(py::init())
+      .def_readwrite("propagate_cast_ops_config", &GraphTransformerConfiguration::propagate_cast_ops_config);
 
-  py::class_<TrainingGraphTransformerConfiguration> training_graph_transformer_config(
+  py::class_<TrainingGraphTransformerConfiguration, GraphTransformerConfiguration> training_graph_transformer_config(
       m, "TrainingGraphTransformerConfiguration",
       R"pbdoc(Training Graph transformer configuration.)pbdoc");
   training_graph_transformer_config.def(py::init())
@@ -540,7 +546,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision);
+      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
+      .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",

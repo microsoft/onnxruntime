@@ -63,7 +63,7 @@ class GraphExecutionManager(ABC):
         # Graph transformer config
         # Specify cast propagation strategy. Currently two strategies are available, insert-and-reduce and flood-fill
         # the default is insert-and-reduce
-        self._propagate_cast_ops_strategy = 0
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.InsertAndReduce
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # In addition to propagate_cast_ops_allow use predetermined list of opcodes considered safe to move before/after cast operation
         # if propagate_cast_ops_level is positive and use only propagate_cast_ops_allow otherwise.
@@ -284,7 +284,7 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config.propagate_cast_ops_config = C.PropagateCastOpsConfiguration()
         grad_builder_config.graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
         grad_builder_config.graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
-        grad_builder_config.graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_allow
+        grad_builder_config.graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
         grad_builder_config.graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
         grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
                                         _logger.LogLevel.INFO : C.Severity.INFO,
