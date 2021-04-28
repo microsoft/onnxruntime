@@ -106,7 +106,6 @@ target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BIN
 set(ONNXRUNTIME_LIBS
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_ROCM}
     ${PROVIDERS_MKLDNN}
     onnxruntime_optimizer

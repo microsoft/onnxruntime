@@ -97,7 +97,6 @@ endif()
 set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
