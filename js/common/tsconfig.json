@@ -3,5 +3,5 @@
   "compilerOptions": {
     "declarationDir": "./types"
   },
-  "include": ["lib/"]
+  "include": ["lib"]
 }

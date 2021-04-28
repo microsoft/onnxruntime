@@ -246,7 +246,8 @@ enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
-                     'onnxruntime.training.optim'])
+                     'onnxruntime.training.optim',
+                     'onnxruntime.training.ortmodule'])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:

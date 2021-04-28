@@ -16,8 +16,11 @@ export declare namespace SessionHandler {
 export interface SessionHandler {
   dispose(): Promise<void>;
 
-  readonly inputNames: string[];
-  readonly outputNames: string[];
+  readonly inputNames: readonly string[];
+  readonly outputNames: readonly string[];
+
+  startProfiling(): void;
+  endProfiling(): void;
 
   run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;

@@ -119,10 +119,9 @@ target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
-        $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")

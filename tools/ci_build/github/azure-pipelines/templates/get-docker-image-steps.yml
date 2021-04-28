@@ -26,7 +26,7 @@ steps:
             --docker-build-args "${{ parameters.DockerBuildArgs }}" \
             --container-registry onnxruntimebuildcache \
             --repository "${{ parameters.Repository }}"
-        displayName: "Get ${{ parameters.Repository }} image"
+        displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
       ContainerRegistry: onnxruntimebuildcache
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
   - script: |
@@ -35,4 +35,4 @@ steps:
         --context "${{ parameters.Context }}" \
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \
         --repository "${{ parameters.Repository }}"
-    displayName: "Get ${{ parameters.Repository }} image"
+    displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
