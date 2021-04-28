@@ -83,7 +83,7 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-- job: build_onnxruntime-web
+- job: build_onnxruntime_web
   dependsOn: build_WASM
   pool: 'yulongw-test'
   timeoutInMinutes: 120
