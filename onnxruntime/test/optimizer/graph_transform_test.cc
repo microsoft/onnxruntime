@@ -4270,7 +4270,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
         // TODO The number of cast nodes after CastPropagation using InsertAndReduce strategy currently is not matching the expected number.
         // Remove this condition when InsertAndReduce is improved.
         if (op_to_count["Cast"] != test_case.casts_count) {
-          std::cout << ORT_TSTR(test_case.model_uri) << " " << test_case.level << std::endl;
+          // std::cout << ORT_TSTR(test_case.model_uri) << " " << test_case.level << std::endl;
           std::cout << op_to_count["Cast"] << " " << test_case.casts_count << std::endl;
         }
 #endif
