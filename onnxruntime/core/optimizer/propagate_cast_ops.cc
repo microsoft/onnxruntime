@@ -238,7 +238,6 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
       // cast_output is a graph output. Replace the cast node with an Identity operator unless node
       // has no other outputs.
       if (producer->GetOutputEdgesCount() == 0) {
-        int input_index = optimizer_utils::IndexOfNodeInput(*lead_cast, *cast_input);
         graph.RemoveEdge(producer->Index(), lead_cast->Index(), output_index, input_index);
         auto& outputs = producer->MutableOutputDefs();
         std::replace(outputs.begin(), outputs.end(), cast_input, cast_output);

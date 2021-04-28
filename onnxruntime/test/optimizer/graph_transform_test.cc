@@ -4240,7 +4240,6 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
 
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
-  logger_->SetSeverity(logging::Severity::kINFO);
   std::vector<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy> strategies = {
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill};
