@@ -576,10 +576,6 @@ if (onnxruntime_USE_OPENVINO)
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
-  if (WIN32)
-	  set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-  endif()
-
   # Header paths
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
