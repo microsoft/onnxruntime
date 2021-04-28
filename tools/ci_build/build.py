@@ -1163,7 +1163,7 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def run_android_tests(args, source_dir, config, cwd):
+def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
@@ -1209,17 +1209,16 @@ def run_android_tests(args, source_dir, config, cwd):
                 os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
                 device_dir, cwd=cwd)
             adb_push('onnxruntime_test_all', device_dir, cwd=cwd)
-            adb_install(
-                os.path.join(source_dir, 'build', 'Windows', "Debug", "java", "androidtest", "android", "app", "build",
-                "outputs", "apk", "debug", "app-debug.apk"))
-            adb_install(
-                os.path.join(source_dir, 'build', 'Windows', "Debug", "java", "androidtest", "android", "app", "build",
-                "outputs", "apk", "androidTest", "debug", "app-debug-androidTest.apk"))
-            adb_shell('am instrument -w ai.onnxruntime.example.javavalidater.test/androidx.test.runner.AndroidJUnitRunner')    
             adb_shell('chmod +x {}/onnxruntime_test_all'.format(device_dir))
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.build_java:
+                adb_install(
+                    os.path.join(build_dir, "java", "androidtest", "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"))
+                adb_install(
+                    os.path.join(build_dir, "java", "androidtest", "android", "app", "build", "outputs", "apk", "androidTest", "debug", "app-debug-androidTest.apk"))
+                adb_shell('am instrument -w ai.onnxruntime.example.javavalidater.test/androidx.test.runner.AndroidJUnitRunner')
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1232,7 +1231,7 @@ def run_android_tests(args, source_dir, config, cwd):
                 run_adb_shell(
                     'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} && {0}/onnxruntime_shared_lib_test'.format(
                         device_dir))
-
+            
 
 def run_ios_tests(args, source_dir, config, cwd):
     cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
@@ -1361,7 +1360,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         cwd = os.path.abspath(cwd)
 
         if args.android:
-            run_android_tests(args, source_dir, config, cwd)
+            run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
         elif args.ios:
             run_ios_tests(args, source_dir, config, cwd)

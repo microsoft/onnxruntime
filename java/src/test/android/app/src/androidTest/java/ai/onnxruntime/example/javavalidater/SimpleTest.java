@@ -23,9 +23,7 @@ public class SimpleTest {
     public void runSigmoidModelTest() throws OrtException, IOException {
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment();
-             OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
-
-            opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
+            OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
 
             try (OrtSession session = env.createSession(readModel("sigmoid.ort"), opts)) {
                 String inputName = session.getInputNames().iterator().next();
@@ -35,9 +33,8 @@ public class SimpleTest {
                         Arrays.fill(array, (float) 0);
                     }
                 }
-                try (OnnxTensor inputTensor =
-                             OnnxTensor.createTensor(env, testdata);
-                     OrtSession.Result output = session.run(Collections.singletonMap(inputName, inputTensor))) {
+                try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, testdata);
+                    OrtSession.Result output = session.run(Collections.singletonMap(inputName, inputTensor))) {
                     float[][][] rawOutput = (float[][][]) output.get(0).getValue();
                     //expected sigmoid output is y = 1.0 / (1.0 + exp(-x))
                     float expected = (float) 0.5;
