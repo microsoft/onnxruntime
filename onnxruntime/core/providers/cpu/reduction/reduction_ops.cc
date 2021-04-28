@@ -252,17 +252,17 @@ static void OrtEnforceMustBeOverloaded() {
   ORT_ENFORCE(false, "must be overloaded.");
 }
 
-void OrtEnforceReduceAggregatorBaseKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void ValidateFastReduceKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void OrtEnforceReduceAggregatorBaseRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void ValidateFastReduceRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void OrtEnforceReduceAggregatorBaseKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+void ValidateFastReduceKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
