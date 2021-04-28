@@ -365,154 +365,83 @@ bool PyOpLibProxy::InvokePythonFunc(const char* module,
   return true;
 }  //bool InvokePythonFunc
 
-bool PyOpLibProxy::InvokePythonAutoGradFunc(void* function,
-                                            const std::vector<const OrtValue*>& inputs,
-                                            std::vector<void*>& outputs) {
-  Scope scope;
-  PyObject* pyFunc;
+void CheckArguments(
+    const size_t len,
+    const std::vector<OrtValue*> tensor_args,
+    const std::vector<int64_t>& tensor_indices,
+    const std::vector<void*> obj_args,
+    const std::vector<int64_t>& obj_indices) {
+  ORT_ENFORCE(tensor_args.size() + obj_args.size() == len);
+  ORT_ENFORCE(tensor_args.size() == tensor_indices.size());
+  ORT_ENFORCE(obj_args.size() == obj_indices.size());
 
-  pyFunc = static_cast<PyObject*>(function);
-  if (nullptr == function || nullptr == pyFunc) {
-    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: found invalid instance or function";
-    return false;
+  std::vector<int64_t> counts(len, 0);
+  for (const auto i : tensor_indices) {
+    ORT_ENFORCE(i >= 0 && static_cast<size_t>(i) < len, "Index range is from 0 to ", len - 1, ", but found ", i);
+    counts.at(i) += 1;
   }
-
-  scope.Add(pyFunc);
-  auto pyArgs = PyTuple_New(inputs.size());
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    // Wrap with DLPack, then transfer to Python for its release.
-    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
-    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    PyTuple_SetItem(pyArgs, i, dltensor);
+  for (const auto i : obj_indices) {
+    ORT_ENFORCE(i >= 0 && static_cast<size_t>(i) < len, "Index range is from 0 to ", len - 1, ", but found ", i);
+    counts.at(i) += 1;
   }
-
-  scope.Add(pyArgs);
-  auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
-  if (nullptr == pyResult) {
-    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: no result";
-    return false;
+  for (size_t i = 0; i < len; ++i) {
+    ORT_ENFORCE(counts.at(i) == 1, "Duplicated or unused argument index detected: ", i);
   }
-
-  scope.Add(pyResult);
-  if (PyTuple_Check(pyResult)) {
-    for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
-      if (!ExtractPointerOutput(PyTuple_GetItem(pyResult, i), outputs)) {
-        LOGS_DEFAULT(WARNING) << "InvokePythonFunc: failed to extract address from output";
-        return false;
-      }
-    }
-  } else {
-    LOGS_DEFAULT(WARNING) << "InvokePythonFunc: returned value must be numpy(s)";
-    return false;
-  }
-  return true;
 }
 
-bool PyOpLibProxy::InvokePythonAutoGradFunc(void* raw_inst,
-                                            const char* function,
-                                            const std::vector<OrtValue*>& inputs,
-                                            const std::vector<int64_t>& arg_positions,
-                                            std::vector<void*>& outputs,
-                                            std::function<void(const char*)> logging_func,
-                                            std::vector<void*>& const_args,
-                                            const std::vector<int64_t>& const_arg_positions) {
-  Scope scope;
-  auto instance = static_cast<PyObject*>(raw_inst);
-  if (nullptr == instance || nullptr == function) {
-    logging_func("InvokePythonFunc: found invalid instance or function");
-    return false;
+// len: the number of input arguments.
+// tensor_indices: if tensor_indices[i] is j,
+//                 then the j-th input argument should be a tensor.
+PyObject* CreateTensorFlags(
+    const size_t len,
+    const std::vector<int64_t>& tensor_indices) {
+  PyObject* flags = PyList_New(len);
+
+  // First we fill the list with 0. Later we will
+  // assign 1's to tensors' corresponding positions.
+  for (size_t i = 0; i < len; ++i) {
+    PyObject* zero = PyLong_FromLong(0);
+    PyList_SetItem(flags, i, zero);
   }
 
-  // Get member function.
-  auto py_func = PyObject_GetAttrString(instance, function);
-  if (nullptr == py_func) {
-    logging_func("InvokePythonFunc: failed to create function object");
-    return false;
+  for (const auto i : tensor_indices) {
+    PyObject* one = PyLong_FromLong(1);
+    PyList_SetItem(flags, i, one);
   }
 
-  // Number of input arguments in the called Python function.
-  const size_t num_args = inputs.size() + const_args.size();
-
-  // Input arguments to the called Python function.
-  PyObject* py_args = PyTuple_New(num_args);
-
-  // filled_flags[i] being true means the i-th input argument has been set.
-  std::vector<bool> filled_flags(num_args, false);
-
-  // Fill argument list with non-tensor types.
-  for (size_t i = 0; i < const_args.size(); ++i) {
-    // Let j = const_arg_positions.at(i).
-    // Here we set the j-th input argument to const_args.at(i).
-    PyTuple_SetItem(py_args, const_arg_positions.at(i), reinterpret_cast<PyObject*>(const_args.at(i)));
-    std::cout << "[pyop_lib_proxy.cc] const_arg " << i << ": " << std::endl;
-    PyObject_Print(reinterpret_cast<PyObject*>(const_args.at(i)), stdout, 0);
-    std::cout << std::endl;
-  }
-
-  // Fill argument list with tensor types.
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*inputs[i]);
-    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    PyTuple_SetItem(py_args, arg_positions.at(i), dltensor);
-    std::cout << "[pyop_lib_proxy.cc] arg " << i << ": " << std::endl;
-    PyObject_Print(dltensor, stdout, 0);
-    std::cout << std::endl;
-  }
-
-  scope.Add(py_args);
-
-  // Call member function.
-  PyObject* py_result = PyEval_CallObject(py_func, py_args);
-
-  if (!py_result) {
-    logging_func("InvokePythonFunc: no result");
-    return false;
-  }
-
-  scope.Add(py_result);
-  if (PyTuple_Check(py_result)) {
-    for (int i = 0; i < PyTuple_Size(py_result); ++i) {
-      if (!ExtractPointerOutput(PyTuple_GetItem(py_result, i), outputs)) {
-        logging_func("InvokePythonFunc: failed to extract address from output");
-        return false;
-      }
-    }
-  } else {
-    logging_func("InvokePythonFunc: returned value must be numpy(s)");
-    return false;
-  }
-
-  return true;
+  return flags;
 }
 
-void PyOpLibProxy::InvokeForward(
-    void* callback,
+void InvokeRunner(
+    PyObject* callback_runner,
+    PyObject* args,
+    std::vector<void*>& returned_args) {
+  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
+
+  if (PyErr_Occurred()) {
+    PyErr_Print();
+    ORT_THROW("Python function execution fails with the following information.");
+  }
+
+  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
+  for (int i = 0; i < PyTuple_Size(result); ++i) {
+    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
+  }
+}
+
+PyObject* CreateForwardArguments(
+    PyObject* callback,
+    const size_t len,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     std::vector<void*>& obj_args,
-    const std::vector<int64_t>& obj_indices,
-    std::vector<void*>& returned_args) {
-  // Set tensor indicators.
-  std::cout << "[PyOpLibProxy::InvokeForward] 1" << std::endl;
-  const auto len = tensor_args.size() + obj_args.size();
-  PyObject* tensor_flags = PyList_New(len);
-  for (size_t i = 0; i < len; ++i) {
-    PyObject* zero = PyLong_FromLong(0);
-    PyList_SetItem(tensor_flags, i, zero);
-  }
-  std::cout << "[PyOpLibProxy::InvokeForward] 2" << std::endl;
-  for (const auto i : tensor_indices) {
-    PyObject* one = PyLong_FromLong(1);
-    PyList_SetItem(tensor_flags, i, one);
-  }
-
-  // Store them in tuple.
-  std::cout << "[PyOpLibProxy::InvokeForward] 3" << std::endl;
-  auto args = PyTuple_New(2 + len);
-  PyTuple_SetItem(args, 0, reinterpret_cast<PyObject*>(callback));
+    const std::vector<int64_t>& obj_indices) {
+  ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
+  PyObject* args = PyTuple_New(2 + len);
+  PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
+  PyTuple_SetItem(args, 0, callback);
   PyTuple_SetItem(args, 1, tensor_flags);
 
-  std::cout << "[PyOpLibProxy::InvokeForward] 4" << std::endl;
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
@@ -520,96 +449,69 @@ void PyOpLibProxy::InvokeForward(
     PyTuple_SetItem(args, 2 + tensor_indices[i], dltensor);
   }
 
-  std::cout << "[PyOpLibProxy::InvokeForward] 5" << std::endl;
   for (size_t i = 0; i < obj_args.size(); ++i) {
     PyTuple_SetItem(args, 2 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
   }
 
-  PyObject* runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardRunner();
-
-  std::cout << "[PyOpLibProxy::InvokeForward] 6" << std::endl;
-  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(runner), args);
-
-  std::cout << "[PyOpLibProxy::InvokeForward] 6-1" << std::endl;
-  PyObject_Print(result, stdout, 0);
-  std::cout << std::endl;
-
-  std::string err;
-  GetLastErrorMessage(err);
-  std::cout << "Error: " << err << std::endl;
-
-  std::cout << "[PyOpLibProxy::InvokeForward] 7" << std::endl;
-  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
-  for (int i = 0; i < PyTuple_Size(result); ++i) {
-    std::cout << "[PyOpLibProxy::InvokeForward] 7-1: elem " << i << std::endl;
-    PyObject_Print(PyTuple_GetItem(result, i), stdout, 0);
-    std::cout << std::endl;
-    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
-  }
-
-  GetLastErrorMessage(err);
-  std::cout << "Error: " << err << std::endl;
-  std::cout << "[PyOpLibProxy::InvokeForward] 8" << std::endl;
+  return args;
 }
 
-void PyOpLibProxy::InvokeBackward(
+void Invoke(
+    PyObject* runner,
+    PyObject* callback,
+    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<int64_t>& tensor_indices,
+    std::vector<void*>& obj_args,
+    const std::vector<int64_t>& obj_indices,
+    std::vector<void*>& returned_args) {
+  const auto len = tensor_args.size() + obj_args.size();
+  CheckArguments(len, tensor_args, tensor_indices, obj_args, obj_indices);
+  PyObject* args = CreateForwardArguments(
+      callback,
+      len,
+      tensor_args,
+      tensor_indices,
+      obj_args,
+      obj_indices);
+  InvokeRunner(runner, args, returned_args);
+  // TODO: Free Python objects.
+  // DestoryForwardArguments(args);
+}
+
+void PyOpLibProxy::Forward(
     void* callback,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args) {
-  // Set tensor indicators.
-  std::cout << "[PyOpLibProxy::InvokeBackward] 1" << std::endl;
-  const auto len = tensor_args.size() + obj_args.size();
-  PyObject* tensor_flags = PyList_New(len);
-  for (size_t i = 0; i < len; ++i) {
-    PyObject* zero = PyLong_FromLong(0);
-    PyList_SetItem(tensor_flags, i, zero);
-  }
-  std::cout << "[PyOpLibProxy::InvokeBackward] 2" << std::endl;
-  for (const auto i : tensor_indices) {
-    PyObject* one = PyLong_FromLong(1);
-    PyList_SetItem(tensor_flags, i, one);
-  }
+  auto runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardRunner();
+  Invoke(
+      runner,
+      reinterpret_cast<PyObject*>(callback),
+      tensor_args,
+      tensor_indices,
+      obj_args,
+      obj_indices,
+      returned_args);
+}
 
-  std::cout << "[PyOpLibProxy::InvokeBackward] 3" << std::endl;
-  // Store them in tuple.
-  auto args = PyTuple_New(2 + len);
-  PyTuple_SetItem(args, 0, reinterpret_cast<PyObject*>(callback));
-  PyTuple_SetItem(args, 1, tensor_flags);
-
-  std::cout << "[PyOpLibProxy::InvokeBackward] 4" << std::endl;
-  for (size_t i = 0; i < tensor_args.size(); ++i) {
-    // Wrap with DLPack, then transfer to Python for its release.
-    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
-    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    PyTuple_SetItem(args, 2 + tensor_indices[i], dltensor);
-  }
-
-  std::cout << "[PyOpLibProxy::InvokeBackward] 5" << std::endl;
-  for (size_t i = 0; i < obj_args.size(); ++i) {
-    PyTuple_SetItem(args, 2 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
-  }
-
-  std::cout << "[PyOpLibProxy::InvokeBackward] 6" << std::endl;
-  PyObject* runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
-
-  std::cout << "[PyOpLibProxy::InvokeBackward] 7" << std::endl;
-  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(runner), args);
-
-  std::string err;
-  GetLastErrorMessage(err);
-  std::cout << "Error: " << err << std::endl;
-  PyObject_Print(result, stdout, 0);
-  std::cout << std::endl;
-
-  std::cout << "[PyOpLibProxy::InvokeBackward] 8" << std::endl;
-  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
-  for (int i = 0; i < PyTuple_Size(result); ++i) {
-    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
-  }
-  std::cout << "[PyOpLibProxy::InvokeBackward] 9" << std::endl;
+void PyOpLibProxy::Backward(
+    void* callback,
+    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<int64_t>& tensor_indices,
+    std::vector<void*>& obj_args,
+    const std::vector<int64_t>& obj_indices,
+    std::vector<void*>& returned_args) {
+  auto runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
+  Invoke(
+      runner,
+      reinterpret_cast<PyObject*>(callback),
+      tensor_args,
+      tensor_indices,
+      obj_args,
+      obj_indices,
+      returned_args);
 }
 
 }  // namespace onnxruntime

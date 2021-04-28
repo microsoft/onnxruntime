@@ -33,7 +33,7 @@ class PyOpLibProxy {
                         const std::vector<const OrtValue*>& inputs,
                         std::vector<void*>& outputs);
 
-  void InvokeForward(
+  void Forward(
       void* callback,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
@@ -41,7 +41,7 @@ class PyOpLibProxy {
       const std::vector<int64_t>& obj_indices,
       std::vector<void*>& outputs);
 
-  void InvokeBackward(
+  void Backward(
       void* callback,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
@@ -50,19 +50,6 @@ class PyOpLibProxy {
       std::vector<void*>& outputs);
 
   void InvokePythonFunction(void* function);
-
-  bool InvokePythonAutoGradFunc(void* function,
-                                const std::vector<const OrtValue*>&,
-                                std::vector<void*>& outputs);
-
-  bool InvokePythonAutoGradFunc(void*,
-                                const char*,
-                                const std::vector<OrtValue*>& inputs,
-                                const std::vector<int64_t>& arg_positions,
-                                std::vector<void*>& outputs,
-                                std::function<void(const char*)>,
-                                std::vector<void*>& const_args,
-                                const std::vector<int64_t>& const_arg_positions);
 
   const char* GetLastErrorMessage(std::string&);
   void* NewInstance(const char*, const char*, const OnnxAttrs&);
