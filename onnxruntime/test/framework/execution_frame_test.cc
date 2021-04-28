@@ -302,7 +302,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
                      profiler);
 
-  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  SessionOptions so;
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
