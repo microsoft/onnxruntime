@@ -5,7 +5,8 @@
 import numpy as np
 from logging import getLogger
 from enum import Enum
-from onnx import helper, numpy_helper, TensorProto
+from typing import Tuple, Union
+from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -45,7 +46,7 @@ class AttentionMask():
         assert len(self.mask_indice) > 0
         return next(iter(self.mask_indice))
 
-    def process_mask(self, input):
+    def process_mask(self, input: str) -> str:
         if self.mask_format == AttentionMaskFormat.NoMask:
             return None
 
@@ -90,7 +91,62 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
 
-    def create_attention_node(self, mask_index, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, input, output):
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
+        """ Detect num_heads and hidden_size from a reshape node.
+
+        Args:
+            reshape_q (NodeProto): reshape node for Q
+
+        Returns:
+            Tuple[int, int]: num_heads and hidden_size
+        """
+
+        # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
+        q_shape = self.model.get_initializer(reshape_q.input[1])
+        if q_shape is None:
+            logger.debug(f"{reshape_q.input[1]} is not initializer.")
+            return self.num_heads, self.hidden_size  # Fall back to user specified value
+
+        q_shape_value = numpy_helper.to_array(q_shape)
+        if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
+            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
+            return self.num_heads, self.hidden_size  # Fall back to user specified value
+
+        num_heads = q_shape_value[2]
+        head_size = q_shape_value[3]
+        hidden_size = num_heads * head_size
+
+        if self.num_heads > 0 and num_heads != self.num_heads:
+            logger.warn("--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+
+        if self.hidden_size > 0 and hidden_size != self.hidden_size:
+            logger.warn("--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+
+        return num_heads, hidden_size
+
+    def create_attention_node(self, mask_index: str, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto,
+                              q_add: NodeProto, k_add: NodeProto, v_add: NodeProto, num_heads: int, hidden_size: int,
+                              input: str, output: str) -> Union[NodeProto, None]:
+        """ Create an Attention node.
+
+        Args:
+            mask_index (str): mask input
+            q_matmul (NodeProto): MatMul node in fully connection for Q
+            k_matmul (NodeProto): MatMul node in fully connection for  K
+            v_matmul (NodeProto): MatMul node in fully connection for  V
+            q_add (NodeProto): Add bias node in fully connection for Q
+            k_add (NodeProto): Add bias node in fully connection for K
+            v_add (NodeProto): Add bias node in fully connection for V
+            num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
+            hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
+            input (str): input name
+            output (str): output name
+
+        Returns:
+            Union[NodeProto, None]: the node created or None if failed.
+        """
+        assert num_heads > 0 or hidden_size > 0 or (hidden_size % num_heads) == 0
+
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
@@ -103,10 +159,6 @@ class FusionAttention(Fusion):
             return None
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
-
-        assert (self.hidden_size % self.num_heads) == 0
-        head_hidden_size = self.hidden_size // self.num_heads
-
         qw = numpy_helper.to_array(q_weight)
         kw = numpy_helper.to_array(k_weight)
         vw = numpy_helper.to_array(v_weight)
@@ -114,27 +166,34 @@ class FusionAttention(Fusion):
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
 
-        # All the matrices have the same shape (in_size, out_size)
-        in_size, out_size = qw.shape
-        qkv_weight = np.stack((qw, kw, vw), axis=-2)
+        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size]. 
+        # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
+        in_size = qw.shape[0]
+        out_size = np.prod(qw.shape[1:])
 
-        qb = numpy_helper.to_array(q_bias)
-        assert qb.shape == (out_size, )
+        qkv_weight = np.stack((qw, kw, vw), axis=1)
 
+        qb = numpy_helper.to_array(q_bias)        
         kb = numpy_helper.to_array(k_bias)
-        assert kb.shape == (out_size, )
-
         vb = numpy_helper.to_array(v_bias)
-        assert vb.shape == (out_size, )
 
-        qkv_bias = np.stack((qb, kb, vb), axis=-2)
+        # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
+        assert qb.shape == kb.shape == vb.shape
+        assert np.prod(qb.shape) == out_size
 
+        if out_size != hidden_size:
+            logger.debug(
+                f"Shape for weights of Q is {in_size, out_size}, which does not match hidden_size={hidden_size}")
+            return None
+
+        qkv_bias = np.stack((qb, kb, vb), axis=0)
         attention_node_name = self.model.create_node_name('Attention')
 
         weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',
                                     data_type=TensorProto.FLOAT,
                                     dims=[in_size, 3 * out_size],
                                     vals=qkv_weight.flatten().tolist())
+
         # Sometimes weights and bias are stored in fp16
         if q_weight.data_type == 10:
             weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
@@ -157,7 +216,7 @@ class FusionAttention(Fusion):
                                           outputs=[output],
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
-        attention_node.attribute.extend([helper.make_attribute("num_heads", out_size // head_hidden_size)])
+        attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
         return attention_node
 
@@ -257,6 +316,7 @@ class FusionAttention(Fusion):
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
+        reshape_q = q_nodes[-3]
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
@@ -290,8 +350,13 @@ class FusionAttention(Fusion):
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
+            num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+            if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
+                logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
+                return
+
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  root_input, attention_last_node.output[0])
+                                                  num_heads, hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
                 return
 
@@ -303,9 +368,8 @@ class FusionAttention(Fusion):
                 shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
                                                   data_type=TensorProto.INT64,
                                                   dims=[4],
-                                                  vals=np.int64(
-                                                      [0, 0, self.num_heads,
-                                                       int(self.hidden_size / self.num_heads)]).tobytes(),
+                                                  vals=np.int64([0, 0, num_heads,
+                                                                 int(hidden_size / num_heads)]).tobytes(),
                                                   raw=True)
                 self.model.add_initializer(shape_tensor)
                 self.model.add_node(

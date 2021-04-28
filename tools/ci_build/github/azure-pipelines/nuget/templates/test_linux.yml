@@ -12,7 +12,6 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:
@@ -36,10 +35,10 @@ jobs:
   - ${{ if eq(parameters['TestGPU'], 'false') }}:
     - template: ../../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecentoscpubuild
+        Repository: onnxruntimecpubuild
 
     - script: |
        set -e -x
@@ -48,7 +47,7 @@ jobs:
          $(Build.BinariesDirectory) \
          nuget-artifact \
          $(NuGetPackageVersionNumber) \
-         onnxruntimecentoscpubuild \
+         onnxruntimecpubuild \
          true
       displayName: 'Run Package Test (x64) on CentOS7'
       env:

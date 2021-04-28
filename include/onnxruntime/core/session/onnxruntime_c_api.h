@@ -157,7 +157,7 @@ ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(IoBinding);
-ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+ORT_RUNTIME_CLASS(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
@@ -268,7 +268,7 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t cuda_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
   int has_user_compute_stream;
@@ -276,12 +276,28 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 /// <summary>
+/// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
+/// </summary>
+typedef struct OrtROCMProviderOptions {
+  int device_id;                                    // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
+  size_t gpu_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+} OrtROCMProviderOptions;
+
+/// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
-  int has_user_compute_stream;
-  void* user_compute_stream;
+  int device_id;                                  // cuda device id.
+  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                      // user specified CUDA compute stream.
+  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -289,12 +305,14 @@ typedef struct OrtTensorRTProviderOptions {
 /// </summary>
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{} {}
 #endif
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
   size_t num_of_threads;  // 0 uses default number of threads
+  unsigned char use_compiled_network; // 0 = false, nonzero = true
+  const char* blob_dump_path; // path is set to empty by default
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -325,12 +343,12 @@ struct OrtApi {
   const char*(ORT_API_CALL* GetErrorMessage)(_In_ const OrtStatus* status)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /**
-     * \param out Should be freed by `OrtReleaseEnv` after use
+     * \param out Should be freed by `ReleaseEnv` after use
      */
   ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
-   * \param out Should be freed by `OrtReleaseEnv` after use
+   * \param out Should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
                   OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
@@ -357,7 +375,7 @@ struct OrtApi {
                   _Inout_updates_all_(output_names_len) OrtValue** output);
 
   /**
-    * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
+    * \return A pointer of the newly created object. The pointer should be freed by ReleaseSessionOptions after use
     */
   ORT_API2_STATUS(CreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
@@ -414,7 +432,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
   /*
-  Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
+  Create a custom op domain. After all sessions using it are released, call ReleaseCustomOpDomain
   */
   ORT_API2_STATUS(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 
@@ -456,18 +474,18 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
 
   /**
- * \param out  should be freed by OrtReleaseTypeInfo after use
+ * \param out  should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(SessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
@@ -483,7 +501,7 @@ struct OrtApi {
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
   /**
-   * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
+   * \return A pointer to the newly created object. The pointer should be freed by ReleaseRunOptions after use
    */
   ORT_API2_STATUS(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
@@ -502,8 +520,8 @@ struct OrtApi {
   ORT_API2_STATUS(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 
   /**
-   * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
-   * \param out Should be freed by calling OrtReleaseValue
+   * Create a tensor from an allocator. ReleaseValue will also release the buffer inside the output value
+   * \param out Should be freed by calling ReleaseValue
    * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
    */
   ORT_API2_STATUS(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* shape, size_t shape_len,
@@ -511,8 +529,8 @@ struct OrtApi {
 
   /**
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
-   * p_data is owned by caller. OrtReleaseValue won't release p_data.
-   * \param out Should be freed by calling OrtReleaseValue
+   * p_data is owned by caller. ReleaseValue won't release p_data.
+   * \param out Should be freed by calling ReleaseValue
    */
   ORT_API2_STATUS(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
                   size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -560,7 +578,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 
   /**
-     * The 'out' value should be released by calling OrtReleaseTensorTypeAndShapeInfo
+     * The 'out' value should be released by calling ReleaseTensorTypeAndShapeInfo
      */
   ORT_API2_STATUS(CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
@@ -593,14 +611,14 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
   /**
- * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
+ * \param out Should be freed by ReleaseTensorTypeAndShapeInfo after use
  */
   ORT_API2_STATUS(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
   /**
  * Get the type information of an OrtValue
  * \param value
- * \param out The returned value should be freed by OrtReleaseTypeInfo after use
+ * \param out The returned value should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(GetTypeInfo, _In_ const OrtValue* value, _Outptr_result_maybenull_ OrtTypeInfo** out);
 
@@ -728,10 +746,40 @@ struct OrtApi {
   ORT_API2_STATUS(GetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name, _In_ const OrtValue* in,
                   _Out_ void* data_container, size_t data_container_size);
 
+  /**
+     * Fetch a float stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ float* out);
+
+  /**
+     * Fetch a 64-bit int stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute is to be stored
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out);
+  /**
+     * Fetch a string stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of string attribute
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string 
+        attribute, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual string attribute's size,
+        the value of `size` is set to the true size of the string attribute, the provided memory
+        is filled with the attribute's contents, and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual string attribute's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the string attribute
+        and a failure status is returned.)
+     */
   ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
                   _Inout_ size_t* size);
 
@@ -745,7 +793,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Env);
   ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
   ORT_CLASS_RELEASE(MemoryInfo);
-  ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+  ORT_CLASS_RELEASE(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
   ORT_CLASS_RELEASE(Value);
   ORT_CLASS_RELEASE(RunOptions);
   ORT_CLASS_RELEASE(TypeInfo);
@@ -1108,7 +1156,7 @@ struct OrtApi {
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
    *
-   * \param out should be freed by `OrtReleaseEnv` after use
+   * \param out should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
@@ -1119,6 +1167,13 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Append ROCM execution provider to the session options
+   * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
 
   /**
    * Append OpenVINO execution provider to the session options
@@ -1179,6 +1234,48 @@ struct OrtApi {
    * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
    */
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+  /**
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+        array's size, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ float* out, _Inout_ size_t* size);
+
+  /**
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+        array's size, and a success status is returned.
+     
+        If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size and `out`
+        is not nullptr, the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ int64_t* out, _Inout_ size_t* size);
 };
 
 /*

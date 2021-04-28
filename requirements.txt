@@ -1,2 +1,3 @@
 numpy >= 1.16.6
 protobuf
+flatbuffers

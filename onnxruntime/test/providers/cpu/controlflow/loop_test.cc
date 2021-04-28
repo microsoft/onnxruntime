@@ -362,7 +362,7 @@ void RunTest(int64_t max_iterations,
 
     test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
   }
 }
 
@@ -569,7 +569,7 @@ TEST(Loop, InfiniteLoopTermination) {
   std::thread terminator_thread{std::move(task)};
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
-           {kTensorrtExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();

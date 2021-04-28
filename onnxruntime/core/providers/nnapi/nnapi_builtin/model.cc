@@ -130,7 +130,7 @@ Model::NNMemory::~NNMemory() {
     munmap(data_ptr_, byte_size_);
   }
 
-  if (fd_ > 0) close(fd_);
+  if (fd_ >= 0) close(fd_);
 }
 #else
 Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {

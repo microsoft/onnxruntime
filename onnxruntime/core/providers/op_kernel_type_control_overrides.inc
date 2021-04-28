@@ -22,7 +22,7 @@ namespace op_kernel_type_control {
   template <>                                                                 \
   struct TypesHolder<                                                         \
       ::onnxruntime::op_kernel_type_control::tags::Allowed<                   \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(                 \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_ARG_TAG(                        \
               OpDomain, OpName, ArgDirection, ArgIndex)>> {                   \
     using types = ::onnxruntime::TypeList<__VA_ARGS__>;                       \
   };

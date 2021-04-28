@@ -6,10 +6,11 @@ SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
+ORTMODULE_BUILD=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y:t:i:m parameter_Option
+while getopts c:o:d:r:p:x:a:v:y:t:i:mu parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04, ubuntu18.04, CentOS7
@@ -36,6 +37,8 @@ t) EXTRA_IMAGE_TAG=${OPTARG};;
 i) IMAGE_CACHE_CONTAINER_REGISTRY_NAME=${OPTARG};;
 # install distributed setup dependencies
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
+# install ortmodule specific dependencies
+u) ORTMODULE_BUILD=true;;
 esac
 done
 
@@ -79,9 +82,13 @@ else
         DOCKER_FILE=Dockerfile.ubuntu_gpu
         if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
+            DOCKER_FILE=Dockerfile.ubuntu_gpu_training
         fi
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
+        fi
+        if [[ $ORTMODULE_BUILD = true ]]; then
+            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \

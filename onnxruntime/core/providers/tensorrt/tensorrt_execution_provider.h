@@ -71,6 +71,12 @@ struct TensorrtExecutionProviderInfo {
   int device_id{0};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  bool has_trt_options{false};
+  size_t max_workspace_size{1 << 30};
+  bool fp16_enable{false};
+  bool int8_enable{false}; 
+  std::string int8_calibration_table_name{""};
+  bool int8_use_native_calibration_table{false};
 };
 
 // Information to construct kernel function state.
@@ -94,6 +100,8 @@ struct TensorrtFuncState {
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
+
+  nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
@@ -141,7 +149,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string cache_path_;
-  nvinfer1::IRuntime* runtime_ = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;

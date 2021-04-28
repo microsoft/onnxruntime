@@ -18,18 +18,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Clip_6<float>);
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0,
     float);
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0,
     float, double, int8_t, uint8_t, int64_t, uint64_t);
 }  // namespace op_kernel_type_control
 
-using Clip11Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
-using EnabledClip11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
-using Clip12Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
-using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
+using Clip11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
+using EnabledClip11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
+using Clip12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
+using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 
 using AllEnabledClipTypes =
     utils::TypeSetUnion<
@@ -85,11 +89,11 @@ struct Clip::ComputeImpl {
     auto min_val = std::numeric_limits<T>::lowest();
     auto max_val = std::numeric_limits<T>::max();
     if (min) {
-      ORT_ENFORCE(min->Shape().NumDimensions() == 0, "min should be a scalar.");
+      ORT_ENFORCE(min->Shape().IsScalar(), "min should be a scalar.");
       min_val = *(min->template Data<T>());
     }
     if (max) {
-      ORT_ENFORCE(max->Shape().NumDimensions() == 0, "max should be a scalar.");
+      ORT_ENFORCE(max->Shape().IsScalar(), "max should be a scalar.");
       max_val = *(max->template Data<T>());
     }
 

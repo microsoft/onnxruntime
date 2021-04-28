@@ -16,8 +16,8 @@ __global__ void cuda_add_impl(int64_t N, T3* O, const T1* X, const T2* Y) {
 }
 
 template <typename T1, typename T2, typename T3>
-void cuda_add(int64_t N, T3* O, const T1* X, const T2* Y) {
-  cuda_add_impl<<<1, 256, 0, 0>>>(N, O, X, Y);
+void cuda_add(int64_t N, T3* O, const T1* X, const T2* Y, cudaStream_t compute_stream) {
+  cuda_add_impl<<<1, 256, 0, compute_stream>>>(N, O, X, Y);
 }
 
 template <typename T>
@@ -29,12 +29,12 @@ __global__ void cuda_slice_impl(const T* X, int64_t from, int64_t to, T* Y) {
 }
 
 template <typename T>
-void cuda_slice(const T* X, int64_t from, int64_t to, T* Y) {
-  cuda_slice_impl<T><<<1, 256, 0, 0>>>(X, from, to, Y);
+void cuda_slice(const T* X, int64_t from, int64_t to, T* Y, cudaStream_t compute_stream) {
+  cuda_slice_impl<T><<<1, 256, 0, compute_stream>>>(X, from, to, Y);
 }
 
-template void cuda_slice(const float*, int64_t, int64_t, float*);
-template void cuda_slice(const double*, int64_t, int64_t, double*);
+template void cuda_slice(const float*, int64_t, int64_t, float*, cudaStream_t compute_stream);
+template void cuda_slice(const double*, int64_t, int64_t, double*, cudaStream_t compute_stream);
 
-template void cuda_add(int64_t, float*, const float*, const float*);
-template void cuda_add(int64_t, float*, const float*, const double*);
+template void cuda_add(int64_t, float*, const float*, const float*, cudaStream_t compute_stream);
+template void cuda_add(int64_t, float*, const float*, const double*, cudaStream_t compute_stream);

@@ -258,6 +258,54 @@ class TestCalibrate(unittest.TestCase):
         for output_name in output_min_max_dict.keys():
             self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name])
 
+    def test_augment_graph_with_zero_value_dimension(self):
+        '''TEST_CONFIG_5'''
+        #   Conv
+        #    |
+        #   Conv
+        #    |
+        #  Resize
+
+        G = helper.make_tensor_value_info('G', TensorProto.FLOAT, [1, 1, 5, 5])
+        H = helper.make_tensor_value_info('H', TensorProto.FLOAT, [1, 1, 3, 3])
+        J = helper.make_tensor_value_info('J', TensorProto.FLOAT, [1, 1, 3, 3])
+        M = helper.make_tensor_value_info('M', TensorProto.FLOAT, [0])
+        N = helper.make_tensor_value_info('N', TensorProto.FLOAT, [0])
+        O = helper.make_tensor_value_info('O', TensorProto.FLOAT, [1,1,5,5])
+        # O = helper.make_tensor_value_info('O', TensorProto.FLOAT, None)
+        conv_node_1 = onnx.helper.make_node('Conv', ['G', 'H'], ['I'],
+                                            name='Conv1',
+                                            kernel_shape=[3, 3],
+                                            pads=[1, 1, 1, 1])
+        conv_node_2 = onnx.helper.make_node('Conv', ['I', 'J'], ['K'],
+                                            name='Conv2',
+                                            kernel_shape=[3, 3],
+                                            pads=[1, 1, 1, 1])
+        resize_node_1 = onnx.helper.make_node('Resize', ['K', 'M', 'N'], ['O'],
+                                            name='Reize1')
+        graph = helper.make_graph([conv_node_1, conv_node_2, resize_node_1], 'test_graph_5', [G, H, J, M, N], [O])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        test_model_path = './test_model_5.onnx'
+        onnx.save(model, test_model_path)
+
+        augmented_model_path = './augmented_test_model_5.onnx'
+        calibrater = MinMaxCalibrater(test_model_path, [], augmented_model_path)
+        augmented_model = calibrater.get_augment_model()
+
+        augmented_model_node_names = [node.name for node in augmented_model.graph.node]
+        augmented_model_outputs = [output.name for output in augmented_model.graph.output]
+        added_node_names = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax', 'O_ReduceMin', 'O_ReduceMax']
+        added_outputs = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax', 'O_ReduceMin', 'O_ReduceMax']
+        # Original 3 nodes + added ReduceMin/Max nodes * 8 
+        self.assertEqual(len(augmented_model_node_names), 19)
+        # Original 1 graph output + added outputs * 8 
+        self.assertEqual(len(augmented_model_outputs), 17)
+        for name in added_node_names:
+            self.assertTrue(name in augmented_model_node_names)
+        for output in added_outputs:
+            self.assertTrue(output in augmented_model_outputs)
+
+
 
 if __name__ == '__main__':
     unittest.main()

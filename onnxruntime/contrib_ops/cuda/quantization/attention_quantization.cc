@@ -49,7 +49,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* i_zp_tensor,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor));
+  auto& device_prop = GetDeviceProp();
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");

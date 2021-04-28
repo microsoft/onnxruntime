@@ -129,7 +129,8 @@ Environment& GetEnv();
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
                        const std::vector<std::string>& provider_types = {},
-                       const ProviderOptionsVector& provider_options = {});
+                       const ProviderOptionsVector& provider_options = {},
+                       const std::unordered_set<std::string>& disabled_optimizer_names = {});
 
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();

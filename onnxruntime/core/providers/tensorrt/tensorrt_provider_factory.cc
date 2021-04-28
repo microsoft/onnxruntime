@@ -49,6 +49,12 @@ struct Tensorrt_Provider : Provider {
     info.device_id = options.device_id;
     info.has_user_compute_stream = options.has_user_compute_stream;
     info.user_compute_stream = options.user_compute_stream;
+    info.has_trt_options = options.has_trt_options;
+    info.max_workspace_size = options.trt_max_workspace_size;
+    info.fp16_enable = options.trt_fp16_enable;
+    info.int8_enable = options.trt_int8_enable;
+    info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
+    info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 

@@ -132,7 +132,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for node: " << node->Name();
+      LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
+                         << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
+                         << " capable of executing this node";
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }

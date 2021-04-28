@@ -99,7 +99,7 @@ final class OnnxRuntime {
       providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
-      if (!isAndroid()) {
+      if (tempDirectory != null) {
         cleanUp(tempDirectory.toFile());
       }
     }

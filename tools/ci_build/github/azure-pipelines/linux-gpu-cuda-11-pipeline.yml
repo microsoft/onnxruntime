@@ -19,7 +19,7 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" --rm \
+        docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
