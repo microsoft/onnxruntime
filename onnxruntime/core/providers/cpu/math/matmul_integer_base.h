@@ -37,12 +37,11 @@ class MatMulIntegerBase : public OpKernel {
         return Status::OK();
       }
 
-      bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-
       auto* packed_b_data = alloc->Alloc(packed_b_size);
       packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
       MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
 
+      bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
       if (!kernel_owns_prepacked_buffer) {
         prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
         prepacked_weight_for_caching->shapes_.push_back(b_shape_);

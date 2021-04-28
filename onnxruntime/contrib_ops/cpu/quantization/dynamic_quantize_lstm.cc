@@ -86,10 +86,9 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& /
   is_packed = false;
 
   if (input_idx == 1) {
-    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-
     ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_, alloc));
 
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     if (is_packed && !kernel_owns_prepacked_buffer) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(packed_W_.buffer_));
       prepacked_weight_for_caching->shapes_.push_back(packed_W_.shape_);
@@ -99,9 +98,9 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& /
       packed_W_.buffer_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
     }
   } else if (input_idx == 2) {
-    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_, alloc));
 
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     if (is_packed && !kernel_owns_prepacked_buffer) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(packed_R_.buffer_));
       prepacked_weight_for_caching->shapes_.push_back(packed_R_.shape_);

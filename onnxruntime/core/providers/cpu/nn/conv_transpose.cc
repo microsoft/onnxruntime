@@ -37,13 +37,17 @@ ONNX_CPU_OPERATOR_KERNEL(
     ConvTranspose<float>);
 
 template <typename T>
-Status ConvTranspose<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
+Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*out*/ bool& is_packed,
+                                 /*out*/ PrepackedWeight* /*prepacked_weight_for_caching*/,
+                                 AllocatorPtr /*alloc*/) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+                                     /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                                     AllocatorPtr alloc) {
   is_packed = false;
 
   // only pack filter tensor
@@ -56,11 +60,10 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
     const size_t K = static_cast<size_t>(filter_shape_[0]) / conv_transpose_attrs_.group;
     const size_t N = filter_shape_.SizeFromDimension(1);
     auto packed_elements_per_group = N * K;
-    if (packed_elements_per_group == 0 || N == 1 || K == 1) { // No need for single row or single col case
+    if (packed_elements_per_group == 0 || N == 1 || K == 1) {  // No need for single row or single col case
       return Status::OK();
     }
 
-    auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
     auto* packed_filter_data = alloc->Alloc(packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group);
     transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
 
@@ -70,8 +73,39 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
                     K, N);
     }
 
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
+    if (!kernel_owns_prepacked_buffer) {
+      prepacked_weight_for_caching->buffers_.push_back(std::move(transposed_filter_));
+      prepacked_weight_for_caching->shapes_.push_back(filter_shape_);
+      prepacked_weight_for_caching->is_filled_ = true;
+      transposed_filter_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
+    }
+
     is_packed = true;
   }
+  return Status::OK();
+}
+
+template <typename T>
+Status ConvTranspose<T>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                                  int input_idx,
+                                                  /*out*/ bool& read_from_cache) {
+  read_from_cache = false;
+  return Status::OK();
+}
+
+template <>
+Status ConvTranspose<float>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                                      int input_idx,
+                                                      /*out*/ bool& read_from_cache) {
+  read_from_cache = false;
+
+  if (input_idx == 1) {
+    read_from_cache = true;
+    filter_shape_ = cached_prepacked_weight.shapes_[0];
+    transposed_filter_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+  }
+
   return Status::OK();
 }
 

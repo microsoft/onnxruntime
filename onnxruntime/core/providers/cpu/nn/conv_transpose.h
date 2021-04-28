@@ -27,7 +27,13 @@ class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 AllocatorPtr alloc) override;
+
+  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
+                                  int input_idx,
+                                  /*out*/ bool& read_from_cache) override;
 
   Status Compute(OpKernelContext* context) const override;
 

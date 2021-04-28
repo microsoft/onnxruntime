@@ -176,11 +176,10 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& i
                             AllocatorPtr alloc) {
   is_packed = false;
 
-  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-
   // only pack Matrix B
   if (input_idx == 1) {
     is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, b_shape_);
+    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     if (is_packed && !kernel_owns_prepacked_buffer) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
       prepacked_weight_for_caching->shapes_.push_back(b_shape_);

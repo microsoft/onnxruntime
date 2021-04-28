@@ -89,8 +89,6 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
     return Status::OK();
   }
 
-  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-
   const size_t loop_len = 3 * num_heads_;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
@@ -101,6 +99,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
     weights_data += head_size;
   }
 
+  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
   if (!kernel_owns_prepacked_buffer) {
     prepacked_weight_for_caching->buffers_.push_back(std::move(packed_weights_));
     prepacked_weight_for_caching->shapes_.push_back(weight_shape_);
