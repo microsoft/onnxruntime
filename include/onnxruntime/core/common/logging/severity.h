@@ -13,10 +13,11 @@ enum class Severity {
   kINFO = 1,
   kWARNING = 2,
   kERROR = 3,
-  kFATAL = 4
+  kFATAL = 4,
+  kTELEM = 5,
 };
 
-constexpr const char* SEVERITY_PREFIX = "VIWEF";
+constexpr const char* SEVERITY_PREFIX = "VIWEFT";
 
 }  // namespace logging
 }  // namespace onnxruntime
