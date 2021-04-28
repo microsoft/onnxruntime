@@ -10,6 +10,10 @@
 #include "onnx/defs/function.h"
 #include <math.h>
 
+#ifdef USE_TORCH
+#include "orttraining/training_ops/cpu/aten_functions/aten_function_config.h"
+#endif
+
 namespace onnxruntime {
 namespace training {
 
@@ -2314,32 +2318,72 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchEmbeddingGrad)
+#ifdef USE_TORCH
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenFunctionOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient of TorchEmbedding.")
-      .Input(0, "grad", "dY", "T")
-      .Input(1, "indices", "Long tensor containing the indices to extract from embedding matrix.", "tensor(int64)")
-      .Input(2, "num_weights", "weight.size(0)", "tensor(int64)")
-      .Input(3, "padding_idx",
-             "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
-             "therefore, the embedding vector at `padding_idx` is not updated during training, "
-             "i.e. it remains as a fixed pad.",
-             "tensor(int64)", OpSchema::Optional)
-      .Input(4, "scale_grad_by_freq",
-             "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
-             "the indices (words) in the mini-batch. Default  is ``False``",
-             "tensor(bool)", OpSchema::Optional)
-      .Output(0, "weight_grad", "dWeight", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)", "tensor(uint8)", "tensor(uint16)",
-           "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"},
-          "Constrain input and output types to all numeric tensors.")
+      .SetDoc("ATenFunctionOp")
+      .Input(0, "inputs", "External function inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "External function outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of external function.", AttributeProto::STRING)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        const auto name_proto = ctx.getAttribute("name");
+        ORT_ENFORCE(name_proto, "ATenFunctionOp's must have \"name\" attribute.");
+        const std::string& name = name_proto->s();
+        ORT_ENFORCE(contrib::aten_functions::ATEN_FUNCTIONS.find(name) !=
+                    contrib::aten_functions::ATEN_FUNCTIONS.end());
+        contrib::aten_functions::ATenFunctionConfig func_config = contrib::aten_functions::ATEN_FUNCTIONS.at(name);
+        ORT_ENFORCE(ctx.getNumOutputs() == func_config.forward_tensor_output_type_configs.size());
+
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          int type_config = std::get<1>(func_config.forward_tensor_output_type_configs[i]);
+          if (std::get<0>(func_config.forward_tensor_output_type_configs[i]) ==
+              contrib::aten_functions::PROPAGATE_FROM_INPUT) {
+            propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(type_config), i);
+          } else {
+            updateOutputElemType(ctx, i, type_config);
+          }
+        }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenFunctionOpGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATenFunctionOpGrad.")
+      .Input(0, "inputs", "Inputs of external function's gradient op.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "Outputs of external function's gradient op.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of external function, should be same as its corresponding forward op.",
+            AttributeProto::STRING)
+      .Attr("output_types", "Output types of external function's gradient op.", AttributeProto::INTS)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "ATenFunctionOpGrad's must have \"output_types\" attribute.");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
+                    "ATenFunctionOpGrad's output list and \"output_types\" attribute should have same length.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, output_types_proto->ints().at(i));
+        }
+      });
+#endif
+
 }
 }  // namespace training
 }  // namespace onnxruntime

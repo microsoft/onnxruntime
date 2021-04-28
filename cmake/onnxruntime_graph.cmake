@@ -89,6 +89,14 @@ if (onnxruntime_ENABLE_TRAINING)
     if (onnxruntime_USE_NCCL)
         target_include_directories(onnxruntime_graph PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
+
+    # Build provider with Pytorch's C++ APIs.
+    if (onnxruntime_USE_TORCH)
+      target_compile_options(onnxruntime_graph PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
+      target_include_directories(onnxruntime_graph PRIVATE ${TORCH_INCLUDE_DIRS})
+      target_link_libraries(onnxruntime_graph PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
+    endif()
+
 endif()
 
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")

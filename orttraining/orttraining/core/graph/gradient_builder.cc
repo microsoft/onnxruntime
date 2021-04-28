@@ -16,6 +16,10 @@
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 
+#ifdef USE_TORCH
+#include "orttraining/training_ops/cpu/aten_functions/aten_function_config.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -1611,32 +1615,56 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   return result;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetTorchEmbeddingGradient) {
-  std::vector<NodeDef> output;
-  ArgDef num_weights_arg_def = ArgDef("");
-  std::vector<Dimension> weight_shape;
-  if (GetShape(I(0), weight_shape).IsOK() && weight_shape[0].has_dim_value()) {
-    NodeDef num_weights_const_node = ConstantScalarNode(weight_shape[0].dim_value(), {1}, Name("num_weights"));
-    num_weights_arg_def = num_weights_const_node.output_args[0];
-    output.emplace_back(num_weights_const_node);
-  } else {
-    NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
-    ArgDef ZERO = zero_int64_const_node.output_args[0];
-    num_weights_arg_def = IA("num_weights");
-    output.emplace_back(zero_int64_const_node);
-    output.emplace_back(NodeDef("Shape", {I(0)}, {IA("W_shape")}));
-    output.emplace_back(
-        NodeDef("Gather", {IA("W_shape"), ZERO}, {num_weights_arg_def}, {MakeAttribute("axis", int64_t(0))}));
+#ifdef USE_TORCH
+IMPLEMENT_GRADIENT_BUILDER(GetATenFunctionOpGradient) {
+  const auto& src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  const std::string name = src_attrs.at("name").s();
+  attrs.emplace_back(MakeAttribute("name", name));
+  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
+    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
   }
 
-  std::vector<ArgDef> torch_embedding_grad_inputs{GO(0), I(1), num_weights_arg_def};
-  for (int i = 2; i < GetSrcNodeInputSize(); ++i) {
-    torch_embedding_grad_inputs.emplace_back(I(i));
+  ORT_ENFORCE(contrib::aten_functions::ATEN_FUNCTIONS.find(name) !=
+              contrib::aten_functions::ATEN_FUNCTIONS.end());
+  contrib::aten_functions::ATenFunctionConfig func_config = contrib::aten_functions::ATEN_FUNCTIONS.at(name);
+
+  std::vector<int64_t> grad_output_types;
+  std::vector<ArgDef> input_args;
+  std::vector<ArgDef> output_args;
+
+  for (size_t i = 0; i < func_config.backward_tensor_input_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(func_config.backward_tensor_input_configs[i]));
+    switch (std::get<0>(func_config.backward_tensor_input_configs[i]))
+    {
+    case contrib::aten_functions::GRAD_OUTPUT:
+      input_args.emplace_back(GO(index));
+      break;
+    case contrib::aten_functions::FORWARD_INPUT:
+      input_args.emplace_back(I(index));
+      break;
+    case contrib::aten_functions::FORWARD_OUTPUT:
+      input_args.emplace_back(O(index));
+      break;
+    }
   }
 
-  output.emplace_back(NodeDef(OpDef{"TorchEmbeddingGrad", kMSDomain, 1}, torch_embedding_grad_inputs, {GI(0)}));
-  return output;
+  for (size_t i = 0; i < func_config.backward_output_configs.size(); i++) {
+    size_t index = static_cast<size_t>(func_config.backward_output_configs[i]);
+    if (IsGradientRequiredForSrcNodeInput(index)) {
+      output_args.emplace_back(GI(index));
+    } else {
+      output_args.emplace_back(ArgDef("", nullptr));
+    }
+
+    grad_output_types.emplace_back(IElemType(index));
+  }
+
+  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+  return std::vector<NodeDef>{NodeDef(OpDef{"ATenFunctionOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
+#endif
 
 }  // namespace training
 }  // namespace onnxruntime

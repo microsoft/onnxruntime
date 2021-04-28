@@ -3,10 +3,6 @@
 
 #include "core/dlpack/dlpack_converter.h"
 
-#ifdef USE_TORCH
-#include <ATen/DLConvertor.h>
-#endif
-
 namespace onnxruntime {
 namespace dlpack {
 
@@ -237,15 +233,6 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
   return ort_value;
 }
-
-#ifdef USE_TORCH
-at::Tensor ToTorchTensor(OrtValue& ort_value) { return at::fromDLPack(dlpack::OrtValueToDlpack(ort_value)); }
-
-OrtValue FromTorchTensor(const at::Tensor& torch_tensor) {
-  return dlpack::DlpackToOrtValue(at::toDLPack(torch_tensor), torch_tensor.dtype() == at::kBool);
-}
-
-#endif
 
 }  // namespace dlpack
 }  // namespace onnxruntime
