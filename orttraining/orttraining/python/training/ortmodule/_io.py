@@ -36,7 +36,7 @@ class _InputInfo(object):
             \tRequire gradient:        {self.require_grad_names}
             \tDynamic axes:            {self.dynamic_axes}
             \tSchema:                  {self.schema}
-            \t#Positionals:            {self.num_positionals}
+            \t#Positionals (total):    {self.num_positionals}
             \t#Positionals (non-None): {self.num_positionals_non_none}
             \tKeyword names:           {self.keyword_names}'''
 
