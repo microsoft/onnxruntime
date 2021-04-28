@@ -167,7 +167,7 @@ using namespace rnn::detail;
 
 // LSTM details
 
-Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, AllocatorPtr alloc) {
+Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, AllocatorPtr& alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();

@@ -1327,7 +1327,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     nullptr);
 }
 
-TEST(CApiTest, TestSharingOfInitializer) {
+TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
   // simple inference test
   // prepare inputs
   std::vector<Input> inputs(1);

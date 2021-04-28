@@ -70,7 +70,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
 
-bool GemmPackBFp32(AllocatorPtr alloc,
+bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
                    bool trans_b,
                    BufferUniquePtr& packed_b,

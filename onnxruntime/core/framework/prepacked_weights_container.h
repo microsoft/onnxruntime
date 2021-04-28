@@ -37,11 +37,11 @@ class PrepackedWeightsContainer final {
 
   AllocatorPtr GetAllocator(const std::string& device_name);
 
-  const PrepackedWeight& GetCachedWeight(const std::string& initializer_name);
+  const PrepackedWeight& GetCachedWeight(const std::string& key);
 
-  void WriteCachedWeight(const std::string& initializer_name, PrepackedWeight&& packed_weight);
+  void WriteCachedWeight(const std::string& key, PrepackedWeight&& packed_weight);
 
-  bool HasCachedWeight(const std::string& initializer_name);
+  bool HasCachedWeight(const std::string& key);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);
 

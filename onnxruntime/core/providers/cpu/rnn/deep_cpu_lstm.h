@@ -32,7 +32,7 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
 
  private:
   Status TryPackWeights(const Tensor& weights, rnn::detail::PackedWeights& packed_weights,
-                        bool& is_packed, AllocatorPtr alloc);
+                        bool& is_packed, AllocatorPtr& alloc);
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;

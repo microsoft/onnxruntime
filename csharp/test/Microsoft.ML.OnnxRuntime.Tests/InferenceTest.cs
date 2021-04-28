@@ -2232,7 +2232,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             options.AddInitializer("W", sharedInitializer);
 
                             // We want the pre-packed versions of the shared initializer to be shared between sessions (memory savings)
-                            options.AddPrepackedWeightsCache(prepackedWeightsContainer);
+                            options.AddPrepackedWeightsContainer(prepackedWeightsContainer);
 
                             float[] expectedOutput = { 4.0F, 10.0F, 16.0F };
                             int[] expectedDimensions = { 3, 1 };

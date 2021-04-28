@@ -285,13 +285,29 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
               // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
               if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
                 auto* prepacked_weights_container = session_options.prepacked_weights_container;
-                bool cache_contains_packed_weight = prepacked_weights_container->HasCachedWeight(input_name);
+
+                const auto& op_type = node.OpType();
+
+                // Sanity check
+                // TODO: Check if some version of the ONNX IR allows op_type to be empty
+                ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
+
+                // cache key is op_type + node input name (which is a constant initializer)
+                std::stringstream ss;
+                ss << op_type;
+                ss << "+";
+                ss << input_name;
+
+                const std::string prepacked_weights_container_cache_key = ss.str();
+
+                bool cache_contains_packed_weight = prepacked_weights_container->HasCachedWeight(prepacked_weights_container_cache_key);
 
                 if (cache_contains_packed_weight) {
-                  LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name;
+                  LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name
+                                      << " used in the node: " << node.Name() << " which is of op type: " << node.OpType();
 
                   bool read_from_cache = false;
-                  ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_container->GetCachedWeight(input_name),
+                  ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_container->GetCachedWeight(prepacked_weights_container_cache_key),
                                                                        input_idx, read_from_cache));
 
                   // BUG CHECK: Ensure that the kernel read the cached weight (or atleast has an implementation that can consume the cached weight)
@@ -313,14 +329,14 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                                 " doesn't have an implementation that can caches computed pre-packed weights");
 
                     // Write into the pre-packed weights cache
-                    prepacked_weights_container->WriteCachedWeight(input_name, std::move(weight_to_be_filled_in));
+                    prepacked_weights_container->WriteCachedWeight(prepacked_weights_container_cache_key, std::move(weight_to_be_filled_in));
                   }
                 }
               } else {
                 AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
                 ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
-                                                    nullptr,  // no caching required
-                                                    session_cpu_alloc));
+                                                    nullptr,              // no caching required
+                                                    session_cpu_alloc));  // use allocator tied to this session
               }
 
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {

@@ -647,7 +647,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtAddInitializer OrtAddInitializer;
 
         /// <summary>
-        /// Add an instance of OrtAddPrepackedWeightsContainer that is shared across sessions using this SessionOptions instance
+        /// Add an instance of PrepackedWeightsContainer that is shared across sessions using this SessionOptions instance
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
@@ -1184,17 +1184,17 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
 
         /// <summary>
-        /// Create an instance of OrtCreatePrepackedWeightsContainer
+        /// Create an instance of PrepackedWeightsContainer
         /// </summary>
-        /// <param name="prepackedWeightsContainer">(output) Created OrtCreatePrepackedWeightsContainer native instance</param>
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePrepackedWeightsContainer(out IntPtr /*(OrtCreatePrepackedWeightsContainer**)*/ prepackedWeightsContainer);
+        /// <param name="prepackedWeightsContainer">(output) Created native OrtPrepackedWeightsContainer instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePrepackedWeightsContainer(out IntPtr /*(OrtPrepackedWeightsContainer**)*/ prepackedWeightsContainer);
         public static DOrtCreatePrepackedWeightsContainer OrtCreatePrepackedWeightsContainer;
 
         /// <summary>
-        /// Destroy an instance of OrtCreatePrepackedWeightsContainer
+        /// Destroy an instance of PrepackedWeightsContainer
         /// </summary>
-        /// <param name="prepackedWeightsContainer">OrtCreatePrepackedWeightsContainer instance to be destroyed</param>
-        public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtCreatePrepackedWeightsContainer*)*/ prepackedWeightsContainer);
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance to be destroyed</param>
+        public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
         #endregion
 

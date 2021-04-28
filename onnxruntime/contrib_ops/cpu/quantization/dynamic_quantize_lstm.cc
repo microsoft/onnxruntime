@@ -25,7 +25,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
 
  private:
   Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed,
-                        bool& is_weight_signed, AllocatorPtr alloc);
+                        bool& is_weight_signed, AllocatorPtr& alloc);
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
@@ -37,7 +37,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
 };
 
 Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights,
-                                           bool& is_packed, bool& is_weight_signed, AllocatorPtr alloc) {
+                                           bool& is_packed, bool& is_weight_signed, AllocatorPtr& alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();

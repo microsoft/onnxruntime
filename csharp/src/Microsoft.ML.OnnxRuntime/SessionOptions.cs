@@ -289,7 +289,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. Lifetime of 'prepackedWeightsContainer' must be
         /// managed by the user and it must outlive any sessions reliant on it</param>
-        public void AddPrepackedWeightsCache(PrepackedWeightsContainer prepackedWeightsContainer)
+        public void AddPrepackedWeightsContainer(PrepackedWeightsContainer prepackedWeightsContainer)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddPrepackedWeightsContainer(handle, prepackedWeightsContainer.Pointer));
         }

@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 
-bool GemmPackBFp32(AllocatorPtr alloc,
+bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
                    bool trans_b,
                    BufferUniquePtr& packed_b,

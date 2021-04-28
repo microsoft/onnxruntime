@@ -29,18 +29,18 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
   }
 }
 
-const PrepackedWeight& PrepackedWeightsContainer::GetCachedWeight(const std::string& initializer_name) {
-  ORT_ENFORCE(HasCachedWeight(initializer_name), "PrepackedWeightsContainer does not have an initializer with the name: ", initializer_name);
-  return initialized_tensor_name_to_prepacked_weights_[initializer_name];
+const PrepackedWeight& PrepackedWeightsContainer::GetCachedWeight(const std::string& key) {
+  ORT_ENFORCE(HasCachedWeight(key), "PrepackedWeightsContainer does not have an initializer with the same key: ", key);
+  return initialized_tensor_name_to_prepacked_weights_[key];
 }
 
-void PrepackedWeightsContainer::WriteCachedWeight(const std::string& initializer_name, PrepackedWeight&& packed_weight) {
-  ORT_ENFORCE(!HasCachedWeight(initializer_name), "PrepackedWeightsContainer already has an initializer with the same name: ", initializer_name);
-  initialized_tensor_name_to_prepacked_weights_.insert({initializer_name, std::move(packed_weight)});
+void PrepackedWeightsContainer::WriteCachedWeight(const std::string& key, PrepackedWeight&& packed_weight) {
+  ORT_ENFORCE(!HasCachedWeight(key), "PrepackedWeightsContainer already has an initializer with the same key: ", key);
+  initialized_tensor_name_to_prepacked_weights_.insert({key, std::move(packed_weight)});
 }
 
-bool PrepackedWeightsContainer::HasCachedWeight(const std::string& initializer_name) {
-  return initialized_tensor_name_to_prepacked_weights_.find(initializer_name) !=
+bool PrepackedWeightsContainer::HasCachedWeight(const std::string& key) {
+  return initialized_tensor_name_to_prepacked_weights_.find(key) !=
          initialized_tensor_name_to_prepacked_weights_.end();
 }
 
