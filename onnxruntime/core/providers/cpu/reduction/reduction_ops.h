@@ -16,11 +16,6 @@
 
 namespace onnxruntime {
 
-/* Common verficiations. */
-void ValidateReduceAggregatorBaseKR(const std::vector<int64_t>& fast_shape, const Tensor& output);
-void ValidateReduceAggregatorBaseRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
-void ValidateReduceAggregatorBaseKRK(const std::vector<int64_t>& fast_shape, const Tensor& output);
-
 enum FastReduceKind {
   kNone = 0,   // no fast implementation
   kK = 1,      // kept dim = no reduce
@@ -38,6 +33,9 @@ bool operator==(FastReduceKind a, FastReduceKind b);
 bool operator!=(FastReduceKind a, FastReduceKind b);
 
 bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available);
+
+/* Evaluate the cost of parallelized FastReduce implementations. */
+TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size);
 
 /**
   This only improves reduce function when reduced axes are contiguous:
@@ -142,8 +140,6 @@ inline bool reduce_isnan<int32_t>(int32_t) { return false; }
 template <>
 inline bool reduce_isnan<int64_t>(int64_t) { return false; }
 
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size);
-
 class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
@@ -168,9 +164,9 @@ class ReduceAggregator : public ReduceAggregatorBase {
     N_ = N;
     accumulator_ = init;
   }
-  inline void update(const T&) { ORT_ENFORCE(false, "must be overloaded."); }
-  inline void update0(const T&) { ORT_ENFORCE(false, "must be overloaded."); }
-  inline TVAL aggall(const T*) { ORT_ENFORCE(false, "must be overloaded."); }
+  inline void update(const T&) {}
+  inline void update0(const T&) {}
+  inline TVAL aggall(const T*) {}
   inline TVAL get_value() { return accumulator_; }
 };
 

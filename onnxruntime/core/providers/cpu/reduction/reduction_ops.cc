@@ -248,33 +248,33 @@ void ResultsNoTransposePrepareForReduce::ValidateNotEmpty() {
   ORT_ENFORCE(projected_index.size() > 0);
 }
 
-static void OrtEnforceMustBeOverloaded() {
+static void ValidateMustBeOverloaded() {
   ORT_ENFORCE(false, "must be overloaded.");
 }
 
-void ValidateFastReduceKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+static void ValidateFastReduceKR(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void ValidateFastReduceRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+static void ValidateFastReduceRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 2, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void ValidateFastReduceKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
+static void ValidateFastReduceKRK(const std::vector<int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with two dimensions.");
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
 
 void ReduceAggregatorBase::FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
-  OrtEnforceMustBeOverloaded();
+  ValidateMustBeOverloaded();
 }
 void ReduceAggregatorBase::FastReduceRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
-  OrtEnforceMustBeOverloaded();
+  ValidateMustBeOverloaded();
 }
 void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
-  OrtEnforceMustBeOverloaded();
+  ValidateMustBeOverloaded();
 }
 
 TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size) {
@@ -380,7 +380,7 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   }
 }
 
-void OrtEnforceNoTransposeReduce(int64_t count) {
+void ValidateNoTransposeReduce(int64_t count) {
   ORT_ENFORCE(count == 1, "Reduction on all axes, output size should be 1.");
 }
 
@@ -394,7 +394,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
   int64_t count = output_shape.Size();
 
   if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
-    OrtEnforceNoTransposeReduce(count);
+    ValidateNoTransposeReduce(count);
     int64_t input_size = new_input_shape.Size();
     to_data[0] = AGG(input_size, from_data[0]).aggall(from_data);
     return;
@@ -447,7 +447,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
   int64_t count = output_shape.Size();
 
   if (reduced_axes.size() == 0 || reduced_axes.size() == new_input_shape.NumDimensions()) {
-    OrtEnforceNoTransposeReduce(count);
+    ValidateNoTransposeReduce(count);
     int64_t input_size = new_input_shape.Size();
     to_data[0] = AGG(input_size, from_data[0]).aggall(from_data);
     return;
@@ -606,7 +606,7 @@ FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shap
   return FastReduceKind::kNone;
 }
 
-void OrtEnforceCommonFastReduce(const Tensor* axes_tensor) {
+void ValidateCommonFastReduce(const Tensor* axes_tensor) {
   ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
   ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
               "An axes tensor must be a vector tensor.");
@@ -617,7 +617,7 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, std::vector<int64_t>& input_axes
   if (ctx->InputCount() == 2) {
     // second input holds the axes.
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    OrtEnforceCommonFastReduce(axes_tensor);
+    ValidateCommonFastReduce(axes_tensor);
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->template Data<int64_t>();
     input_axes.insert(input_axes.begin(), data, data + nDims);
@@ -665,14 +665,17 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
       Tensor* output = ctx->Output(0, output_shape);
       switch (fast_kind) {
         case FastReduceKind::kKR: {
+          ValidateFastReduceKR(fast_shape, *output);
           case_kr(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return true;
         }
         case FastReduceKind::kRK: {
+          ValidateFastReduceRK(fast_shape, *output);
           case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return true;
         }
         case FastReduceKind::kKRK: {
+          ValidateFastReduceKRK(fast_shape, *output);
           case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return true;
         }
@@ -701,15 +704,15 @@ bool CommonFastReduce(OpKernelContext* ctx,
                                 AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK, &AGG::FastReduceKRK);
 }
 
-static void OrtEnforceKeepDims(const TensorShape& shape, int64_t keepdims) {
+static void ValidateKeepDims(const TensorShape& shape, int64_t keepdims) {
   ORT_ENFORCE(keepdims,
               "Can't reduce on dim with value of 0 if 'keepdims' is false. "
               "Invalid output shape would be produced. input_shape:",
               shape);
 }
 
-static void OrtEnforceKeepDims(const Tensor* input, int64_t keepdims) {
-  OrtEnforceKeepDims(input->Shape(), keepdims);
+static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
+  ValidateKeepDims(input->Shape(), keepdims);
 }
 
 template <typename AGG>
@@ -736,7 +739,7 @@ void CommonReduce1Loop(OpKernelContext* ctx,
       agg.update(*from_data);
       *to_data = agg.get_value();
     } else {
-      OrtEnforceKeepDims(input, keepdims_);
+      ValidateKeepDims(input, keepdims_);
     }
     return;
   }
@@ -768,7 +771,7 @@ void CommonReduce2Loops(OpKernelContext* ctx,
       agg.update(*from_data);
       *to_data = agg.get_value();
     } else {
-      OrtEnforceKeepDims(input, keepdims_);
+      ValidateKeepDims(input, keepdims_);
     }
     return;
   }
@@ -854,7 +857,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
       T* to_data = output.template MutableData<T>();
       *to_data = *from_data;
     } else {
-      OrtEnforceKeepDims(new_input_shape, keep_dims);
+      ValidateKeepDims(new_input_shape, keep_dims);
     }
     return output;
   }
@@ -862,14 +865,17 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
     switch (fast_kind) {
       case FastReduceKind::kKR: {
+        ValidateFastReduceKR(fast_shape, output);
         ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
         return output;
       }
       case FastReduceKind::kRK: {
+        ValidateFastReduceRK(fast_shape, output);
         ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
         return output;
       }
       case FastReduceKind::kKRK: {
+        ValidateFastReduceKRK(fast_shape, output);
         ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
         return output;
       }
