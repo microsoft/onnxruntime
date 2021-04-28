@@ -89,7 +89,10 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  steps:    
+  steps:
+  - checkout: self
+    submodules: false
+    fetchDepth: 1
   - task: NodeTool@0
     inputs:
       versionSpec: '14.x'
