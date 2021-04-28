@@ -43,7 +43,7 @@ void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
     testCase.RunTest();
   else
     testCase.CreateModel(true);
-}  // namespace test
+}
 
 TEST_F(ContribFunExpansionTest, LayerNorm) {
   // Test expand-and-run
@@ -57,6 +57,25 @@ TEST_F(ContribFunExpansionTest, LayerNorm_OptionalOutputs) {
   CheckLayerNorm<float, float, true>(false, false);
   CheckLayerNorm<float, float, true>(false, true);
   CheckLayerNorm<float, float, true>(true, false);
+}
+
+template <typename T>
+void CheckGelu() {
+  FunctionTestCase testCase("Gelu", kMSDomain);
+  std::vector<int64_t> shape{8, 16};
+
+  testCase.AddInput<T>("x", shape);
+  testCase.AddOutput("y");
+
+  testCase.CreateModel(true);
+}
+
+TEST_F(ContribFunExpansionTest, Gelu) {
+  // Test expand-and-run
+  CheckGelu<float>();
+  CheckGelu<double>();
+  CheckGelu<BFloat16>();
+  CheckGelu<MLFloat16>();
 }
 
 }  // namespace test
