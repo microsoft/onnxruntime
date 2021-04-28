@@ -27,7 +27,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   uint32_t GetIntraOpNumThreads();
 
   STDMETHOD(SetIntraOpThreadSpinning)
-  (bool allowSpinning);
+  (boolean allowSpinning);
 
   bool GetIntraOpThreadSpinning();
 

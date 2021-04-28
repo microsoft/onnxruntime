@@ -47,9 +47,9 @@ bool LearningModelSessionOptions::GetIntraOpThreadSpinning() {
   return allow_thread_spinning_;
 }
 
-STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(bool allowSpinning) noexcept {
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allowSpinning) noexcept {
   allow_thread_spinning_ = allowSpinning;
-  // TODO: set telemetry
+  telemetry_helper.SetIntraOpThreadSpinning(allowSpinning);
   return S_OK;
 }
 

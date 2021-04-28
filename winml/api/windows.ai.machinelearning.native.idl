@@ -35,7 +35,7 @@ interface ILearningModelDeviceFactoryNative : IUnknown
     HRESULT CreateFromD3D12CommandQueue(ID3D12CommandQueue * value, [out] IUnknown ** result);
 };
 
-[uuid(5DA37A26-0526-414B-91E4-2A0FA3DDBA40), object, local]
+[uuid(5da37a26-0526-414b-91e4-2a0fa3ddba40), object, local]
 interface ILearningModelSessionOptionsNative : IUnknown
 {
     HRESULT SetIntraOpNumThreadsOverride(UINT32 intraOpNumThreads);
