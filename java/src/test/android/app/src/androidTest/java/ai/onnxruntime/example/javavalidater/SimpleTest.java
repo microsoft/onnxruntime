@@ -24,23 +24,22 @@ public class SimpleTest {
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment();
              OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
+
             opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
 
             try (OrtSession session = env.createSession(readModel("sigmoid.ort"), opts)) {
-
                 String inputName = session.getInputNames().iterator().next();
-
                 float[][][] testdata = new float[3][4][5];
                 for (float[][] array2d : testdata) {
                     for (float[] array : array2d) {
                         Arrays.fill(array, (float) 0);
                     }
                 }
-
                 try (OnnxTensor inputTensor =
                              OnnxTensor.createTensor(env, testdata);
                      OrtSession.Result output = session.run(Collections.singletonMap(inputName, inputTensor))) {
                     float[][][] rawOutput = (float[][][]) output.get(0).getValue();
+                    //expected sigmoid output is y = 1.0 / (1.0 + exp(-x))
                     float expected = (float) 0.5;
                     for (float[][] array2d : rawOutput) {
                         for (float[] array : array2d) {
@@ -73,5 +72,3 @@ public class SimpleTest {
         return buffer.toByteArray();
     }
 }
-
-
