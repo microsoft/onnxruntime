@@ -17,17 +17,17 @@ using namespace onnxruntime::common;
 * predetermined opcodes as in levels 1 and 2.
 * Currently two strategies are available, InsertAndReduce and FloodFill.
 * InsertAndReduce :
-* The transformation first 
+* This transformation converts all FP16 operations to float16. The transformation first 
 *   1. Inserts float16 cast operation on all the float inputs
-*   2. Change all float outputs to float16
-*   3. Insert float cast operations on all float outputs as expected
+*   2. Changes all float outputs to float16
+*   3. Inserts float cast operations on all float outputs as expected
 *   After inserting the FP16 and FP32 cast operation nodes around all the nodes with FP16 Safe opcodes, the transformation reduces the
 *   cast operations, using the following operations on the graph, iteratively until no more reduction is possible.
 *   1. Remove back-to-back casts
 *   2. Remove redundant casts
 *   3. Fuse sibling subgraphs with same cast operation
 * FloodFill:
-    Operations are converted from float to float16 by propagating float16 cast operation up the graph or float cast perations down the
+    Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast perations down the
 *   graph. Using this strategy, for eatch pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
 *   float16 region up/down the graph using DFS/ReverseDFS and (TODO) identifies loss/gain by performing such expansion, considering 
 *   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (TODO).
@@ -63,8 +63,50 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
     /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh"},
     /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
+
+/* The following two maps pecify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
+*  cast operations. All other inputs/outputs not listed in this table are not relevant for deciding whether an operation
+*  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the inputs and outputs to validate 
+*  transformation.
+*/
+static std::unordered_map<std::string, std::vector<int>> opcode_to_input_map = {
+    {"Gather", {0}},
+    {"Reshape", {0}},
+    {"Dropout", {0}},
+    {"Layernormalization", {0}},
+};
+
+static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = {
+    {"Gather", {0}},
+    {"Reshape", {0}},
+    {"Dropout", {0}},
+    {"Layernormalization", {0}},
+};
+
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
 static std::unordered_set<std::string> converted_node_names;  // Names of the nodes converted to FP16
+
+// Check if the input is relevant to consider for cast propagation for the given node.
+// Return true if the opcode is not found in the opcode_to_input map.
+static bool IsRelevantInput(const Node* node, const NodeArg* input) {
+  if (opcode_to_input_map.find(node->OpType()) != opcode_to_input_map.end()) {
+    const std::vector<int>& selected_inputs = opcode_to_input_map[node->OpType()];
+    int input_index = optimizer_utils::IndexOfNodeInput(*node, *input);
+    return std::find(selected_inputs.begin(), selected_inputs.end(), input_index) != selected_inputs.end();
+  }
+  return true;
+}
+
+// Check if the outnput is relevant to consider for cast propagation for the given node.
+// Return true if the opcode is not found in the opcode_to_output map.
+static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
+  if (opcode_to_output_map.find(node->OpType()) != opcode_to_output_map.end()) {
+    const std::vector<int>& selected_outputs = opcode_to_output_map[node->OpType()];
+    int input_index = optimizer_utils::IndexOfNodeOutput(*node, *output);
+    return std::find(selected_outputs.begin(), selected_outputs.end(), input_index) != selected_outputs.end();
+  }
+  return true;
+}
 
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level) {
@@ -463,7 +505,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
           // TODO: If the specified optimization is greater than 1 then insert a Cast to the
           // other output_def and still propagate FP16 cast up the graph.
           if (output_def != node_arg) {
-            if (IsType(*output_def, TensorProto_DataType_FLOAT) && graph.GetConsumerNodes(output_def->Name()).size() > 0) {
+            if (IsRelevantOutput(node, output_def) &&
+                IsType(*output_def, TensorProto_DataType_FLOAT) &&
+                graph.GetConsumerNodes(output_def->Name()).size() > 0) {
               require_cast[node_arg].push_back(dst_node);
               return;
             }
@@ -481,7 +525,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
           }
         }
         for (NodeArg* node_input : node->MutableInputDefs()) {
-          if (IsType(*node_input, TensorProto_DataType_FLOAT) &&
+          if (IsRelevantInput(node, node_input) && IsType(*node_input, TensorProto_DataType_FLOAT) &&
               require_cast.find(node_input) == require_cast.end() &&
               require_type_change.find(node_input) == require_type_change.end()) {
             SearchUpstream(graph, node_input, node, require_cast, require_cast_fp32, require_type_change, removed_nodes, level);
@@ -523,19 +567,18 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
           for (NodeArg* input_def : node->MutableInputDefs()) {
             // TODO: If the specified level of the optimization is greater than 1 then
             // convert initializers if any from float to float16.
-            if (input_def != node_arg) {
-              if (IsType(*input_def, TensorProto_DataType_FLOAT)) {
-                if (level < 2) {
-                  require_cast[node_arg].push_back(node);
-                  return;
-                } else {
-                  require_cast_fp16[input_def].push_back(node);
-                }
+            if (input_def != node_arg && IsRelevantInput(node, input_def) &&
+                IsType(*input_def, TensorProto_DataType_FLOAT)) {
+              if (level < 2) {
+                require_cast[node_arg].push_back(node);
+                return;
+              } else {
+                require_cast_fp16[input_def].push_back(node);
               }
             }
           }
           for (NodeArg* node_output : node->MutableOutputDefs()) {
-            if (IsType(*node_output, TensorProto_DataType_FLOAT) &&
+            if (IsRelevantOutput(node, node_output) && IsType(*node_output, TensorProto_DataType_FLOAT) &&
                 require_cast.find(node_output) == require_cast.end() &&
                 require_type_change.find(node_output) == require_type_change.end()) {
               SearchDownstream(graph, node_output, require_cast, require_cast_fp16, require_type_change, removed_nodes, level);
@@ -844,7 +887,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
     NodeArgToConsumerMap non_cast_producers_map;
     for (auto iter = inputs.begin(); iter != inputs.end() && (level >= 2 || all_float_inputs_have_casts); ++iter) {
       NodeArg* input = *iter;
-      if (!IsType(*input, TensorProto::FLOAT)) {
+      if (!IsType(*input, TensorProto::FLOAT) || !IsRelevantInput(node, input)) {
         continue;
       }
       has_float_inputs = true;
@@ -876,7 +919,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       }
       NodeArgToConsumerMap node_args_map;
       for (NodeArg* output : node->MutableOutputDefs()) {
-        if (output->Exists() && IsType(*output, TensorProto::FLOAT)) {
+        if (output->Exists() && IsRelevantOutput(node, output) && IsType(*output, TensorProto::FLOAT)) {
           node_args_map.insert(std::make_pair(output, graph.GetMutableConsumerNodes(output->Name())));
         }
       }
@@ -941,7 +984,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
     NodeArgToConsumerMap non_cast_consumers_map;
     for (auto iter = outputs.begin(); iter != outputs.end() && (level >= 2 || all_float_outputs_have_casts); ++iter) {
       NodeArg* output = *iter;
-      if (!IsType(*output, TensorProto::FLOAT)) {
+      if (!IsType(*output, TensorProto::FLOAT) || !IsRelevantOutput(node, output)) {
         continue;
       }
       has_float_outputs = true;
@@ -979,7 +1022,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
       NodeArgToConsumerMap node_args_map;
       for (NodeArg* input : node->MutableInputDefs()) {
-        if (IsType(*input, TensorProto::FLOAT)) {
+        if (IsRelevantInput(node, input) && IsType(*input, TensorProto::FLOAT)) {
           node_args_map.insert(std::make_pair(input, std::vector<Node*>({node})));
         }
       }
@@ -1178,13 +1221,13 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
           // Insert FP16 Cast on all float inputs
           converted_node_names.insert(node.Name());
           for (NodeArg* input_arg : node.MutableInputDefs()) {
-            if (IsType(*input_arg, TensorProto::FLOAT)) {
+            if (IsRelevantInput(&node, input_arg) && IsType(*input_arg, TensorProto::FLOAT)) {
               InsertFP16Cast(graph, input_arg, node_ptr, logger);
             }
           }
           // Convert all output args to FP16 and insert FP32 cast for all consumers
           for (NodeArg* output_arg : node.MutableOutputDefs()) {
-            if (IsType(*output_arg, TensorProto::FLOAT)) {
+            if (IsRelevantOutput(&node, output_arg) && IsType(*output_arg, TensorProto::FLOAT)) {
               InsertFP32Casts(graph, output_arg, logger);
             }
           }
