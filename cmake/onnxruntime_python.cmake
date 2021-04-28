@@ -61,9 +61,6 @@ if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
-endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
@@ -282,7 +279,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
 )
 
 set(build_output_target onnxruntime_common)
-
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
@@ -482,7 +479,7 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()
-
+endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()

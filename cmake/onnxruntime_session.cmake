@@ -9,7 +9,7 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
-add_library(onnxruntime_session ${onnxruntime_session_srcs})
+onnxruntime_add_static_library(onnxruntime_session ${onnxruntime_session_srcs})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 if(onnxruntime_ENABLE_INSTRUMENT)

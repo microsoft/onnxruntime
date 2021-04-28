@@ -17,7 +17,7 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
     )
 
-add_library(onnxruntime_training ${onnxruntime_training_srcs})
+onnxruntime_add_static_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf flatbuffers)
 
@@ -58,7 +58,7 @@ else ()
     "${onnxruntime_perf_test_src_dir}/posix/utils.cc")
 endif()
 
-add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
+onnxruntime_add_static_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
 onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
