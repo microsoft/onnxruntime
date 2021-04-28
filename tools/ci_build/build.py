@@ -1164,6 +1164,9 @@ def run_android_tests(args, source_dir, config, cwd):
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
 
+    def adb_install(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'install', *args], **kwargs)
+
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
         # GCOV_PREFIX specifies the root directory
@@ -1197,6 +1200,13 @@ def run_android_tests(args, source_dir, config, cwd):
                 os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
                 device_dir, cwd=cwd)
             adb_push('onnxruntime_test_all', device_dir, cwd=cwd)
+            adb_install(
+                os.path.join(source_dir, 'build', 'Windows', "Debug", "java", "androidtest", "android", "app", "build",
+                "outputs", "apk", "debug", "app-debug.apk"))
+            adb_install(
+                os.path.join(source_dir, 'build', 'Windows', "Debug", "java", "androidtest", "android", "app", "build",
+                "outputs", "apk", "androidTest", "debug", "app-debug-androidTest.apk"))
+            adb_shell('am instrument -w ai.onnxruntime.example.javavalidater.test/androidx.test.runner.AndroidJUnitRunner')    
             adb_shell('chmod +x {}/onnxruntime_test_all'.format(device_dir))
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
