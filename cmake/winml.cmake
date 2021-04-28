@@ -770,7 +770,7 @@ set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
 
 target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list})
-target_delayload(winml_dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-threadpool-legacy-l1-1-0.dll api-ms-win-core-processtopology-obsolete-l1-1-0.dll api-ms-win-core-kernel32-legacy-l1-1-0.dll d3d12.dll d3d11.dll dxgi.dll directml.778373e44bbee550086539b4ba4c31a8771c335d.dll)
+target_delayload(winml_dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-threadpool-legacy-l1-1-0.dll api-ms-win-core-processtopology-obsolete-l1-1-0.dll api-ms-win-core-kernel32-legacy-l1-1-0.dll d3d12.dll d3d11.dll dxgi.dll directml.dll)
 
 if (EXISTS ${dxcore_header})
   target_delayload(winml_dll ext-ms-win-dxcore-l1-*.dll)

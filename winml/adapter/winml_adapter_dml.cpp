@@ -39,7 +39,7 @@ static std::string CurrentModulePath() {
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  auto directml_dll = CurrentModulePath() + "\\DirectML.778373e44bbee550086539b4ba4c31a8771c335d.dll";
+  auto directml_dll = CurrentModulePath() + "\\DirectML.dll";
   wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, 0));
   THROW_LAST_ERROR_IF(!dmlDll);
 

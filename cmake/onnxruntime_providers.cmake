@@ -820,7 +820,7 @@ if (onnxruntime_USE_DML)
   add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-    foreach(file "DirectML.778373e44bbee550086539b4ba4c31a8771c335d.dll" "DirectML.778373e44bbee550086539b4ba4c31a8771c335d.pdb" "DirectML.Debug.778373e44bbee550086539b4ba4c31a8771c335d.dll" "DirectML.Debug.778373e44bbee550086539b4ba4c31a8771c335d.pdb")
+    foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -833,7 +833,7 @@ if (onnxruntime_USE_DML)
       target_link_libraries(${target} PRIVATE DirectML)
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.778373e44bbee550086539b4ba4c31a8771c335d.lib")
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
 	    target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
@@ -847,7 +847,7 @@ if (onnxruntime_USE_DML)
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.778373e44bbee550086539b4ba4c31a8771c335d.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
+  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
