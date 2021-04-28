@@ -74,6 +74,8 @@ class Environment {
     return shared_allocators_;
   }
 
+  ~Environment();
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
 

@@ -204,10 +204,20 @@ using MaxOp = VariadicElementwiseOp<
     variadic_elementwise_ops::Max,
     uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>;
 
-const auto k_uzilhfd_datatypes =
-    BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>();
-const auto k_hfd_datatypes =
-    BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>();
+struct Global {
+  Global() {
+    LOGS_DEFAULT(ERROR) << "LOGS_DEFAULT: Initializing CUDA provider globals...";
+  }
+
+  ~Global() {
+    LOGS_DEFAULT(ERROR) << "LOGS_DEFAULT: Destroying CUDA provider globals...";
+  }
+};
+
+const Global GLOBAL;
+
+const auto k_uzilhfd_datatypes = BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>();
+const auto k_hfd_datatypes = BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>();
 
 }  // namespace
 
