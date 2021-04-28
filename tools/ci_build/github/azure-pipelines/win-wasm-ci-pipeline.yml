@@ -93,12 +93,6 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '14.x'
-  # - task: DownloadBuildArtifacts@0
-  #   inputs:
-  #     artifactName: 'Release_onnxruntime_wasm'
-  # - task: DownloadBuildArtifacts@0
-  #   inputs:
-  #     artifactName: 'Release_onnxruntime_wasm_threads'
   - task: DownloadPipelineArtifact@2
     inputs:
       source: 'specific'
@@ -106,14 +100,27 @@ jobs:
       pipeline: 161
       runVersion: 'specific'
       runId: 369965
-
-  - script: |
-     if not exist "$(Build.BinariesDirectory)\js\web\dist\" mkdir "$(Build.BinariesDirectory)\js\web\dist\"
-     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.wasm $(Build.BinariesDirectory)\js\web\dist\
-     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.map $(Build.BinariesDirectory)\js\web\dist\
-     copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.js $(Build.BinariesDirectory)\js\web\lib\wasm\binding\
-    workingDirectory: '$(Build.BinariesDirectory)\js'
-    displayName: 'Binplace WebAssembly files'
+      patterns: 'Release_*/**/*'
+      path: $(Pipeline.Workspace)\artifacts
+    displayName: 'Download WebAssembly artifacts'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.wasm
+        **\*.worker.js
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.js
+        !**\*.worker.js
+      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
+      flattenFolders: true
+    displayName: 'Binplace js files'
   - script: |
      npm ci
     workingDirectory: '$(Build.BinariesDirectory)\js'
