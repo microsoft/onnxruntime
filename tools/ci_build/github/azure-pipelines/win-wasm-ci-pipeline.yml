@@ -85,6 +85,7 @@ jobs:
 #     condition: always()
 - job: build_onnxruntime_web
   # dependsOn: build_WASM
+  # pool: 'Win-CPU-2019'
   pool: 'yulongw-test'
   timeoutInMinutes: 120
   workspace:
@@ -92,7 +93,6 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-    fetchDepth: 1
   - script: |
      git submodule sync -- cmake\external\onnx
      git submodule update --init -- cmake\external\onnx
