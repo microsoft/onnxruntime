@@ -20,6 +20,7 @@ static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
+static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
@@ -77,6 +78,7 @@ struct TensorrtExecutionProviderInfo {
   bool int8_enable{false}; 
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
+  bool force_sequential_engine_build{false};
 };
 
 // Information to construct kernel function state.
@@ -144,6 +146,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
+  bool force_sequential_engine_build_ = false;
   std::string int8_calibration_cache_name_ = "INT8_calibration_table";
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
@@ -153,7 +156,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  mutable char model_path_[4096]; // Reserved for max path length
+  mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
 
@@ -181,5 +184,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         const GraphViewer& graph, bool* early_termination) const;
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
+
+  /** 
+  Get a unique_lock object to control the concurrency behavior of TensorRT engine building. When force_sequential_engine_build
+  is set to true, the lock object is associated with a mutex shared across all providers to enforce sequential engine build. 
+  Otherwise, the constructed unique_lock is not associated with any mutex therefore no locking/unlocking will happen.
+  */
+  std::unique_lock<OrtMutex> GetEngineBuildLock() const;
 };
 }  // namespace onnxruntime
