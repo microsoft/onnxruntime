@@ -73,7 +73,7 @@ class BatchNorm : public OpKernel {
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(p_op_kernel_context->GetTempSpaceAllocator(&alloc));
-
+    
     // Saved mean corresponds to the mean from this batch
     // If these optional outputs are present (opset <= 9 or internal BN op) we re-use the space for calculations
     // Note that with opset <= 9 we will be outputting saved_inv_std_dev instead of saved_var
@@ -106,11 +106,11 @@ class BatchNorm : public OpKernel {
         saved_mean_arr(nc % C) += X_arr.col(nc).sum();
       }
   
-      saved_mean_arr /= N * sample_size;
+      saved_mean_arr /= static_cast<T>(N * sample_size);
       for (size_t nc = 0; nc < N * C; ++nc) {
         saved_var_arr(nc % C) += (X_arr.col(nc) - saved_mean_arr(nc % C)).matrix().squaredNorm();
       }
-      saved_var_arr /= N * sample_size;
+      saved_var_arr /= static_cast<T>(N * sample_size);
 
       // The running mean corresponds to the mean from all the batches
       // During inference this running mean is used as the mean for BN

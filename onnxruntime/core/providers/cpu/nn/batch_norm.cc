@@ -30,11 +30,11 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 8, double,
                                          BatchNorm<double>);
 
 // We alias the running mean to the mean so it stays preserved across multiple batches
-ONNX_CPU_OPERATOR_TYPED_KERNEL(BatchNormalization, 9, float,
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 9, 13, float,
                                KernelDefBuilder().Alias(3,1).Alias(4,2).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                BatchNorm<float>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(BatchNormalization, 9, double,
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 9, 13, double,
                                KernelDefBuilder().Alias(3,1).Alias(4,2).TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
                                BatchNorm<double>);
 
