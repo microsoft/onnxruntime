@@ -23,13 +23,13 @@ constexpr const char* kGpuExternalFree = "gpu_external_free";
 }  // namespace cuda
 
 namespace {
-const EnumNameMapping<OrtCudnnConvAlgoSearch> ort_cudnn_conv_algo_search_mapping{
+const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
     {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
     {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
     {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
 };
 
-const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
@@ -60,7 +60,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                alloc  = reinterpret_cast<void*>(address);
+                alloc = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddValueParser(
@@ -68,16 +68,16 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                free  = reinterpret_cast<void*>(address);
+                free = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kArenaExtendStrategy,
-              arena_extend_strategy_mapping, info.arena_extend_strategy)
+              *arena_extend_strategy_mapping, info.arena_extend_strategy)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kCudnnConvAlgoSearch,
-              ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
+              *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
@@ -93,9 +93,9 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
       {cuda::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {cuda::provider_option_names::kArenaExtendStrategy,
-       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
+       EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
-       EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+       EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
   };
 

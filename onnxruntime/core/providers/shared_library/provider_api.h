@@ -196,6 +196,9 @@ struct DeleteOnUnloadPtr {
     });
   }
 
+  T& operator*() { return *p_; }
+  const T& operator*() const { return *p_; }
+
   operator T*() {
     return p_;
   }
