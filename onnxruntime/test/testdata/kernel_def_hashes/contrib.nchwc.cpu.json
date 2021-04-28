@@ -1,0 +1,34 @@
+[
+    [
+        "AveragePool com.microsoft.nchwc CPUExecutionProvider",
+        12528194512485261552
+    ],
+    [
+        "Conv com.microsoft.nchwc CPUExecutionProvider",
+        10643058043438608528
+    ],
+    [
+        "GlobalAveragePool com.microsoft.nchwc CPUExecutionProvider",
+        9401543287182687288
+    ],
+    [
+        "GlobalMaxPool com.microsoft.nchwc CPUExecutionProvider",
+        17341568537930161320
+    ],
+    [
+        "MaxPool com.microsoft.nchwc CPUExecutionProvider",
+        14527249939908647936
+    ],
+    [
+        "ReorderInput com.microsoft.nchwc CPUExecutionProvider",
+        14330795113746035424
+    ],
+    [
+        "ReorderOutput com.microsoft.nchwc CPUExecutionProvider",
+        13428915370009679360
+    ],
+    [
+        "Upsample com.microsoft.nchwc CPUExecutionProvider",
+        16347985363638744760
+    ]
+]

@@ -33,7 +33,8 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         self.failed = False
 
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
-                             start_version: int, end_version: int = None, type: str = None):
+                             start_version: int, end_version: typing.Optional[int] = None,
+                             type: typing.Optional[str] = None):
         key = domain + ':' + operator
         prev_start, prev_end = self.last_op_registrations[key] if key in self.last_op_registrations else (None, None)
 

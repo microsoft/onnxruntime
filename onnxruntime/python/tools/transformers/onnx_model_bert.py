@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from typing import List
-from onnx import TensorProto, helper
+from onnx import ModelProto, TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
@@ -47,9 +47,15 @@ class BertOptimizationOptions:
 
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size):
-        assert num_heads > 0
-        assert hidden_size % num_heads == 0
+    def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
+        """Initialize BERT ONNX Model.
+           
+        Args:
+            model (ModelProto): the ONNX model
+            num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
+            hidden_size (int, optional): hidden dimension. Defaults to 0, and we will detect the parameter automatically.
+        """
+        assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
         super().__init__(model)
         self.num_heads = num_heads

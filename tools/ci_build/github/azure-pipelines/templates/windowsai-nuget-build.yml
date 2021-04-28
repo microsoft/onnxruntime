@@ -70,7 +70,7 @@ steps:
     displayName: 'Generate CMake Configuration'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
+      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests $(TelemetryOption) --ms_experimental --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if or(notIn(parameters['sln_platform'], 'Win32', 'x64'), eq(parameters.BuildForStore, 'true')) }}:
@@ -151,7 +151,7 @@ steps:
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
   
-  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false'), eq(parameters.Runtime, 'dynamic')) }}:
+  - ${{ if and(eq(parameters.BuildForStore, 'false'), eq(parameters.Runtime, 'dynamic')) }}:
     - script: |
        xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_scenario.exe $(Build.ArtifactStagingDirectory)\test_artifact\

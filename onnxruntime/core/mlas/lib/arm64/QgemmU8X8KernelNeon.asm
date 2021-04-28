@@ -22,7 +22,7 @@ Abstract:
 //
 
 #define GemmU8X8KernelFrame_ColumnSumBuffer         0
-#define GemmU8X8KernelFrame_DepthValue              8
+#define GemmU8X8KernelFrame_ZeroPointB              8
 #define GemmU8X8KernelFrame_ZeroMode                16
 
 //
@@ -75,10 +75,6 @@ Arguments:
         by the zero point offset of matrix A. These values are accumulated into
         every column of matrix C.
 
-    DepthValue - Supplies the value CountK multiplied by the zero point offset
-        of matrix A multplied by the zero point offset of matrix B. This value is
-        accumulated into every element of matrix C.
-
     ZeroMode - Supplies true if the output matrix must be zero initialized, else
         false if the output matrix is accumulated into.
 
@@ -91,18 +87,16 @@ Return Value:
         LEAF_ENTRY MlasGemmU8X8KernelNeon
 
         ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
-        ldr     s27,[sp,#GemmU8X8KernelFrame_DepthValue]
+        ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#GemmU8X8KernelFrame_ZeroMode]
-        dup     v27.4s,v27.s[0]
         mov     x14,x0
-        ld1     {v0.4s},[x7]
+        ld1     {v27.4s},[x7]
         mov     x15,x3
-        add     v27.4s,v27.4s,v0.4s         // broadcast add DepthValue
         dup     v24.4s,v27.s[0]             // broadcast row fixups
         cmp     x4,#1                       // CountM == 1?
         beq     ProcessNextColumnLoopM1
         dup     v25.4s,v27.s[1]
-        cmp     x4,#4                       // CountM < 4 ?
+        cmp     x4,#4                       // CountM < 4?
         blo     ProcessNextColumnLoopM2
         dup     v26.4s,v27.s[2]
         dup     v27.4s,v27.s[3]
@@ -118,6 +112,30 @@ ProcessNextColumnLoopM4
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,SkipScaleByZeroPointBM4
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        mul     v18.4s,v25.4s,v28.4s
+        mul     v19.4s,v25.4s,v29.4s
+        mul     v20.4s,v26.4s,v28.4s
+        mul     v21.4s,v26.4s,v29.4s
+        mul     v22.4s,v27.4s,v28.4s
+        mul     v23.4s,v27.4s,v29.4s
+        ld1     {v4.8b},[x0],#8             // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v18.4s,v2.4s,v18.4s
+        add     v19.4s,v3.4s,v19.4s
+        ld1     {v5.8b},[x0],#8             // load first packed A1
+        add     v20.4s,v2.4s,v20.4s
+        add     v21.4s,v3.4s,v21.4s
+        add     v22.4s,v2.4s,v22.4s
+        add     v23.4s,v3.4s,v23.4s
+        b       ComputeBlockLoopM4
+
+SkipScaleByZeroPointBM4
         ld1     {v4.8b},[x0],#8             // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s
@@ -329,6 +347,21 @@ ProcessNextColumnLoopM2
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,SkipScaleByZeroPointBM2
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        mul     v18.4s,v25.4s,v28.4s
+        mul     v19.4s,v25.4s,v29.4s
+        ld1     {v4.8b},[x0],#8             // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v18.4s,v2.4s,v18.4s
+        add     v19.4s,v3.4s,v19.4s
+        b       ComputeBlockLoopM2
+
+SkipScaleByZeroPointBM2
         ld1     {v4.8b},[x0],#8             // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s
@@ -467,6 +500,17 @@ ProcessNextColumnLoopM1
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,SkipScaleByZeroPointBM1
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        ldr     s4,[x0],#4                  // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        b       ComputeBlockLoopM1
+
+SkipScaleByZeroPointBM1
         ldr     s4,[x0],#4                  // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s

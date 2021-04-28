@@ -9,7 +9,8 @@
 
 #ifndef BUILD_INBOX
 
-#include "Dummy.h"
+#include "LearningModelBuilder.h"
+#include "LearningModelOperator.h"
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
 
@@ -93,14 +94,24 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    winrt::hstring winml_namespace = winrt::to_hstring(XSTRINGIFY(WINML_ROOT_NS));
-
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.Dummy")) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
+    std::wostringstream learning_model_builder_class;
+    learning_model_builder_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
+    if (requal(name, learning_model_builder_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelBuilder>());
       return 0;
     }
 
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.LearningModelSessionExperimental")) {
+    std::wostringstream learning_model_operator_class;
+    learning_model_operator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
+    if (requal(name, learning_model_operator_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperator>());
+
+      return 0;
+    }
+
+    std::wostringstream learning_model_session_experimental_class;
+    learning_model_session_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionExperimental";
+    if (requal(name, learning_model_session_experimental_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }

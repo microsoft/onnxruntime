@@ -96,9 +96,9 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = update_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDGradComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES>
-      t_disp(update_tensor->GetElementType());
-  t_disp.Invoke(Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(update_tensor->GetElementType());
+  t_disp.Invoke<GatherNDGradComputeImpl>(
+      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

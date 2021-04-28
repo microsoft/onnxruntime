@@ -33,6 +33,30 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
+static SessionOptions session_options = {
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
+    false,                             //enable_profiling
+    ORT_TSTR(""),                      //optimized_model_filepath
+    true,                              //enable_mem_pattern
+    true,                              //enable_mem_reuse
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    -1,                                //session_log_severity_level
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    {},                                //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
+    {},                                // initializers_to_share_map
+}; 
+
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
   int max_predictions_per_sequence = 80;
@@ -41,7 +65,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
-  float cuda_mem_limit_in_gb = -1;
+  float gpu_mem_limit_in_gb = -1;
   bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
@@ -109,6 +133,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
+      ("use_deterministic_compute", "Whether to enable deterministic compute.", cxxopts::value<bool>()->default_value("false"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
@@ -157,7 +182,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<int64_t>()->default_value("0"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
-      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
+      ("gpu_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
@@ -214,7 +239,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.cuda_mem_limit_in_gb = flags["cuda_mem_limit_in_gb"].as<float>();
+    params.gpu_mem_limit_in_gb = flags["gpu_mem_limit_in_gb"].as<float>();
 
     float ratio_phase2 = flags["warmup_ratio_phase2"].as<float>();
     if (ratio_phase2 > 1.f || ratio_phase2 < 0.f) {
@@ -469,6 +494,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
+
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
@@ -575,8 +602,8 @@ void setup_training_params(BertParameters& params) {
   {
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    if (params.cuda_mem_limit_in_gb > 0) {
-      info.cuda_mem_limit = gsl::narrow<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+    if (params.gpu_mem_limit_in_gb > 0) {
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 
@@ -746,7 +773,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner{params, env};
+  TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
@@ -756,7 +783,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;

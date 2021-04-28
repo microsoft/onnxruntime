@@ -22,12 +22,8 @@ Abstract:
 //
 
         .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 0
-        .equ    .LGemmU8X8KernelFrame_DepthValue, 8
-#if defined(__APPLE__)
-        .equ    .LGemmU8X8KernelFrame_ZeroMode, 12
-#else
+        .equ    .LGemmU8X8KernelFrame_ZeroPointB, 8
         .equ    .LGemmU8X8KernelFrame_ZeroMode, 16
-#endif
 
         .text
 
@@ -41,10 +37,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8X8CopyPackANeon.
+        using MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8X8CopyPackBNeon.
+        using MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>.
 
     C (x2) - Supplies the address of matrix C.
 
@@ -60,17 +56,18 @@ Arguments:
 
     ldc (x6) - Supplies the first dimension of matrix C.
 
-    RowSumBuffer (x7) - Supplies the sum of each row from matrix A multiplied by
-        the zero point offset of matrix B. These values are accumulated into every
-        row of matrix C.
+    RowSumBuffer (x7) - Supplies the sum of each row from matrix A. These values
+        have been pre-scaled by the zero point offset of matrix B if the offset
+        is per-tensor (ZeroPointB is nullptr). Otherwise, these values must be
+        scaled by the per-column zero point offsets of matrix B. These values are
+        accumulated into every row of matrix C.
 
     ColumnSumBuffer - Supplies the sum of each column from matrix B multiplied
         by the zero point offset of matrix A. These values are accumulated into
         every column of matrix C.
 
-    DepthValue - Supplies the value CountK multiplied by the zero point offset
-        of matrix A multplied by the zero point offset of matrix B. This value is
-        accumulated into every element of matrix C.
+    ZeroPointB - Optionally supplies the per-column zero point offsets of matrix
+        B, else nullptr if the matrix B is using per-tensor quantization.
 
     ZeroMode - Supplies true if the output matrix must be zero initialized, else
         false if the output matrix is accumulated into.
@@ -84,13 +81,11 @@ Return Value:
         FUNCTION_ENTRY MlasGemmU8X8KernelNeon
 
         ldr     x8,[sp,#.LGemmU8X8KernelFrame_ColumnSumBuffer]
-        ldr     s27,[sp,#.LGemmU8X8KernelFrame_DepthValue]
+        ldr     x9,[sp,#.LGemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#.LGemmU8X8KernelFrame_ZeroMode]
-        dup     v27.4s,v27.s[0]
         mov     x14,x0
-        ld1     {v0.4s},[x7]
+        ld1     {v27.4s},[x7]
         mov     x15,x3
-        add     v27.4s,v27.4s,v0.4s         // broadcast add DepthValue
         dup     v24.4s,v27.s[0]             // broadcast row fixups
         cmp     x4,#1                       // CountM == 1?
         beq     .LGemmU8X8.M1.ProcessNextColumnLoop
@@ -111,6 +106,30 @@ Return Value:
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,.LGemmU8X8.M4.SkipScaleByZeroPointB
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        mul     v18.4s,v25.4s,v28.4s
+        mul     v19.4s,v25.4s,v29.4s
+        mul     v20.4s,v26.4s,v28.4s
+        mul     v21.4s,v26.4s,v29.4s
+        mul     v22.4s,v27.4s,v28.4s
+        mul     v23.4s,v27.4s,v29.4s
+        ld1     {v4.8b},[x0],#8             // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v18.4s,v2.4s,v18.4s
+        add     v19.4s,v3.4s,v19.4s
+        ld1     {v5.8b},[x0],#8             // load first packed A1
+        add     v20.4s,v2.4s,v20.4s
+        add     v21.4s,v3.4s,v21.4s
+        add     v22.4s,v2.4s,v22.4s
+        add     v23.4s,v3.4s,v23.4s
+        b       .LGemmU8X8.M4.ComputeBlockLoop
+
+.LGemmU8X8.M4.SkipScaleByZeroPointB:
         ld1     {v4.8b},[x0],#8             // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s
@@ -322,6 +341,21 @@ Return Value:
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,.LGemmU8X8.M2.SkipScaleByZeroPointB
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        mul     v18.4s,v25.4s,v28.4s
+        mul     v19.4s,v25.4s,v29.4s
+        ld1     {v4.8b},[x0],#8             // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v18.4s,v2.4s,v18.4s
+        add     v19.4s,v3.4s,v19.4s
+        b       .LGemmU8X8.M2.ComputeBlockLoop
+
+.LGemmU8X8.M2.SkipScaleByZeroPointB:
         ld1     {v4.8b},[x0],#8             // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s
@@ -460,6 +494,17 @@ Return Value:
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
         uxtl    v0.8h,v0.8b
+        cbz     x9,.LGemmU8X8.M1.SkipScaleByZeroPointB
+        ld1     {v28.4s},[x9],#16           // load ZeroPointB0
+        ld1     {v29.4s},[x9],#16           // load ZeroPointB1
+        mul     v16.4s,v24.4s,v28.4s
+        mul     v17.4s,v24.4s,v29.4s
+        ldr     s4,[x0],#4                  // load first packed A0
+        add     v16.4s,v2.4s,v16.4s
+        add     v17.4s,v3.4s,v17.4s
+        b       .LGemmU8X8.M1.ComputeBlockLoop
+
+.LGemmU8X8.M1.SkipScaleByZeroPointB:
         ldr     s4,[x0],#4                  // load first packed A0
         add     v16.4s,v2.4s,v24.4s
         add     v17.4s,v3.4s,v24.4s

@@ -1,0 +1,60 @@
+parameters:
+- name: buildConfig
+  displayName: Configuration to build
+  type: string
+  default: 'Release'
+
+jobs:
+- job: Android_Java_API_AAR_Packaging_Pipeline
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+
+  variables:
+    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: CmdLine@2
+    displayName: Create artifacts directory
+    inputs:
+      script: |
+        # Create a folder for artifacts
+        mkdir -p $(artifacts_directory)
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - template: set-version-number-variables-step.yml
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    displayName: Build Android AAR Packages
+    inputs:
+      script: |
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
+          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_CONFIG=${{parameters.buildConfig}} \
+          -e ORT_VERSION=$(OnnxRuntimeVersion) \
+          onnxruntimecpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(artifacts_directory)'
+      artifactName: 'onnxruntime-android-aar'

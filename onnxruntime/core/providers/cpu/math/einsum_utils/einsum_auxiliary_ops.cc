@@ -297,7 +297,6 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Einsum op: Transpose failed: ", status.ErrorMessage());
   }
-
   return output;
 }
 
@@ -455,6 +454,19 @@ template std::unique_ptr<Tensor> ReduceSum<int64_t>(
     const Tensor& input, const std::vector<int64_t>& input_shape_override,
     const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
     concurrency::ThreadPool* tp, void* einsum_cuda_assets, const DeviceHelpers::ReduceSum<int64_t>& reduce_sum_func);
+
+// MLFloat16
+template std::unique_ptr<Tensor> MatMul<MLFloat16>(
+    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::MatMul<MLFloat16>& device_matmul_func);
+
+template std::unique_ptr<Tensor> ReduceSum<MLFloat16>(
+    const Tensor& input, const std::vector<int64_t>& input_shape_override,
+    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+    const DeviceHelpers::ReduceSum<MLFloat16>& device_reduce_sum_func);
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime

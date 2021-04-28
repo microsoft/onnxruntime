@@ -14,6 +14,14 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
   )
 
+  # custom ops support must be explicitly enabled in a minimal build. exclude if not.
+  if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
+    list(APPEND onnxruntime_framework_src_exclude
+      "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
+      "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
+    )
+  endif()
+
   list(REMOVE_ITEM onnxruntime_framework_srcs ${onnxruntime_framework_src_exclude})
 endif()
 
@@ -38,7 +46,7 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
-if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD)
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 

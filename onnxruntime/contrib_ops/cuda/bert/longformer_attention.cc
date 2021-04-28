@@ -5,6 +5,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/platform/env_var_utils.h"
+#include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"
 
 using namespace onnxruntime::cuda;
@@ -29,8 +31,28 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
+class AutoDestoryCudaEvent {
+ public:
+  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
+  }
+
+  ~AutoDestoryCudaEvent() {
+    if (cuda_event_ != nullptr)
+      cudaEventDestroy(cuda_event_);
+  }
+
+  cudaEvent_t& Get() {
+    return cuda_event_;
+  }
+ private:
+  cudaEvent_t cuda_event_;
+};
+
 template <typename T>
-LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {}
+LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
+  use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
+}
 
 template <typename T>
 Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -56,7 +78,41 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, shape);
 
   cublasHandle_t cublas = CublasHandle();
+  cudaStream_t stream = Stream();
+  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
+
   constexpr size_t element_size = sizeof(T);
+
+  // TODO: only calculate once per model.
+  // Build Global Index
+  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
+
+  size_t global_scratch_bytes = GetGlobalScratchSize(batch_size, sequence_length);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
+
+  BuildGlobalIndex(
+      stream,
+      global_attention->template Data<int>(),
+      batch_size,
+      sequence_length,
+      global_index_buffer.get(),
+      batch_global_num_buffer.get(),
+      global_scratch_buffer.get(),
+      global_scratch_bytes);
+
+  // Copy batch_global_num to CPU
+  size_t pinned_buffer_bytes = GetPinnedBufferSize(batch_size);
+  auto pinned_buffer = AllocateBufferOnCPUPinned<void>(pinned_buffer_bytes);
+  int* batch_global_num_pinned = reinterpret_cast<int*>(pinned_buffer.get());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned, batch_global_num_buffer.get(), batch_size * sizeof(int), cudaMemcpyDeviceToHost, stream));
+
+  // Create an event to make sure the async copy is finished before reading the data.
+  AutoDestoryCudaEvent new_event;
+  cudaEvent_t& isCopyDone = new_event.Get();
+
+  CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
@@ -85,8 +141,22 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
-  // TODO: calculate the exact value from global flags.
-  int max_num_global = sequence_length;
+  // Wait for async copy of batch_global_num
+  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
+
+  // Find the maximum number of global tokens in all batches
+  int max_num_global = 0;
+  for (int i = 0; i < batch_size; ++i) {
+    if (max_num_global < batch_global_num_pinned[i]) {
+      max_num_global = batch_global_num_pinned[i];
+    }
+  }
+
+  // Force to use fast kernel in two situations:
+  // (1) global tokens > windows size. In that case, compact memory kernel cannot be used.
+  // (2) sequence_length == 2 * attention_window. Use fast kernel to walk around parity issue of compact memory kernel.
+  // In other case, we will choose according to user's environment variable setting (default is fast kernel).
+  bool use_fast_kernel = (max_num_global > window_ || sequence_length == 2 * window_ || !use_compact_memory_);
 
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
@@ -107,15 +177,20 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
-          Stream(),
+          cublas,
+          stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),
           global_attention->template Data<int>(),
+          global_index_buffer.get(),
+          batch_global_num_buffer.get(),
+          pinned_buffer.get(),
+          workspace_buffer.get(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
@@ -123,14 +198,15 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           head_size,
           window_,
           max_num_global,
-          workspace_buffer.get(),
-          cublas,
-          element_size)) {
+          element_size,
+          use_fast_kernel)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
   return Status::OK();
 }
 

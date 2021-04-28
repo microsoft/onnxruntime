@@ -53,16 +53,16 @@ jobs:
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecentoscpubuild
+        Repository: onnxruntimecpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecentoscpubuild /bin/bash -c "python3 \
+          docker run --rm -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
@@ -212,7 +212,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   variables:
     OrtPackageId: ${{ parameters.OrtNugetPackageId }}
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -297,7 +297,7 @@ jobs:
       command: restore
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
@@ -306,7 +306,7 @@ jobs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - template: win-esrp-dll.yml
@@ -321,7 +321,7 @@ jobs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BatchScript@1
@@ -407,7 +407,7 @@ jobs:
   - group: Dashboard_MySQL_Secret
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
   dependsOn:
   - NuGet_Test_Win

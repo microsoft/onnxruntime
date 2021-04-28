@@ -9,4 +9,9 @@ namespace onnxruntime {
 template <typename... T>
 struct TypeList {};
 
-}
+}  // namespace onnxruntime
+
+// type list type containing the given types
+// Note: this is useful for passing TypeLists to macros which don't accept the
+//       comma-separated template arguments
+#define ORT_TYPE_LIST(...) ::onnxruntime::TypeList<__VA_ARGS__>

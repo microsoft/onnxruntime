@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include <unordered_map>
 #include <unordered_set>
 

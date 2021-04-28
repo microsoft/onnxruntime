@@ -12,4 +12,7 @@ sys.path.append(ort_fbs_py_path)
 
 from .utils import create_config_from_models  # noqa
 from .ort_model_processor import OrtFormatModelProcessor  # noqa
-from .operator_type_usage_processors import OperatorTypeUsageManager  # noqa
+from .operator_type_usage_processors import (  # noqa
+    GloballyAllowedTypesOpTypeImplFilter,
+    OpTypeImplFilterInterface,
+    OperatorTypeUsageManager)

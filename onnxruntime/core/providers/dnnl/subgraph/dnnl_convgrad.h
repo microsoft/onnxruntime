@@ -67,12 +67,11 @@ class DnnlConvGrad : public DnnlKernel {
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
     dnnl::engine cpu_engine;
     dnnl::engine engine_to_use;
-    const auto iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
     if (iter != dnnl_engine.end()) {
       cpu_engine = iter->second;
       engine_to_use = cpu_engine;
     }
-#if 0  // TODO update convgrad for gpu
     gpu_available_ = false;
     dnnl::engine gpu_engine;
     iter = dnnl_engine.find(dnnl::engine::kind::gpu);
@@ -82,7 +81,6 @@ class DnnlConvGrad : public DnnlKernel {
       engine_to_use = gpu_engine;
       LOGS_DEFAULT(INFO) << "gpu engine found" << std::endl;
     }
-#endif
     Ort::CustomOpApi ort{*api};
     stream_ = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(engine_to_use));
 
@@ -231,7 +229,7 @@ class DnnlConvGrad : public DnnlKernel {
     TensorShape db_shape({wshape[0]});
     diff_bias_shape_ = db_shape;
     diff_bias_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({wshape[0]}, DnnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({wshape[0]}, DnnnType<T>(), dnnl::memory::format_tag::x));
 
     dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
@@ -314,33 +312,50 @@ class DnnlConvGrad : public DnnlKernel {
             *conv_bwd_weights_desc_, engine_to_use, *(conv_fwd_->GetPrimitiveDesc())));
 
     diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-        dnnl::memory(conv_bwd_weights_pd_.get()->diff_dst_desc(), engine_to_use, nullptr));
+        dnnl::memory(conv_bwd_weights_pd_.get()->diff_dst_desc(), cpu_engine, nullptr));
 
     src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-        dnnl::memory(conv_bwd_weights_pd_.get()->src_desc(), engine_to_use, nullptr));
+        dnnl::memory(conv_bwd_weights_pd_.get()->src_desc(), cpu_engine, nullptr));
 
     weights_mem_ = onnxruntime::make_unique<dnnl::memory>(
-        dnnl::memory(conv_bwd_data_pd_.get()->weights_desc(), engine_to_use, nullptr));
+        dnnl::memory(conv_bwd_data_pd_.get()->weights_desc(), cpu_engine, nullptr));
 
     //diff_src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-    //    dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), engine_to_use, nullptr));
+    //    dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), cpu_engine, nullptr));
+
+    if (gpu_available_) {
+      diff_dst_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*diff_dst_md_, gpu_engine);
+      net.push_back(mkldnn::reorder(*diff_dst_mem_, *diff_dst_mem_gpu_));
+      net_args.push_back({{MKLDNN_ARG_SRC, *diff_dst_mem_}, {MKLDNN_ARG_DST, *diff_dst_mem_gpu_}});
+      src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*src_md_, gpu_engine);
+      net.push_back(mkldnn::reorder(*src_mem_, *src_mem_gpu_));
+      net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_}, {MKLDNN_ARG_DST, *src_mem_gpu_}});
+      weights_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*weights_md_, gpu_engine);
+      net.push_back(mkldnn::reorder(*weights_mem_, *weights_mem_gpu_));
+      net_args.push_back({{MKLDNN_ARG_SRC, *weights_mem_}, {MKLDNN_ARG_DST, *weights_mem_gpu_}});
+    }
 
     primitive_src_desc_ = conv_bwd_data_pd_.get()->diff_dst_desc();
     primitive_dst_desc_ = conv_bwd_data_pd_.get()->diff_src_desc();
 
-    if (mklnode_ptr_->output_index >= 0) {
-      // Use Dnnl's internal output buffer
-      if (primitive_dst_desc_ != ort_source_desc_) {
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-            dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), engine_to_use));
+    if (!gpu_available_) {
+      if (mklnode_ptr_->output_index >= 0) {
+        // Use Dnnl's internal output buffer
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), cpu_engine));
+        } else {
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), cpu_engine, nullptr));
+        }
       } else {
+        // last node of sub-graph. need to allocate memory for output_tensor
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-            dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), engine_to_use, nullptr));
+            dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), cpu_engine));
       }
     } else {
-      // last node of sub-graph. need to allocate memory for output_tensor
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), engine_to_use));
+          dnnl::memory(conv_bwd_data_pd_.get()->diff_src_desc(), gpu_engine));
     }
 
     diff_weights_mem_ = onnxruntime::make_unique<dnnl::memory>(
@@ -350,19 +365,45 @@ class DnnlConvGrad : public DnnlKernel {
         dnnl::memory(conv_bwd_weights_pd_.get()->diff_bias_desc(), engine_to_use));
 
     net.push_back(dnnl::convolution_backward_data(*conv_bwd_data_pd_));
-    net_args.push_back({{DNNL_ARG_DIFF_DST, *diff_dst_mem_},
-                        {DNNL_ARG_WEIGHTS, *weights_mem_},
-                        {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    if (!gpu_available_) {
+      net_args.push_back({{DNNL_ARG_DIFF_DST, *diff_dst_mem_},
+                          {DNNL_ARG_WEIGHTS, *weights_mem_},
+                          {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    } else {
+      net_args.push_back({{DNNL_ARG_DIFF_DST, *diff_dst_mem_gpu_},
+                          {DNNL_ARG_WEIGHTS, *weights_mem_gpu_},
+                          {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    }
 
     net.push_back(dnnl::convolution_backward_weights(*conv_bwd_weights_pd_));
-    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
-                        {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
-                        {DNNL_ARG_DIFF_BIAS, *diff_bias_mem_},
-                        {DNNL_ARG_DIFF_WEIGHTS, *diff_weights_mem_}});
+    if (!gpu_available_) {
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                          {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
+                          {DNNL_ARG_DIFF_BIAS, *diff_bias_mem_},
+                          {DNNL_ARG_DIFF_WEIGHTS, *diff_weights_mem_}});
+    } else {
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
+                          {DNNL_ARG_DIFF_DST, *diff_dst_mem_gpu_},
+                          {DNNL_ARG_DIFF_BIAS, *diff_bias_mem_},
+                          {DNNL_ARG_DIFF_WEIGHTS, *diff_weights_mem_}});
+    }
 
     if (mklnode_ptr_->output_index >= 0) {
       dnnl::memory::data_type t = DnnnType<T>();
-      InitDstReorderOutput(engine_to_use, t, net, net_args);
+      InitDstReorderOutput(cpu_engine, t, net, net_args, gpu_available_);
+      // Allocate dst buffer if reorder is necessary
+      if (gpu_available_) {
+        // reorder to ONNXRuntime format
+        diff_weights_reorder_mem_to_ = onnxruntime::make_unique<dnnl::memory>(dnnl::memory(*diff_weights_md_, cpu_engine));
+        net.push_back(dnnl::reorder(*diff_weights_mem_, *diff_weights_reorder_mem_to_));
+        net_args.push_back({{DNNL_ARG_FROM, *diff_weights_mem_},
+                            {DNNL_ARG_TO, *diff_weights_reorder_mem_to_}});
+
+        diff_bias_reorder_mem_to_ = onnxruntime::make_unique<dnnl::memory>(dnnl::memory(*diff_bias_md_, cpu_engine));
+        net.push_back(dnnl::reorder(*diff_bias_mem_, *diff_bias_reorder_mem_to_));
+        net_args.push_back({{DNNL_ARG_FROM, *diff_bias_mem_},
+                            {DNNL_ARG_TO, *diff_bias_reorder_mem_to_}});
+      }
     }
   }
 
@@ -392,21 +433,33 @@ class DnnlConvGrad : public DnnlKernel {
       OrtValue* dx_output = ort.KernelContext_GetOutput(context, 0, &dx_dims[0], static_cast<int>(dx_dims.size()));
       T* diff_src_data = ort.GetTensorMutableData<T>(dx_output);
 
-      if (primitive_dst_desc_ != ort_source_desc_) {
-        reorder_dst_mem_to_->set_data_handle(diff_src_data);
+      if (!gpu_available_) {
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          reorder_dst_mem_to_->set_data_handle(diff_src_data);
+        } else {
+          primitive_dst_mem_->set_data_handle(diff_src_data);
+        }
       } else {
-        primitive_dst_mem_->set_data_handle(diff_src_data);
+        reorder_dst_mem_to_->set_data_handle(diff_src_data);
       }
 
       auto& dw_dims = diff_weights_shape_.GetDims();
       OrtValue* dw_output = ort.KernelContext_GetOutput(context, 1, &dw_dims[0], static_cast<int>(dw_dims.size()));
       T* dw_data = ort.GetTensorMutableData<T>(dw_output);
-      diff_weights_mem_->set_data_handle(dw_data);
+      if (!gpu_available_) {
+        diff_weights_mem_->set_data_handle(dw_data);
+      } else {
+        diff_weights_reorder_mem_to_->set_data_handle(dw_data);
+      }
 
       auto& db_dims = diff_bias_shape_.GetDims();
       OrtValue* db_output = ort.KernelContext_GetOutput(context, 2, &db_dims[0], static_cast<int>(db_dims.size()));
       T* db_data = ort.GetTensorMutableData<T>(db_output);
-      diff_bias_mem_->set_data_handle(db_data);
+      if (!gpu_available_) {
+        diff_bias_mem_->set_data_handle(db_data);
+      } else {
+        diff_bias_reorder_mem_to_->set_data_handle(db_data);
+      }
     }
     return Status::OK();
   }
@@ -496,12 +549,15 @@ class DnnlConvGrad : public DnnlKernel {
 
   // input tensors
   std::unique_ptr<dnnl::memory> diff_dst_mem_;
+  std::unique_ptr<dnnl::memory> diff_dst_mem_gpu_;
   std::unique_ptr<dnnl::memory::desc> diff_dst_md_;
 
   std::unique_ptr<dnnl::memory> src_mem_;
+  std::unique_ptr<dnnl::memory> src_mem_gpu_;
   std::unique_ptr<dnnl::memory::desc> src_md_;
 
   std::unique_ptr<dnnl::memory> weights_mem_;
+  std::unique_ptr<dnnl::memory> weights_mem_gpu_;
   std::unique_ptr<dnnl::memory::desc> weights_md_;
   //TensorShape bwd_src_shape_;
 
@@ -513,13 +569,19 @@ class DnnlConvGrad : public DnnlKernel {
   std::shared_ptr<dnnl::memory> diff_weights_mem_;
   std::unique_ptr<dnnl::memory::desc> diff_weights_md_;
   TensorShape diff_weights_shape_;
+  // memory used for reorders
+  std::unique_ptr<dnnl::memory> diff_weights_reorder_mem_to_;
 
   std::shared_ptr<dnnl::memory> diff_bias_mem_;
   std::unique_ptr<dnnl::memory::desc> diff_bias_md_;
   TensorShape diff_bias_shape_;
+  // memory used for reorders
+  std::unique_ptr<dnnl::memory> diff_bias_reorder_mem_to_;
 
   IAllocatorUniquePtr<void> src_reorder_buffer_;
   IAllocatorUniquePtr<void> dst_reorder_buffer_;
+
+  bool gpu_available_;
 
  private:
   Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {

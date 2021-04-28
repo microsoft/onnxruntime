@@ -15,17 +15,12 @@ class ExecutionProviders;
 class SimpleTensorAllocator : public ITensorAllocator {
  private:
   MemoryPatternGroup mem_patterns_;
-  std::vector<BufferUniquePtr>& weights_buffers_;
   const ExecutionPlanBase& seq_plan_;
-
- private:
-  std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> values_;
 
  public:
   SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
-                        std::vector<BufferUniquePtr>& weights_buffers)
+                        std::vector<BufferUniquePtr>& /*weights_buffers*/)
       : ITensorAllocator(session_state),
-        weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
   common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) override {
@@ -34,7 +29,7 @@ class SimpleTensorAllocator : public ITensorAllocator {
     planned_memory_sizes_in_byte = std::unordered_map<std::string, size_t>();
     return Status::OK();
   }
-  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name, std::unique_ptr<MemBuffer>& out) override;
+  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name, std::unique_ptr<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override;
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override;
   const MemoryPatternGroup& GetMemPatterns() override {
     return mem_patterns_;

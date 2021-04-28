@@ -49,6 +49,7 @@ class NhwcTransformerImpl {
   void TransformQLinearBinary(Node& node);
   void TransformQLinearActivation(Node& node);
   void TransformQLinearGlobalAveragePool(Node& node);
+  void TransformMaxPool(Node& node);
   void TransformSplit(Node& node);
   void TransformPad(Node& node);
 
@@ -250,6 +251,43 @@ void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
   CreateNhwcArgument(node, node, nhwc_input->rank_);
 }
 
+void NhwcTransformerImpl::TransformMaxPool(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // Bail out if MaxPool has the optional index tensor specified.
+  if (output_defs.size() > 1) {
+    return;
+  }
+
+  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
+  if (nhwc_input == nullptr) {
+    return;
+  }
+
+  // Create the replacement node.
+  std::string nhwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nhwc");
+  Node& nhwc_node = graph_.AddNode(nhwc_node_name,
+                                   "NhwcMaxPool",
+                                   nhwc_node_name,
+                                   input_defs,
+                                   output_defs,
+                                   &node.GetAttributes(),
+                                   kMSDomain);
+  nhwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  // Remove the storage_order attribute, used for the unsupported index output tensor.
+  nhwc_node.ClearAttribute("storage_order");
+
+  // Update the node to directly use the NHWC inputs and decrement the original
+  // use counts of the NHWC inputs.
+  nhwc_node.MutableInputDefs()[0] = nhwc_input->nhwc_arg_;
+  nhwc_input->remaining_original_uses_--;
+
+  CreateNhwcArgument(node, nhwc_node, nhwc_input->rank_);
+  removed_nodes_.push_front(node.Index());
+}
+
 void NhwcTransformerImpl::TransformSplit(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
@@ -277,6 +315,8 @@ void NhwcTransformerImpl::TransformSplit(Node& node) {
     node.AddAttribute("axis", axis);
   }
 
+  // Update the node to directly use the NHWC inputs and decrement the original
+  // use counts of the NHWC inputs.
   input_defs[0] = nhwc_input->nhwc_arg_;
   nhwc_input->remaining_original_uses_--;
 
@@ -337,6 +377,8 @@ void NhwcTransformerImpl::Transform(Node& node) {
     TransformQLinearActivation(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain)) {
     TransformQLinearGlobalAveragePool(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12})) {
+    TransformMaxPool(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {2, 11, 13})) {
     TransformSplit(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Pad", {11, 13})) {

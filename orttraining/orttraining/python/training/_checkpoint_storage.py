@@ -1,6 +1,7 @@
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# _checkpoint_storage.py
+# --------------------------------------------------------------------------
 
 import h5py
 from collections.abc import Mapping

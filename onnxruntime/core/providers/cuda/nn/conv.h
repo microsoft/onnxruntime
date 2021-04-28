@@ -22,6 +22,7 @@ class CudnnConvolutionDescriptor final {
              const std::vector<int64_t>& pads,
              const std::vector<int64_t>& strides,
              const std::vector<int64_t>& dilations,
+             int groups,
              cudnnConvolutionMode_t mode,
              cudnnDataType_t data_type);
 
@@ -111,6 +112,8 @@ constexpr size_t MAX_CACHED_ALGO_PERF_RESULTS = 10000;
 
 template <typename AlgoPerfType>
 struct CudnnConvState {
+  cudnnHandle_t handle;
+
   // if x/w dims changed, update algo and cudnnTensors
   std::vector<int64_t> last_x_dims;
   std::vector<int64_t> last_w_dims;
@@ -173,6 +176,8 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
+
+    s_.handle = CudnnHandle();
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -181,12 +186,12 @@ class Conv : public CudaKernel {
   inline IAllocatorUniquePtr<void> GetWorkSpace() const {
     return GetScratchBuffer<void>(s_.workspace_bytes);
   }
-  const CudaT alpha_ = Consts<CudaT>::One;
-  const CudaT beta_ = Consts<CudaT>::Zero;
+
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

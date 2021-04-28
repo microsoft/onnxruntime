@@ -399,6 +399,12 @@ Status LoopImpl::Initialize() {
 
   auto& subgraph_inputs = info_.subgraph.GetInputs();
 
+  // we need to know if the subgraph expects a rank 0 or rank 1 value for these, so a shape is required.
+  ORT_RETURN_IF(subgraph_inputs[0]->Shape() == nullptr, "Loop subgraph input 0 has unknown shape: ",
+                subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Shape() == nullptr, "Loop subgraph input 1 has unknown shape: ",
+                subgraph_inputs[1]->Name());
+
   auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
 

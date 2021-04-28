@@ -129,11 +129,11 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
     fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
-  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, MLFloat16, float, double>
-      t_disp(dY->GetElementType());
-  return t_disp.Invoke(Stream(), dY, indices_tensor, dX, rank,
-                       buffer_output_dims, buffer_input_strides, indices_size,
-                       buffer_indices_dims, fdm_indices_strides, axis);
+  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dY->GetElementType());
+  return t_disp.InvokeRet<Status, ComputeImpl>(
+      Stream(), dY, indices_tensor, dX, rank,
+      buffer_output_dims, buffer_input_strides, indices_size,
+      buffer_indices_dims, fdm_indices_strides, axis);
 }
 
 }  // namespace cuda

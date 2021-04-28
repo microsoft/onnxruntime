@@ -83,7 +83,7 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.test_output.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.test_output.ort");
 
   //
   // First load the onnx format model and save as an ORT model.
@@ -127,7 +127,7 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
 }
 
 TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
 
   // make sure we can't save a model with compiled ops. input/output model format doesn't matter
   SessionOptions so;
@@ -148,7 +148,7 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
 
 // test to validate a minimal build
 TEST(InternalTestingEP, TestLoadOrtModel) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
 
   std::unique_ptr<InferenceSessionWrapper> session;
   bool enable_custom_ep = true;
@@ -160,7 +160,7 @@ TEST(InternalTestingEP, TestLoadOrtModel) {
 // test that is the custom EP cannot take all nodes due to device limitations
 // that we fallback to the CPU implementations and can execute the model
 TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
   const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu" /*, "MaxPool"*/};
 
   std::unique_ptr<InferenceSessionWrapper> session;
@@ -299,7 +299,7 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
   // So we should have 3 partitions be taken by InternalTestingExecutionProvider/CompileFailureTestExecutionProvider
   // But CompileFailureTestExecutionProvider will fail the Compile for partition contains "Gemm" node
   // This is to test the model initialization won't fail and Gemm node will not be replaced by the fused_node
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
 
   const std::unordered_set<std::string>& supported_ops{"Conv", "Gemm"};
   const std::unordered_set<std::string>& compile_failure_ops{"Gemm"};

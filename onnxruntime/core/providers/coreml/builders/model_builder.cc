@@ -83,25 +83,30 @@ Status ModelBuilder::RegisterInitializers() {
 
     CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor);
     *layer->mutable_output()->Add() = name;
-    AddLayer(layer.release());
+    AddLayer(std::move(layer));
   }
 
   return Status::OK();
 }
 
 Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) {
+  const auto& name = node_arg.Name();
+  const std::string input_output_type = is_input ? "input" : "output";
+
+  if (is_input) {
+    // input should not be an initializer
+    if (Contains(GetInitializerTensors(), name))
+      return Status::OK();
+
+    // This input will not be used
+    if (Contains(skipped_inputs_, name))
+      return Status::OK();
+  }
+
   auto* model_description = coreml_model_->mutable_description();
   auto& input_output = is_input
                            ? *model_description->mutable_input()->Add()
                            : *model_description->mutable_output()->Add();
-
-  const auto& name = node_arg.Name();
-  const std::string input_output_type = is_input ? "input" : "output";
-
-  // input should not be an initializer
-  if (is_input && Contains(GetInitializerTensors(), name)) {
-    return Status::OK();
-  }
 
   input_output.set_name(name);
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
@@ -217,13 +222,17 @@ void ModelBuilder::AddScalarOutput(const std::string& output_name) {
   scalar_outputs_.insert(output_name);
 }
 
-void ModelBuilder::AddLayer(COREML_SPEC::NeuralNetworkLayer* layer) {
+void ModelBuilder::AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer) {
   auto* neural_network = coreml_model_->mutable_neuralnetwork();
-  neural_network->mutable_layers()->AddAllocated(layer);
+  neural_network->mutable_layers()->AddAllocated(layer.release());
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
+}
+
+void ModelBuilder::AddInputToSkip(const std::string& input_name) {
+  skipped_inputs_.insert(input_name);
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

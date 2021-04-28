@@ -42,7 +42,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 

@@ -1,8 +1,8 @@
 parameters:
-  AgentPool : 'Linux-CPU'
+  AgentPool : 'Linux-CPU-2019'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  RunDockerBuildArgs: '-o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu18.04 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
@@ -30,7 +30,6 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
-    - template: linux-set-variables-and-download.yml
     - task: NodeTool@0
       inputs:
         versionSpec: '12.16.3'
@@ -56,9 +55,9 @@ jobs:
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
       - script: |
          npm pack
-         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'

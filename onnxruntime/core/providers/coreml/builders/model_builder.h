@@ -27,10 +27,14 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  void AddLayer(COREML_SPEC::NeuralNetworkLayer* layer);
+  void AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer);
 
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
+
+  // There are some input which will not be used, add it to a list which will not
+  // be added to CoreML model, since CoreML does not like input unused
+  void AddInputToSkip(const std::string& input_name);
 
   std::string GetUniqueName(const std::string& base_name);
 
@@ -44,6 +48,7 @@ class ModelBuilder {
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
   std::unordered_set<std::string> skipped_initializers_;
+  std::unordered_set<std::string> skipped_inputs_;
 
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;

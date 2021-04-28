@@ -20,6 +20,8 @@ def parse_args():
                       help="Path to the training data root directory.")
   parser.add_argument("--model_root", required=True,
                       help="Path to the model root directory.")
+  parser.add_argument("--gpu_sku", choices=['V100_16G', 'MI100_32G'], default='V100_16G', required=False, 
+                      help="GPU model (e.g. V100_16G, MI100_32G).")
   return parser.parse_args()
 
 def main():
@@ -49,6 +51,7 @@ def main():
         "--gradient_accumulation_steps", "16",
         "--max_predictions_per_seq=20",
         "--use_mixed_precision",
+        "--use_deterministic_compute",
         "--allreduce_in_fp16",
         "--lambda", "0",
         "--use_nccl",
@@ -57,10 +60,18 @@ def main():
         "--enable_grad_norm_clip=false",
     ]).check_returncode()
 
+    # reference data
+    if args.gpu_sku == 'MI100_32G':
+        reference_csv = "bert_base.convergence.baseline.mi100.csv"
+    elif args.gpu_sku == 'V100_16G':
+        reference_csv = "bert_base.convergence.baseline.csv"
+    else:
+        raise ValueError('Unrecognized gpu_sku {}'.format(args.gpu_sku))
+
     # verify output
     comparison_result = compare_results_files(
         expected_results_path=os.path.join(
-            SCRIPT_DIR, "results", "bert_base.convergence.baseline.csv"),
+            SCRIPT_DIR, "results", reference_csv),
         actual_results_path=convergence_test_output_path,
         field_comparisons={
             "step": Comparisons.eq(),

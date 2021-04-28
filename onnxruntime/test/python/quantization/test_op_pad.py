@@ -94,7 +94,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         model.ir_version = onnx.IR_VERSION
         onnx.save(model, output_model_path)
 
-    def quantize_mode(self, model_fp32_path, model_i8_path, data_reader=None):
+    def quantize_model(self, model_fp32_path, model_i8_path, data_reader=None):
         if data_reader is not None:
             quantize_static(model_fp32_path, model_i8_path, data_reader, reduce_range=True)
         else:
@@ -106,7 +106,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         model_i8_path = 'qop_pad_notrigger_i8_{}.onnx'.format(quantize_mode)
         data_reader = self.input_feeds(1, {'input': [1, 16, 31, 31]})
         self.construct_model_pad(model_fp32_path, 'constant', [1, 16, 31, 31], [0, 0, 1, 2, 0, 0, 3, 4])
-        self.quantize_mode(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader)
+        self.quantize_model(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader)
         data_reader.rewind()
         # DequantizeLinear=0 pad node is not been quantized as input is not quantized.
         check_op_type_count(self, model_i8_path, DynamicQuantizeLinear=0, QuantizeLinear=0, DequantizeLinear=0)
@@ -127,7 +127,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         data_reader = self.input_feeds(1, {'input': [1, 8, 33, 33]})
         self.construct_model_conv_pad(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31],
                                       pad_mode, [0, 0, 1, 2, 0, 0, 3, 4], constant_value=constant_value)
-        self.quantize_mode(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader)
+        self.quantize_model(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader)
         data_reader.rewind()
         # DequantizeLinear=2 means there are one DequantizeLinear Node aftr both conv and pad,
         # which means pad node is running in quantized semantic.

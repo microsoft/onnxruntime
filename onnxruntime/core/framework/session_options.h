@@ -64,6 +64,11 @@ struct SessionOptions {
   // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
+  // Enable memory resue in memory planning. Allows to reuse tensor buffer between tensors if they are of
+  // the same size. The issue with this is it can lead to memory being held for longer than needed and 
+  // can impact peak memory consumption.
+  bool enable_mem_reuse = true;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.

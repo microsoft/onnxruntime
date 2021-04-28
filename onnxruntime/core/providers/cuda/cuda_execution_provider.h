@@ -80,12 +80,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
 
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
+
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
@@ -96,7 +99,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                     CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {
@@ -129,7 +133,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-        } else if (std::is_same<T, nv_bfloat16>::value) {
+      } else if (std::is_same<T, nv_bfloat16>::value) {
         if (!constant_ones_bfloat16_) {
           constant_ones_bfloat16_ = cuda::CreateConstantOnes<nv_bfloat16>();
         }

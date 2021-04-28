@@ -22,7 +22,7 @@ namespace op_kernel_type_control {
   template <>                                                                 \
   struct TypesHolder<                                                         \
       ::onnxruntime::op_kernel_type_control::tags::Allowed<                   \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(                 \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_ARG_TAG(                        \
               OpDomain, OpName, ArgDirection, ArgIndex)>> {                   \
     using types = ::onnxruntime::TypeList<__VA_ARGS__>;                       \
   };
@@ -47,7 +47,7 @@ namespace op_kernel_type_control {
 //   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0, float, int64_t);
 //   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Output, 0, float, int64_t);
 // Specify allowed types globally:
-//   ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(float, double, int32_t)
+//   ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(float, double, int32_t);
 
 // specify allowed types here
 

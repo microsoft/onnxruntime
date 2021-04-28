@@ -14,7 +14,7 @@ parameters:
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
-  AgentPool: 'Win-CPU-2019'
+  AgentPool: 'Win-CPU-2021'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
@@ -93,7 +93,7 @@ jobs:
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
        python setup.py bdist_wheel
-       python -m pip uninstall -y onnx
+       python -m pip uninstall -y onnx -qq
        Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
@@ -128,7 +128,6 @@ jobs:
          @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
         displayName: 'Set Configuration variable'
 
-    - template: set-test-data-variables-step.yml
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: NuGetToolInstaller@0
@@ -240,17 +239,17 @@ jobs:
           modifyEnvironment: true
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64'
+          FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
           DisplayName: 'ESRP - Sign Node.js binding binaries'
           DoEsrp: ${{ parameters.DoEsrp }}
           Pattern: '*.dll,*.node'
 
       - script: |
-         del /Q $(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+         del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
          call npm pack
-         copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         xcopy /E /I $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)\nodejs'
+         copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)\js\node'
         displayName: 'Create NPM Package'
 
       - task: PublishPipelineArtifact@0

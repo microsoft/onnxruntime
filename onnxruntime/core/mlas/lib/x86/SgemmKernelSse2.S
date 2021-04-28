@@ -225,8 +225,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
-C_UNDERSCORE(MlasGemmFloatKernelSse):
+        FUNCTION_ENTRY MlasGemmFloatKernelSse
 
         push    ebp
         push    ebx

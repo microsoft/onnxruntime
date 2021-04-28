@@ -325,6 +325,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);
 };
@@ -578,7 +579,7 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float, int64_t, and string
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
@@ -623,10 +624,23 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
+
+    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
+    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
   const char* GetExecutionProviderType() const { return nullptr; }
+
+  // Default implementations of GetInputCharacteristic() and GetOutputCharacteristic() below
+  // (inputs and outputs are required by default)
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
 };
 
 }  // namespace Ort

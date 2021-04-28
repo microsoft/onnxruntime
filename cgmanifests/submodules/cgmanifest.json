@@ -162,10 +162,30 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+        },
+        "comments": "git submodule at cmake/external/dlpack"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "8b32b7def837a15e766039501630549149d3db41",
+          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
+        },
+        "comments": "git submodule at cmake/external/emsdk"
       }
     },
     {
@@ -242,7 +262,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "237926eab41de21fb9addc4b03b751fd6a3343ec",
+          "commitHash": "971632833036c576cf95499291f689f8bb3519e1",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -272,7 +292,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a3a4e38b2dfa7a62b6dcae33c0d1678b3bb5ef2a",
+          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -332,7 +352,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
+          "commitHash": "436bd7880e458532901c58f4d9d1ea23fa7edd52",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"

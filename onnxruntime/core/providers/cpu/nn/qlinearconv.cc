@@ -3,6 +3,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -42,10 +43,8 @@ class QLinearConv : public OpKernel {
 
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   BufferUniquePtr packed_W_buffer_;
   size_t packed_W_size_;
-#endif
   BufferUniquePtr reordered_W_buffer_;
   bool is_W_signed_;
   bool is_W_packed_;
@@ -115,7 +114,6 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
 
   auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   const size_t group_count = static_cast<size_t>(conv_attrs_.group);
   const size_t group_output_channels = output_channels / group_count;
   const size_t kernel_dim = group_input_channels * kernel_size;
@@ -150,7 +148,6 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
       return Status::OK();
     }
   }
-#endif
 
   auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size));
   reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
@@ -278,13 +275,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   // Handle the case of a dynamic weight filter.
   BufferUniquePtr reordered_W_buffer;
   uint8_t* reordered_W = nullptr;
-  bool use_reordered_W = true;
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  if (packed_W_buffer_) {
-    use_reordered_W = false;
-  }
-#endif
-  if (use_reordered_W) {
+  if (!packed_W_buffer_) {
     if (W == nullptr) {
       // Weight was constant and reordered.
       reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
@@ -306,7 +297,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   int64_t group_output_channels = M / group_count;
 
   // Test for depthwise convolution.
-  const bool is_depthwise_conv = (use_reordered_W && group_input_channels == 1 && group_output_channels == 1);
+  const bool is_depthwise_conv = (reordered_W != nullptr && group_input_channels == 1 && group_output_channels == 1);
   if (is_depthwise_conv) {
     // Update the input and output channels to the number of groups in order to
     // reuse as much of the below standard convolution path.
@@ -360,7 +351,12 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   // Replicate the logic from MlasGemmU8X8Schedule to control the number of
   // worker threads used for the convolution.
-  constexpr int32_t maximum_thread_count = 16;
+  int32_t maximum_thread_count;
+  if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+    maximum_thread_count = 64;
+  } else {
+    maximum_thread_count = 16;
+  }
   constexpr double thread_complexity = static_cast<double>(64 * 1024);
 
   const double complexity = static_cast<double>(output_image_size) *
@@ -504,39 +500,27 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             worker_gemm_input = input_data + output_start * kernel_dim;
           }
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+          gemm_shape.M = static_cast<size_t>(output_count);
+          gemm_shape.N = static_cast<size_t>(group_output_channels);
+          gemm_shape.K = static_cast<size_t>(kernel_dim);
+          gemm_shape.BIsSigned = is_W_signed;
+
+          MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+          gemm_params.A = worker_gemm_input;
+          gemm_params.lda = static_cast<size_t>(kernel_dim);
+          gemm_params.ZeroPointA = X_zero_point_value;
           if (packed_W_buffer_) {
-            MlasGemm(
-                static_cast<size_t>(output_count),
-                static_cast<size_t>(group_output_channels),
-                static_cast<size_t>(kernel_dim),
-                worker_gemm_input,
-                static_cast<size_t>(kernel_dim),
-                X_zero_point_value,
-                static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-                W_zero_point_value,
-                is_W_signed,
-                worker_gemm_output + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                nullptr);
-          } else
-#endif
-          {
-            MlasGemm(
-                static_cast<size_t>(output_count),
-                static_cast<size_t>(group_output_channels),
-                static_cast<size_t>(kernel_dim),
-                worker_gemm_input,
-                static_cast<size_t>(kernel_dim),
-                X_zero_point_value,
-                reordered_W + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                W_zero_point_value,
-                is_W_signed,
-                worker_gemm_output + group_id * group_output_channels,
-                static_cast<size_t>(M),
-                nullptr);
+            gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+            gemm_params.BIsPacked = true;
+          } else {
+            gemm_params.B = reordered_W + group_id * group_output_channels,
+            gemm_params.ldb = static_cast<size_t>(M);
           }
+          gemm_params.ZeroPointB = &W_zero_point_value;
+          gemm_params.C = worker_gemm_output + group_id * group_output_channels;
+          gemm_params.ldc = static_cast<size_t>(M);
+          MlasGemm(gemm_shape, gemm_params, nullptr);
         }
       }
 

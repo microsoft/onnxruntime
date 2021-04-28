@@ -68,4 +68,10 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
-	branch = 7.1
+[submodule "cmake/external/dlpack"]
+	path = cmake/external/dlpack
+	url = https://github.com/dmlc/dlpack.git
+[submodule "cmake/external/emsdk"]
+	path = cmake/external/emsdk
+	url = https://github.com/emscripten-core/emsdk.git
+	branch = 2.0.13
