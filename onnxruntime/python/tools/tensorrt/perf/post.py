@@ -6,6 +6,13 @@ import subprocess
 import pandas as pd
 from sqlalchemy import create_engine
 
+# database connection strings 
+sql_connector = 'mysql+mysqlconnector://'
+user='powerbi@onnxruntimedashboard'
+password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD')
+host='onnxruntimedashboard.mysql.database.azure.com'
+database='onnxruntime'
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -25,10 +32,10 @@ def insert_latency(commit_hash, report_url, latency):
     
     # connect to database
     cnx = mysql.connector.connect(
-        user='powerbi@onnxruntimedashboard',
-        password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
-        host='onnxruntimedashboard.mysql.database.azure.com',
-        database='onnxruntime')
+            user=user,
+            password=password,
+            host=host,
+            database=database)
     
     try:
         cursor = cnx.cursor()
@@ -136,11 +143,11 @@ def main():
     # connect to database 
     cert = get_database_cert()
     ssl_args = {'ssl_ca': cert}
-    connection_string = 'mysql+mysqlconnector://' + \
-                        'powerbi@onnxruntimedashboard:' + \
-                        os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD') + \
-                        '@onnxruntimedashboard.mysql.database.azure.com/' + \
-                        'onnxruntime'
+    connection_string = sql_connector + \
+                        user + \
+                        password + \
+                        host + \
+                        database
     engine = create_engine(connection_string, connect_args=ssl_args)
 
     try: 

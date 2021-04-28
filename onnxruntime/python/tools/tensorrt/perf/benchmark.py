@@ -45,8 +45,8 @@ ep_to_provider_list = {
 # latency gain headers 
 trt_cuda_gain = 'TRT_CUDA_gain(%)'
 trt_cuda_fp16_gain = 'TRT_CUDA_fp16_gain(%)'
-trt_native_gain = 'EP_Standalone_TRT_gain(%)'
-trt_native_fp16_gain = 'EP_Standalone_TRT_fp16_gain(%)'
+trt_native_gain = 'TRT_Standalone_gain(%)'
+trt_native_fp16_gain = 'TRT_Standalone_fp16_gain(%)'
 
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
