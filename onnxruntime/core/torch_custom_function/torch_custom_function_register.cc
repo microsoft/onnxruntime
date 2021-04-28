@@ -111,7 +111,6 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0;
   std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
   index_++;
-  std::cout << "[torch_custom_function_register.cc] register ctx: " << auto_grad_context << ", refcnt: " << Py_REFCNT(auto_grad_context) << std::endl;
   PyObject_Print(auto_grad_context, stdout, 0);
   func_context_pool.insert({index_, auto_grad_context});
   Py_INCREF(auto_grad_context);
@@ -120,15 +119,12 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
 
 PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   auto ctx = func_context_pool.find(context_index);
-  //ORT_ENFORCE(ctx != func_context_pool.end(), " Cannot find the context address for context_index: ", context_index);
-
   return ctx->second;
 }
 
 void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   std::unique_lock<std::mutex> lk(func_context_pool_mutex_);
   auto ctx = func_context_pool.find(context_index);
-  std::cout << "[torch_custom_function_register.cc] unregister ctx: " << ctx->second << ", refcnt: " << Py_REFCNT(ctx->second) << std::endl;
   PyObject_Print(ctx->second, stdout, 0);
   Py_XDECREF(ctx->second);
   func_context_pool.erase(ctx);
