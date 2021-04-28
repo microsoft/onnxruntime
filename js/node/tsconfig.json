@@ -1,24 +1,8 @@
 {
-  "include": ["lib", "script", "test"],
-  "compileOnSave": true,
+  "extends": "../tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "moduleResolution": "node",
-    "declaration": true,
-    "declarationDir": "./types",
-    "esModuleInterop": true,
-    "target": "es2015",
-    "lib": ["es2015", "ESNext.BigInt"],
-    "sourceMap": true,
-    "noUnusedLocals": true,
-    "noImplicitReturns": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
-    "strictNullChecks": true,
-    "noUnusedParameters": false,
-    "pretty": true,
-    "allowUnreachableCode": false,
-    "experimentalDecorators": true,
-    "downlevelIteration": true
-  }
+    "declarationDir": "./types"
+  },
+  "include": ["lib", "script", "test"]
 }

@@ -108,6 +108,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     MlasGemm(gemm_shape, gemm_params, ctx->GetOperatorThreadPool());
 
+    //TODO!! consider making this a post processor, so that we can parallize this loop
     MlasRequantizeOutput(gemm_output,
                          y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
                          nullptr,

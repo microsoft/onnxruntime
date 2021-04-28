@@ -813,7 +813,7 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
   OpDef op_def{"Conv"};
 
   // TODO: revisit the tol when ConvGrad impl is completed
-  float error_tolerance = 2e-1f;
+  float error_tolerance = 3e-1f;
 
   // 1D convolution
   {
@@ -1308,6 +1308,14 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
     x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+
+    // Test case w/o axes attribute/input, only valid for Squeeze Op.
+    if (op_def.type == "Squeeze") {
+      gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes);
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
+
+    // test case w/ axes attribute/input.
     if (axes_input) {
       std::vector<float> axes_float;
       std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {execSync, spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
 import minimist from 'minimist';

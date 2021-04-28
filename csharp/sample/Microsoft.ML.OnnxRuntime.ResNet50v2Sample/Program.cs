@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
@@ -19,10 +17,9 @@ namespace Microsoft.ML.OnnxRuntime.ResNet50v2Sample
             string imageFilePath = args[1];
 
             // Read image
-            using Image<Rgb24> image = Image.Load<Rgb24>(imageFilePath, out IImageFormat format);
+            using Image<Rgb24> image = Image.Load<Rgb24>(imageFilePath);
 
             // Resize image
-            using Stream imageStream = new MemoryStream();
             image.Mutate(x =>
             {
                 x.Resize(new ResizeOptions
@@ -31,7 +28,6 @@ namespace Microsoft.ML.OnnxRuntime.ResNet50v2Sample
                     Mode = ResizeMode.Crop
                 });
             });
-            image.Save(imageStream, format);
 
             // Preprocess image
             Tensor<float> input = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
