@@ -520,7 +520,7 @@ void addObjectMethodsForTraining(py::module& m) {
       });
 
   py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration> propagate_cast_ops(
-      m, "GraphTransformerConfiguration::PropagateCastOpsConfiguration",
+      m, "PropagateCastOpsConfiguration",
       R"pbdoc(Propagate cast ops configuration.)pbdoc");
   propagate_cast_ops.def(py::init())
       .def_readwrite("propagate_cast_ops_strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
