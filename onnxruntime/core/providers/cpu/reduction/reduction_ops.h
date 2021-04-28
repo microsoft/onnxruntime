@@ -186,7 +186,6 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -201,7 +200,6 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceRK(fast_shape, output);
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -220,7 +218,6 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKRK(fast_shape, output);
     int64_t N = fast_shape[2];
     const T* data = input.Data<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
@@ -315,7 +312,6 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -331,7 +327,6 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceRK(fast_shape, output);
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
@@ -353,7 +348,6 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKRK(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
@@ -477,7 +471,6 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKR(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
@@ -493,7 +486,6 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceRK(fast_shape, output);
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
@@ -515,7 +507,6 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
 
   static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ValidateFastReduceKRK(fast_shape, output);
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1] * fast_shape[2];
