@@ -65,7 +65,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
-      artifactName: '$(BuildConfig)'
+      artifactName: '$(BuildConfig)_$(WasmFileName)'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishTestResults@2
@@ -95,7 +95,10 @@ jobs:
       versionSpec: '14.x'
   - task: DownloadBuildArtifacts@0
     inputs:
-      artifactName: 'Release'
+      artifactName: 'Release_onnxruntime_wasm'
+  - task: DownloadBuildArtifacts@0
+    inputs:
+      artifactName: 'Release_onnxruntime_wasm_threads'
   - script: |
      if not exist "$(Build.BinariesDirectory)\js\web\dist\" mkdir "$(Build.BinariesDirectory)\js\web\dist\"
      copy $(System.ArtifactsDirectory)\onnxruntime_wasm*.wasm $(Build.BinariesDirectory)\js\web\dist\
