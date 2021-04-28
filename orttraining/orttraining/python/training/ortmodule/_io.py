@@ -138,10 +138,10 @@ class _TensorStub(object):
         return result
 
     def __eq__(self, other):
-        if not isinstance(other, _TensorStub):
-            raise NotImplemented('_TensorStub must only be compared to another _TensorStub instance!')
-        elif not other:
+        if not other:
             return False
+        elif not isinstance(other, _TensorStub):
+            raise NotImplemented('_TensorStub must only be compared to another _TensorStub instance!')
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:

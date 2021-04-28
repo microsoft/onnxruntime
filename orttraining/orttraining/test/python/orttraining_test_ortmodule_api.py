@@ -2054,39 +2054,29 @@ def test_forward_call_default_input():
         else:
             model.eval()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Model only uses a,d out of a,b,c,d
         out = model(one, two, three, four)
         assert out.item() == 5.0
         if model.training:
             out.sum().backward()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         out = model(one, two, c=three, d=four)
         assert out.item() == 5.0
         if model.training:
             out.sum().backward()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Model only uses a,d,args[-1] out of a,b,c,d,*args
         out = model(one, two, three, four, *args)
         assert out.item() == 7.0
         if model.training:
             out.sum().backward()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Model only uses a,d,args[-1],kw_0 out of a,b,c,d,*args,kw_0
         out = model(one, two, three, four, *args, kw_0=kw_0)
         assert out.item() == 13.0
         if model.training:
             out.sum().backward()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Model only uses a,d,args[-1],kwargs['kwargs_1'] out of a,b,c,d,*args,kw_0,**kwargs
         out = model(one, two, three, four, *args, **kwargs)
         assert out.item() == 15.0
@@ -2129,8 +2119,6 @@ def test_forward_call_kwargs_input_unexpected_order():
         else:
             model.eval()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Must work because forward() and dict order match
         y1, y2 = model(**{'input1': input1, 'input2': input2})
         assert y1 is not None
@@ -2139,8 +2127,6 @@ def test_forward_call_kwargs_input_unexpected_order():
             loss = y1.sum() + y2.sum()
             loss.backward()
 
-        # Force model (re)export to validate (un)flattening with new input
-        model._execution_manager(model._is_training())._onnx_model = None
         # Must work even when forward() and dict order mismatch
         y1, y2 = model(**{'input2': input2, 'input1': input1})
         assert y1 is not None
@@ -2177,6 +2163,11 @@ def test_forward_call_lots_None():
 
     def run_step(expected, a, b, c, d, e, f, y, z):
         # Force model (re)export to validate (un)flattening with new input
+        #   This is needed because for a `forward(self, a, b)`, and
+        #   input `forward(a,b)` or `forward(**{'a': a, 'b': b})`,
+        #   ORTModule produces the same schema, thus not re-exporting
+        #   the model when `forward(a,b)` is used after `forward(**{'a': a, 'b': b})`
+        #   or vice-versa
         model._execution_manager(model._is_training())._onnx_model = None
         out = model(a,b,c,d,e,f,y,z)
         assert out is not None
