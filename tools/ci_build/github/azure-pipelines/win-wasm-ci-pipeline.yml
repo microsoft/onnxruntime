@@ -84,7 +84,7 @@ jobs:
 #     displayName: 'Clean Agent Directories'
 #     condition: always()
 - job: build_onnxruntime_web
-  dependsOn: build_WASM
+  # dependsOn: build_WASM
   pool: 'yulongw-test'
   timeoutInMinutes: 120
   workspace:
