@@ -355,7 +355,7 @@ class PosixEnv : public Env {
   }
 
   std::string GetRuntimePath() const override {
-    return "./";
+    return "";
   }
 
   common::Status CreateFolder(const std::string& path) const override {
