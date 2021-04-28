@@ -10,14 +10,13 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
 """
 import argparse
 import logging
-import os
 import torch
 import time
 from torchvision import datasets, transforms
 import torch.distributed as dist
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 import deepspeed
 

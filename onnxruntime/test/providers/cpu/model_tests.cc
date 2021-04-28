@@ -617,18 +617,13 @@ TEST_P(ModelTest, Run) {
 #endif
 }
 
-#ifdef USE_TENSORRT
-#ifdef _WIN32
-//On windows these three models report errors like: "Non-zero status code returned while running TRTKernel_graph_resnet50_8187447026814079716_1 node. Name:'TensorrtExecutionProvider_TRTKernel_graph_resnet50_8187447026814079716_1_0' Status Message: D:\a\_work\1\s\onnxruntime\core\framework\tensor_type_and_shape.cc:203 OrtApis::GetTensorTypeAndShape type != nullptr was false. OrtValue is not a Tensor"
-
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("cpu_..\\models\\opset8\\test_resnet50\\model.onnx")));
-#else
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensorrt_../models/opset8/test_resnet50/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_inception_v2/model.onnx"), ORT_TSTR("tensorrt_../models/opset8/test_resnet18v2/resnet18v2.onnx")));
-#endif
-#else
+// TODO: all providers
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
   provider_names.push_back(ORT_TSTR("cpu"));
+#ifdef USE_TENSORRT
+  provider_names.push_back(ORT_TSTR("tensorrt"));
+#endif
 #ifdef USE_MIGRAPHX
   provider_names.push_back(ORT_TSTR("migraphx"));
 #endif
@@ -774,6 +769,34 @@ INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensor
                                                    ORT_TSTR("convtranspose_1d"),
                                                    ORT_TSTR("convtranspose_3d"),
                                                    ORT_TSTR("maxpool_2d_uint8")};
+  static const ORTCHAR_T* tensorrt_disabled_tests[] = {
+      ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
+      ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),
+      ORT_TSTR("LSTM_Seq_lens_unpacked"),
+      ORT_TSTR("cgan"), ORT_TSTR("candy"),
+      ORT_TSTR("tinyyolov3"), ORT_TSTR("yolov3"),
+      ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("mask_rcnn"),
+      ORT_TSTR("faster_rcnn"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_inception_v1"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("tf_inception_v3"),
+      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+      ORT_TSTR("tf_mobilenet_v2_1.0_224"),
+      ORT_TSTR("tf_mobilenet_v2_1.4_224"),
+      ORT_TSTR("tf_resnet_v1_101"),
+      ORT_TSTR("tf_resnet_v1_152"),
+      ORT_TSTR("tf_resnet_v1_50"),
+      ORT_TSTR("tf_resnet_v2_101"),
+      ORT_TSTR("tf_resnet_v2_152"),
+      ORT_TSTR("tf_resnet_v2_50"),
+      ORT_TSTR("convtranspose_1d"),
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
+      ORT_TSTR("conv_with_strides_padding"),
+      ORT_TSTR("size")  //INVALID_ARGUMENT: Cannot find binding of given name: x
+  };
   for (const ORTCHAR_T* provider_name : provider_names) {
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
@@ -785,6 +808,10 @@ INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensor
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
+    } else if (CompareCString(provider_name, ORT_TSTR("tensorrt")) == 0) {
+      // these models run but disabled tests to keep memory utilization low
+      // This will be removed after LRU implementation
+      all_disabled_tests.insert(std::begin(tensorrt_disabled_tests), std::end(tensorrt_disabled_tests));
     } else if (CompareCString(provider_name, ORT_TSTR("openvino")) == 0) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
@@ -819,8 +846,8 @@ INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensor
 #endif
 #endif
 
-// OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_OPENVINO)
+// TENSORRT/OpenVino has too many test failures in the single node tests
+#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {
@@ -871,7 +898,6 @@ INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::Values(ORT_TSTR("tensor
 }
 
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

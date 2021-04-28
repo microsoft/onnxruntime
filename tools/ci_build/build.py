@@ -243,6 +243,11 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -499,6 +504,8 @@ def parse_arguments():
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
 
+    parser.add_argument(
+        "--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
 
@@ -642,6 +649,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
+        "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
@@ -653,6 +661,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
@@ -1216,12 +1225,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                           "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc", "-destination",
                           "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                               "-configuration", config,
                               "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
                               "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
@@ -1489,7 +1498,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 
 def build_python_wheel(
-        source_dir, build_dir, configs, use_cuda, cuda_version, use_dnnl,
+        source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
@@ -1527,6 +1536,10 @@ def build_python_wheel(
             args.append('--use_cuda')
             if cuda_version:
                 args.append('--cuda_version={}'.format(cuda_version))
+        elif use_rocm:
+            args.append('--use_rocm')
+            if rocm_version:
+                args.append('--rocm_version={}'.format(rocm_version))
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:
@@ -1999,6 +2012,8 @@ def main():
                 raise BuildError("cuda_version must be specified on Windows.")
             else:
                 args.cuda_version = ""
+        if args.use_rocm and args.rocm_version is None:
+            args.rocm_version = ""
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -2037,6 +2052,8 @@ def main():
                 configs,
                 args.use_cuda,
                 args.cuda_version,
+                args.use_rocm,
+                args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,
