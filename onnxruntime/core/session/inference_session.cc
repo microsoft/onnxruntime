@@ -49,6 +49,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
+#include "onnxruntime_config.h"
 
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -292,6 +293,29 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // Add log to allow serving platforms to quantify ORT usage.
+  // To avoid flooding the test logs, this is done for non-debug mode only
+  // TODO: plug-in a platform specific telemetry provider to send the telemetry to
+#ifdef NDEBUG
+#ifdef _WIN32
+  std::wostringstream ostr;
+#else
+  std::ostringstream ostr;
+#endif
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = EventName (event_attr1: foo.onnx, event_attr2: 400us)"
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = SessionCreation (model: foo.onnx, ts: 400us)"
+  ostr << "ORT Telemetry: "
+       << "Ver = " << ORT_VERSION << "; Event = SessionCreation";
+  if (!model_location_.empty()) {
+    ostr << " (model: " << model_location_ << ")";
+  }
+#ifdef _WIN32
+  std::wcout << ostr.str() << "\n";
+#else
+  std::cout << ostr.str() << "\n";
+#endif
+#endif
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -1505,6 +1529,73 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 
   return common::Status::OK();
 }
+
+#ifdef ENABLE_TRAINING
+Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
+                                    const std::vector<OrtValue>& feeds,
+                                    std::vector<OrtValue>& fetches,
+                                    PartialGraphExecutionState& state,
+                                    FeedsFetchesManager& feeds_fetches_manager) {
+  Status retval = Status::OK();
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    if (!run_options.run_tag.empty()) {
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+    }
+
+    // scope of owned_run_logger is just the call to Execute.
+    // If Execute ever becomes async we need a different approach
+    std::unique_ptr<logging::Logger> owned_run_logger;
+    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call OnRunStart for all providers in-use
+    for (auto& xp : execution_providers_) {
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
+    }
+
+    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false, "only_execute_path_to_fetches is not supported.");
+
+    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
+
+    // execute the graph
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
+                                                        run_logger, state));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+  }
+
+  // info all execution providers InferenceSession:Run ended
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+#endif
 
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,

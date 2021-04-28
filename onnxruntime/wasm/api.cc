@@ -63,7 +63,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     shapes[i] = dims[i];
   }
 
-  return Ort::Value::CreateTensor({},
+  return Ort::Value::CreateTensor(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault),
                                   data,
                                   data_length,
                                   dims_length > 0 ? shapes.data() : nullptr,

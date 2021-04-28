@@ -1,0 +1,5 @@
+--pre
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.8.1+cu102
+torchvision==0.9.1+cu102
+torchtext==0.9.1

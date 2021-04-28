@@ -5,7 +5,7 @@ import time
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 
 class NeuralNet(torch.nn.Module):

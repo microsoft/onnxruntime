@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training import _utils, ORTModule
+from onnxruntime.training.ortmodule import ORTModule, _utils
 import _test_helpers
 
 # Import autocasting libs
@@ -432,21 +432,21 @@ def test_model_and_input_without_device():
     out = model(x)
     out is not None
 
-# TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
-# def test_model_with_different_devices_same_session():
-#     N, D_in, H, D_out = 64, 784, 500, 10
-#     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
-#     model = ORTModule(model)
+#TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
+def test_model_with_different_devices_same_session():
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
 
-#     for i in range(5):
-#         if i % 2 == 0:
-#             device = 'cpu'
-#         else:
-#             device = 'cuda'
+    for i in range(5):
+        if i % 2 == 0:
+            device = 'cpu'
+        else:
+            device = 'cuda'
 
-#         model.to(device)
-#         x = torch.randn(N, D_in, device=device)
-#         y = model(x)
+        model.to(device)
+        x = torch.randn(N, D_in, device=device)
+        y = model(x)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_saved(device):
@@ -666,7 +666,6 @@ def test_multiple_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
-''' flaky test. Temporarily DISABLED for further investigation - hard to repro locally
 def test_multiple_ortmodules_common_backbone_training():
     device = 'cuda'
     N, D_in, H, D_out = 32, 64, 128, 64
@@ -702,7 +701,6 @@ def test_multiple_ortmodules_common_backbone_training():
         assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
-'''
 
 def test_multiple_chained_ortmodules_training():
     device = 'cuda'
@@ -2015,3 +2013,72 @@ def test_repro_iscontiguous():
     prediction = model(one)
     prediction = prediction.sum()
     prediction.backward()
+
+
+def test_forward_call_default_input():
+    class UnusedNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.zeros = torch.nn.Parameter(torch.zeros(1,1))
+
+        def forward(self, a, b, c, d, *args, kw_0=None, **kwargs):
+            result = a + d + self.zeros.sum()
+            if args:
+                result += args[-1]
+            if kw_0:
+                result += kw_0
+            if kwargs:
+                assert 'kwargs_1' in kwargs
+                result += kwargs['kwargs_1']
+            return result
+
+    # Modeling
+    device = 'cuda'
+    model = UnusedNet().to(device)
+    model = ORTModule(model)
+
+    # Dummy data
+    one = torch.FloatTensor([1]).to(device)
+    two = 2*one
+    three = 3*one
+    four = 4*one
+    args = [two]*5
+    kw_0 = 6*one
+    kwargs = {'kwargs_0': 7*one, 'kwargs_1': 8*one}
+
+    # Make sure model runs without any exception
+    for i in range(2):
+        # Test both train and inference mode
+        if i % 2 == 0:
+            model.train()
+        else:
+            model.eval()
+
+        # Model only uses a,d out of a,b,c,d
+        out = model(one, two, three, four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
+
+        out = model(one, two, c=three, d=four)
+        assert out.item() == 5.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1] out of a,b,c,d,*args
+        out = model(one, two, three, four, *args)
+        assert out.item() == 7.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1],kw_0 out of a,b,c,d,*args,kw_0
+        out = model(one, two, three, four, *args, kw_0=kw_0)
+        assert out.item() == 13.0
+        if model.training:
+            out.sum().backward()
+
+        # Model only uses a,d,args[-1],kwargs['kwargs_1'] out of a,b,c,d,*args,kw_0,**kwargs
+        out = model(one, two, three, four, *args, **kwargs)
+        assert out.item() == 15.0
+        if model.training:
+            out.sum().backward()

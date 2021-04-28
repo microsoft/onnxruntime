@@ -82,6 +82,7 @@ else
         DOCKER_FILE=Dockerfile.ubuntu_gpu
         if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
+            DOCKER_FILE=Dockerfile.ubuntu_gpu_training
         fi
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
