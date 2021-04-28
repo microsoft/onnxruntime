@@ -65,6 +65,7 @@ option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
+option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
@@ -1572,6 +1573,11 @@ endif()
 
 if (onnxruntime_ENABLE_PYTHON)
   include(onnxruntime_python.cmake)
+endif()
+
+if (onnxruntime_BUILD_OBJC)
+  message(STATUS "Objective-C Build is enabled")
+  include(onnxruntime_objectivec.cmake)
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)

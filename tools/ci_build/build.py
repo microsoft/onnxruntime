@@ -243,6 +243,11 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -656,6 +661,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
