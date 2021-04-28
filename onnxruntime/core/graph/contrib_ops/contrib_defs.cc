@@ -12,6 +12,8 @@
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/signal_ops/signal_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
+#include "onnx/defs/function.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -162,6 +164,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
 namespace onnxruntime {
 namespace contrib {
+using namespace ONNX_NAMESPACE;
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
@@ -1029,7 +1032,6 @@ value at X[t][n] >= seqLengths[n].
 
           auto* w_output_dim = output_shape->add_dim();
           w_output_dim->set_dim_value(right_limit - left_border);
-
         } else {
           // Rank Inference at the very least
           // (We know that the output is going to be 4-D)
@@ -2093,19 +2095,19 @@ Example 4:
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(1, "Scale", "Scale tensor.", "T")
       .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
       .Output(0, "Y", "Output data tensor.", "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .Output(1, "Mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "InvStdDev", "Saved inverse standard deviation used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input types and output Y type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
-          "Constrain mean and inv_std_var to be float tensors.")
+          "Type of Mean and InvStdDev tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2139,11 +2141,83 @@ Example 4:
         }
 
         if (ctx.getNumOutputs() > 2) {
-          auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-          saved_inv_std_var_shape->CopyFrom(input_shape);
-          saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+          auto saved_inv_std_dev_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+          saved_inv_std_dev_shape->CopyFrom(input_shape);
+          saved_inv_std_dev_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            int64_t T = tp->tensor_type().elem_type();
+
+            auto type_attr = ctx.getAttribute("stash_type");
+            int64_t U = (type_attr != nullptr) ? type_attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            if ((U != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) && (U != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+              return false;  // Error
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : -1;
+            auto* epsilon_attr = ctx.getAttribute("epsilon");
+            float epsilon = (epsilon_attr != nullptr) ? epsilon_attr->f() : 1e-5f;
+
+            auto mktensor = [](int64_t val) -> ONNX_NAMESPACE::TensorProto {
+              auto tp = ONNX_NAMESPACE::ToTensor(std::vector<int64_t>{val});
+              tp.add_dims(1);
+              return tp;
+            };
+
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType) U),
+                // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
+                // This complicates the function definition, requiring reshaping inputs/outputs.
+                // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
+                // This is treated as a 2D shape [d[0] * ... * d[axis-1], d[axis] * ... * d[rank-1]]
+                // Normalization is applied to the second dimension.
+                // Output Y has same shape as X
+                // Outputs Mean and InvStdDev have shape: [d[0], ..., d[axis-1], 1, ..., 1]
+                {{"XShape"}, "Shape", {"X"}},                                                          // shape of input tensor: 1D tensor
+                {{"Rank"}, "Size", {"XShape"}},                                                        // rank of input tensor: scalar
+                {{"Zero1D"}, "Constant", {}, {{"value", mktensor(0)}}},                                // [0] : 1D tensor
+                {{"Axis1D"}, "Constant", {}, {{"value", mktensor(axis)}}},                             // [axis] : 1D tensor
+                {{"PrefixShape"}, "Slice", {"XShape", "Zero1D", "Axis1D"}},                            // [d[0], ..., d[axis-1]]
+                (axis > 0) ?                                                                           // number of axes that are reduced =
+                    FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Sub", {"Rank", "Axis1D"})         // [rank - axis]: 1D tensor
+                           : FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Neg", {"Axis1D"}),       // [-axis] : 1D tensor
+                {{"SuffixShape"}, "ConstantOfShape", {"NumReducedAxes"},                               //
+                 {{"value", mktensor(1)}}},                                                            // [1, ..., 1] for reduced axes
+                {{"ReducedShape"}, "Concat", {"PrefixShape", "SuffixShape"}, {{"axis", int64_t(0)}}},  // [d[0], ..., d[axis-1], 1, ..., 1]
+                {{"X2D"}, "Flatten", {"X"}, {{"axis", axis}}},
+                {{"XU"}, "Cast", {"X2D"}, {{"to", U}}},
+                {{"Mean2D"}, "ReduceMean", {"XU"}, {{"axes", std::vector<int64_t>{1}}}},
+                {{"Square"}, "Mul", {"XU", "XU"}},
+                {{"MeanOfSquare"}, "ReduceMean", {"Square"}, {{"axes", std::vector<int64_t>{1}}}},
+                {{"SquareOfMean"}, "Mul", {"Mean2D", "Mean2D"}},
+                {{"Var"}, "Sub", {"MeanOfSquare", "SquareOfMean"}},
+                {{"VarPlusEpsilon"}, "Add", {"Var", "Epsilon"}},
+                {{"StdDev"}, "Sqrt", {"VarPlusEpsilon"}},
+                {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
+                {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
+                {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
+                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
+                {{"Biased"}, "Add", {"Scaled", "B"}},
+                {{"Y"}, "Reshape", {"Biased", "XShape"}},
+                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+            if (ctx.hasOutput(1))
+              body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
+            if (ctx.hasOutput(2))
+              body.push_back({{"InvStdDev"}, "Reshape", {"InvStdDev2D", "ReducedShape"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
       .SetDomain(kOnnxDomain)
