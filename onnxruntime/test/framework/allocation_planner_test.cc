@@ -154,9 +154,9 @@ class PlannerTest : public ::testing::Test {
   // some standard components used to build test-cases:
   Type float_type_;
 
-  std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;       // a unary kernel with no-aliasing and no-in-place
-  std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;  // a unary kernel with in-place
-  std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_; // an unary kernel with external outputs
+  std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
+  std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
+  std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
   std::vector<std::unique_ptr<UnaryNode>> nodes_;
@@ -264,7 +264,8 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     const bool remove_initializers = false;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
+    SessionOptions so;
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
@@ -415,9 +416,9 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddExternalOutputsNode(X1, X2);   // external-outputs operator; X1: input; X2: temporary
-  AddNormalNode(X2, X3);  // normal operator; X3: temporary
-  AddNormalNode(X3, X4);   // normal operator; X4: output
+  AddExternalOutputsNode(X1, X2);  // external-outputs operator; X1: input; X2: temporary
+  AddNormalNode(X2, X3);           // normal operator; X3: temporary
+  AddNormalNode(X3, X4);           // normal operator; X4: output
 
   // simulate shape-inference results:
   Shape shape1{"M", "N"};

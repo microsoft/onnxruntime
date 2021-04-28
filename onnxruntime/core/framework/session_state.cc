@@ -293,12 +293,12 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                 ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
                 // container lookup key is op_type + node input name (which is a constant initializer)
-                std::stringstream ss;
+                std::ostringstream ss;
                 ss << op_type;
                 ss << "+";
                 ss << input_name;
 
-                const std::string prepacked_weights_container_key = ss.str();
+                const std::string& prepacked_weights_container_key = ss.str();
 
                 bool container_contains_packed_weight = prepacked_weights_container->HasCachedWeight(prepacked_weights_container_key);
 
@@ -1003,7 +1003,7 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
-                                          const SessionOptions& session_options,
+                                          SessionOptions& session_options,
                                           const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
@@ -1043,7 +1043,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
-                                              const SessionOptions& session_options,
+                                              SessionOptions& session_options,
                                               bool remove_initializers,
                                               std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   CreateGraphInfo();
@@ -1129,7 +1129,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   if (disable_prepacking != "1") {
     // TODO: Remove const_cast ugliness
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count, const_cast<SessionOptions&>(session_options)));
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count, session_options));
   }
 #endif
 

@@ -65,7 +65,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   node->SetExecutionProviderType(xp_typ);
 
-  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  SessionOptions so;
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
@@ -142,7 +143,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
-  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  SessionOptions so;
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
   int x_idx = -1, y_idx = -1;
@@ -200,7 +202,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
-  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  SessionOptions so;
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 

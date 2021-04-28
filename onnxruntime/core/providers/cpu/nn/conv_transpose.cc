@@ -87,8 +87,8 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
 }
 
 template <typename T>
-Status ConvTranspose<T>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                                  int input_idx,
+Status ConvTranspose<T>::UseCachedPrePackedWeight(const PrepackedWeight& /*cached_prepacked_weight*/,
+                                                  int /*input_idx*/,
                                                   /*out*/ bool& read_from_cache) {
   read_from_cache = false;
   return Status::OK();

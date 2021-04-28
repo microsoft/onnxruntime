@@ -293,7 +293,7 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
-                              const SessionOptions& session_options = {},
+                              SessionOptions& session_options,
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
@@ -338,7 +338,7 @@ class SessionState {
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                   KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
-                                  const SessionOptions& session_options,
+                                  SessionOptions& session_options,
                                   bool remove_initializers,
                                   std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 

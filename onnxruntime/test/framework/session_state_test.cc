@@ -144,7 +144,8 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
-  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
+  SessionOptions so;
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
