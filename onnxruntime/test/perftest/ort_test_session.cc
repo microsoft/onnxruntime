@@ -69,6 +69,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_int8_enable = false;
     std::string trt_int8_calibration_table_name = "";
     bool trt_int8_use_native_calibration_table = false;
+    bool trt_force_sequential_engine_build = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -132,8 +133,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_force_sequential_engine_build") {
+        if (value == "true" || value == "True") {
+          trt_force_sequential_engine_build = true;
+        } else if (value == "false" || value == "False") {
+          trt_force_sequential_engine_build = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_force_sequential_engine_build'] \n");
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
@@ -146,6 +155,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_int8_enable = trt_int8_enable;
     tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
     tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
+    tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options{
@@ -163,12 +173,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    std::string device_type = ""; // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
-    bool enable_vpu_fast_compile = false; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
-    std::string device_id = ""; // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
-    bool use_compiled_network = false; // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
-    std::string blob_dump_path = ""; // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
+    std::string device_type = "";          // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
+    bool enable_vpu_fast_compile = false;  // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
+    std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
+    size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
+    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
 
 #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -207,7 +217,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "use_compiled_network") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           use_compiled_network = true;
         } else if (value == "false" || value == "False") {
           use_compiled_network = false;
@@ -223,16 +233,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "blob_dump_path") {
         blob_dump_path = value;
       } else {
-          ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path'] \n");
       }
     }
     OrtOpenVINOProviderOptions options;
-    options.device_type = device_type.c_str(); //To set the device_type
-    options.device_id = device_id.c_str(); // To set the device_id
-    options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
-    options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network; // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str(); // sets the blob_dump_path, default is ""
+    options.device_type = device_type.c_str();                  //To set the device_type
+    options.device_id = device_id.c_str();                      // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
+    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
+    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
     session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");

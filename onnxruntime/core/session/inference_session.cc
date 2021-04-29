@@ -49,6 +49,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
+#include "onnxruntime_config.h"
 
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -292,6 +293,29 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // Add log to allow serving platforms to quantify ORT usage.
+  // To avoid flooding the test logs, this is done for non-debug mode only
+  // TODO: plug-in a platform specific telemetry provider to send the telemetry to
+#ifdef NDEBUG
+#ifdef _WIN32
+  std::wostringstream ostr;
+#else
+  std::ostringstream ostr;
+#endif
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = EventName (event_attr1: foo.onnx, event_attr2: 400us)"
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = SessionCreation (model: foo.onnx, ts: 400us)"
+  ostr << "ORT Telemetry: "
+       << "Ver = " << ORT_VERSION << "; Event = SessionCreation";
+  if (!model_location_.empty()) {
+    ostr << " (model: " << model_location_ << ")";
+  }
+#ifdef _WIN32
+  std::wcout << ostr.str() << "\n";
+#else
+  std::cout << ostr.str() << "\n";
+#endif
+#endif
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
