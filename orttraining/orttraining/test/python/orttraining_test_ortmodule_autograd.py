@@ -34,6 +34,7 @@ from onnxruntime.capi import _pybind_state as C
 import copy
 import numpy as np
 import threading
+import sys
 
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
@@ -141,66 +142,10 @@ def test_GeLU():
     x = torch.randn(output_size, dtype=torch.float)
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
     torch.cuda.synchronize()
-    class GeLUFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(GeLUFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                for _, t in enumerate(self.input_tensors):
-                    t.requires_grad = True
-                with torch.enable_grad():
-                    print("==== Entering GeLUFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = GeLUFunction.apply(*self.input_tensors)
-                    # print(self.output_tensor)
-                    # print("===== GeLUFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== GeLUFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+    ort.register_forward_core("GeLUFunction", GeLUFunction.apply)
+    ort.register_backward_core("GeLUFunction", GeLUFunction.backward)
 
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== GeLUFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting GeLUFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("GeLUFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = GeLUFunction.backward(ctx, self.x_t) # return two outputs
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("GeLUFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("GeLUFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("GeLUFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("GeLUFunction", GeLUFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("GeLUFunction", GeLUFunctionWrapperModule)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
@@ -251,67 +196,9 @@ def test_MegatronF():
     x = torch.randn(output_size, dtype=torch.float)
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
     torch.cuda.synchronize()
-    class MegatronFFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(MegatronFFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-                for _, t in enumerate(self.input_tensors):
-                    t.requires_grad = True
-                with torch.enable_grad():
-                    print("==== Entering MegatronFFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = MegatronFFunction.apply(*self.input_tensors)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== MegatronFFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== MegatronFFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting MegatronFFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("MegatronFFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = MegatronFFunction.backward(ctx, self.x_t)
-                forward_outputs = [ret] #[ret.contiguous()] 
-
-                [print("MegatronFFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("MegatronFFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("MegatronFFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("MegatronFFunction", MegatronFFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("MegatronFFunction", MegatronFFunctionWrapperModule)
+    ort.register_forward_core("MegatronFFunction", MegatronFFunction.apply)
+    ort.register_backward_core("MegatronFFunction", MegatronFFunction.backward)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
@@ -365,67 +252,9 @@ def test_ScalarAndTuple():
     x = torch.randn(output_size, dtype=torch.float)
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
     torch.cuda.synchronize()
-    class ScalarAndTupleFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(ScalarAndTupleFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, alpha, beta, gamma):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-                for i_t in self.input_tensors:
-                    i_t.requires_grad = True
-                with torch.enable_grad():
-                    print("==== Entering ScalarAndTupleFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = ScalarAndTupleFunction.apply(*self.input_tensors, alpha, beta, gamma)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== ScalarAndTupleFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== ScalarAndTupleFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting ScalarAndTupleFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("ScalarAndTupleFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = ScalarAndTupleFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("ScalarAndTupleFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("ScalarAndTupleFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("ScalarAndTupleFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("ScalarAndTupleFunction", ScalarAndTupleFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("ScalarAndTupleFunction", ScalarAndTupleFunctionWrapperModule)
+    ort.register_forward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.apply)
+    ort.register_backward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.backward)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
@@ -477,66 +306,9 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
     x = torch.randn(output_size, dtype=torch.float)
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
     torch.cuda.synchronize()
-    class InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-                self.input_tensors[0].requires_grad = True
-                with torch.enable_grad():
-                    print("==== Entering InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputAsOutputNotRequireGradFunction.apply(*self.input_tensors)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputAsOutputNotRequireGradFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunctionWrapperModule)
+    ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.apply)
+    ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.backward)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
@@ -589,66 +361,10 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     x = torch.randn(output_size, dtype=torch.float)
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
     torch.cuda.synchronize()
-    class InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-                self.input_tensors[0].requires_grad = True
-                with torch.enable_grad():
-                    print("==== Entering InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply(*self.input_tensors)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+    ort.register_forward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply)
+    ort.register_backward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.backward)
 
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputNotAsOutputNotRequireGradFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunctionWrapperModule)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
@@ -719,71 +435,10 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
-    class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                self.input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-                self.input_tensors[0].requires_grad = True
-                address_for_torch_tensor = int(id(self.input_tensors[1]))
-                with torch.enable_grad():
-                    print("==== Entering InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply(*self.input_tensors)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
+    ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply)
+    ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.backward)
 
-                    address_for_output_torch_tensor = int(id(forward_outputs[0]))
-                    if address_for_output_torch_tensor != address_for_torch_tensor:
-                        raise ValueError("The output torch tensor should reuse the input torch tensor, but actually not.")
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunctionWrapperModule)
     print("input data: ", x)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
@@ -799,8 +454,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     compare_numpy_list(val_a, val_b)
 
 
-#########################################################################################
-
+##########################################################################################
 class InplaceUpdateInputAsOutputRequireGradFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -858,83 +512,10 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
-    class InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                raw_input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
+    ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.apply)
+    ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.backward)
 
-                # the first input are going to do in-place update.
-                # we clone a copy for it, .clone() produces a new tensor instance with a new memory allocation to the tensor data.
-                # so the in-place operation of the auto grad funtion on the first parameter, will be done on the cloned tensor.
-                # and that tensor will be a the forward output wrapped with DLPack ORTValue and return back to ORT C++ kernel.
-                self.input_tensors.append(raw_input_tensors[0])
-                self.input_tensors.append(raw_input_tensors[1].detach().clone())
-                self.input_tensors[0].requires_grad = True
-                self.input_tensors[1].requires_grad = True
-                print(self.input_tensors[1].is_leaf)
-                with torch.enable_grad():
-                    adujsted_input_tensor=[self.input_tensors[0], self.input_tensors[1].view(list(self.input_tensors[1].shape))]
-                    address_for_torch_tensor = int(id(adujsted_input_tensor[1]))
-                    address_for_torch_tensor_data = adujsted_input_tensor[1].data_ptr()
-                    print(adujsted_input_tensor[1].is_leaf)
-                    print("==== Entering InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputAsOutputRequireGradFunction.apply(*adujsted_input_tensor)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    address_for_output_torch_tensor = int(id(forward_outputs[0]))
-                    if address_for_output_torch_tensor != address_for_torch_tensor:
-                        print("WARINING: The output torch tensor @{}, {} should reuse the input torch tensor @{}, {} but actually not.".format(address_for_output_torch_tensor, address_for_torch_tensor_data, address_for_torch_tensor, forward_outputs[0].data_ptr()))
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputAsOutputRequireGradFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputAsOutputRequireGradFunction", InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputAsOutputRequireGradFunction", InplaceUpdateInputAsOutputRequireGradFunctionWrapperModule)
     print("input data: ", x)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
@@ -950,7 +531,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     compare_numpy_list(val_a, val_b)
 
 
-#########################################################################################
+##########################################################################################
 
 class InplaceUpdateInputNotAsOutputRequireGradFunction(torch.autograd.Function):
     @staticmethod
@@ -1008,83 +589,9 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
-    class InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
+    ort.register_forward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.apply)
+    ort.register_backward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.backward)
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                raw_input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
-
-                # the first input are going to do in-place update.
-                # we clone a copy for it, .clone() produces a new tensor instance with a new memory allocation to the tensor data.
-                # so the in-place operation of the auto grad funtion on the first parameter, will be done on the cloned tensor.
-                # and that tensor will be a the forward output wrapped with DLPack ORTValue and return back to ORT C++ kernel.
-                self.input_tensors.append(raw_input_tensors[0])
-                self.input_tensors.append(raw_input_tensors[1].detach().clone())
-                self.input_tensors[0].requires_grad = True
-                self.input_tensors[1].requires_grad = True
-                print(self.input_tensors[1].is_leaf)
-                with torch.enable_grad():
-                    adujsted_input_tensor=[self.input_tensors[0], self.input_tensors[1].view(list(self.input_tensors[1].shape))]
-                    address_for_torch_tensor = int(id(adujsted_input_tensor[1]))
-                    address_for_torch_tensor_data = adujsted_input_tensor[1].data_ptr()
-                    print(adujsted_input_tensor[1].is_leaf)
-                    print("==== Entering InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputNotAsOutputRequireGradFunction.apply(*adujsted_input_tensor)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    # address_for_output_torch_tensor = int(id(forward_outputs[0]))
-                    # if address_for_output_torch_tensor != address_for_torch_tensor:
-                    #     print("WARINING: The output torch tensor @{}, {} should reuse the input torch tensor @{}, {} but actually not.".format(address_for_output_torch_tensor, address_for_torch_tensor_data, address_for_torch_tensor, forward_outputs[0].data_ptr()))
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputNotAsOutputRequireGradFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputNotAsOutputRequireGradFunction", InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputNotAsOutputRequireGradFunction", InplaceUpdateInputNotAsOutputRequireGradFunctionWrapperModule)
     print("input data: ", x)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
@@ -1100,7 +607,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     compare_numpy_list(val_a, val_b)
 
 
-#########################################################################################
+##########################################################################################
 
 class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
     @staticmethod
@@ -1159,84 +666,10 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
 
     torch.cuda.synchronize()
-    class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule, self).__init__()
-            self.input_tensors = []
-            self.forward_outputs = []
-            self.output_tensor = None
 
-        def compute(self, x, y):
-            try:
-                import builtins
-                raw_input_tensors = [from_dlpack(i) for i in [x, y]]
-                # what if custom function modify x, and in ORT is using an unexpected value at the same time.
-                # todo: assign requires_grad according to original attributes.
+    ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply)
+    ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.backward)
 
-                # the first input are going to do in-place update.
-                # we clone a copy for it, .clone() produces a new tensor instance with a new memory allocation to the tensor data.
-                # so the in-place operation of the auto grad cuntion on the first parameter, will be done on the cloned tensor.
-                # and that tensor will be a the forward output wrapped with DLPack ORTValue and return back to ORT C++ kernel.
-                self.input_tensors.append(raw_input_tensors[0])
-                self.input_tensors.append(raw_input_tensors[1].detach().clone())
-                self.input_tensors[0].requires_grad = True
-                self.input_tensors[1].requires_grad = True
-                print(self.input_tensors[1].is_leaf)
-                with torch.enable_grad():
-                    adujsted_input_tensor=[self.input_tensors[0], self.input_tensors[1].view(list(self.input_tensors[1].shape))]
-                    address_for_torch_tensor = int(id(adujsted_input_tensor[1]))
-                    address_for_torch_tensor_data = adujsted_input_tensor[1].data_ptr()
-                    print(adujsted_input_tensor[1].is_leaf)
-                    print("==== Entering InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                    self.output_tensor = InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply(*adujsted_input_tensor)
-                    # print(self.output_tensor)
-                    # print("===== MegatronFFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.output_tensor, self.output_tensor.device, self.output_tensor.grad_fn))
-                    forward_outputs = [self.output_tensor] #[ret.contiguous()]
-                    [print("===== InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                    address_for_output_torch_tensor = int(id(forward_outputs[0]))
-                    if address_for_output_torch_tensor != address_for_torch_tensor:
-                        raise ValueError("The output torch tensor should reuse the input torch tensor, but actually not.")
-
-                    # need hold the forward outputs before PythonOp Compute completed.
-                    self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                    [print("===== InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                    ctx_ptr = int(id(self.output_tensor.grad_fn))
-                    # ctx_ptr = int(id(ret))
-                    #print(self.y.grad_fn.saved_tensors)
-                    return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                    print(return_vals)
-                    print("==== Exiting InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
-                    return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule:", e)
-                return []
-
-        def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.backward(ctx, self.x_t)
-                forward_outputs = list(ret) #[ret.contiguous()] 
-
-                [print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                print("==== Exiting InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule.backward_compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
-                return tuple(return_vals)
-            except Exception as e:
-                print("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule backward_compute:", e)
-                return []
-
-    ort.register_custom_torch_function_forward("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunctionWrapperModule)
     print("input data: ", x)
     outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
 
@@ -1251,6 +684,123 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     print("comparing gradient outputs")
     compare_numpy_list(val_a, val_b)
 
+def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, *args):
+    try:
+        wrapped_args = []
+        for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
+            if tensor_flag:
+                # Got a tensor. Assume it's a DLPack tensor
+                # and convert it to Pytorch tensor.
+                wrapped_arg = from_dlpack(arg).detach().clone().contiguous()
+                if grad_flag:
+                    wrapped_arg.requires_grad = True
+                else:
+                    wrapped_arg.requires_grad = False
+
+                wrapped_args.append(wrapped_arg)
+            else:
+                # Use non-tensor as is. It's a PyObject*.
+                wrapped_args.append(arg)
+
+        unwrapped_values = []
+        ctx = None
+        with torch.enable_grad():
+            result = forward_function(*wrapped_args)
+            if isinstance(result, torch.Tensor):
+                # TODO: We need to confirm
+                #   1. The ownership of result is transferred to DLPack tensor from Pytorch.
+                #   2. The ownership of result is transferred to ORTValue from DLPack.
+                # If they are all true, we can remove the object register code below.
+                ort_value = _ortvalue_from_dlpack(to_dlpack(result))
+                unwrapped_values = [ort_value]
+                ctx = result.grad_fn
+            elif isinstance(result, tuple) or isinstance(result, list):
+                for value in result:
+                    unwrapped_value = _ortvalue_from_dlpack(to_dlpack(v))
+                    unwrapped_values.append(unwrapped_value)
+                    if ctx is not None and hasattr(ctx, 'grad_fn'):
+                        ctx = unwrapped_value.grad_fn
+            else:
+                raise Exception('Unsupported returned type: ', type(result), ' by calling ', forward_function)
+
+        # Must extract one valid context from result tensors.
+        assert ctx is not None
+
+        ort.register_python_object(result)
+        for value in unwrapped_values:
+            # Maintain their life time.
+            # This causes memory leak.
+            ort.register_python_object(value)
+
+        unwrapped_ptrs = [int(id(ctx))]
+        for v in unwrapped_values:
+            unwrapped_ptrs.append(int(v.ortvalue_ptr()))
+
+        return tuple(unwrapped_ptrs)
+    except:
+        # Flush buffers. Otherwise, calling this from C++ may lose them.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        raise
+
+def call_python_backward_function(backward_function, requires_grad_flags, tensor_type_flags, *args):
+    try:
+        wrapped_args = []
+        for requires_grad, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
+            if tensor_flag:
+                # Got a tensor. Assume it's a DLPack tensor
+                # and convert it to Pytorch tensor.
+                wrapped_arg = from_dlpack(arg).clone().contiguous()
+                if requires_grad:
+                    wrapped_arg.requires_grad = True
+                else:
+                    wrapped_arg.requires_grad = False
+                wrapped_args.append(wrapped_arg)
+            else:
+                # Use non-tensor as is. It's a PyObject*.
+                wrapped_args.append(arg)
+
+        unwrapped_values = []
+        result = backward_function(*wrapped_args)
+        if isinstance(result, torch.Tensor):
+            # TODO: We need to confirm
+            #   1. The ownership of result is transferred to DLPack tensor from Pytorch.
+            #   2. The ownership of result is transferred to ORTValue from DLPack.
+            # If they are all true, we can remove the object register code below.
+            ort_value = _ortvalue_from_dlpack(to_dlpack(result))
+            unwrapped_values = [ort_value]
+        elif isinstance(result, tuple) or isinstance(result, list):
+            for value in result:
+                if value is None:
+                    continue
+                if not isinstance(value, torch.Tensor):
+                    raise Exception('Unsupported returned element type: ', type(value), ' by calling ', backward_function)
+                unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
+                unwrapped_values.append(unwrapped_value)
+        else:
+            raise Exception('Unsupported returned type: ', type(result), ' by calling ', backward_function)
+
+        # TODO: release resource at the beginning of each kernel computation.
+        ort.register_python_object(result)
+        for value in unwrapped_values:
+            # Maintain their life time.
+            # This causes memory leak.
+            ort.register_python_object(value)
+
+        unwrapped_ptrs = []
+        for value in unwrapped_values:
+            unwrapped_ptrs.append(int(value.ortvalue_ptr()))
+
+        return tuple(unwrapped_ptrs)
+    except:
+        # Flush buffers. Otherwise, calling this from C++ may lose them.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        raise
+
+ort.register_forward_runner(call_python_forward_function)
+ort.register_backward_runner(call_python_backward_function)
+
 test_GeLU()
 test_MegatronF()
 test_ScalarAndTuple()
@@ -1263,4 +813,4 @@ test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
 ### test case, some input are in-place updated, and the input require gradient.
 test_InplaceUpdateInputAsOutputRequireGrad()
 test_InplaceUpdateInputNotAsOutputRequireGrad()
-test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
+#test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()

@@ -32,7 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
-  std::cout << std::this_thread::get_id() <<" std::this_thread::get_id() in CUDA PythonOp::Compute is : " << std::endl;
+  std::cout << std::this_thread::get_id() << " std::this_thread::get_id() in CUDA PythonOp::Compute is : " << std::endl;
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   ORT_ENFORCE(context);
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
@@ -92,7 +92,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
     const_arg_positions.emplace_back(input_pointer_scalar_positions_.at(i));
     PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
-    std::cout << std::this_thread::get_id() <<" [torch_custom_function_kernel.cc] const_ptr: " << ptr << std::endl;
+    std::cout << std::this_thread::get_id() << " [torch_custom_function_kernel.cc] const_ptr: " << ptr << std::endl;
     PyObject_Print(ptr, stdout, 0);
     std::cout << std::endl;
     const_args.emplace_back(ptr);
@@ -123,10 +123,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   auto state = PyOpLibProxy::GetInstance().GetGil();
 
   void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  PyOpLibProxy::GetInstance().Forward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  PyOpLibProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  PyOpLibProxy::GetInstance().PutGil(state);
 
-  PyOpLibProxy::GetInstance()
-      .PutGil(state);
   std::cout << "InvokePythonAutoGradFunc complete, waiting for complete" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   // We had the assumption:
@@ -136,12 +135,12 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
   int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 
-  std::cout << std::this_thread::get_id() <<" [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_addr)) << std::endl;
+  std::cout << std::this_thread::get_id() << " [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_addr)) << std::endl;
   PyObject_Print(ctx_addr, stdout, 0);
   std::cout << std::endl;
   Py_INCREF(ctx_addr);
 
-  std::cout << std::this_thread::get_id() <<" [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_addr)) << std::endl;
+  std::cout << std::this_thread::get_id() << " [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_addr)) << std::endl;
   PyObject_Print(ctx_addr, stdout, 0);
   std::cout << std::endl;
 
@@ -150,7 +149,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   int64_t* step_data_new = first_output_tensor->template MutableData<int64_t>();
   *step_data_new = ctx_index;
 
-  std::cout << std::this_thread::get_id() <<" [torch_kernel.cc] " << Node().Name() << " ctx_ptr " << ctx_addr << std::endl;
+  std::cout << std::this_thread::get_id() << " [torch_kernel.cc] " << Node().Name() << " ctx_ptr " << ctx_addr << std::endl;
   for (size_t index = 1; index < outputs_count; ++index) {
     std::cout << "PythonOp::ComputeInternal index: " << index << std::endl;
     void* forward_ret_ortvalue_addr = outputs.at(index);
@@ -163,7 +162,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     Tensor* t = forward_ret_ortvalue_ptr->GetMutable<Tensor>();
     const auto& input_shape = t->Shape();
     const auto num_dim = input_shape.NumDimensions();
-    std::cout << std::this_thread::get_id() <<" ortvalue addr:" << forward_ret_ortvalue_ptr << ", tenosr addr: " << t
+    std::cout << std::this_thread::get_id() << " ortvalue addr:" << forward_ret_ortvalue_ptr << ", tenosr addr: " << t
               << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
               << ", num_dim: " << num_dim << std::endl;
 
@@ -171,10 +170,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
       std::cout << "CUDA PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
     }
 
-    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr));
+    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr)) ;
   }
 
-  std::cout << std::this_thread::get_id() <<" std::this_thread::get_id() in CUDA PythonOp::Compute done : " << std::this_thread::get_id() << std::endl;
+  std::cout << std::this_thread::get_id() << " std::this_thread::get_id() in CUDA PythonOp::Compute done : " << std::this_thread::get_id() << std::endl;
   return Status::OK();
 }
 
@@ -199,8 +198,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
 
-  std::cout << "context_address_value_ptr got within PythonOpGrad::Compute:" << reinterpret_cast<void*>(ctx_ptr) << std::endl;
-  //int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+  std::cout << std::this_thread::get_id() << " context_address_value_ptr got within PythonOpGrad::Compute:" << reinterpret_cast<void*>(ctx_ptr) << std::endl;
 
   std::vector<int64_t> arg_positions(inputs.size());
   for (int64_t i = 0; i < (int64_t)arg_positions.size(); ++i) {
@@ -209,15 +207,15 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<void*> const_args{ctx_ptr};
   std::vector<int64_t> const_arg_positions{0};
-  std::cout << std::this_thread::get_id() <<" [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_ptr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_ptr)) << std::endl;
+  std::cout << std::this_thread::get_id() << " [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_ptr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_ptr)) << std::endl;
   PyObject_Print(ctx_ptr, stdout, 0);
-  std::cout << std::this_thread::get_id() <<" (ctx_ptr == Py_None) is: " << (ctx_ptr == Py_None) << std::endl;
+  std::cout << std::this_thread::get_id() << " (ctx_ptr == Py_None) is: " << (ctx_ptr == Py_None) << std::endl;
 
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
 
   void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
-  PyOpLibProxy::GetInstance().Backward(callback, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  PyOpLibProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
 
   PyOpLibProxy::GetInstance().PutGil(state);
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -231,12 +229,12 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
     Tensor* t = backward_ret_ortvalue_ptr->GetMutable<Tensor>();
     const auto& input_shape = t->Shape();
     const auto num_dim = input_shape.NumDimensions();
-    std::cout << std::this_thread::get_id() <<" ortvalue addr:" << backward_ret_ortvalue_ptr << ", tenosr addr: " << t
+    std::cout << std::this_thread::get_id() << " ortvalue addr:" << backward_ret_ortvalue_ptr << ", tenosr addr: " << t
               << ", tensor->MutableDataRaw() addr :" << reinterpret_cast<int64_t>(t->MutableDataRaw())
               << ", num_dim: " << num_dim << std::endl;
 
     for (size_t i = 0; i < num_dim; ++i) {
-      std::cout << std::this_thread::get_id() <<" CUDA PythonOpGrad::Compute shape : " << input_shape.GetDims()[i] << std::endl;
+      std::cout << std::this_thread::get_id() << " CUDA PythonOpGrad::Compute shape : " << input_shape.GetDims()[i] << std::endl;
     }
     ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *backward_ret_ortvalue_ptr));
   }
@@ -244,7 +242,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   // Looks when we enable this line, we will hit segementfault
   // Py_DECREF(ctx_ptr);
 
-  std::cout << std::this_thread::get_id() <<" std::this_thread::get_id() in CUDA PythonOpGrad::Compute done : " << std::this_thread::get_id()  << "[torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_ptr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_ptr)) << std::endl;
+  std::cout << std::this_thread::get_id() << " std::this_thread::get_id() in CUDA PythonOpGrad::Compute done : " << std::this_thread::get_id() << "[torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_ptr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_ptr)) << std::endl;
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   return Status::OK();
 }

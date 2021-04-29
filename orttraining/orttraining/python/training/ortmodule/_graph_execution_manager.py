@@ -83,6 +83,9 @@ class GraphExecutionManager(ABC):
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = False
 
+        # flag to enable PyTorch autograd functions fall back to Python for execution.
+        self._enable_autograd_func_fallback = False
+
         self._input_info = None
         self._module_output_schema = None
 
@@ -236,20 +239,38 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
-                torch.onnx.export(self._flattened_module,
-                                  sample_inputs_as_tuple,
-                                  f,
-                                  input_names=self._input_info.names,
-                                  output_names=output_names,
-                                  opset_version=ONNX_OPSET_VERSION,
-                                  do_constant_folding=False,
-                                  training=self._export_mode,
-                                  dynamic_axes=self._input_info.dynamic_axes,
-                                  verbose=self._loglevel < _logger.LogLevel.WARNING,
-                                  export_params=False,
-                                  keep_initializers_as_inputs=True)
-        except RuntimeError as e:
+            if self._enable_autograd_func_fallback is False:
+                with _logger.suppress_os_stream_output(log_level=self._loglevel):
+                    torch.onnx.export(copy.deepcopy(self._flattened_module),
+                                    sample_inputs_as_tuple,
+                                    f,
+                                    input_names=self._input_info.names,
+                                    output_names=output_names,
+                                    opset_version=ONNX_OPSET_VERSION,
+                                    do_constant_folding=False,
+                                    training=self._export_mode,
+                                    dynamic_axes=self._input_info.dynamic_axes,
+                                    operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
+                                    custom_opsets={"prim": 1},
+                                    verbose=self._loglevel < _logger.LogLevel.WARNING,
+                                    export_params=False,
+                                    keep_initializers_as_inputs=True)
+                
+            else:
+                with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
+                    torch.onnx.export(self._flattened_module,
+                                    sample_inputs_as_tuple,
+                                    f,
+                                    input_names=self._input_info.names,
+                                    output_names=output_names,
+                                    opset_version=ONNX_OPSET_VERSION,
+                                    do_constant_folding=False,
+                                    training=self._export_mode,
+                                    dynamic_axes=self._input_info.dynamic_axes,
+                                    verbose=self._loglevel < _logger.LogLevel.WARNING,
+                                    export_params=False,
+                                    keep_initializers_as_inputs=True)
+            except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())
