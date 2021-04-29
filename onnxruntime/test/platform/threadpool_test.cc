@@ -382,6 +382,8 @@ TEST(ThreadPoolTest, TestMultiLoopSections_4Thread_100Loop) {
 }
 
 #ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
   // For ARM, x86 and x64 machines, the default stack size is 1 MB
@@ -408,6 +410,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   if (has_thread_limit_info)
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
+#pragma warning(pop)
 #endif
 
 }  // namespace onnxruntime
