@@ -782,7 +782,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -790,7 +790,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -2092,12 +2092,16 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
+
+  atexit([] {
+    UnloadSharedProviders();
+  });
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING
@@ -2108,20 +2112,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #endif
 }
 
-struct OutputOnDestroy {
-  ~OutputOnDestroy() {
-    std::cerr << "OutputOnDestroy: " << p_message << std::endl;
-  }
-
-  const char* p_message;
-};
-
-static OutputOnDestroy v1{"After Environment Destroyed"};
-
 // static variable used to create inference session and training session.
 static std::unique_ptr<Environment> session_env;
-
-static OutputOnDestroy v2{"Before Environment Destroyed"};
 
 void InitializeEnv() {
   auto initialize = [&]() {

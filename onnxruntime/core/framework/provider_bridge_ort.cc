@@ -902,8 +902,9 @@ bool InitProvidersSharedLibrary() {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}
-  ~ProviderLibrary() { /*assert(!handle_);*/
-  }                    // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+  ~ProviderLibrary() {
+    assert(!handle_);  // We should already be unloaded at this point
+  }
 
   Provider* Get() {
     if (provider_)
