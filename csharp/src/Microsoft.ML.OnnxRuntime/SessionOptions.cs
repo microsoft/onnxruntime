@@ -76,6 +76,22 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cuda_options">CUDA EP provider options to configure the CUDA EP instance</param>>
+        /// <returns>A SessionsOptions() object configured for execution with CUDA provider options.</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cuda_options)
+        {
+            CheckCudaExecutionProviderDLLs();
+
+            SessionOptions options = new SessionOptions();
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(options.Handle, ref cuda_options));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+            return options;
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for Nuphar execution.
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -146,6 +162,16 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_CUDA(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
+        }
+
+        /// <summary>
+        /// Append a CUDA EP instance (based on specified configuration) to the SessionOptions instance
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cuda_options">CUDA EP provider options to configure the CUDA EP instance</param>
+        public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cuda_options)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(handle, ref cuda_options));
         }
 
         /// <summary>
@@ -325,6 +351,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
             }
         }
+
         #endregion
 
         internal IntPtr Handle
@@ -626,6 +653,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         #endregion
+
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of

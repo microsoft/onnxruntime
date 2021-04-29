@@ -226,6 +226,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+#if USE_CUDA
+        [Fact]
+        private void TestCUDAProviderOptions()
+        {
+
+            OrtCUDAProviderOptions cuda_options = ProviderOptions.GetDefaultCUDAProviderOptions();
+            using (var sessionOptions = new SessionOptions())
+            {
+                sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
+            }
+        }
+#endif
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
