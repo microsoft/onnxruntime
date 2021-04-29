@@ -23,26 +23,38 @@ class PythonOp final : public CudaKernel {
     input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
     input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
 
+    ORT_ENFORCE(input_tensor_types_.size() == Node().InputDefs().size());
+
     // Input int scalars.
     input_int_scalars_ = info.GetAttrsOrDefault("input_int_scalars", std::vector<int64_t>());
     input_int_scalar_positions_ = info.GetAttrsOrDefault("input_int_scalar_positions", std::vector<int64_t>());
 
+    ORT_ENFORCE(input_int_scalars_.size() == input_int_scalar_positions_.size());
+
     // Input float scalars.
     input_float_scalars_ = info.GetAttrsOrDefault("input_float_scalars", std::vector<float>());
     input_float_scalar_positions_ = info.GetAttrsOrDefault("input_float_scalar_positions", std::vector<int64_t>());
+
+    ORT_ENFORCE(input_float_scalars_.size() == input_float_scalar_positions_.size());
 
     // Input int tuples.
     input_int_tuples_ = info.GetAttrsOrDefault("input_int_tuples", std::vector<int64_t>());
     input_int_tuple_positions_ = info.GetAttrsOrDefault("input_int_tuple_positions", std::vector<int64_t>());
     input_int_tuple_begins_ = info.GetAttrsOrDefault("input_int_tuple_begins", std::vector<int64_t>());
 
+    ORT_ENFORCE(input_int_tuple_positions_.size() == input_int_tuple_begins_.size());
+
     // Input float tuples.
     input_float_tuples_ = info.GetAttrsOrDefault("input_float_tuples", std::vector<float>());
     input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
     input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
 
+    ORT_ENFORCE(input_float_tuple_positions_.size() == input_float_tuple_begins_.size());
+
     input_pointer_scalars_ = info.GetAttrsOrDefault("input_pointer_scalars", std::vector<int64_t>());
     input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
+
+    ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
 
     // Output tensors.
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
@@ -51,18 +63,7 @@ class PythonOp final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-  ~PythonOp() {
-    if (nullptr != instance_) {
-      auto state = PyOpLibProxy::GetInstance().GetGil();
-      PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
-      PyOpLibProxy::GetInstance().PutGil(state);
-      instance_ = nullptr;
-    }
-  }
-
  private:
-  void* instance_ = nullptr;
-
   // Name of containing class. For example, MyReLU.
   std::string name_;
   int64_t inplace_;
@@ -107,18 +108,11 @@ class PythonOpGrad final : public CudaKernel {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
     ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
     ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+    input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
+    output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
-  ~PythonOpGrad() {
-    if (nullptr != instance_) {
-      auto state = PyOpLibProxy::GetInstance().GetGil();
-      PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
-      PyOpLibProxy::GetInstance().PutGil(state);
-      instance_ = nullptr;
-    }
-  }
 
  private:
   // Name of containing class. For example, MyReLU.
@@ -127,7 +121,8 @@ class PythonOpGrad final : public CudaKernel {
   std::vector<int64_t> input_tensor_types_;
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
-  void* instance_ = nullptr;
+  std::vector<int64_t> input_tensor_requires_grads_;
+  std::vector<int64_t> output_tensor_requires_grads_;
 };
 
 }  // namespace cuda
