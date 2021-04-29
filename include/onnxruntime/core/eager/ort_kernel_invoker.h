@@ -34,7 +34,7 @@ class ORTInvoker {
                         const std::vector<OrtValue>& inputs,
                         std::vector<OrtValue>& outputs,
                         const NodeAttributes* attributes,
-                        const std::string domain = kOnnxDomain,
+                        const std::string& domain = kOnnxDomain,
                         const int version = -1);
 
  private:
