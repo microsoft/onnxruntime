@@ -268,7 +268,10 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set (onnxruntime_ENABLE_LTO ON)
+    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    # currently, wasm-ld does not work correctly with "-flto=thin"
+    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+    string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
@@ -344,12 +347,7 @@ if(onnxruntime_ENABLE_LTO)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
     else()
-      if (onnxruntime_BUILD_WEBASSEMBLY)
-        # wasm-ld does not support "-flto=thin" (default flag when CMAKE_INTERPROCEDURAL_OPTIMIZATION is on). use "-flto" instead.
-        string(APPEND CMAKE_CXX_FLAGS " -flto")
-      else()
-        set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-      endif()
+      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
 endif()
 
