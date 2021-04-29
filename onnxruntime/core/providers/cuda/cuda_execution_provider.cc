@@ -8,7 +8,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/provider_options_utils.h"
-#include "core/framework/arena.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fence.h"

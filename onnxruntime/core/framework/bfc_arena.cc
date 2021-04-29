@@ -145,13 +145,11 @@ Status BFCArena::Extend(size_t rounded_bytes) {
       if (!increased_allocation) {
         curr_region_allocation_bytes_ *= 2;
       }
-
     } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
       // BFC Arena could cause internal and external fragmentation. But, running training with
       // big batch size will be very sensitive to fragmentation. So, to avoid fragmentation,
       // just extend arena with actual requested size.
       extend_bytes = bytes;
-
     } else {
       ORT_THROW("Incorrect arena extend strategy.", static_cast<int32_t>(arena_extend_strategy_));
     }

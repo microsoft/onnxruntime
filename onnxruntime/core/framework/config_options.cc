@@ -24,7 +24,7 @@ const std::string ConfigOptions::GetConfigOrDefault(const std::string& config_ke
   return iter == configurations.cend() ? default_value : iter->second;
 }
 
-Status ConfigOptions::AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept {
+Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
   std::string key(config_key);
   if (key.empty() || key.length() > 128)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
