@@ -41,7 +41,7 @@ class GistEncodeDecode : public RewriteRule {
   std::vector<std::string> TargetOpTypes() const noexcept override;
   bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
-  bool AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type) const;
+  bool AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type, const logging::Logger& logger) const;
 };
 
 }  // namespace onnxruntime

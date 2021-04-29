@@ -46,7 +46,7 @@ static std::vector<GraphEdgeHelper> GetNodeOutputEdges(const Node& node) {
   return output_edges;
 }
 
-bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type) const {
+bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type, const logging::Logger& logger) const {
   if (curr_node.OutputDefs().size() < 1) {  // min 1 required for gist applicability (one edge connecting a fw node to a bw node)
     return false;
   }
@@ -84,7 +84,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
     // Override compression_type for lossless compression case(s) (eg. bool -> Pack1)
     ONNX_NAMESPACE::DataType type_string = curr_node_output_arg->Type();
     if (*type_string == "bool" || *type_string == "tensor(bool)") {
-      std::cout << "(Lossless) override compression type to Pack1 for tensor: " << curr_node_output_arg->Name() << std::endl;
+      LOGS(logger, INFO) << "(Lossless) override compression type to Pack1 for tensor: " << curr_node_output_arg->Name();
       compression_type = "GistPack1";
     }
 
@@ -126,7 +126,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
     // Nested Gist decoders: Decoders have low priority, and need to be differentiated. Hence, each decoder is assigned a unqiue priority value.
     int curr_dec_priority = GenerateDecodePriority();
     assert(curr_dec_priority > 0);
-    
+
     // Add attribute data for decoder
     ONNX_NAMESPACE::AttributeProto output_type;
     output_type.set_name("to");
@@ -138,7 +138,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
     NodeAttributes attributes;
     attributes.reserve(num_attributes);
     attributes[output_type.name()] = output_type;
-    
+
     auto& decode = graph.AddNode(decode_node_name, compression_type + "Decoder", "Decode", {&encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg}, &attributes, kMSDomain);
     decode.SetPriority(curr_dec_priority);
 
@@ -181,7 +181,6 @@ std::vector<std::string> GistEncodeDecode::TargetOpTypes() const noexcept {
       return {"Softmax", "Transpose", "Reshape", "Add", "Dropout", "LayerNormalization", "MatMul", "Relu"};
       break;
     default:
-      std::cout << "Gist op type not supported" << std::endl;
       return {};
       break;
   }
@@ -189,7 +188,7 @@ std::vector<std::string> GistEncodeDecode::TargetOpTypes() const noexcept {
 
 Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   if (node.Description() != "Backward pass") {
-    if (GistEncodeDecode::AddEncodeDecode(graph, node, compression_type)) {
+    if (GistEncodeDecode::AddEncodeDecode(graph, node, compression_type, logger)) {
       LOGS(logger, INFO) << "Gist applied to node name -  " << node.Name() << ", node type - "
                          << node.OpType() << ", of compr type - " << compression_type;
       rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;

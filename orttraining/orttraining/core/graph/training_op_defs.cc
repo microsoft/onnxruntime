@@ -1667,7 +1667,7 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(uint8)"},
-          "8 bits compressed tensors.")
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
       });
@@ -1688,7 +1688,7 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(uint8)"},
-          "8 bits compressed tensors.")
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
       });
