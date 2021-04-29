@@ -873,7 +873,7 @@ struct ProviderSharedLibrary {
     Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
 
     PProvider_SetHost(&provider_host_);
-    LOGS_DEFAULT(ERROR) << "(RyanHill) Initialized Provider Shared Library";
+    LOGS_DEFAULT(WARNING) << "(RyanHill) Initialized Provider Shared Library";
     return true;
   }
 
@@ -900,19 +900,12 @@ bool InitProvidersSharedLibrary() {
   return s_library_shared.Ensure();
 }
 
-static bool s_shutdown = false;
-
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}
   ~ProviderLibrary() { /*assert(!handle_);*/
   }                    // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 
   Provider* Get() {
-    if (s_shutdown) {
-      LOGS_DEFAULT(ERROR) << "(RyanHill) Trying to load provider after shutdown! " << filename_;
-      return nullptr;
-    }
-
     if (provider_)
       return provider_;
 
@@ -920,7 +913,7 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-    LOGS_DEFAULT(ERROR) << "(RyanHill) Loading provider: " << full_path;
+    LOGS_DEFAULT(WARNING) << "(RyanHill) Loading provider: " << full_path;
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
@@ -931,20 +924,22 @@ struct ProviderLibrary {
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
     provider_ = PGetProvider();
-    LOGS_DEFAULT(ERROR) << "(RyanHill) Provider Loaded " << full_path;
+    LOGS_DEFAULT(WARNING) << "(RyanHill) Provider Loaded " << full_path;
     return provider_;
   }
 
   void Unload() {
     if (handle_) {
-      LOGS_DEFAULT(ERROR) << "(RyanHill) Shutting down provider " << filename_;
+      LOGS_DEFAULT(WARNING) << "(RyanHill) Shutting down provider " << filename_;
       if (provider_)
         provider_->Shutdown();
 
+#ifdef _WIN32
       Env::Default().UnloadDynamicLibrary(handle_);
+#endif
       handle_ = nullptr;
       provider_ = nullptr;
-      LOGS_DEFAULT(ERROR) << "(RyanHill) Shut down successful for " << filename_;
+      LOGS_DEFAULT(WARNING) << "(RyanHill) Shut down successful for " << filename_;
     }
   }
 
@@ -962,9 +957,7 @@ static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
-  s_shutdown = true;
-  std::cout << "Unloading shared providers...";
-  LOGS_DEFAULT(ERROR) << "Unloading shared providers... (RyanHill)";
+  LOGS_DEFAULT(WARNING) << "Unloading shared providers... (RyanHill)";
 
   s_library_dnnl.Unload();
   s_library_openvino.Unload();
@@ -972,8 +965,7 @@ void UnloadSharedProviders() {
   s_library_cuda.Unload();
   s_library_shared.Unload();
 
-  std::cout << "Finished Unloading shared providers";
-  LOGS_DEFAULT(ERROR) << "Finished Unloading shared providers (RyanHill)";
+  LOGS_DEFAULT(WARNING) << "Finished Unloading shared providers (RyanHill)";
 }
 
 // Used by test code
@@ -988,7 +980,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
   if (auto provider = s_library_cuda.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
-  LOGS_DEFAULT(ERROR) << "FAILED TO LOAD CUDA PROVIDER (RyanHill)";
+  LOGS_DEFAULT(WARNING) << "FAILED TO LOAD CUDA PROVIDER (RyanHill)";
   return nullptr;
 }
 
@@ -1029,7 +1021,7 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
 ProviderInfo_CUDA* GetProviderInfo_CUDA() {
   if (auto provider = s_library_cuda.Get())
     return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
-  LOGS_DEFAULT(ERROR) << "GetProviderInfo_CUDA called, returning nullptr";
+  LOGS_DEFAULT(WARNING) << "GetProviderInfo_CUDA called, returning nullptr";
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
