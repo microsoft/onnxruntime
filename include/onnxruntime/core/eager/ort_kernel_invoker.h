@@ -23,6 +23,9 @@ class ORTInvoker {
  public:
   ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, const logging::Logger& logger) : 
       execution_provider_(std::move(execution_provider)), logger_(logger) {
+    if (!execution_provider_) {
+    ORT_THROW("Execution provider is nullptr");
+    }
   }
 
   IExecutionProvider& GetCurrentExecutionProvider() {

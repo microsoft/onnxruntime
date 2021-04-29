@@ -23,6 +23,9 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
 
+  input_args.reserve(inputs.size());
+  output_args.reserve(outputs.size());
+
   Graph& graph = model.MainGraph();
   std::unordered_map<std::string, OrtValue> initializer_map;
   size_t i = 0;
@@ -44,10 +47,6 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
 
   auto& node = graph.AddNode("node1", op_name, "eager mode node", input_args, output_args, attributes, domain);
   ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  if (!execution_provider_) {
-    ORT_THROW("Execution provider is nullptr");
-  }
 
   node.SetExecutionProviderType(execution_provider_->Type());
   std::vector<const Node*> frame_nodes{&node};
