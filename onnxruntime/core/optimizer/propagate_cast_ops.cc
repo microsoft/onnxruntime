@@ -13,7 +13,7 @@ using namespace onnxruntime::common;
 * In order to perform the the transformation, certain operations are considered FP16 safe, i.e. the computation may be performed
 * without effecting the numerical result, ex. transpose, shape, etc. The transformation supports three levels of optimization, 0, 1
 * and 2. Level 2 being the most agressive, may consider moving float operations to float16 which may result in different numerical results 
-* due to loss of precision. The user may choose level 0, whereby the user choosed the opcodes which are "FP16 Safe" instead of a list
+* due to loss of precision. The user may choose level 0, whereby the user chooses the opcodes which are "FP16 Safe" instead of a list
 * predetermined opcodes as in levels 1 and 2.
 * Currently two strategies are available, InsertAndReduce and FloodFill.
 * InsertAndReduce :
@@ -30,7 +30,7 @@ using namespace onnxruntime::common;
 *   Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast perations down the
 *   graph. Using this strategy, for eatch pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
 *   float16 region up/down the graph using DFS/ReverseDFS and (TODO) identifies loss/gain by performing such expansion, considering 
-*   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (TODO).
+*   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (/TODO).
 *   In addition to propagating cast operations up/down the graph, in this strategy, the above mentioned cast op reduction functions
 *   are also used.
 * InsertAndReduce exhaustively inserts cast operations before and after all the nodes with the allowed opcodes whereas FloodFill only 
@@ -69,7 +69,8 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh"},
     /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
 
-/* The following two maps pecify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
+/*
+*  The following two maps pecify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
 *  cast operations. All other inputs/outputs not listed in this table are not relevant for deciding whether an operation
 *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the inputs and outputs to validate 
 *  transformation.
@@ -412,7 +413,7 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         | Cast FP32|                              |
 *                         |__________|                         _____V______
 *                              |                               | Opcode2  |
-*                         _____V______                         |___________|
+*                         _____V______                         |__________|
 *                         |  Opcode2 |                              |
 *                         |__________|
 *                              |
