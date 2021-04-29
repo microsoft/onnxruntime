@@ -1000,6 +1000,58 @@ static void SetIntraOpNumThreads() {
     WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
  }
 
+static void SetIntraOpThreadSpinning() {
+    LearningModel learningModel = nullptr;
+    auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
+    auto shape = std::vector<int64_t>{1, 1000};
+
+    auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+    
+    std::vector<float> input(1000);
+    std::iota(std::begin(input), std::end(input), 0.0f);
+    auto tensor_input = TensorFloat::CreateFromArray(shape, input);
+
+    auto spinDisabled = LearningModelSessionOptions();
+    auto spinDisabledNative = spinDisabled.as<ILearningModelSessionOptionsNative>();
+    spinDisabledNative->SetIntraOpThreadSpinning(false);
+
+    // ensure disabled thread spin is internally disabled and can evaluate without error
+    LearningModelSession sessionSpinDisabled = nullptr;
+    WINML_EXPECT_NO_THROW(sessionSpinDisabled = LearningModelSession(learningModel, device, spinDisabled));
+    auto nativeSessionSpinDisabled = sessionSpinDisabled.as<ILearningModelSessionNative>();
+    boolean allowSpinning;
+    nativeSessionSpinDisabled->GetIntraOpThreadSpinning(&allowSpinning);
+    WINML_EXPECT_FALSE(allowSpinning);
+
+    auto binding = LearningModelBinding(sessionSpinDisabled);
+    binding.Bind(L"input", tensor_input);
+    WINML_EXPECT_NO_THROW(sessionSpinDisabled.Evaluate(binding, L""));
+
+    // ensure enabled thread spin is internally enabled and can evaluate without error
+    auto spinEnabled = LearningModelSessionOptions();
+    auto spinEnabledNative = spinEnabled.as<ILearningModelSessionOptionsNative>();
+    spinEnabledNative->SetIntraOpThreadSpinning(false);
+
+    LearningModelSession sessionSpinEnabled = nullptr;
+    WINML_EXPECT_NO_THROW(sessionSpinEnabled = LearningModelSession(learningModel, device, spinEnabled));
+    auto nativeSessionSpinEnabled = sessionSpinEnabled.as<ILearningModelSessionNative>();
+    nativeSessionSpinEnabled->GetIntraOpThreadSpinning(&allowSpinning);
+    WINML_EXPECT_TRUE(allowSpinning);
+
+    binding = LearningModelBinding(sessionSpinEnabled);
+    binding.Bind(L"input", tensor_input);
+    WINML_EXPECT_NO_THROW(sessionSpinEnabled.Evaluate(binding, L""));
+
+    // ensure options by default allow spinning
+    auto spinDefault = LearningModelSessionOptions();
+    LearningModelSession sessionSpinDefault = nullptr;
+    WINML_EXPECT_NO_THROW(sessionSpinDefault = LearningModelSession(learningModel, device, spinDefault));
+    auto nativeSessionSpinDefault = sessionSpinDefault.as<ILearningModelSessionNative>();
+    nativeSessionSpinDefault->GetIntraOpThreadSpinning(&allowSpinning);
+    WINML_EXPECT_TRUE(allowSpinning);
+ }
+
+
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
   {

@@ -68,6 +68,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
   STDMETHOD(GetIntraOpNumThreads)
   (uint32_t* numThreads);
 
+  STDMETHOD(GetIntraOpThreadSpinning)
+  (boolean* allowSpinning);
+
+
  public:
   /* Non-ABI methods */
 

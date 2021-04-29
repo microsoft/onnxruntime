@@ -59,6 +59,7 @@ interface ILearningModelEvaluationResultNative : IUnknown
 interface ILearningModelSessionNative : IUnknown
 {
     HRESULT GetIntraOpNumThreads(UINT32* numThreads);
+    HRESULT GetIntraOpThreadSpinning(boolean* allowSpinning);
 };
 
 cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")

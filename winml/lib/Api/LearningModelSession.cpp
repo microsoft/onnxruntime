@@ -446,6 +446,19 @@ STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
   return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
 
+STDMETHODIMP LearningModelSession::GetIntraOpThreadSpinning(boolean *allowSpinning)
+{
+  const char* spinValue;
+  RETURN_IF_FAILED(engine_->GetIntraOpThreadSpinningConfigEntry(&spinValue));
+  std::string spinStr(spinValue);
+  if (spinStr == "0") {
+    *allowSpinning = false;
+  } else {
+    *allowSpinning = true;
+  }
+  return S_OK;
+}
+
 winml::LearningModelSession LearningModelSession::CreateInertSession(_winml::IEngine* engine) {
   return winrt::make<winmlp::LearningModelSession>(engine);
 }

@@ -116,6 +116,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t* num_threads) override;
 
+  STDMETHOD(GetIntraOpThreadSpinningConfigEntry)
+  (const char** allow_spinning) override;
+
   STDMETHOD(GetNamedDimensionOverrides)
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) override;
 

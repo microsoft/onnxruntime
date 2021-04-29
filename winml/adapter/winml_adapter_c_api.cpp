@@ -57,6 +57,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::SessionEndProfiling,
     &winmla::SessionCopyOneInputAcrossDevices,
     &winmla::SessionGetNumberOfIntraOpThreads,
+    &winmla::SessionGetIntraOpThreadSpinningConfigEntry,
     &winmla::SessionGetNamedDimensionsOverrides,
 
     // Dml methods (TODO need to figure out how these need to move to session somehow...)

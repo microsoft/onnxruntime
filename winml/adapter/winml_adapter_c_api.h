@@ -302,6 +302,14 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
 
+    /**
+    * SessionGetIntrapOpThreadSpinning
+     * This api returns the value of "session.intra_op.allow_spinning"
+    * 
+    * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinningConfigEntry)(_In_ OrtSession* session, _Out_ const char** allow_spinning)NO_EXCEPTION;
+
       /**
     * SessionGetNamedDimensionsOverrides
      * This api returns the named dimension overrides that are specified for this session

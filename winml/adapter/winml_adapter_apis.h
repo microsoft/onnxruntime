@@ -56,6 +56,7 @@ ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry);
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value);
 ORT_API_STATUS(SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads);
+ORT_API_STATUS(SessionGetIntraOpThreadSpinningConfigEntry, _In_ OrtSession* session, _Out_ const char** allow_spinning);
 ORT_API_STATUS(SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides);
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
