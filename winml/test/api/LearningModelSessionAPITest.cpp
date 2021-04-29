@@ -1073,6 +1073,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     NamedDimensionOverride,
     CloseSession,
     SetIntraOpNumThreads,
+    SetIntraOpThreadSpinning,
     ModelBuilding_Gemm,
     ModelBuilding_StandardDeviationNormalization,
     ModelBuilding_DynamicMatmul,
