@@ -91,6 +91,8 @@ Status UpsampleNearest(const T* input,
                             : "Upsample: input shape needs to be at least a single dimension.");
   }
 
+  T output_extrapolation_value = rounding_cast<T>(extrapolation_value);
+
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
 
   std::vector<int64_t> input_dim_counters(n_dim);
@@ -114,7 +116,7 @@ Status UpsampleNearest(const T* input,
       int64_t input_dim0_inx = get_nearest_pixel(original_0_idx, scales[0] < 1);
       if (input_dim0_inx > input_shape[0] - 1) input_dim0_inx = input_shape[0] - 1;
       if (input_dim0_inx < 0) input_dim0_inx = 0;
-      output[output_idx++] = use_extrapolation_value[0] ? rounding_cast<T>(extrapolation_value) : input[input_dim0_inx];
+      output[output_idx++] = use_extrapolation_value[0] ? output_extrapolation_value : input[input_dim0_inx];
     }
     return Status::OK();
   }
@@ -155,7 +157,7 @@ Status UpsampleNearest(const T* input,
       int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
-        output[output_idx++] = (input_idx_1 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_1];
+        output[output_idx++] = (input_idx_1 < 0) ? output_extrapolation_value : input[input_idx_1];
       }
     }
     return Status::OK();
@@ -174,7 +176,7 @@ Status UpsampleNearest(const T* input,
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
           int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
-          output[output_idx++] = (input_idx_2 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_2];
+          output[output_idx++] = (input_idx_2 < 0) ? output_extrapolation_value : input[input_idx_2];
         }
       }
     }
@@ -202,7 +204,7 @@ Status UpsampleNearest(const T* input,
           int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
           for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
             int64_t input_idx_3 = input_idx_2 + input_mapping_3[output_dim3_inx];
-            output[output_idx++] = (input_idx_3 < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx_3];
+            output[output_idx++] = (input_idx_3 < 0) ? output_extrapolation_value : input[input_idx_3];
           }
         }
       }
@@ -222,7 +224,7 @@ Status UpsampleNearest(const T* input,
   }
 
   for (int64_t output_size = output_shape.Size(); output_idx < output_size; output_idx++) {
-    output[output_idx] = (input_idx < 0) ? rounding_cast<T>(extrapolation_value) : input[input_idx];
+    output[output_idx] = (input_idx < 0) ? output_extrapolation_value : input[input_idx];
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
       input_idx -= input_mappings[dim_idx][output_dim_counter[dim_idx]];
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
@@ -369,6 +371,8 @@ void UpsampleBilinear(int64_t batch_size,
   float* dx1 = dy1 + 2 * output_height;
   float* dx2 = dx1 + output_width;
 
+  T output_extrapolation_value = rounding_cast<T>(extrapolation_value);
+
   // Start processing
   auto roi_y_start = roi.size() / 2 - 2;
   auto roi_y_end = roi.size() - 2;
@@ -430,7 +434,7 @@ void UpsampleBilinear(int64_t batch_size,
                                                         if (use_extrapolation &&
                                                             ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
                                                              (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-                                                          Ydata[output_width * y + x] = rounding_cast<T>(extrapolation_value);
+                                                          Ydata[output_width * y + x] = output_extrapolation_value;
                                                           continue;
                                                         }
 
@@ -528,6 +532,8 @@ void UpsampleTrilinear(int64_t batch_size,
   float* dx1 = dy1 + 2 * output_height;
   float* dx2 = dx1 + output_width;
 
+  T output_extrapolation_value = rounding_cast<T>(extrapolation_value);
+
   // Start processing
   auto roi_z_start = roi.size() / 2 - 3;
   auto roi_z_end = roi.size() - 3;
@@ -613,7 +619,7 @@ void UpsampleTrilinear(int64_t batch_size,
                                                                (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
                                                                (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
                                                             Ydata[output_width * output_height * z + output_width * y + x] =
-                                                                rounding_cast<T>(extrapolation_value);
+                                                                output_extrapolation_value;
                                                             continue;
                                                           }
 
