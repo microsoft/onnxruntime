@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="1.2.5" targetFramework="net5.0-windows10.0.17763.0" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="1.1.0" targetFramework="net5.0-windows10.0.17763.0" />
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.17763.1000" targetFramework="net5.0-windows10.0.17763.0" />
   </ItemGroup>
 
