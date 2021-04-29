@@ -19,7 +19,7 @@
 
 // Override default new/delete so that we match the host's allocator
 _Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
-void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+void operator delete(void* p) noexcept { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
