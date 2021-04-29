@@ -40,6 +40,7 @@
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -1939,7 +1940,6 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
-  arena_cfg.shrink_on_every_run = true;
 
   SessionOptions so;
   InferenceSession session_object{so, GetEnvironment()};
@@ -1958,7 +1958,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   AllocatorStats alloc_stats;
   static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
 #ifdef ENABLE_TRAINING
-  // In training builds, initializers ae allocated using the Reserve() call which
+  // In training builds, initializers are allocated using the Reserve() call which
   // will not cause an arena extension
   ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
 #else
@@ -1971,30 +1971,56 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   auto allocated_memory_before_run = alloc_stats.total_allocated_bytes;
 
-  RunOptions run_options;
-  RunModel(session_object, run_options);
+  {
+    // First Run - no shrinkage
+    RunOptions run_options_1;
+    RunModel(session_object, run_options_1);
 
-  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
 
-  // The arena would have made 2 more extensions as part of servicing memory requests within Run()
-  // 1) - To take the solitary feed to cuda memory
-  // 2) - Allocate output of the solitary node
+    // The arena would have made 2 more extensions as part of servicing memory requests within Run()
+    // 1) - To take the solitary feed to cuda memory
+    // 2) - Allocate output of the solitary node
 #ifdef ENABLE_TRAINING
-  // In training - that is a total of 2 extensions
-  ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
 #else
-  // In inferencing - that is a total of 3 extensions
-  ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
 #endif
 
-  // The arena would have shrunk both extensions it made as part of Run() - because these allocations
-  // would have been left unused after Run() itself
-  ASSERT_EQ(alloc_stats.num_arena_shrinkages, 2);
+    // Assert that there have been no shrinkages after this Run()
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+  }
 
-  auto allocated_memory_after_run = alloc_stats.total_allocated_bytes;
+  {
+    // Second Run - with shrinkage
+    RunOptions run_options_2;
+    run_options_2.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+    RunModel(session_object, run_options_2);
+
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
+    // The arena would have made no extensions in this Run() as the freed memory after the first Run()
+    // will be re-used
+
+#ifdef ENABLE_TRAINING
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
+
+    // The arena would have shrunk both extensions it made as part of Run() - because these allocations
+    // would have been left unused after this Run()
+    // (The allocation for the sole initializer will not be shrunk as it is still being "used" by the session)
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 2);
+  }
 
   // Assert that allocated memory before and after Run() are the same
   // Because any memory allocated during Run would have been de-allocated as pat of the shrinkage
+  auto allocated_memory_after_run = alloc_stats.total_allocated_bytes;
   ASSERT_EQ(allocated_memory_before_run, allocated_memory_after_run);
 }
 

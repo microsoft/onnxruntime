@@ -554,6 +554,15 @@ class InferenceSession {
   // Updates all providers with the allocators from the env based on OrtMemoryInfo
   void UpdateProvidersWithSharedAllocators();
 
+  /*
+   * Shrink default memory arenas based on user provided list
+   * List format: "device_0:device_id_0;device_1:device_id_1"
+   * We refrain from returning a failure status if we encounter some issue
+   * while we are shrinking the user provided list because we may encounter as issue 
+   * in the middle of shrinking and rather than stop - we log the error and continue.
+   */
+  void ShrinkDefaultMemoryArenas(const std::string& ort_device_list);
+
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                          TransformerLevel graph_optimization_level);

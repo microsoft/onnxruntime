@@ -83,8 +83,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
          default_memory_arena_cfg ? static_cast<int>(default_memory_arena_cfg->arena_extend_strategy) : static_cast<int>(arena_extend_strategy),
          default_memory_arena_cfg ? default_memory_arena_cfg->initial_chunk_size_bytes : -1,
          default_memory_arena_cfg ? default_memory_arena_cfg->max_dead_bytes_per_chunk : -1,
-         default_memory_arena_cfg ? default_memory_arena_cfg->initial_regrowth_chunk_size_bytes_after_shrink : -1,
-         default_memory_arena_cfg ? default_memory_arena_cfg->shrink_on_every_run : false});
+         default_memory_arena_cfg ? default_memory_arena_cfg->initial_regrowth_chunk_size_bytes_after_shrink : -1});
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -145,13 +144,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     } else {
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
     }
-  }
-
-  // The user has requested that the default memory allocator be considered for shrinking at the end of every Run().
-  // This keeps the arena growth in check (as without this the arena will hang onto any growth permanently)
-  if (info_.default_memory_arena_cfg && info_.default_memory_arena_cfg->shrink_on_every_run) {
-    LOGS_DEFAULT(INFO) << "The CUDA default memory allocator will be shrunk at the end of every Run";
-    shrink_default_memory_allocator_on_every_run_end_ = true;
   }
 
   size_t free = 0;
@@ -311,17 +303,6 @@ Status CUDAExecutionProvider::OnRunEnd() {
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
-
-  if (shrink_default_memory_allocator_on_every_run_end_) {
-    // We currently do not support shrinking other allocators this EP may hold (like CUDA_PINNED, CUDA_CPU).
-    auto default_memory_alloc = GetAllocator(info_.device_id, OrtMemTypeDefault);
-
-    // NOT 1: We have already ensured that the default memory allocator for the CUDA EP is an arena based allocator
-    // by this point if shrink_default_memory_allocator_on_every_run_end_ is set to true. o the following cast is safe.
-    // NOTE 2: Shrink is thread-safe and the call without any additional synchronization primitives is safe.
-    static_cast<IArenaAllocator*>(default_memory_alloc.get())->Shrink();
-  }
-
   ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
@@ -2105,15 +2086,6 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     allocator_manager->InsertAllocator(cuda_alloc);
   }
   TryInsertAllocator(cuda_alloc);
-
-  // Currently, we only support arena based allocators for usage in the CUDA EP.
-  // However, we do want to ensure that with the following sanity check when
-  // shrink_default_memory_allocator_on_every_run_end_ is set to true
-  if (shrink_default_memory_allocator_on_every_run_end_ &&
-      GetAllocator(info_.device_id, OrtMemTypeDefault)->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
-    LOGS_DEFAULT(ERROR) << "The CUDA default memory allocator is not an arena-based allocator and hence cannot be shrunk";
-    shrink_default_memory_allocator_on_every_run_end_ = false;
-  }
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster

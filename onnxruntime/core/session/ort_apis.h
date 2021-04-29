@@ -265,4 +265,6 @@ ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo*
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
                     _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out);
+ORT_API_STATUS_IMPL(AddRunConfigEntry, _Inout_ OrtRunOptions* options,
+                    _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace OrtApis

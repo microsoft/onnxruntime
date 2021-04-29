@@ -1299,11 +1299,20 @@ struct OrtApi {
      crossing which the current chunk is chunked into 2.
   * "initial_regrowth_chunk_size_bytes_after_shrink": Size of first allocation post-shrink. Only relevant 
     if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
-  * "shrink_on_every_run": Boolean flag indicating if the arena is to de-allocate unused memory chunks after 
-     every Run request. Default is false. Pass in non-zero value to enable the feature.
   */
-  ORT_API2_STATUS(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
-                  _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out);
+  ORT_API2_STATUS(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys,
+                  _In_reads_(num_keys) const size_t* arena_config_values, _In_ size_t num_keys,
+                  _Outptr_ OrtArenaCfg** out);
+
+  /**
+     * Set a single run configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
+     * The config_key and the format of config_value are defined in onnxruntime_run_options_config_keys.h
+     */
+  ORT_API2_STATUS(AddRunConfigEntry, _Inout_ OrtRunOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*

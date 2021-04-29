@@ -22,7 +22,7 @@ struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
                         OrtDevice::DeviceId device_id0 = 0,
                         bool use_arena0 = true,
-                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1, -1, false})
+                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1, -1})
       : device_alloc_factory(device_alloc_factory0),
         device_id(device_id0),
         use_arena(use_arena0),

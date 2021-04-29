@@ -95,7 +95,6 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
     int initial_regrowth_chunk_size_bytes_after_shrink = -1;
-    bool shrink_on_every_run = false;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -112,11 +111,10 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
       initial_regrowth_chunk_size_bytes_after_shrink = arena_cfg->initial_regrowth_chunk_size_bytes_after_shrink;
-      shrink_on_every_run = arena_cfg->shrink_on_every_run;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_regrowth_chunk_size_bytes_after_shrink, shrink_on_every_run};
+                            initial_regrowth_chunk_size_bytes_after_shrink};
     AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
         0,

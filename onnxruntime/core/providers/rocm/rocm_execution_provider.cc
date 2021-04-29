@@ -79,7 +79,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         true,
         {gpu_mem_limit,
          static_cast<int>(arena_extend_strategy),
-         -1, -1, -1, false});
+         -1, -1, -1});
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -104,7 +104,7 @@ ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
       true,
       {gpu_mem_limit,
        static_cast<int>(arena_extend_strategy),
-       -1, -1, -1, false});
+       -1, -1, -1});
 
   // HIP malloc/free is expensive so always use an arena
   allocator_ = CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info);

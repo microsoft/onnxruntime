@@ -1884,8 +1884,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_regrowth_chunk_size_bytes_after_shrink") == 0) {
       cfg->initial_regrowth_chunk_size_bytes_after_shrink = static_cast<int>(arena_config_values[i]);
-    } else if (strcmp(arena_config_keys[i], "shrink_on_every_run") == 0) {
-      cfg->shrink_on_every_run = (arena_config_values[i] != 0);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -2155,6 +2153,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
     &OrtApis::CreateArenaCfgV2,
+    &OrtApis::AddRunConfigEntry,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

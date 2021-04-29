@@ -13,6 +13,8 @@
 
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
+#include "core/common/parse_string.h"
+#include "core/framework/arena.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
@@ -47,6 +49,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 #include "onnxruntime_config.h"
@@ -1694,6 +1697,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
+  // shrink certain memory arenas if the user has requested for it
+  const std::string& shrink_memory_arenas = run_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
+  if (!shrink_memory_arenas.empty()) {
+    ShrinkDefaultMemoryArenas(shrink_memory_arenas);
+  }
+
   --current_num_runs_;
 
   // keep track of telemetry
@@ -1862,6 +1871,75 @@ const profiling::Profiler& InferenceSession::GetProfiling() const {
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
+}
+
+void InferenceSession::ShrinkDefaultMemoryArenas(const std::string& ort_device_list) {
+  if (ort_device_list.empty()) {
+    return;
+  }
+
+  std::stringstream ss_1(ort_device_list);
+  std::string device_id_pair;
+
+  // Process all device-id pair(s)
+  while (std::getline(ss_1, device_id_pair, ';')) {
+    std::stringstream ss_2(device_id_pair);
+    std::string device_id_component;
+
+    // default values
+    OrtDevice::DeviceType device_type = -1;
+    OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
+    OrtDevice::DeviceId device_id = 0;
+
+    int iter = 0;
+    // Process this device-id pair
+    while (std::getline(ss_2, device_id_component, ':')) {
+      if (iter == 0) {  // this component corresponds to device
+        if (device_id_component == "cpu") {
+          device_type = OrtDevice::CPU;
+        } else if (device_id_component == "gpu") {
+          device_type = OrtDevice::GPU;
+        } else {
+          LOGS(*session_logger_, ERROR) << "Unsupported device specified in the memory arena shrink list: " << device_id_component
+                                        << " and shrinking is skipped for this";
+          break;
+        }
+      } else if (iter == 1) {  // This component corresponds to device id
+        if (!TryParseStringWithClassicLocale<OrtDevice::DeviceId>(device_id_component, device_id)) {
+          LOGS(*session_logger_, ERROR) << "Unsupported device id in the memory arena shrink list: " << device_id_component
+                                        << " and shrinking is skipped for this";
+          break;
+        }
+      }
+
+      ++iter;
+    }
+
+    // Shrink if it is an arena based allocator
+    auto alloc = session_state_->GetAllocator(OrtDevice(device_type, memory_type, device_id));
+
+    if (alloc == nullptr) {
+      LOGS(*session_logger_, ERROR) << "Did not find an arena based allocator registered for device-id "
+                                    << " combination in the memory arena shrink list: " << device_id_pair
+                                    << " and shrinking is skipped for this";
+      continue;
+    }
+
+    if (alloc->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
+      LOGS(*session_logger_, ERROR) << "The registered allocator for device-id "
+                                    << " combination is not an arena based allocator: " << device_id_pair
+                                    << " and shrinking is skipped for this";
+      continue;
+    }
+
+    auto status = static_cast<IArenaAllocator*>(alloc.get())->Shrink();
+
+    if (!status.IsOK()) {
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    }
+
+    return;
+  }
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

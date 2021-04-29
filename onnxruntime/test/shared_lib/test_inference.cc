@@ -18,6 +18,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -1455,16 +1456,16 @@ TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
 #ifdef USE_CUDA
 
 // Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator
-TEST(CApiTest, configure_cuda_arena) {
+TEST(CApiTest, configure_cuda_arena_and_demonstrate_memory_arena_shrinkage) {
   const auto& api = Ort::GetApi();
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_regrowth_chunk_size_bytes_after_shrink", "shrink_on_every_run"};
-  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_regrowth_chunk_size_bytes_after_shrink"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
 
   OrtArenaCfg* arena_cfg = nullptr;
-  ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 6, &arena_cfg) == nullptr);
+  ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);
   std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
 
   OrtCUDAProviderOptions cuda_provider_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(nullptr);
@@ -1473,5 +1474,16 @@ TEST(CApiTest, configure_cuda_arena) {
   session_options.AppendExecutionProvider_CUDA(cuda_provider_options);
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  // Use a run option like this while invoking Run() to trigger a memory arena shrinkage post Run()
+  // This will shrink memory allocations left unused at the end of Run() and cap the arena growth
+  // This does come with associated costs as there are costs to cudaFree() but the goodness it offers
+  // is that the memory held by the arena (memory pool) is kept checked.
+  Ort::RunOptions run_option;
+  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+
+  // To also trigger a cpu memory arena shrinkage along with the gpu arena shrinkage, use the following-
+  // (Memory arena for the CPU should not have been disabled)
+  //  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "cpu:0;gpu:0");
 }
 #endif

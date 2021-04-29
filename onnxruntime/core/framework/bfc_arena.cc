@@ -10,7 +10,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
-                   int intial_regrowth_chunk_size_bytes_after_shrink)
+                   int initial_regrowth_chunk_size_bytes_after_shrink)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -22,11 +22,11 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       next_allocation_region_id_(0),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
-      intial_regrowth_chunk_size_bytes_after_shrink_(intial_regrowth_chunk_size_bytes_after_shrink) {
+      initial_regrowth_chunk_size_bytes_after_shrink_(initial_regrowth_chunk_size_bytes_after_shrink) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
-                     << " intial_regrowth_chunk_size_bytes_after_shrink: " << intial_regrowth_chunk_size_bytes_after_shrink_
+                     << " initial_regrowth_chunk_size_bytes_after_shrink: " << initial_regrowth_chunk_size_bytes_after_shrink_
                      << " memory limit: " << total_memory
                      << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy);
 
@@ -38,6 +38,22 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
 
   arena_extend_strategy_ = arena_extend_strategy;
+
+  // We never want to shrink the initial allocation if the arena extend strategy is kNextPowerOfTwo.
+  // This could seem confusingly arbitrary but the rationale is as follows:
+  // The user selected initial allocation chunk is only valid for the arena extend strategy kNextPowerOfTwo
+  // and the user has likely chosen this initial value so that any ad-hoc arena extensions/shrinkages could potentially
+  // be avoided. So we do not consider the initial allocation for shrinkage whatever its usage status.
+  // On the other hand, if the arena extension strategy is kSameAsRequested, any initial chunk set by the user or otherwise,
+  // is moot and the arena will only extend based on the request size. In these cases, we consider any allocation for shrinkage
+  // if it is left unused (even if it is the first allocation).
+  if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+    // Consider all allocation regions (including first allocation region) for shrinkage
+    consider_first_allocation_region_for_shrinkage_ = true;
+  } else {  // arena_extend_strategy_ == kNextPowerOfTwo
+    // Do not consider the first allocation region for shrinkage
+    consider_first_allocation_region_for_shrinkage_ = false;
+  }
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
@@ -129,11 +145,13 @@ Status BFCArena::Extend(size_t rounded_bytes) {
       if (!increased_allocation) {
         curr_region_allocation_bytes_ *= 2;
       }
+
     } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
       // BFC Arena could cause internal and external fragmentation. But, running training with
       // big batch size will be very sensitive to fragmentation. So, to avoid fragmentation,
       // just extend arena with actual requested size.
       extend_bytes = bytes;
+
     } else {
       ORT_THROW("Incorrect arena extend strategy.", static_cast<int32_t>(arena_extend_strategy_));
     }
@@ -425,22 +443,13 @@ Status BFCArena::Shrink() {
   region_ptrs.reserve(num_regions);
   region_sizes.reserve(num_regions);
 
-  // Even if any byte is left unused in the first allocation region, we do not want to consider it for de-allocation
-  // We never want to shrink the initial allocation if the arena extend strategy is kNextPowerOfTwo.
-  // This could seem confusingly arbitrary but the rationale is as follows:
-  // The user selected initial allocation chunk is only valid for the arena extend strategy kNextPowerOfTwo
-  // and the user has likely chosen this initial value so that any ad-hoc arena extensions/shrinkages could potentially
-  // be avoided. So we do not consider the initial allocation for shrinkage whatever its usage status.
-  // On the other hand, if the arena extension strategy is kSameAsRequested, any initial chunk set by the user or otherwise,
-  // is moot and the arena will only extend based on the request size. In these cases, we consider any allocation for shrinkage
-  // if it is left unused (even if it is the first allocation).
-  if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+  if (consider_first_allocation_region_for_shrinkage_) {
     // Consider all regions for shrinkage
     for (const auto& region : region_manager_.regions()) {
       region_ptrs.push_back(region.ptr());
       region_sizes.push_back(region.memory_size());
     }
-  } else {  // arena_extend_strategy_ == kNextPowerOfTwo
+  } else {
     for (const auto& region : region_manager_.regions()) {
       // Consider only the non-initial regions for shrinkage
       if (region.id() != 0) {
@@ -494,7 +503,7 @@ Status BFCArena::Shrink() {
 
   // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
   // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
-  curr_region_allocation_bytes_ = intial_regrowth_chunk_size_bytes_after_shrink_;
+  curr_region_allocation_bytes_ = initial_regrowth_chunk_size_bytes_after_shrink_;
 
   return Status::OK();
 }
