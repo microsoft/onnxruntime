@@ -204,7 +204,7 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
   return Status::OK();
-}  // namespace contrib
+}
 
 }  // namespace contrib
 }  // namespace onnxruntime

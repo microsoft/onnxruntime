@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+include(pybind11)
 FIND_PACKAGE(NumPy)
 
 if(NOT PYTHON_INCLUDE_DIR)
@@ -67,7 +68,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-target_compile_options(onnxruntime_pybind11_state PRIVATE -fvisibility=hidden)
+
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
@@ -126,8 +127,6 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
 endif()
-
-list(APPEND onnxruntime_pybind11_state_libs onnxruntime_torch_custom_function)
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}

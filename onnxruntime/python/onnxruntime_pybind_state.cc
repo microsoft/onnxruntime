@@ -26,7 +26,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
-#include <Python.h>
+
 #ifdef ENABLE_TRAINING
 #include "core/util/dlpack_convertor.h"
 #endif

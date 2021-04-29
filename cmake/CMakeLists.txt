@@ -1573,7 +1573,6 @@ endif()
 
 if (onnxruntime_ENABLE_PYTHON)
   include(onnxruntime_python.cmake)
-  include(onnxruntime_torch_custom_function.cmake)
 endif()
 
 if (onnxruntime_BUILD_OBJC)
