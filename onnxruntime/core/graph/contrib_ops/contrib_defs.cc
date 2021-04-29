@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
@@ -2211,7 +2213,7 @@ Example 4:
             };
 
             std::vector<FunctionBodyHelper::NodeDef> body{
-                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType) U),
+                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType)U),
                 // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
                 // This complicates the function definition, requiring reshaping inputs/outputs.
                 // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
