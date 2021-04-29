@@ -52,6 +52,4 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allow
   telemetry_helper.SetIntraOpThreadSpinning(allowSpinning);
   return S_OK;
 }
-
-
 }  // namespace WINMLP
