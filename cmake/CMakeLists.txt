@@ -344,7 +344,12 @@ if(onnxruntime_ENABLE_LTO)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
     else()
-      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+      if (onnxruntime_BUILD_WEBASSEMBLY)
+        # wasm-ld does not support "-flto=thin" (default flag when CMAKE_INTERPROCEDURAL_OPTIMIZATION is on). use "-flto" instead.
+        string(APPEND CMAKE_CXX_FLAGS " -flto")
+      else()
+        set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+      endif()
     endif()
 endif()
 
