@@ -26,6 +26,10 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
   std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
   if (dq_input_defs.size() != QDQInputCountRequired ||
       q_input_defs.size() != QDQInputCountRequired ||
+      !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
+      !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx]) ||
       !graph.GetNodeOutputsInGraphOutputs(q_node).empty()) {
     return false;
   }
@@ -38,14 +42,10 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
       graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputZeroPointIdx]->Name());
   const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
       graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputZeroPointIdx]->Name());
-  if (!q_zp_tensor_proto ||
-      !dq_zp_tensor_proto ||
-      !q_scale_tensor_proto ||
-      !dq_scale_tensor_proto ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx])) {
+  if (nullptr == q_zp_tensor_proto ||
+      nullptr == dq_zp_tensor_proto ||
+      nullptr == q_scale_tensor_proto ||
+      nullptr == dq_scale_tensor_proto) {
     return false;
   }
 
@@ -185,8 +185,9 @@ bool QDQPropagationTransformer::PropagateDQForward(Graph& graph) const {
       if (!CanNodePropagate(next_node)) {
         // Try canceling out DQ/Q pair
         if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuantizeLinear", {10, 13}) &&
-            graph_utils::IsSupportedProvider(next_node, GetCompatibleExecutionProviders())) {
-          is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, next_node);
+            graph_utils::IsSupportedProvider(next_node, GetCompatibleExecutionProviders()) &&
+            TryCancelOutDQQPair(graph, dq_node, next_node)) {
+          is_modified = true;
         }
 
         break;
@@ -218,11 +219,8 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
     }
 
     std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-    if (q_input_defs.size() != QDQInputCountRequired) {
-      continue;
-    }
-
-    if (!optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
+    if (q_input_defs.size() != QDQInputCountRequired ||
+        !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
         !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx])) {
       continue;
     }
@@ -246,8 +244,9 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
         // Try canceling out DQ/Q pair
         Node& dq_node = prev_node;
         if (graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) &&
-            graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
-          is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, q_node);
+            graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders()) &&
+            TryCancelOutDQQPair(graph, dq_node, q_node)) {
+          is_modified = true;
         }
         break;
       }
