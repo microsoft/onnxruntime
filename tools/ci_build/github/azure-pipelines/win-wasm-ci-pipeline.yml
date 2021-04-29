@@ -1,92 +1,83 @@
 jobs:
-# - job: build_WASM
-#   pool: 'Win-CPU-2019'
-#   strategy:
-#     maxParallel: 4
-#     matrix:
-#       'debug':
-#         BuildConfig: 'Debug'
-#         CmdParams: ''
-#         WasmFileName: 'onnxruntime_wasm'
-#       'release':
-#         BuildConfig: 'Release'
-#         CmdParams: ''
-#         WasmFileName: 'onnxruntime_wasm'
-#       'threads debug':
-#         BuildConfig: 'Debug'
-#         CmdParams: '--enable_wasm_threads'
-#         WasmFileName: 'onnxruntime_wasm_threads'
-#       'threads release':
-#         BuildConfig: 'Release'
-#         CmdParams: '--enable_wasm_threads'
-#         WasmFileName: 'onnxruntime_wasm_threads'
-      
-#   variables:
-#     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-#     EnvSetupScript: setup_env.bat
-#     buildArch: x64
-#   timeoutInMinutes: 120
-#   workspace:
-#     clean: all
-#   steps:    
-#   - task: UsePythonVersion@0
-#     inputs: 
-#       versionSpec: '3.7' 
-#       addToPath: true 
-#       architecture: $(buildArch)
+- job: build_WASM
+  pool: 'Win-CPU-2019'
+  strategy:
+    maxParallel: 4
+    matrix:
+      'debug':
+        BuildConfig: 'Debug'
+        CmdParams: ''
+        WasmFileName: 'onnxruntime_wasm'
+      'release':
+        BuildConfig: 'Release'
+        CmdParams: ''
+        WasmFileName: 'onnxruntime_wasm'
+      'threads debug':
+        BuildConfig: 'Debug'
+        CmdParams: '--enable_wasm_threads'
+        WasmFileName: 'onnxruntime_wasm_threads'
+      'threads release':
+        BuildConfig: 'Release'
+        CmdParams: '--enable_wasm_threads'
+        WasmFileName: 'onnxruntime_wasm_threads'
+    
+  variables:
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:    
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '14.x'
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+  - script: |
+     python -m pip install -q pyopenssl setuptools wheel numpy ninja flake8
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+  - task: PythonScript@0
+    displayName: 'Build and test'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - script: |
+      copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '$(BuildConfig)_$(WasmFileName)'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
-#   - task: NodeTool@0
-#     inputs:
-#       versionSpec: '14.x'
-
-#   - task: BatchScript@1
-#     displayName: 'setup env'
-#     inputs:
-#       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-#       modifyEnvironment: true
-#       workingFolder: '$(Build.BinariesDirectory)'
-
-#   - script: |
-#      python -m pip install -q pyopenssl setuptools wheel numpy ninja flake8
-#     workingDirectory: '$(Build.BinariesDirectory)'
-#     displayName: 'Install python modules'
-
-#   - task: PythonScript@0
-#     displayName: 'Build and test'
-#     inputs:
-#       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-#       arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
-#       workingDirectory: '$(Build.BinariesDirectory)'
-
-#   - script: |
-#       copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
-#     displayName: 'Create Artifacts'
-
-#   - task: PublishPipelineArtifact@0
-#     displayName: 'Publish Pipeline Artifact'
-#     inputs:
-#       artifactName: '$(BuildConfig)_$(WasmFileName)'
-#       targetPath: '$(Build.ArtifactStagingDirectory)'
-
-#   - task: PublishTestResults@2
-#     displayName: 'Publish unit test results'
-#     inputs:
-#       testResultsFiles: '**/*.results.xml'
-#       searchFolder: '$(Build.BinariesDirectory)'
-#       testRunTitle: 'Unit Test Run'
-#     condition: succeededOrFailed()
-
-#   - template: templates/component-governance-component-detection-steps.yml
-#     parameters :
-#       condition : 'succeeded'
-
-#   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-#     displayName: 'Clean Agent Directories'
-#     condition: always()
 - job: build_onnxruntime_web
-  # dependsOn: build_WASM
-  # pool: 'Win-CPU-2019'
-  pool: 'yulongw-test'
+  dependsOn: build_WASM
+  pool: 'Win-CPU-2019'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -103,11 +94,6 @@ jobs:
       versionSpec: '14.x'
   - task: DownloadPipelineArtifact@2
     inputs:
-      source: 'specific'
-      project: 'onnxruntime'
-      pipeline: 161
-      runVersion: 'specific'
-      runId: 369965
       patterns: 'Release_*/**/*'
       path: $(Pipeline.Workspace)\artifacts
     displayName: 'Download WebAssembly artifacts'
@@ -158,7 +144,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Build ort-web'
   - script: |
-     npm test -- --file-cache
+     npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests'
   - script: |
