@@ -78,5 +78,37 @@ TEST_F(ContribFunExpansionTest, Gelu) {
   CheckGelu<MLFloat16>();
 }
 
+template <typename T, bool RunTest = true>
+void CheckFastGelu(bool withBias = true) {
+  FunctionTestCase testCase("FastGelu", kMSDomain);
+  std::vector<int64_t> shape{8, 16};
+  std::vector<int64_t> bias_shape{16};
+
+  testCase.AddInput<T, RunTest>("x", shape);
+  if (withBias) {
+    testCase.AddInput<T, RunTest>("bias", bias_shape);
+  }
+  testCase.AddOutput("y");
+
+  if (RunTest)
+    testCase.RunTest();
+  else
+    testCase.CreateModel(true);
+}
+
+TEST_F(ContribFunExpansionTest, FastGeluWithBias) {
+  // Test expand-and-run
+  CheckFastGelu<float>(true);
+  CheckFastGelu<BFloat16, false>(true);
+  CheckFastGelu<MLFloat16, false>(true);
+}
+
+TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
+  // Test expand-and-run
+  CheckFastGelu<float>(false);
+  CheckFastGelu<BFloat16, false>(false);
+  CheckFastGelu<MLFloat16, false>(false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
