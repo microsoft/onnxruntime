@@ -1016,6 +1016,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   set(HIP_CXX_FLAGS -fPIC)
+  list(APPEND HIP_CXX_FLAGS -std=c++14)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND HIP_CXX_FLAGS -g)
@@ -1030,7 +1031,8 @@ if (onnxruntime_USE_ROCM)
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
 
-  hip_add_library(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src} HIPCC_OPTIONS -std=c++14 NVCC_OPTIONS -std=c++14)
+  hip_add_library(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+
   target_link_libraries(onnxruntime_providers_rocm PRIVATE  ${ONNXRUNTIME_ROCM_LIBS})
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
