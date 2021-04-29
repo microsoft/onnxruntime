@@ -67,11 +67,11 @@ void CheckGelu() {
   testCase.AddInput<T>("x", shape);
   testCase.AddOutput("y");
 
+  // Only check expanded graph. Can't run it yet because no implementation of Erf is available yet.
   testCase.CreateModel(true);
 }
 
 TEST_F(ContribFunExpansionTest, Gelu) {
-  // Test expand-and-run
   CheckGelu<float>();
   CheckGelu<double>();
   CheckGelu<BFloat16>();
@@ -97,14 +97,12 @@ void CheckFastGelu(bool withBias = true) {
 }
 
 TEST_F(ContribFunExpansionTest, FastGeluWithBias) {
-  // Test expand-and-run
   CheckFastGelu<float>(true);
   CheckFastGelu<BFloat16, false>(true);
   CheckFastGelu<MLFloat16, false>(true);
 }
 
 TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
-  // Test expand-and-run
   CheckFastGelu<float>(false);
   CheckFastGelu<BFloat16, false>(false);
   CheckFastGelu<MLFloat16, false>(false);
