@@ -27,20 +27,24 @@ using namespace onnxruntime::common;
 *   2. Remove redundant casts
 *   3. Fuse sibling subgraphs with same cast operation
 * FloodFill:
-    Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast perations down the
+*   Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast perations down the
 *   graph. Using this strategy, for eatch pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
 *   float16 region up/down the graph using DFS/ReverseDFS and (TODO) identifies loss/gain by performing such expansion, considering 
 *   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (TODO).
 *   In addition to propagating cast operations up/down the graph, in this strategy, the above mentioned cast op reduction functions
 *   are also used.
+* InsertAndReduce exhaustively inserts cast operations before and after all the nodes with the allowed opcodes whereas FloodFill only 
+* propagates existing casts up or down the graph, inserting new casts as it expands the float16 regions.
 *********************************************************************************************************************************/
 namespace onnxruntime {
 // NodeArg to Select consumer node map.
 typedef std::unordered_map<NodeArg*, std::vector<Node*>> NodeArgToConsumerMap;
 
-// ConcatNames
-// Collects all the names from the pointers of the objects stores in the container class C
-// the class should have a member functions returning a string (or a ref).
+/* 
+* ConcatNames
+* Collects all the names from the pointers of the objects stores in the container class C
+* the class should have a member functions returning a string (or a ref).
+*/
 template <typename C, typename T = typename C::value_type>
 static std::string ConcatNames(
     C const& items, std::string (*f)(const T& n) = [](const T& n) { return n->Name(); }) {
@@ -54,11 +58,12 @@ static std::string ConcatNames(
 static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& p) {
   return p.first->Name() + " feeding " + ConcatNames(p.second) + "; ";
 };
-
-// The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that
-// the code is allowed to propage Cast operations across. The user may specify a custom list of optypes using level 0.
-// The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
-// list includes Level 1 list also.
+/*
+* The collection fp16_allow_ops, specifies for a given propagate_cast_ops level, a vector of node op_types that
+* the code is allowed to propage Cast operations across. The user may specify a custom list of optypes using level 0.
+* The opcodes are split into multiple levels. Cast propagation is done based on the level. Level 2 op code
+* list includes Level 1 list also.
+*/
 static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
     /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh"},
@@ -86,8 +91,10 @@ static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = 
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
 static std::unordered_set<std::string> converted_node_names;  // Names of the nodes converted to FP16
 
-// Check if the input is relevant to consider for cast propagation for the given node.
-// Return true if the opcode is not found in the opcode_to_input map.
+/*
+*  Check if the input is relevant to consider for cast propagation for the given node.
+*  Return true if the opcode is not found in the opcode_to_input map.
+*/
 static bool IsRelevantInput(const Node* node, const NodeArg* input) {
   if (opcode_to_input_map.find(node->OpType()) != opcode_to_input_map.end()) {
     const std::vector<int>& selected_inputs = opcode_to_input_map[node->OpType()];
@@ -97,8 +104,10 @@ static bool IsRelevantInput(const Node* node, const NodeArg* input) {
   return true;
 }
 
-// Check if the outnput is relevant to consider for cast propagation for the given node.
-// Return true if the opcode is not found in the opcode_to_output map.
+/*
+*  Check if the outnput is relevant to consider for cast propagation for the given node.
+*  Return true if the opcode is not found in the opcode_to_output map.
+*/
 static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   if (opcode_to_output_map.find(node->OpType()) != opcode_to_output_map.end()) {
     const std::vector<int>& selected_outputs = opcode_to_output_map[node->OpType()];
@@ -132,10 +141,29 @@ static bool IsType(const NodeArg& node_arg, TensorProto_DataType data_type) {
   return node_arg.TypeAsProto()->tensor_type().elem_type() == data_type;
 }
 
-// InsertCastNodes
-// Insert a new Cast node after each NodeArg in the require_cast map, feeding the nodes (consumer) in the vector mapped to
-// the NodeArg. The other consumers of the NodeArg will not be changed. The cast node is FLOAT16 if is_fp16 is True
-// and FLOAT otherwise. This funtion fixes the graph edges in addition to inserting the cast nodes.
+/* InsertCastNodes
+* Insert a new Cast node after each NodeArg in the require_cast map, feeding the nodes (consumer) in the vector mapped to
+* the NodeArg. The other consumers of the NodeArg will not be changed. The cast node is FLOAT16 if is_fp16 is True
+* and FLOAT otherwise. This function fixes the graph edges in addition to inserting the cast nodes.
+*
+* In the following example only the first two consumers, Opcode0 and Opcode1 get casted and the third consumer Opcode2 does not.
+* 
+*                Input0/NodeArg                                  Input/NodeArg
+*               ___ ____|________________                           |____________________
+*               |              |        |                           |                   |
+*               |              |        |                      _____V______             |
+*               |              |        |                      | CastFP16 |             |
+*               |              |   _____V_____                 |_or_FP32__|       ______V___
+*               |              |   | Opcode2 |                      |             | Opcode2|          
+*               |              |   |_________|               _______|___________  |________|
+*               |              |                             |                 |
+*               |              |                ---\    _____V______      _____V_____
+*               |              |                ---/    | Opcode0  |      | Opcode1 |
+*          _____V_____    _____V______                  |__________|      |_________|
+*          | Opcode0 |    | Opcode1  |                       |                 |
+*          |_________|    |__________|
+*               |              |
+*/
 static Status InsertCastNodes(Graph& graph,
                               const NodeArgToConsumerMap& require_cast,
                               bool is_fp16,
@@ -253,10 +281,25 @@ static Status InsertCastNodes(Graph& graph,
 *                              .                  ---\         _____V______
 *                              .                  ---/         | Opcode2  |
 *                         _____V______                         |__________|
-*                         |  Cast    |
-*                         |__________|
+*                         |  Cast    |                              |
+*                         |__________|                              V
 *                              |
 *                         _____V______
+*                         |  Opcode2 |
+*                         |__________|
+*                              |
+*                              V
+*
+*    OR
+*                         _____|______                         _____|_____
+*                         | Opcode1  |                         | Opcode1 |
+*                         |__________|                         |_________|
+*                              |                                    |
+*                         _____V______            ---\         _____V______
+*                         |  Cast    |            ---/         | Opcode 2 |  
+*                         |__________|                         |__________|
+*                              |                                    |
+*                         _____V______                              V
 *                         |  Opcode2 |
 *                         |__________|
 *                              |
@@ -370,9 +413,9 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         |__________|                         _____V______
 *                              |                               | Opcode2  |
 *                         _____V______                         |___________|
-*                         |  Opcode2 |
+*                         |  Opcode2 |                              |
 *                         |__________|
-
+*                              |
 */
 static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
                                   std::deque<NodeIndex>& removed_nodes,
@@ -459,13 +502,15 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
   return modified;
 }
 
-// SearchUpstream:
-// ReverseDFS, traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
-// inorder to move an FP16 Cast operation up the graph.
-// Visited float NodeArgs are either in require_cast or require_type_change so that the same
-// nodearg is traversed not more than once.
-// If the level is 2, the functions traverses up the graph identifying required FP32 casts even if
-// multiple consumers for the node outputs are found while level 0 or 1 quit traversing up.
+/*
+*  SearchUpstream:
+*  ReverseDFS, traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
+*  inorder to move an FP16 Cast operation up the graph.
+*  Visited float NodeArgs are either in require_cast or require_type_change so that the same
+*  nodearg is traversed not more than once.
+*  If the level is 2, the functions traverses up the graph identifying required FP32 casts even if
+*  multiple consumers for the node outputs are found while level 0 or 1 quit traversing up.
+*/
 static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
                            NodeArgToConsumerMap& require_cast,
                            NodeArgToConsumerMap& require_cast_fp32,
@@ -540,10 +585,12 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
   }
 }
 
-// SearchDownstream:
-// Recursively DFS traverse the graph downstream collecting all the NodeArgs that require a cast
-// inorder to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
-// be converted from float to float16 along the way.
+/*
+*  SearchDownstream:
+*  Recursively DFS traverse the graph downstream collecting all the NodeArgs that require a cast
+*  inorder to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
+*  be converted from float to float16 along the way.
+*/
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
                              NodeArgToConsumerMap& require_cast,
                              NodeArgToConsumerMap& require_cast_fp16,
@@ -620,15 +667,17 @@ static void ChangeTypeToFP16(Graph& graph, std::unordered_set<NodeArg*>& require
   }
 }
 
-// PropagateForwards
-// Propagate FP32 Cast operations forwards (downstream)
-// Using SearchDownStream search the graph for Cast FP16 safe/allowed operations to expand
-// the float16 computation region.
-// The required_cast vector is the collection of nodes that require float cast.
-// All nodeargs on a path down to any of the
-// frontier nodes require type change from FLOAT to FLOAT16.
-// require_type_change consists of such nodes.  All the frontier nodes require fp32 cast
-// The input node is expected to be non-nullptr
+/*
+* PropagateForwards
+* Propagate FP32 Cast operations forwards (downstream)
+* Using SearchDownStream search the graph for Cast FP16 safe/allowed operations to expand
+* the float16 computation region.
+* The required_cast vector is the collection of nodes that require float cast.
+* All nodeargs on a path down to any of the
+* frontier nodes require type change from FLOAT to FLOAT16.
+* require_type_change consists of such nodes.  All the frontier nodes require fp32 cast
+* The input node is expected to be non-nullptr
+*/
 static bool PropagateForwards(Graph& graph, Node* node,
                               std::deque<NodeIndex>& removed_nodes,
                               size_t level,
@@ -657,17 +706,18 @@ static bool PropagateForwards(Graph& graph, Node* node,
   }
   return modified;
 }
-
-// PropagateBackwards
-// Propagate FP16 Cast operations backwards (upstream)
-// Using SearchUpstream search the graph for Cast FP16 safe/allowed operations and expand
-// float16 computation regsion and
-// find the frontiers of the float16 computation region.
-// The required_cast or require_cast_fp32 vector is a collection of
-// FP16-cast-frontiers of the cast node. All node-args on the path from any of the
-// frontier nodes to the cast node require type change from  FLOAT to FLOAT16.
-// Each of the frontier nodes requires an fp16 cast or fp32 cast.
-// The input node is expected be non-nullptr.
+/*
+*  PropagateBackwards
+*  Propagate FP16 Cast operations backwards (upstream)
+*  Using SearchUpstream search the graph for Cast FP16 safe/allowed operations and expand
+*  float16 computation regsion and
+*  find the frontiers of the float16 computation region.
+*  The required_cast or require_cast_fp32 vector is a collection of
+*  FP16-cast-frontiers of the cast node. All node-args on the path from any of the
+*  frontier nodes to the cast node require type change from  FLOAT to FLOAT16.
+*  Each of the frontier nodes requires an fp16 cast or fp32 cast.
+*  The input node is expected be non-nullptr.
+*/
 static bool PropagateBackwards(Graph& graph, Node* node,
                                std::deque<NodeIndex>& removed_nodes,
                                size_t level,
@@ -1035,11 +1085,13 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
   }
   return modified;
 }
-// CreateCast
-// Create a cast node based on the node_arg for the given data tpye. If the node_arg is a graph output is_graph_outut is set.
-// If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
-// of the new cast node.
 
+/*
+*  CreateCast
+*  Create a cast node based on the node_arg for the given data tpye. If the node_arg is a graph output is_graph_outut is set.
+*  If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
+*  of the new cast node. This function is used by InsertFP16Cast or InsertFP32Casts.
+*/
 static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type, bool is_graph_output = false) {
   TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? TensorProto::FLOAT16 : TensorProto::FLOAT) : data_type);
@@ -1192,14 +1244,21 @@ static void InsertFP32Casts(Graph& graph, NodeArg* output_arg, const logging::Lo
   // Update the consumers of the original output_arg
   graph.UpdateConsumerNodes(output_arg->Name(), new_consumers);
 }
-
-// Expand FP16 compute regions on the graph by example float16 compute nodes,
-// propagating float32 Cast operation down the graph and propagating float16
-// Cast operations up the graph. The following functions are performed
-// 1. Fuse subgraphs
-// 2. Propagate fp32 casts forwards
-// 3. Propagate fp16 casts back
+/*
+*  Expand FP16 compute regions on the graph by example float16 compute nodes,
+*  propagating float32 Cast operation down the graph and propagating float16
+*  Cast operations up the graph. The following functions are performed
+*  1. Fuse subgraphs
+*  2. Propagate fp32 casts forwards
+*  3. Propagate fp16 casts back
+*  4. Insert casts before and after allowed operations (InsertAndReduce strategy)
+*  5. Remove back to back casts
+*  6. Remove redundant casts
+*  7. Move FP32 casts from inputs to outputs
+*  8. Move FP16 casts from outputs to inputs
+*/
 Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  bool local_modified = false;
   // First apply the transformation to the subgraphs.
   {
     GraphViewer graph_viewer(graph);
@@ -1223,12 +1282,14 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
           for (NodeArg* input_arg : node.MutableInputDefs()) {
             if (IsRelevantInput(&node, input_arg) && IsType(*input_arg, TensorProto::FLOAT)) {
               InsertFP16Cast(graph, input_arg, node_ptr, logger);
+              local_modified = true;
             }
           }
           // Convert all output args to FP16 and insert FP32 cast for all consumers
           for (NodeArg* output_arg : node.MutableOutputDefs()) {
             if (IsRelevantOutput(&node, output_arg) && IsType(*output_arg, TensorProto::FLOAT)) {
               InsertFP32Casts(graph, output_arg, logger);
+              local_modified = true;
             }
           }
         }
@@ -1237,7 +1298,6 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   }
   std::unordered_set<std::string> removed_node_names;
   int pass = 0;
-  bool local_modified = strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce;
   do {
     LOGS(logger, VERBOSE) << "Propagate Cast Operations Pass " << pass << ":";
     std::deque<NodeIndex> removed_nodes;
