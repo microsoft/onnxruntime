@@ -249,7 +249,7 @@ TEST(QDQTransformerTests, Mul) {
   test_case({1, 22, 11, 13, 15});
 }
 
-TEST(QDQTransformerTests, MatMul) {
+TEST(QDQTransformerTests, QLinearMatMul) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
@@ -344,6 +344,49 @@ TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
     };
 
     TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({12, 37}, {37, 12});
+  test_case({23, 13, 13}, {13, 13});
+  test_case({22, 11, 13, 15}, {15, 13});
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloat) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<uint8_t>(input1_shape,
+                                                    std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* input2_arg = builder.MakeInput<uint8_t>(input2_shape,
+                                                    std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output_1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input1_arg, .0035f, 135, dq_output_1);
+
+      auto* dq_output_2 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input2_arg, .0035f, 135, dq_output_2);
+
+      builder.AddNode("MatMul", {dq_output_1, dq_output_2}, {output_arg});
+    };
+
+    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case,
+                      check_matmul_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
   };
 
   // Test the basic case of a single 1D/2D/3D convolution.
