@@ -156,19 +156,35 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests'
   - script: |
-     npm pack
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    condition: and(succeeded(), eq('$(BuildConfig)', 'Release'))
-    displayName: 'Generate NPM package'
+      npm pack
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'Generate NPM package (onnxruntime-common)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
   - script: |
-      copy $(Build.SourcesDirectory)\js\web\onnxruntime-web-*.tgz $(Build.ArtifactStagingDirectory)
-    displayName: 'Create Artifacts'
-  - task: PublishPipelineArtifact@0
-    condition: and(succeeded(), eq('$(BuildConfig)', 'Release'))
-    displayName: 'Publish Pipeline Artifact'
+      npm pack
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Generate NPM package (onnxruntime-web)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: CopyFiles@2
     inputs:
-      artifactName: 'onnxruntime-web'
+      sourceFolder: $(Build.SourcesDirectory)\js\common
+      contents: onnxruntime-common-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-common)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)\js\web
+      contents: onnxruntime-web-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-web)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: 'NPM_packages'
       targetPath: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'Publish Pipeline Artifact'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
