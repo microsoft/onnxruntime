@@ -45,8 +45,8 @@ class BertOnnxModelTF(BertOnnxModel):
         if mask_nodes is not None:
             return mask_nodes
 
-        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'],
-                                            [1, 0, 1, 0, 1, 0])
+        mask_nodes = self.match_parent_path(add_or_sub_before_softmax,
+                                            ['Mul', 'Sub', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'], [1, 0, 1, 0, 1, 0])
         return mask_nodes
 
     def fuse_mask(self):
@@ -480,7 +480,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_k, matmul_q, matmul_v,
                                                                              add_k, add_q, add_v, self.num_heads,
                                                                              self.hidden_size, parent.output[0],
-                                                                             qkv_nodes[2].output[0]) 
+                                                                             qkv_nodes[2].output[0])
                 if attention_node is None:
                     continue
 
@@ -511,7 +511,6 @@ class BertOnnxModelTF(BertOnnxModel):
                     self.add_initializer(tensor)
                     parent.input[1] = parent.name + "_modified"
 
-               
                 self.add_node(attention_node)
                 attention_count += 1
 
@@ -532,8 +531,6 @@ class BertOnnxModelTF(BertOnnxModel):
         self.remove_identity()
         self.process_embedding()
         self.skip_reshape()
-        self.clean_graph()
-        self.prune_graph()
 
     def skip_reshape(self):
         count = 0
@@ -561,5 +558,5 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        # Temporary work around for the following comment as it will cause topological issues for a bert model
-        # self.prune_graph()
+        # TODO: the following might cause topological issues when graph has nodes like Loop etc.
+        self.prune_graph()
