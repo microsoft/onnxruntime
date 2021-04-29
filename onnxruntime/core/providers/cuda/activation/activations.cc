@@ -6,17 +6,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T)  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
-      x,                                                              \
-      kOnnxDomain,                                                    \
-      startver,                                                       \
-      endver,                                                         \
-      T,                                                              \
-      kCudaExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .MayInplace(0, 0),                                          \
+#define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
+      x,                                                             \
+      kOnnxDomain,                                                   \
+      startver,                                                      \
+      endver,                                                        \
+      T,                                                             \
+      kCudaExecutionProvider,                                        \
+      KernelDefBuilder()                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())     \
+          .MayInplace(0, 0),                                         \
       x<T>);
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \

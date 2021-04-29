@@ -849,7 +849,7 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
 
 @pytest.mark.parametrize("device", ['cuda'])
 def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
-    N, D_in, H, D_out = 32, 784, 500, 10
+    N, D_in, H, D_out = 1, 10, 10, 10
     pt_model = NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)

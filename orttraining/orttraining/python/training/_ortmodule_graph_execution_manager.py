@@ -121,7 +121,7 @@ class GraphExecutionManager(ABC):
         self._module_output_schema = None
 
         # Log level
-        self._loglevel = _logger.LogLevel.WARNING
+        self._loglevel = _logger.LogLevel.INFO
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
