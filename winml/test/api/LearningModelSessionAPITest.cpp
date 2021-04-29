@@ -1019,7 +1019,7 @@ static void SetIntraOpThreadSpinning() {
     LearningModelSession sessionSpinDisabled = nullptr;
     WINML_EXPECT_NO_THROW(sessionSpinDisabled = LearningModelSession(learningModel, device, spinDisabled));
     auto nativeSessionSpinDisabled = sessionSpinDisabled.as<ILearningModelSessionNative>();
-    boolean allowSpinning;
+    boolean allowSpinning = true;
     nativeSessionSpinDisabled->GetIntraOpThreadSpinning(&allowSpinning);
     WINML_EXPECT_FALSE(allowSpinning);
 
@@ -1047,6 +1047,7 @@ static void SetIntraOpThreadSpinning() {
     LearningModelSession sessionSpinDefault = nullptr;
     WINML_EXPECT_NO_THROW(sessionSpinDefault = LearningModelSession(learningModel, device, spinDefault));
     auto nativeSessionSpinDefault = sessionSpinDefault.as<ILearningModelSessionNative>();
+    allowSpinning = false;
     nativeSessionSpinDefault->GetIntraOpThreadSpinning(&allowSpinning);
     WINML_EXPECT_TRUE(allowSpinning);
  }
