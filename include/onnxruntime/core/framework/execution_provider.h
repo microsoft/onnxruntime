@@ -20,6 +20,8 @@ struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 }  // namespace onnxruntime
+#else
+#include <memory>
 #endif
 
 #include "core/framework/provider_options.h"
