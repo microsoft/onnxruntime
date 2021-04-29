@@ -1207,7 +1207,8 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_SSE41>(
 
             __m128i Bytes = _mm_loadl_epi64((const __m128i*)&a[0]);
 
-            ReductionVector = _mm_add_epi16(ReductionVector, _mm_unpacklo_epi8(Bytes, ZeroVector));
+            __m128i Words = _mm_unpacklo_epi8(Bytes, ZeroVector);
+            ReductionVector = _mm_add_epi32(ReductionVector, _mm_madd_epi16(Words, OnesWordBroadcast));
 
             _mm_storel_epi64((__m128i*)&D[0], Bytes);
 
@@ -1229,14 +1230,14 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_SSE41>(
             __m128i Bytes = _mm_loadl_epi64((__m128i*)&D[0]);
             D += (k + 3) & ~3;
 
-            ReductionVector = _mm_add_epi16(ReductionVector, _mm_unpacklo_epi8(Bytes, ZeroVector));
+            __m128i Words = _mm_unpacklo_epi8(Bytes, ZeroVector);
+            ReductionVector = _mm_add_epi32(ReductionVector, _mm_madd_epi16(Words, OnesWordBroadcast));
         }
 
         //
         // Reduce the partial accumulators.
         //
 
-        ReductionVector = _mm_madd_epi16(ReductionVector, OnesWordBroadcast);
         ReductionVector = _mm_hadd_epi32(ReductionVector, ReductionVector);
         ReductionVector = _mm_hadd_epi32(ReductionVector, ReductionVector);
 
