@@ -34,9 +34,3 @@ The build will generate two apks which is required to run the test application i
 * `debug/app-debug.apk`
 
 After running the build script, the two apks will be installed on `ort_android` emulator and it will automatically run the test application in an adb shell.
-
-
-
-
-
-
