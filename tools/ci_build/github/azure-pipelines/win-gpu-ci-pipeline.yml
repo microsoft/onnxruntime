@@ -17,7 +17,8 @@ jobs:
   steps:    
   - task: UsePythonVersion@0
     inputs: 
-      versionSpec: '3.7' 
+      versionSpec: '3.9.1' 
+#      versionSpec: '3.7' 
       addToPath: true 
       architecture: $(buildArch)
 
@@ -47,7 +48,8 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --build_shared_lib --build_java --enable_onnx_tests --use_dml --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --build_shared_lib --build_java --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
+#      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --build_shared_lib --build_java --enable_onnx_tests --use_dml --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
