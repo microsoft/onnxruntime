@@ -1276,6 +1276,8 @@ struct OrtApi {
      */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out, _Inout_ size_t* size);
+  
+  ORT_API2_STATUS(SetSessionOnnxOpsetVersion, _Inout_ OrtSessionOptions* options, int session_onnx_opset_version);
 };
 
 /*

@@ -87,6 +87,10 @@ struct SessionOptions {
 
   unsigned max_num_graph_transformation_steps = 10;  // TODO choose a good default here?
 
+  // Specifiy onnx_opset_version to only load the latest ones for each opset before specified onnx_opset_version
+  // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
+  int session_onnx_opset_version = 0;
+
   // set graph optimization level
   TransformerLevel graph_optimization_level = TransformerLevel::Level3;
 

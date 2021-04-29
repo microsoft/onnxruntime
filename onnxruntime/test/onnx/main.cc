@@ -20,7 +20,10 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/schema.h"
 
+using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 
 namespace {
@@ -113,6 +116,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool verbose_logging_required = false;
 
   bool pause = false;
+  if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+    RegisterOnnxOperatorSetSchema();
+  }
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {

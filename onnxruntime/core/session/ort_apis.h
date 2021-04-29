@@ -263,4 +263,5 @@ ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
 ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(SetSessionOnnxOpsetVersion, _In_ OrtSessionOptions* options, int session_onnx_opset_version);
 }  // namespace OrtApis

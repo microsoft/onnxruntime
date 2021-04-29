@@ -10,6 +10,8 @@
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
 #include "core/graph/function_impl.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/schema.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -157,6 +159,9 @@ class GraphTest : public ::testing::Test {
   GraphTest() {
     std::call_once(once, RegisterCustomSchemas);
     logger_ = DefaultLoggingManager().CreateLogger("GraphTest");
+    if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+      RegisterOnnxOperatorSetSchema();
+    }
   }
 
   std::unique_ptr<logging::Logger> logger_;
