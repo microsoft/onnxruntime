@@ -1012,7 +1012,7 @@ static void SetIntraOpThreadSpinning() {
     auto tensor_input = TensorFloat::CreateFromArray(shape, input);
 
     auto spinDisabled = LearningModelSessionOptions();
-    auto spinDisabledNative = spinDisabled.as<ILearningModelSessionOptionsNative>();
+    auto spinDisabledNative = spinDisabled.as<ILearningModelSessionOptionsNative1>();
     spinDisabledNative->SetIntraOpThreadSpinning(false);
 
     // ensure disabled thread spin is internally disabled and can evaluate without error
@@ -1029,7 +1029,7 @@ static void SetIntraOpThreadSpinning() {
 
     // ensure enabled thread spin is internally enabled and can evaluate without error
     auto spinEnabled = LearningModelSessionOptions();
-    auto spinEnabledNative = spinEnabled.as<ILearningModelSessionOptionsNative>();
+    auto spinEnabledNative = spinEnabled.as<ILearningModelSessionOptionsNative1>();
     spinEnabledNative->SetIntraOpThreadSpinning(false);
 
     LearningModelSession sessionSpinEnabled = nullptr;
