@@ -23,7 +23,8 @@ jobs:
           --build_wheel \
           " \
         -m \
-        -u
+        -u \
+        -e
       DisplayName: 'Build'
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
