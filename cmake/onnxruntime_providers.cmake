@@ -1031,7 +1031,8 @@ if (onnxruntime_USE_ROCM)
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
 
   hip_add_library(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
-
+  set_target_properties(onnxruntime_providers_rocm PROPERTIES CXX_STANDARD 14)
+  set_target_properties(onnxruntime_providers_rocm PROPERTIES CXX_STANDARD_REQUIRED ON)
   target_link_libraries(onnxruntime_providers_rocm PRIVATE  ${ONNXRUNTIME_ROCM_LIBS})
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
