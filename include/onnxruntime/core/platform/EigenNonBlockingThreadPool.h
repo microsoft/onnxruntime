@@ -852,10 +852,17 @@ void EndParallelSectionInternal(PerThread &pt,
     Queue& q = worker_data_[ps.dispatch_q_idx].queue;
     if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
       if (!ps.dispatch_started.load(std::memory_order_acquire)) {
-        // We revoked the dispatch task
+        // We successfully revoked a task, and saw the dispatch task
+        // not started.  Hence we know we revoked the dispatch task.
+        // This should be the common case.
         ps.dispatch_q_idx = -1;
       } else {
-        // We revoked a non-dispatch task
+        // We successfully revoked a task, but saw the dispatch task
+        // had started.  Hence we know we revoked one of the _new_
+        // tasks created by the dispatcher (not the dispatcher
+        // itself).  This should be the rare case, but can occur if
+        // one of the tasks created by the dispatcher occupies the
+        // exact same slot in a work queue that the dispatcher used.
         ps.tasks_revoked ++;
       }
     }
@@ -935,7 +942,6 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 // change over time.  Hence we allow the hints vector to grow over
 // time.
 //
-//
 // A note on terminology used in the variable names here:
 //
 // dop - degree of parallelism, as seen by the user.  For instance
@@ -950,6 +956,66 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 //       (given that the main thread will also participate).
 //
 // q_idx - a worker queue index, in the range [0,num_threads_).
+//
+// preferred_workers - this maps from par_idx values to q_idx.  Hence,
+//        with dop=4 the vector will have length 4, and will identify
+//        which of the workers (0,1,2) should run tasks for the loop.
+//        Note that mapping from par_idx values means that only slots
+//        [1,dop) are actually used in preferred_workers.
+//
+// Here are three examples, all assuming a machine with 4 h/w threads,
+// and ORT configured to use dop=4.
+//
+// * First, suppose that a single job is running a series of loops.
+//   Its main thread enters a parallel loop.  Initially, let's assume
+//   its preferred worker array is [_,0,1,2], writing "_" for the
+//   unusued element for the par_idx=0 work that the main thread will
+//   run.
+//
+//   The main thread schedules the dispatcher task onto worker 0.
+//
+//   The dispatcher task schedules worker tasks onto workers 1 and 2.
+//
+//   The tasks all execute, without any work stealing, on the threads
+//   they were scheduled on.  The preferred worker array remains
+//   [_,0,1,2].
+//
+// * Next, assume we have the same job, and for whatever reason the
+//   preferred workers were initially [_,0,0,0].
+//
+//   The main thread schedules the dispatcher onto worker 0.
+//
+//   This dispatcher task runs on worker 0, and pushes the worker
+//   tasks back onto worker 0's queue.
+//
+//   Workers 1 and 2 are idle, and steal tasks from worker 0.  As the
+//   tasks run, they update the preferred_workers array to record the
+//   workers that execute them.
+//
+//   After the loop, the preferred worker array may now be [_,0,2,1]
+//   or [_,0,1,2], reflecting the fact that the work has got
+//   re-distributed.  The next loop will start out by distributing the
+//   work to those same workers.
+//
+// * Finally, let's assume we have two jobs running on two main
+//   threads, and we are now using DoP=2 in the loops, and have 2
+//   workers in the thread pool (so the machine is not
+//   over-subscribed).
+//
+//   Each main thread has its own preferred_workers, and
+//   let's say initially these are both [_,0].
+//
+//   Here, with DoP=2, each main thread will just dispatch a single
+//   task immediately (there is no need for asynchrony with only one
+//   task to generate).
+//
+//   Initially both main threads will submit these tasks to worker 0.
+//
+//   Once worker 1 steals one of these tasks, the task will update its
+//   preferred worker to be 1.
+//
+//   From that point onwards, the two main threads will dispatch tasks
+//   to separate workers, avoiding the need for further work stealing.
  
 void InitializePreferredWorkers(std::vector<int> &preferred_workers) {
   static std::atomic<unsigned> next_worker;
@@ -990,7 +1056,9 @@ void ScheduleOnPreferredWorkers(PerThread& pt,
     unsigned w_idx;
 
     // Attempt to enqueue the task
-    auto pr = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+    auto push_status = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+        // Record the worker thread that actually runs this task.
+        // This will form the preferred worker for the next loop.
         UpdatePreferredWorker(preferred_workers, par_idx);
         worker_fn(par_idx);
         ps.tasks_finished++;
@@ -1001,10 +1069,10 @@ void ScheduleOnPreferredWorkers(PerThread& pt,
     // Queue accepted the task; wake the thread that owns the queue.
     // In addition, if the queue was non-empty, attempt to wake
     // another thread (which may then steal the task).
-    if (pr == PushResult::ACCEPTED_IDLE || pr == PushResult::ACCEPTED_BUSY) {
+    if (push_status == PushResult::ACCEPTED_IDLE || push_status == PushResult::ACCEPTED_BUSY) {
       ps.tasks.push_back({q_idx, w_idx});
       td.EnsureAwake();
-      if (pr == PushResult::ACCEPTED_BUSY) {
+      if (push_status == PushResult::ACCEPTED_BUSY) {
         worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
       }
     }
@@ -1037,12 +1105,21 @@ void ScheduleOnPreferredWorkers(PerThread& pt,
 // be selected as the dispatcher that distributes tasks.  This removes
 // the O(n) work off the critical path of starting the first loop
 // iteration, helping maintain good performance on very short loops.
+//
+// See the note on terminology above for the use of variable names
+// here.
 
 void RunInParallelInternal(PerThread& pt,
                            ThreadPoolParallelSection& ps,
                            unsigned new_dop,
                            bool dispatch_async,
                            std::function<void(unsigned)> worker_fn) {
+
+  // Ensure that the vector of preferred workers is sufficient for the
+  // size of the loop we are entering.  We do this before dispatching
+  // tasks for the loop in order to avoid any races between changes to
+  // the size of the vector and recording the locations that tasks run
+  // in as they complete.
   assert(new_dop <= (unsigned)(num_threads_+1));
   std::vector<int> &preferred_workers = pt.preferred_workers;
   InitializePreferredWorkers(preferred_workers);
@@ -1063,13 +1140,24 @@ void RunInParallelInternal(PerThread& pt,
       
       // Task for dispatching work asynchronously.
       Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
-        // Schedule tasks par_idx=[current_dop+1,new_dop)
+        // Record that dispatch work has started.  This must occur
+        // prior to scheduling tasks, in order to synchronize with
+        // EndParallelSectionInternal.  [ If EndParallelSection
+        // revoked a task, and then sees distpatch_started=false, then
+        // it knows that it revoked the dispatcher.  Conversely, if it
+        // revokes a task, and then sees dispatch_started=true, then
+        // it knows it revoked a worker task. ]
         ps.dispatch_started.store(true, std::memory_order_seq_cst);
+
+        // Schedule tasks par_idx=[current_dop+1,new_dop)
         ScheduleOnPreferredWorkers(pt, ps, preferred_workers, current_dop+1, new_dop, worker_fn);
         ps.dispatch_done.store(true, std::memory_order_release);
 
-        // Run dispatcher task's own work, par_idx=current_dop
+        // Record the worker thread that actually runs this task.
+        // This will form the preferred worker for the next loop.
         UpdatePreferredWorker(preferred_workers, current_dop);
+
+        // Run dispatcher task's own work, par_idx=current_dop
         worker_fn(current_dop);
 
         // Dispatcher's work complete
@@ -1082,13 +1170,13 @@ void RunInParallelInternal(PerThread& pt,
       Queue& dispatch_que = dispatch_td.queue;
 
       // assign dispatch task to selected dispatcher
-      auto pr = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+      auto push_status = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
       // another thread (which may then steal the task).
-      if (pr == PushResult::ACCEPTED_IDLE || pr == PushResult::ACCEPTED_BUSY) {
+      if (push_status == PushResult::ACCEPTED_IDLE || push_status == PushResult::ACCEPTED_BUSY) {
         dispatch_td.EnsureAwake();
-        if (pr == PushResult::ACCEPTED_BUSY) {
+        if (push_status == PushResult::ACCEPTED_BUSY) {
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
       } else {
