@@ -25,6 +25,12 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   readonly inputNames: string[];
   readonly outputNames: string[];
 
+  startProfiling(): void {
+    // TODO: implement profiling
+  }
+  endProfiling(): void {
+    // TODO: implement profiling
+  }
 
   async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
       Promise<SessionHandler.ReturnType> {
