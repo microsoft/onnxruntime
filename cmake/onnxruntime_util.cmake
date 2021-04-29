@@ -15,6 +15,11 @@ target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC $
 if (onnxruntime_USE_CUDA)
  target_include_directories(onnxruntime_util PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
+if (onnxruntime_ENABLE_TRAINING)
+  # DLPack is a header-only dependency
+  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_util PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
+endif()
 onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 if(UNIX)
     target_compile_options(onnxruntime_util PUBLIC "-Wno-error=comment")

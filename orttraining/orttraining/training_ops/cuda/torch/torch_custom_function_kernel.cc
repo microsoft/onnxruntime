@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "torch_custom_function_kernel.h"
-#include "core/language_interop_ops/pyop/pyop_lib_proxy.h"
-#include "core/torch_custom_function/torch_custom_function_register.h"
+#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
 #include <thread>
 
 namespace onnxruntime {
@@ -120,11 +120,11 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   }
 
   std::string err;
-  auto state = PyOpLibProxy::GetInstance().GetGil();
+  auto state = TorchProxy::GetInstance().GetGil();
 
   void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  PyOpLibProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
-  PyOpLibProxy::GetInstance().PutGil(state);
+  TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  TorchProxy::GetInstance().PutGil(state);
 
   std::cout << "InvokePythonAutoGradFunc complete, waiting for complete" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -212,12 +212,12 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::cout << std::this_thread::get_id() << " (ctx_ptr == Py_None) is: " << (ctx_ptr == Py_None) << std::endl;
 
   std::string err;
-  auto state = PyOpLibProxy::GetInstance().GetGil();
+  auto state = TorchProxy::GetInstance().GetGil();
 
   void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
-  PyOpLibProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  TorchProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
 
-  PyOpLibProxy::GetInstance().PutGil(state);
+  TorchProxy::GetInstance().PutGil(state);
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
   outputs_count = outputs_count > outputs.size() ? outputs.size() : outputs_count;

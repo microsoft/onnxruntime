@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "torch_custom_function_register.h"
+#include "custom_function_register.h"
 #include <Python.h>
 #include <sstream>
 #include <mutex>

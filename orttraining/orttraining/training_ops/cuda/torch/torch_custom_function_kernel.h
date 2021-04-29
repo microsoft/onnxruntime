@@ -5,8 +5,8 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/language_interop_ops/pyop/pyop_lib_proxy.h"
-#include "core/torch_custom_function/torch_custom_function_register.h"
+#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
 
 namespace onnxruntime {
 namespace cuda {

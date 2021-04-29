@@ -39,7 +39,7 @@
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
-#include "core/torch_custom_function/torch_custom_function_register.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
