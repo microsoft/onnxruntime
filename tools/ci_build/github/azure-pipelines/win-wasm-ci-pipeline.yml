@@ -158,12 +158,20 @@ jobs:
   - script: |
      npm pack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    condition: and(succeeded(), eq('$(BuildConfig)', 'Release'))
     displayName: 'Generate NPM package'
   - script: |
       copy $(Build.SourcesDirectory)\js\web\onnxruntime-web-*.tgz $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts'
   - task: PublishPipelineArtifact@0
+    condition: and(succeeded(), eq('$(BuildConfig)', 'Release'))
     displayName: 'Publish Pipeline Artifact'
     inputs:
       artifactName: 'onnxruntime-web'
       targetPath: '$(Build.ArtifactStagingDirectory)'
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
