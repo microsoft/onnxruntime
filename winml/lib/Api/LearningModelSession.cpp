@@ -446,16 +446,10 @@ STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
   return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
 
-STDMETHODIMP LearningModelSession::GetIntraOpThreadSpinning(boolean *allowSpinning)
-{
-  const char* spinValue;
-  RETURN_IF_FAILED(engine_->GetIntraOpThreadSpinningConfigEntry(&spinValue));
-  std::string spinStr(spinValue);
-  if (spinStr == "0") {
-    *allowSpinning = false;
-  } else {
-    *allowSpinning = true;
-  }
+STDMETHODIMP LearningModelSession::GetIntraOpThreadSpinning(boolean* allowSpinning) {
+  bool allowSpinningBool;
+  RETURN_IF_FAILED(engine_->GetIntraOpThreadSpinning(&allowSpinningBool));
+  *allowSpinning = static_cast<boolean>(allowSpinningBool);
   return S_OK;
 }
 

@@ -304,11 +304,11 @@ struct WinmlAdapterApi {
 
     /**
     * SessionGetIntrapOpThreadSpinning
-     * This api returns the value of "session.intra_op.allow_spinning"
+     * This api returns false if the ort session options config entry "session.intra_op.allow_spinning" is set to "0", and true otherwise
     * 
     * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
     */
-  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinningConfigEntry)(_In_ OrtSession* session, _Out_ const char** allow_spinning)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(_In_ OrtSession* session, _Out_ bool* allow_spinning)NO_EXCEPTION;
 
       /**
     * SessionGetNamedDimensionsOverrides

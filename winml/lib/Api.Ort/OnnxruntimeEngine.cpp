@@ -1121,10 +1121,10 @@ HRESULT OnnxruntimeEngine::GetNumberOfIntraOpThreads(uint32_t* num_threads)
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngine::GetIntraOpThreadSpinningConfigEntry(const char** allow_spinning) {
+HRESULT OnnxruntimeEngine::GetIntraOpThreadSpinning(bool* allow_spinning) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetIntraOpThreadSpinningConfigEntry(session_.get(), allow_spinning), ort_api);
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetIntraOpThreadSpinning(session_.get(), allow_spinning), ort_api);
   return S_OK;
 }
 

@@ -46,7 +46,4 @@ interface ILearningModelSessionOptionsNative1 : IUnknown
 {
     HRESULT SetIntraOpThreadSpinning(boolean allowSpinning);
 };
-
-
-
 cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")
