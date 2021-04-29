@@ -25,6 +25,7 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                               std::vector<int64_t> B_dims,
                               const std::string& reference_model,
                               bool is_matrix_b_constant,
+                              bool per_column = false,
                               bool has_zp = true,
                               bool has_bias = false) {
   // create rand inputs
@@ -43,10 +44,17 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   });
 
   std::vector<float> A_scale = random.Uniform<float>({1}, -0.1f, 0.1f);
-  std::vector<float> B_scale = random.Uniform<float>({1}, -0.1f, 0.1f);
-
   std::vector<uint8_t> A_zero_point{127};
-  std::vector<T> B_zero_point = {static_cast<T>(random.Uniform<int32_t>({1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0])};
+
+  int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
+  std::vector<float> B_scale = random.Uniform<float>({b_scale_zp_size}, -0.1f, 0.1f);
+
+  std::vector<T> B_zero_point(b_scale_zp_size);
+  std::for_each(B_zero_point.begin(),
+                B_zero_point.end(),
+                [&random](T& zp) {
+                  zp = static_cast<T>(random.Uniform<int32_t>({1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0]);
+                });
 
   std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
 
@@ -54,11 +62,11 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   test.AddInput<uint8_t>("A", A_dims, A_data);
   test.AddInput<T>("B", B_dims, B_data, is_matrix_b_constant);
   test.AddInput<float>("a_scale", {1}, A_scale);
-  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale);
 
   if (has_zp) {
     test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
-    test.AddInput<T>("b_zero_point", {1}, B_zero_point);
+    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point);
   } else {
     test.AddMissingOptionalInput<T>();
     test.AddMissingOptionalInput<T>();
@@ -75,76 +83,57 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   test.Run();
 }
 
-TEST(MatMulIntegerToFloat, Int8_test) {
+template <typename Scalar, bool HasZeroPoint, bool HasBias>
+void RunMatMulIntegerToFloatTest(const string& model_path) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerToFloat<int8_t>(A_dims,
+  TestMatMulIntegerToFloat<Scalar>(A_dims,
                                    B_dims,
-                                   "testdata/matmul_integer_to_float_int8.onnx",
-                                   false /*is_matrix_b_constant*/);
+                                   model_path,
+                                   false,        /*is_matrix_b_constant*/
+                                   false,        /*per_column*/
+                                   HasZeroPoint, /*has_zp*/
+                                   HasBias       /*has_bias*/
+  );
 
-  TestMatMulIntegerToFloat<int8_t>(A_dims,
+  TestMatMulIntegerToFloat<Scalar>(A_dims,
                                    B_dims,
-                                   "testdata/matmul_integer_to_float_int8.onnx",
-                                   true /*is_matrix_b_constant*/);
+                                   model_path,
+                                   true,         /*is_matrix_b_constant*/
+                                   false,        /*per_column*/
+                                   HasZeroPoint, /*has_zp*/
+                                   HasBias       /*has_bias*/
+  );
+
+  TestMatMulIntegerToFloat<Scalar>(A_dims,
+                                   B_dims,
+                                   model_path,
+                                   false,        /*is_matrix_b_constant*/
+                                   true,         /*per_column*/
+                                   HasZeroPoint, /*has_zp*/
+                                   HasBias       /*has_bias*/
+  );
+
+  TestMatMulIntegerToFloat<Scalar>(A_dims,
+                                   B_dims,
+                                   model_path,
+                                   true,         /*is_matrix_b_constant*/
+                                   true,         /*per_column*/
+                                   HasZeroPoint, /*has_zp*/
+                                   HasBias       /*has_bias*/
+  );
 }
 
-TEST(MatMulIntegerToFloat, Int8_bias_test) {
-  std::vector<int64_t> A_dims{4, 128};
-  std::vector<int64_t> B_dims{128, 128};
-  std::vector<int64_t> Y_dims{4, 128};
-
-  TestMatMulIntegerToFloat<int8_t>(A_dims,
-                                   B_dims,
-                                   "testdata/matmul_integer_to_float_int8_bias.onnx",
-                                   false /*is_matrix_b_constant*/,
-                                   false, /*has_zp*/
-                                   true /*has_bias*/);
-
-  TestMatMulIntegerToFloat<int8_t>(A_dims,
-                                   B_dims,
-                                   "testdata/matmul_integer_to_float_int8_bias.onnx",
-                                   true /*is_matrix_b_constant*/,
-                                   false, /*has_zp*/
-                                   true /*has_bias*/);
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test) {
+  RunMatMulIntegerToFloatTest<int8_t, true, false>("testdata/matmul_integer_to_float_int8.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, true, false>("testdata/matmul_integer_to_float_uint8.onnx");
 }
 
-TEST(MatMulIntegerToFloat, UInt8_test) {
-  std::vector<int64_t> A_dims{4, 128};
-  std::vector<int64_t> B_dims{128, 128};
-  std::vector<int64_t> Y_dims{4, 128};
-
-  TestMatMulIntegerToFloat<uint8_t>(A_dims,
-                                    B_dims,
-                                    "testdata/matmul_integer_to_float_uint8.onnx",
-                                    false /*is_matrix_b_constant*/);
-
-  TestMatMulIntegerToFloat<uint8_t>(A_dims,
-                                    B_dims,
-                                    "testdata/matmul_integer_to_float_uint8.onnx",
-                                    true /*is_matrix_b_constant*/);
-}
-
-TEST(MatMulIntegerToFloat, UInt8_bias_test) {
-  std::vector<int64_t> A_dims{4, 128};
-  std::vector<int64_t> B_dims{128, 128};
-  std::vector<int64_t> Y_dims{4, 128};
-
-  TestMatMulIntegerToFloat<uint8_t>(A_dims,
-                                    B_dims,
-                                    "testdata/matmul_integer_to_float_uint8_bias.onnx",
-                                    false /*is_matrix_b_constant*/,
-                                    false, /*has_zp*/
-                                    true /*has_bias*/);
-
-  TestMatMulIntegerToFloat<uint8_t>(A_dims,
-                                    B_dims,
-                                    "testdata/matmul_integer_to_float_uint8_bias.onnx",
-                                    true /*is_matrix_b_constant*/,
-                                    false, /*has_zp*/
-                                    true /*has_bias*/);
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test) {
+  RunMatMulIntegerToFloatTest<int8_t, false, true>("testdata/matmul_integer_to_float_int8_bias.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, false, true>("testdata/matmul_integer_to_float_uint8_bias.onnx");
 }
 
 }  // namespace test

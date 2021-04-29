@@ -19,27 +19,29 @@ class MatMulIntegerToFloatBase : public MatMulIntegerBase {
 
   enum OutputTensors : int { OUT_Y = 0 };
 
-protected:
+ protected:
   Status ComputeCommon(OpKernelContext* ctx,
                        const uint8_t* a_data,
                        const TensorShape& a_shape,
-                       uint8_t a_zero_point,
-                       const Tensor* b,
-                       uint8_t b_zero_point,
-                       float multiplier,
+                       float a_scale,
+                       uint8_t a_zp,
+                       const Tensor* b_tensor,
+                       const Tensor* b_scale,
+                       const Tensor* b_zp,
                        const Tensor* bias_tensor) const;
 };
 
 Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                const uint8_t* a_data,
                                                const TensorShape& a_shape,
-                                               uint8_t a_zero_point,
-                                               const Tensor* b,
-                                               uint8_t b_zero_point,
-                                               float multiplier,
+                                               float a_scale,
+                                               uint8_t a_zp,
+                                               const Tensor* b_tensor,
+                                               const Tensor* b_scale_tensor,
+                                               const Tensor* b_zp_tensor,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, packed_b_ ? b_shape_ : b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, packed_b_ ? b_shape_ : b_tensor->Shape()));
   Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -49,12 +51,31 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   auto* y_data = y->template MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
+  // process zero point of B
+  bool is_b_zp_per_column = false;
+  uint8_t b_zp_default = 0;
+  const uint8_t* b_zp_ptr = nullptr;
+  if (b_zp_tensor != nullptr) {
+    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zp_tensor);
+    b_zp_ptr = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
+  }
+
+  // process scale of B
+  bool is_b_scale_per_column = !IsScalarOr1ElementVector(b_scale_tensor);
+  const float* b_scale_data = b_scale_tensor->template Data<float>();
+
+  // calculate multiplier
+  std::vector<float> multipliers(b_scale_data, b_scale_data + b_scale_tensor->Shape().Size());
+  std::for_each(multipliers.begin(), multipliers.end(), [&a_scale](float& multiplier) {
+    return multiplier *= a_scale;
+  });
+
   // batch gemm
   MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
-  gemm_shape.BIsSigned = packed_b_ ? b_is_signed_ : b->IsDataType<int8_t>();
+  gemm_shape.BIsSigned = packed_b_ ? b_is_signed_ : b_tensor->IsDataType<int8_t>();
 
   const size_t num_gemms = helper.OutputOffsets().size();
   std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> gemm_scale_procs;
@@ -64,18 +85,20 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
     gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],
                                   gemm_shape.N,
-                                  &multiplier,
-                                  bias_data);
+                                  multipliers.data(),
+                                  bias_data,
+                                  MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                  is_b_scale_per_column ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
     auto& params = gemm_data_vec[gemm_idx];
     params.OutputProcessor = &(gemm_scale_procs[gemm_idx]);
     params.A = a_data + helper.LeftOffsets()[gemm_idx];
     params.lda = gemm_shape.K;
-    params.ZeroPointA = a_zero_point;
+    params.ZeroPointA = a_zp;
     params.BIsPacked = bool(packed_b_);
-    params.B = bool(packed_b_) ? packed_b_.get() : 
-        static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[gemm_idx];
+    params.B = bool(packed_b_) ? packed_b_.get() : static_cast<const uint8_t*>(b_tensor->DataRaw()) + helper.RightOffsets()[gemm_idx];
     params.ldb = gemm_shape.N;
-    params.ZeroPointB = &b_zero_point;
+    params.ZeroPointB = nullptr != b_zp_ptr ? b_zp_ptr : &b_zp_default;
+    params.PerColumnZeroPoints = is_b_zp_per_column;
     params.C = reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[gemm_idx]);
     params.ldc = gemm_shape.N;
   }
@@ -128,17 +151,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
   const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
-  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
-              "DynamicQuantizeMatMul : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-  float b_scale = *b_scale_tensor->template Data<float>();
-
-  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
-  uint8_t b_zero_point = 0;
-  if (b_zero_point_tensor != nullptr) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
-                "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-    b_zero_point = *static_cast<const uint8_t*>(b_zero_point_tensor->DataRaw());
-  }
+  const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
 
   // calculate quantization parameter of a
   const float* a_data = a->template Data<float>();
@@ -158,10 +171,11 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   return ComputeCommon(ctx,
                        a_data_quant,
                        a->Shape(),
+                       a_scale,
                        a_zero_point,
                        b,
-                       b_zero_point,
-                       a_scale * b_scale,
+                       b_scale_tensor,
+                       b_zp_tensor,
                        ctx->Input<Tensor>(IN_BIAS));
 }
 
@@ -169,17 +183,13 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(IN_A);
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
+  // validate scale of A
   const Tensor* a_scale_tensor = ctx->Input<Tensor>(IN_A_SCALE);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
               "MatMulIntegerToFloat : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
   float a_scale = *a_scale_tensor->template Data<float>();
 
-  const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
-  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
-              "MatMulIntegerToFloat : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-  float b_scale = *b_scale_tensor->template Data<float>();
-
-  // validate zero points
+  // validate zero point of A
   uint8_t a_zero_point = 0;
   const Tensor* a_zero_point_tensor = ctx->Input<Tensor>(IN_A_ZERO_POINT);
   if (a_zero_point_tensor != nullptr) {
@@ -188,21 +198,17 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
     a_zero_point = *a_zero_point_tensor->Data<uint8_t>();
   }
 
-  uint8_t b_zero_point = 0;
-  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
-  if (b_zero_point_tensor != nullptr) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
-                "MatMulIntegerToFloat : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-    b_zero_point = *static_cast<const uint8_t*>(b_zero_point_tensor->DataRaw());
-  }
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
+  const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
 
   return ComputeCommon(ctx,
                        a->Data<uint8_t>(),
                        a->Shape(),
+                       a_scale,
                        a_zero_point,
                        b,
-                       b_zero_point,
-                       a_scale * b_scale,
+                       b_scale_tensor,
+                       b_zp_tensor,
                        ctx->Input<Tensor>(IN_BIAS));
 }
 

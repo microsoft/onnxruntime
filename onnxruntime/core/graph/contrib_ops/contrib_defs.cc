@@ -397,7 +397,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           4,
           "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T3")
       .Input(
           5,
@@ -414,7 +415,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           7,
           "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T2",
           OpSchema::Optional)
       .Input(
@@ -2172,7 +2174,7 @@ Example 4:
             };
 
             std::vector<FunctionBodyHelper::NodeDef> body{
-                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType) U),
+                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType)U),
                 // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
                 // This complicates the function definition, requiring reshaping inputs/outputs.
                 // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]

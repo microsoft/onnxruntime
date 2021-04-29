@@ -70,18 +70,20 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
 
   // validate zero points
   uint8_t a_offset = 0;
-  uint8_t b_offset = 0;
   const auto* a_zero_point = ctx->Input<Tensor>(IN_A_ZERO_POINT);
   if (a_zero_point != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
                 "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
     a_offset = *a_zero_point->template Data<uint8_t>();
   }
+
+  bool is_b_zp_per_column = false;
+  uint8_t b_default_offset = 0;
+  const uint8_t* b_offset_ptr = nullptr;
   const auto* b_zero_point = ctx->Input<Tensor>(IN_B_ZERO_POINT);
   if (b_zero_point != nullptr) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
-                "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");
-    b_offset = *static_cast<const uint8_t*>(b_zero_point->DataRaw());
+    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zero_point);
+    b_offset_ptr = static_cast<const uint8_t*>(b_zero_point->DataRaw());
   }
 
   const auto* a_data = a->template Data<uint8_t>();
@@ -95,13 +97,14 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
 
   const size_t batch_size = helper.OutputOffsets().size();
   std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch_size);
-  
+
   for (size_t batch = 0; batch < batch_size; batch++) {
     auto& gemm_params = gemm_data_vec[batch];
     gemm_params.lda = gemm_shape.K;
     gemm_params.ZeroPointA = a_offset;
     gemm_params.ldb = gemm_shape.N;
-    gemm_params.ZeroPointB = &b_offset;
+    gemm_params.ZeroPointB = nullptr == b_offset_ptr ? &b_default_offset : b_offset_ptr;
+    gemm_params.PerColumnZeroPoints = is_b_zp_per_column;
     gemm_params.ldc = gemm_shape.N;
     gemm_params.BIsPacked = bool(packed_b_);
     gemm_params.A = a_data + helper.LeftOffsets()[batch];
