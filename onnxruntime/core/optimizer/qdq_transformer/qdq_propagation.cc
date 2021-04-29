@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 static constexpr size_t QDQInputCountRequired = 3;
 static constexpr size_t QDQInputScaleIdx = 1;
-static constexpr size_t QDQInputZeroPointIdex = 2;
+static constexpr size_t QDQInputZeroPointIdx = 2;
 
 static bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
@@ -30,18 +30,22 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto = nullptr;
-  const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto = nullptr;
-  const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto = nullptr;
-  const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto = nullptr;
-  if (!graph_utils::NodeArgIsConstant(graph, *dq_input_defs[QDQInputScaleIdx]) ||
-      !graph_utils::NodeArgIsConstant(graph, *q_input_defs[QDQInputScaleIdx]) ||
-      !graph_utils::NodeArgIsConstant(graph, *dq_input_defs[QDQInputZeroPointIdex]) ||
-      !graph_utils::NodeArgIsConstant(graph, *q_input_defs[QDQInputZeroPointIdex]) ||
-      !graph.GetInitializedTensor(dq_input_defs[QDQInputScaleIdx]->Name(), dq_scale_tensor_proto) ||
-      !graph.GetInitializedTensor(q_input_defs[QDQInputScaleIdx]->Name(), q_scale_tensor_proto) ||
-      !graph.GetInitializedTensor(dq_input_defs[QDQInputZeroPointIdex]->Name(), dq_zp_tensor_proto) ||
-      !graph.GetInitializedTensor(q_input_defs[QDQInputZeroPointIdex]->Name(), q_zp_tensor_proto)) {
+  const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
+      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputScaleIdx]->Name());
+  const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
+      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputScaleIdx]->Name());
+  const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
+      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputZeroPointIdx]->Name());
+  const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
+      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputZeroPointIdx]->Name());
+  if (!q_zp_tensor_proto ||
+      !dq_zp_tensor_proto ||
+      !q_scale_tensor_proto ||
+      !dq_scale_tensor_proto ||
+      !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
+      !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx])) {
     return false;
   }
 
@@ -162,32 +166,34 @@ bool QDQPropagationTransformer::PropagateDQForward(Graph& graph) const {
       continue;
     }
 
-    const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto = nullptr;
-    const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto = nullptr;
-    if (!graph_utils::NodeArgIsConstant(graph, *dq_input_defs[QDQInputScaleIdx]) ||
-        !graph_utils::NodeArgIsConstant(graph, *dq_input_defs[QDQInputZeroPointIdex]) ||
-        !graph.GetInitializedTensor(dq_input_defs[QDQInputScaleIdx]->Name(), dq_scale_tensor_proto) ||
-        !graph.GetInitializedTensor(dq_input_defs[QDQInputZeroPointIdex]->Name(), dq_zp_tensor_proto)) {
+    if (!optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
+        !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx])) {
+      continue;
+    }
+
+    const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
+        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputZeroPointIdx]->Name());
+    const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
+        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputScaleIdx]->Name());
+
+    if (nullptr == dq_zp_tensor_proto || nullptr == dq_scale_tensor_proto) {
       continue;
     }
 
     do {
       Node& next_node = *graph.GetNode(dq_node.OutputNodesBegin()->Index());
       if (!CanNodePropagate(next_node)) {
+        // Try canceling out DQ/Q pair
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuantizeLinear", {10, 13}) &&
+            graph_utils::IsSupportedProvider(next_node, GetCompatibleExecutionProviders())) {
+          is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, next_node);
+        }
+
         break;
       }
       SwapAdjacentNodes(graph, dq_node, next_node);
       is_modified = true;
     } while (optimizer_utils::CheckOutputEdges(graph, dq_node, 1));
-
-    // Cancel out DQ/Q pair
-    Node& q_node = *graph.GetNode(dq_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(q_node, "QuantizeLinear", {10, 13}) ||
-        !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders())) {
-      continue;
-    }
-
-    is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, q_node);
   }
 
   return is_modified;
@@ -216,12 +222,17 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
       continue;
     }
 
-    const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto = nullptr;
-    const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto = nullptr;
-    if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[QDQInputScaleIdx]) ||
-        !graph_utils::NodeArgIsConstant(graph, *q_input_defs[QDQInputZeroPointIdex]) ||
-        !graph.GetInitializedTensor(q_input_defs[QDQInputScaleIdx]->Name(), q_scale_tensor_proto) ||
-        !graph.GetInitializedTensor(q_input_defs[QDQInputZeroPointIdex]->Name(), q_zp_tensor_proto)) {
+    if (!optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
+        !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx])) {
+      continue;
+    }
+
+    const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
+        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputZeroPointIdx]->Name());
+    const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
+        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputScaleIdx]->Name());
+
+    if (nullptr == q_zp_tensor_proto || nullptr == q_scale_tensor_proto) {
       continue;
     }
 
@@ -230,27 +241,20 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
         break;
       }
       Node& prev_node = *graph.GetNode(q_node.InputNodesBegin()->Index());
-      if (!optimizer_utils::CheckOutputEdges(graph, prev_node, 1) ||
-          !CanNodePropagate(prev_node)) {
+      if (!optimizer_utils::CheckOutputEdges(graph, prev_node, 1)) break;
+      if (!CanNodePropagate(prev_node)) {
+        // Try canceling out DQ/Q pair
+        Node& dq_node = prev_node;
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) &&
+            graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
+          is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, q_node);
+        }
         break;
       }
 
       SwapAdjacentNodes(graph, prev_node, q_node);
       is_modified = true;
     } while (true);
-
-    // Cancel out DQ/Q pair
-    if (q_node.InputNodesBegin() == q_node.InputNodesEnd()) {
-      continue;
-    }
-    Node& dq_node = *graph.GetNode(q_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) ||
-        !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders()) ||
-        !optimizer_utils::CheckOutputEdges(graph, dq_node, 1)) {
-      continue;
-    }
-
-    is_modified = is_modified || TryCancelOutDQQPair(graph, dq_node, q_node);
   }
 
   return is_modified;
