@@ -6,7 +6,7 @@
 #ifndef SHARED_PROVIDER
 #include <unordered_map>
 #include <unordered_set>
-
+#include <memory>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
@@ -51,7 +51,7 @@ class IExecutionProvider {
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
       : type_{type} {
     if (use_metadef_id_creator) {
-      metadef_id_generator_ = onnxruntime::make_unique<ModelMetadefIdGenerator>();
+      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
 

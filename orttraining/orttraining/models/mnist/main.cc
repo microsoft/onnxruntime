@@ -305,7 +305,7 @@ int main(int argc, char* args[]) {
   // start training session
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
+  auto runner = std::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
   RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
