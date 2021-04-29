@@ -107,7 +107,7 @@ class FusionAttention(Fusion):
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        q_shape_value = numpy_helper.to_array(q_shape)
+        q_shape_value = self.model.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
             logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
@@ -145,7 +145,7 @@ class FusionAttention(Fusion):
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
-        assert num_heads > 0 or hidden_size > 0 or (hidden_size % num_heads) == 0
+        assert num_heads > 0 and hidden_size > 0 and (hidden_size % num_heads) == 0
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
@@ -159,9 +159,9 @@ class FusionAttention(Fusion):
             return None
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
-        qw = numpy_helper.to_array(q_weight)
-        kw = numpy_helper.to_array(k_weight)
-        vw = numpy_helper.to_array(v_weight)
+        qw = self.model.to_array(q_weight)
+        kw = self.model.to_array(k_weight)
+        vw = self.model.to_array(v_weight)
 
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
@@ -173,9 +173,9 @@ class FusionAttention(Fusion):
 
         qkv_weight = np.stack((qw, kw, vw), axis=1)
 
-        qb = numpy_helper.to_array(q_bias)        
-        kb = numpy_helper.to_array(k_bias)
-        vb = numpy_helper.to_array(v_bias)
+        qb = self.model.to_array(q_bias)        
+        kb = self.model.to_array(k_bias)
+        vb = self.model.to_array(v_bias)
 
         # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
         assert qb.shape == kb.shape == vb.shape
@@ -196,7 +196,7 @@ class FusionAttention(Fusion):
 
         # Sometimes weights and bias are stored in fp16
         if q_weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
+            weight.CopyFrom(numpy_helper.from_array(self.model.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
@@ -204,7 +204,7 @@ class FusionAttention(Fusion):
                                   dims=[3 * out_size],
                                   vals=qkv_bias.flatten().tolist())
         if q_bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
+            bias.CopyFrom(numpy_helper.from_array(self.model.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias)
 
         attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']

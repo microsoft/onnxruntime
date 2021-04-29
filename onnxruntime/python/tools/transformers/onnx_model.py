@@ -32,9 +32,12 @@ class OnnxModel:
             if self.shape_infer_helper is None:
                 self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
             shape_infer_helper = self.shape_infer_helper
-
-        if shape_infer_helper.infer(dynamic_axis_mapping):
-            return shape_infer_helper
+        try:
+            if shape_infer_helper.infer(dynamic_axis_mapping):
+                return shape_infer_helper
+        except:
+             print("failed in shape inference", sys.exc_info()[0])
+    
         return None
 
     def input_name_to_nodes(self):
@@ -713,3 +716,12 @@ class OnnxModel:
             if self.get_initializer(input.name) is None:
                 graph_inputs.append(input)
         return graph_inputs
+
+    def to_array(self, tensor:TensorProto, fill_zeros:bool = False) -> np.ndarray:
+        # When weights are in external data format but not presented, we investigate the optimizer with two changes:
+        # (1) set default fill_zeros = True  (2) change load_external_data=False in optimizer.py
+        if fill_zeros:
+            from onnx import mapping
+            return np.ndarray(shape=tensor.dims, dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type])
+
+        return numpy_helper.to_array(tensor)

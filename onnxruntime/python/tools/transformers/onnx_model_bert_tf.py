@@ -42,6 +42,11 @@ class BertOnnxModelTF(BertOnnxModel):
 
         mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'],
                                             [1, None, 1, 0, 0])
+        if mask_nodes is not None:
+            return mask_nodes
+
+        mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Unsqueeze', 'Mul', 'Cast', 'Reshape'],
+                                            [1, 0, 1, 0, 1, 0])
         return mask_nodes
 
     def fuse_mask(self):
@@ -432,6 +437,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 if q_nodes is None:
                     logger.debug("Failed to match q path")
                     continue
+
             add_q = q_nodes[-2]
             matmul_q = q_nodes[-1]
 
@@ -469,6 +475,7 @@ class BertOnnxModelTF(BertOnnxModel):
             if is_same_root:
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
+
                 # For tf models, q and v are flipped.
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_k, matmul_q, matmul_v,
                                                                              add_k, add_q, add_v, self.num_heads,
@@ -524,9 +531,9 @@ class BertOnnxModelTF(BertOnnxModel):
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
-        #TODO: remove fuse mask since we have embedding fused so fuse_attention shall handle the mask nodes.
-        # self.fuse_mask()
         self.skip_reshape()
+        self.clean_graph()
+        self.prune_graph()
 
     def skip_reshape(self):
         count = 0
