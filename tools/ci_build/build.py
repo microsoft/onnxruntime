@@ -243,10 +243,20 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
         help="Build a shared library for the ONNXRuntime.")
+
+    # Build a shared lib
+    parser.add_argument(
+        "--build_apple_framework", action='store_true',
+        help="Build a macOS/iOS framework for the ONNXRuntime.")
 
     # Build options
     parser.add_argument(
@@ -306,6 +316,9 @@ def parse_arguments():
         "--xcode_code_signing_team_id", default="",
         help="The development team ID used for code signing in Xcode")
     parser.add_argument(
+        "--xcode_code_signing_identity", default="",
+        help="The development identity used for code signing in Xcode")
+    parser.add_argument(
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
@@ -324,6 +337,9 @@ def parse_arguments():
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
+    parser.add_argument(
+        "--enable_wasm_threads", action='store_true',
+        help="Enable WebAssembly multi-threads support")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -488,6 +504,8 @@ def parse_arguments():
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
 
+    parser.add_argument(
+        "--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
 
@@ -631,6 +649,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
+        "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
@@ -642,7 +661,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
+        "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
@@ -712,6 +733,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -805,6 +827,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
+        # Code sign the binaries, if the code signing development identity and/or team id are provided
+        if args.xcode_code_signing_identity:
+            cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=" + args.xcode_code_signing_identity]
+        if args.xcode_code_signing_team_id:
+            cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_coreml:
         if not is_macOS():
@@ -843,9 +870,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
             ]
-            # Code sign the binaries, if the code signing development team id is provided
-            if args.xcode_code_signing_team_id:
-                cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
         else:
             # TODO: the cross compiling on Linux is not officially supported by Apple
             #   and is already broken with the latest codebase, so it should be removed.
@@ -1201,12 +1225,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                           "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc", "-destination",
                           "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                               "-configuration", config,
                               "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
                               "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
@@ -1467,14 +1491,14 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=2000']
+    args = ['npm', 'test', '--', '--timeout=10000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
 
 
 def build_python_wheel(
-        source_dir, build_dir, configs, use_cuda, use_dnnl,
+        source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
@@ -1510,6 +1534,12 @@ def build_python_wheel(
             args.append('--use_tensorrt')
         elif use_cuda:
             args.append('--use_cuda')
+            if cuda_version:
+                args.append('--cuda_version={}'.format(cuda_version))
+        elif use_rocm:
+            args.append('--use_rocm')
+            if rocm_version:
+                args.append('--rocm_version={}'.format(rocm_version))
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:
@@ -1696,26 +1726,26 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
 
 
 def generate_documentation(source_dir, build_dir, configs):
+    # Randomly choose one build config
+    config = next(iter(configs))
+    cwd = get_config_build_dir(build_dir, config)
+    if is_windows():
+        cwd = os.path.join(cwd, config)
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
-    for config in configs:
-        # Copy the gen_contrib_doc.py.
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
-            os.path.join(build_dir, config))
-        shutil.copy(
-            os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-            os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_contrib_doc.py',
-             '--output_path', operator_doc_path],
-            cwd=os.path.join(build_dir, config))
-        run_subprocess(
-            [sys.executable,
-             'gen_opkernel_doc.py',
-             '--output_path', opkernel_doc_path],
-            cwd=os.path.join(build_dir, config))
+    shutil.copy(
+        os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
+    shutil.copy(
+         os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
+         cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_contrib_doc.py',
+         '--output_path', operator_doc_path], cwd=cwd)
+    run_subprocess(
+        [sys.executable,
+         'gen_opkernel_doc.py',
+         '--output_path', opkernel_doc_path], cwd=cwd)
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
@@ -1982,6 +2012,8 @@ def main():
                 raise BuildError("cuda_version must be specified on Windows.")
             else:
                 args.cuda_version = ""
+        if args.use_rocm and args.rocm_version is None:
+            args.rocm_version = ""
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -2008,7 +2040,7 @@ def main():
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
@@ -2019,6 +2051,9 @@ def main():
                 build_dir,
                 configs,
                 args.use_cuda,
+                args.cuda_version,
+                args.use_rocm,
+                args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,

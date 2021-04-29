@@ -335,6 +335,14 @@ class ThreadPoolParallelSection {
   //   current_loop and then wait for workers_in_loop==0
   std::atomic<ThreadPoolLoop *> current_loop{nullptr};
   std::atomic<unsigned> workers_in_loop{0};
+
+  // Members to track asynchronous dispatching
+  int dispatch_q_idx = -1;  // index of thread that dispatch work to all other threads
+  unsigned dispatch_w_idx = 0;  // index of enqueued work
+  std::atomic<bool> dispatch_done{false};
+  std::atomic<bool> work_done{false};
+  std::vector<unsigned> good_hints;
+  std::vector<unsigned> alt_hints;
 };
 
 class ThreadPoolLoop {
@@ -715,9 +723,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
-        done_(false),
-        cancelled_(false) {
-
+        done_(false) {
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -748,15 +754,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Now if all threads block without work, they will start exiting.
     // But note that threads can continue to work arbitrary long,
     // block, submit new work, unblock and otherwise live full life.
-    if (!cancelled_) {
-      WakeAllWorkersForExit();
-    } else {
-      // Since we were cancelled, there might be entries in the queues.
-      // Empty them to prevent their destructor from asserting.
-      for (size_t i = 0; i < worker_data_.size(); i++) {
-        worker_data_[i].queue.Flush();
-      }
-    }
+    WakeAllWorkersForExit();
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
@@ -895,7 +893,6 @@ void StartParallelSection(ThreadPoolParallelSection &ps) override {
 // End a parallel section, waiting for all worker threads to exit from
 // section.  Hence, on return, the ThreadPoolParallelSection object
 // can be dealloacted.
-
 void EndParallelSectionInternal(PerThread &pt,
                                 ThreadPoolParallelSection &ps) {
   assert((pt.leading_par_section) && "Ending parallel section, but none started");
@@ -904,6 +901,18 @@ void EndParallelSectionInternal(PerThread &pt,
 
   // Notify workers to exit from the section
   ps.active = false;
+
+  if (ps.dispatch_q_idx > -1) {
+    Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
+      ps.dispatch_q_idx = -1; // cancel dispatch if not started yet
+    } else {
+      // if dispatch task started, wait for its dispatch completion
+      while (!ps.dispatch_done.load(std::memory_order_acquire)) {
+        onnxruntime::concurrency::SpinPause();
+      }
+    }
+  }
 
   profiler_.LogStart();
   // Attempt to revoke any tasks that were sent to workers but not
@@ -928,6 +937,13 @@ void EndParallelSectionInternal(PerThread &pt,
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
   ps.tasks_finished = 0;
+
+  if (ps.dispatch_q_idx > -1) {
+    // if dispatch task started, wait for its work completion
+    while (!ps.work_done.load(std::memory_order_acquire)) {
+      onnxruntime::concurrency::SpinPause();
+    }
+  }
 }
 
 void EndParallelSection(ThreadPoolParallelSection &ps) override {
@@ -935,100 +951,81 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
   EndParallelSectionInternal(*pt, ps);
 }
 
-//......................................................................
-//
-// Parallel loops
-// --------------
-//
-// Ensure that the ThreadPoolParallelSection has sufficient workers to
-// execute a loop with degree of parallelism n.  We track the number
-// of workers already avaiable to the parallel section, prior to
-// submitting tasks to the work queues to make up the total.
-//
-// Each worker will call in to worker_fn(idx) with a per-worker thread
-// ID.  Note there are different levels of indirection here:
-//
-// - In a single-loop parallel section, worker_fn will directly
-//   execute the threadpool.cc code that implements the parallel loop.
-//
-// - In a multi-loop parallel section, worker_fn is an intermediate
-//   function that is long-lived (i.e., that lasts until the end of
-//   the parallel section, as opposed to just a single loop's
-//   duration).
-
-void SummonWorkers(PerThread &pt,
-                   ThreadPoolParallelSection &ps,
-                   unsigned n,
-                   const std::function<void(unsigned)> &worker_fn) {
-  // Wrap the user's worker function with one that allocates a unique
-  // worker index for the loop, and synchronizes (as the last step)
-  // with the exit path in EndParallelSection.  In principle we could
-  // allocate worker IDs during the loop below and capture them by
-  // value.  However, the costs of creating distinct lambda for each
-  // iteration appeared more costly than the cost of synchronization
-  // on a shared counter.
-  auto call_worker_fn = [&ps, worker_fn]() {
-    unsigned my_idx = ++ps.worker_idx;
-    worker_fn(my_idx);
-    // After the assignment to ps.tasks_finished, the stack-allocated
-    // ThreadPoolParallelSection object may be destroyed.
+// RunInParallelInternal dispatch tasks to a number of workers asynchronously.
+// A worker thread will be selected as the dispatcher that distributes tasks.
+void RunInParallelInternal(PerThread& pt,
+                           ThreadPoolParallelSection& ps,
+                           unsigned n,
+                           std::function<void(unsigned)> worker_fn) {
+  // init a few env variables
+  ps.dispatch_q_idx = -1;
+  ps.dispatch_done = false;
+  ps.work_done = false;
+  // calculate how many workers to summon
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  unsigned extra_needed = n > current_dop ? n - current_dop : 0;
+  if (0 == extra_needed) {
+    return; // do nothing if no more workers required
+  }
+  // get workers that are available
+  GetGoodWorkerHints(extra_needed, ps.good_hints, ps.alt_hints);
+  // define task for each worker
+  Task call_worker_fn = [worker_fn, &ps]() {
+    worker_fn(++ps.worker_idx);
     ps.tasks_finished++;
   };
-
-  // Identify whether we need to create additional workers.
-  // Throughout the threadpool implementation, degrees of parallelism
-  // ("n" here) refer to the total parallelism including the main
-  // thread.  Hence we consider the number of existing tasks + 1.
-  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
-  if (n > current_dop) {
-    unsigned extra_needed = n - current_dop;
-
-    // Obtain hints for which worker threads to push the tasks to.
-    // This uses a best-effort assessment of which threads are
-    // spinning.
-    std::vector<unsigned> good_hints, alt_hints;
-    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    profiler_.LogStart();
-
-    // Create the additional tasks, and push them to workers.
-    for (auto i = 0u; i < extra_needed; i++) {
-      Task t;
+  // define dispatch task for dispatcher
+  Task dispatch_task = [extra_needed, call_worker_fn, worker_fn, &ps, &pt, this]() {
+    unsigned good_hints_size = static_cast<unsigned>(ps.good_hints.size());
+    for (auto i = 1u; i < extra_needed; ++i) {  // dispatcher do dispatch
       int q_idx;
-      if (i < good_hints.size()) {
-        q_idx = good_hints[i];
+      if (i < ps.good_hints.size()) {
+        q_idx = ps.good_hints[i];
       } else {
-        auto alt_i = i - static_cast<unsigned>(good_hints.size());
-        if (alt_i < alt_hints.size()) {
-          q_idx = alt_hints[alt_i];
+        auto alt_i = i - good_hints_size;
+        if (alt_i < ps.alt_hints.size()) {
+          q_idx = ps.alt_hints[alt_i];
         } else {
           q_idx = Rand(&pt.rand) % num_threads_;
         }
       }
-
-      // If the worker's queue accepts the task, then record it in
-      // the vector of tasks that we will need to synchronize with on
-      // exiting the parallel section.  If the queue rejects the task
-      // (perhaps because it is full) then we take no further action:
-      // in a parallel loop we will always be running work on the
-      // main thread, providing progress.
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      Task t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
       if (!t) {
-        ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
+        ps.tasks.push_back({q_idx, w_idx});
       }
     }
-    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
+    ps.dispatch_done.store(true, std::memory_order_release);  // dispatch complete
+    worker_fn(++ps.worker_idx);                               // dispatcher also needs to do its part
+    ps.work_done.store(true, std::memory_order_release);      // work complete
+  };                                                          // dispatch_task
+  profiler_.LogStart();
+  if (!ps.good_hints.empty()) {                               // get dispatcher
+    ps.dispatch_q_idx = ps.good_hints[0];
+  } else if (!ps.alt_hints.empty()) {
+    ps.dispatch_q_idx = ps.alt_hints[0];
+  } else {
+    ps.dispatch_q_idx = Rand(&pt.rand) % num_threads_;
   }
+  WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
+  Queue& dispatch_que = dispatch_td.queue;
+  // assign dispatch task to selected dispatcher
+  Task t = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+  if (t) {
+    ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
+  } else {
+    dispatch_td.EnsureAwake();  // make sure that dipatch worker is awake
+  }
+  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
 }
 
 // Run a single parallel loop in an existing parallel section.  This
 // maps directly onto SummonWorkers to create sufficient worker
 // threads for the desired degree of parallelism, followed by
 // dispatching the loop to those workers.
-
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n, std::ptrdiff_t block_size) override {
@@ -1046,7 +1043,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 
   // Increase the worker count if needed.  Each worker will pick up
   // loops to execute from the current parallel section.
-  const auto worker_fn = [&ps](unsigned my_idx) {
+  std::function<void(unsigned)> worker_fn = [&ps](unsigned my_idx) {
     while (ps.active) {
       if (!ps.current_loop) {
         onnxruntime::concurrency::SpinPause();
@@ -1060,13 +1057,23 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
       }
     }
   };
-  SummonWorkers(*pt, ps, n, worker_fn);
+  RunInParallelInternal(*pt, ps, n, std::move(worker_fn));
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   loop.fn(0);
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-
+  if (ps.dispatch_q_idx > -1) {
+    Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+    if (q.RevokeWithTag(pt->tag, ps.dispatch_w_idx)) {
+      ps.dispatch_q_idx = -1;  // cancel dispatch if not started yet
+    } else {
+      // if dispatch task started, wait for its dispatch completion
+      while (!ps.dispatch_done.load(std::memory_order_acquire)) {
+        onnxruntime::concurrency::SpinPause();
+      }
+    }
+  }
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
@@ -1078,48 +1085,28 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // Run a single parallel loop _without_ a parallel section.  This is a
 // special case of RunInParallelSection, avoiding code paths for
 // handing off multiple loops to the pool of workers.
-
+// For main thread:
+//  1. select a dispatcher and do job distribution;
+//  2. run fn(0);
+//  3, wait for all;
+// For dispatcher:
+//  1. distribute jobs to all other threads;
+//  2. run fn(...) itself.
+// For all other threads:
+//  1. run fn(...);
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
   profiler_.LogStartAndCoreAndBlock(block_size);
-  PerThread *pt = GetPerThread();
+  PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
-
-  // Summon workers to run the function (n is the desired maximum
-  // degree of parallelism, including the main thread).  Unlike the
-  // multi-loop RunInParallelSection, this single-loop worker can run
-  // fn directly without needing to receive it via ps.current_loop.
-  SummonWorkers(*pt, ps, n, fn);
+  RunInParallelInternal(*pt, ps, n, fn);  // select dispatcher and do job distribution;
   profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
-
-  // Run work in the main thread
-  fn(0);
+  fn(0);  // run fn(0)
   profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
-
-  // Wait for workers to exit the parallel section and hence to have
-  // completed the loop (i.e., ps.tasks_finished matches the number of
-  // tasks that have been created less the number successfully
-  // revoked).
-  EndParallelSectionInternal(*pt, ps);
+  EndParallelSectionInternal(*pt, ps);  // wait for all
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-void Cancel() override {
-  cancelled_ = true;
-  // If done_ is true, which means this object is being destructing.
-  // Therefore worker_data_[i].thread could be NULL.
-  if (!done_) {
-    done_ = true;
-    // Let each thread know it's been cancelled.
-    for (size_t i = 0; i < worker_data_.size(); i++) {
-      assert(worker_data_[i].thread != nullptr);
-      worker_data_[i].thread->OnCancel();
-    }
-  }
-
-  // Wake up the threads without work to let them exit on their own.
-  WakeAllWorkersForExit();
-}
 
 int NumThreads() const EIGEN_FINAL {
   return num_threads_;
@@ -1290,7 +1277,6 @@ int CurrentThreadId() const EIGEN_FINAL {
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
-  std::atomic<bool> cancelled_;
 
   // Allow control over how many bits to use in each entry in good_worker_hints_.
   // We reduce this below the full 64-bit word size for two reasons.  First, it
@@ -1302,8 +1288,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   unsigned num_hint_words_;
   std::unique_ptr<std::atomic<uint64_t>[]> good_worker_hints_;
 
-  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For an
-  // abrupt exit, cancelled_==true and threads will exit their worker loops.  For
+  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
   // a clean exit, each thread will observe (1) done_ set, indicating that the
   // destructor has been called, (2) all threads blocked, and (3) no
   // items in the work queues.
@@ -1334,82 +1319,80 @@ int CurrentThreadId() const EIGEN_FINAL {
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
-    while (!cancelled_ && !should_exit) {
-        Task t = q.PopFront();
-        if (!t) {
-          // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
-          // spinning.  This will bias other threads toward pushing work to our queue.
-          // In addition, priodically make a best-effort attempt to steal from other
-          // threads which are not themselves spinning.
+    while (!should_exit) {
+      Task t = q.PopFront();
+      if (!t) {
+        // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
+        // spinning.  This will bias other threads toward pushing work to our queue.
+        // In addition, priodically make a best-effort attempt to steal from other
+        // threads which are not themselves spinning.
 
-          SetGoodWorkerHint(thread_id, true);
-          for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
-            t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
-            onnxruntime::concurrency::SpinPause();
-          }
-          SetGoodWorkerHint(thread_id, false);
-
-          if (!t) {
-            // No work passed to us while spinning; make a further full attempt to
-            // steal work from other threads prior to blocking.
-            if (num_threads_ != 1) {
-              t = Steal(true /* true => check all queues */);
-            }
-            if (!t) {
-              td.SetBlocked(
-                  // Pre-block test
-                  [&]() -> bool {
-                    bool should_block = true;
-                    // We already did a best-effort emptiness check when stealing; now
-                    // do a full check prior to blocking.
-                    int victim = NonEmptyQueueIndex();
-                    if (victim != -1) {
-                      should_block = false;
-                      if (!cancelled_) {
-                        t = worker_data_[victim].queue.PopBack();
-                      }
-                    }
-                    // Number of blocked threads is used as termination condition.
-                    // If we are shutting down and all worker threads blocked without work,
-                    // that's we are done.
-                    if (should_block) {
-                      blocked_++;
-                      if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
-                        should_block = false;
-                        // Almost done, but need to re-check queues.
-                        // Consider that all queues are empty and all worker threads are preempted
-                        // right after incrementing blocked_ above. Now a free-standing thread
-                        // submits work and calls destructor (which sets done_). If we don't
-                        // re-check queues, we will exit leaving the work unexecuted.
-                        if (NonEmptyQueueIndex() != -1) {
-                          // Note: we must not pop from queues before we decrement blocked_,
-                          // otherwise the following scenario is possible. Consider that instead
-                          // of checking for emptiness we popped the only element from queues.
-                          // Now other worker threads can start exiting, which is bad if the
-                          // work item submits other work. So we just check emptiness here,
-                          // which ensures that all worker threads exit at the same time.
-                          blocked_--;
-                        } else {
-                          should_exit = true;
-                        }
-                      }
-                    }
-                    return should_block;
-                  },
-                  // Post-block update (executed only if we blocked)
-                  [&]() {
-                    blocked_--;
-                  });
-            }
-          }
+        SetGoodWorkerHint(thread_id, true);
+        for (int i = 0; i < spin_count && !t && !done_; i++) {
+          t = ((i + 1) % steal_count == 0) ? TrySteal() : q.PopFront();
+          onnxruntime::concurrency::SpinPause();
         }
-        if (t) {
-          td.SetActive();
-          t();
-          profiler_.LogRun(thread_id);
-          td.SetSpinning();
+        SetGoodWorkerHint(thread_id, false);
+
+        if (!t) {
+          // No work passed to us while spinning; make a further full attempt to
+          // steal work from other threads prior to blocking.
+          if (num_threads_ != 1) {
+            t = Steal(true /* true => check all queues */);
+          }
+          if (!t) {
+            td.SetBlocked(
+                // Pre-block test
+                [&]() -> bool {
+                  bool should_block = true;
+                  // We already did a best-effort emptiness check when stealing; now
+                  // do a full check prior to blocking.
+                  int victim = NonEmptyQueueIndex();
+                  if (victim != -1) {
+                    should_block = false;
+                    t = worker_data_[victim].queue.PopBack();
+                  }
+                  // Number of blocked threads is used as termination condition.
+                  // If we are shutting down and all worker threads blocked without work,
+                  // that's we are done.
+                  if (should_block) {
+                    blocked_++;
+                    if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
+                      should_block = false;
+                      // Almost done, but need to re-check queues.
+                      // Consider that all queues are empty and all worker threads are preempted
+                      // right after incrementing blocked_ above. Now a free-standing thread
+                      // submits work and calls destructor (which sets done_). If we don't
+                      // re-check queues, we will exit leaving the work unexecuted.
+                      if (NonEmptyQueueIndex() != -1) {
+                        // Note: we must not pop from queues before we decrement blocked_,
+                        // otherwise the following scenario is possible. Consider that instead
+                        // of checking for emptiness we popped the only element from queues.
+                        // Now other worker threads can start exiting, which is bad if the
+                        // work item submits other work. So we just check emptiness here,
+                        // which ensures that all worker threads exit at the same time.
+                        blocked_--;
+                      } else {
+                        should_exit = true;
+                      }
+                    }
+                  }
+                  return should_block;
+                },
+                // Post-block update (executed only if we blocked)
+                [&]() {
+                  blocked_--;
+                });
+          }
         }
       }
+      if (t) {
+        td.SetActive();
+        t();
+        profiler_.LogRun(thread_id);
+        td.SetSpinning();
+      }
+    }
 
       // Whichever thread(s) observe the termination conditions are responsible for waking
       // any other threads that have remained blocked.

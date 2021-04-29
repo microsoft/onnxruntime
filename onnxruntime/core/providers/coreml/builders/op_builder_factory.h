@@ -28,6 +28,6 @@ void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
+void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace coreml
 }  // namespace onnxruntime

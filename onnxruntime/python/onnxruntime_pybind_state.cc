@@ -17,6 +17,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
@@ -38,6 +39,9 @@
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
+
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/shared_library/provider_host_api.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -201,6 +205,7 @@ std::string nuphar_settings;
 const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
@@ -215,6 +220,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+
+constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -438,6 +445,23 @@ static void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobj
 static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
+}
+
+static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
+    const std::string& ep_shared_lib_path,
+    const ProviderOptions& provider_options = {}) {
+  void* handle;
+  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, &handle);
+  if (!error.IsOK()) {
+    throw std::runtime_error(error.ErrorMessage());
+  }
+
+  Provider* (*PGetProvider)();
+  Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+
+  Provider* provider = PGetProvider();
+  std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
+  return ep_factory->CreateProvider();
 }
 
 #ifdef USE_CUDA
@@ -755,6 +779,24 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
 #endif
     } else {
+      // check whether it is a dynamic load EP:
+      const auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
+        if (shared_lib_path_it != it->second.end()) {
+          // this is an EP with dynamic loading
+          // construct the provider option 
+          ProviderOptions provider_options;
+          for (auto option : it->second) {
+            if (option.first != kExecutionProviderSharedLibraryPath)
+              provider_options.insert(option);
+          }
+          auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
+          ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
+                                   std::move(p_ep)));
+          continue;
+        }
+      }
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
     }
@@ -1614,6 +1656,8 @@ Serialized model format will default to ONNX unless:
 )pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
+      .def_readwrite("enable_mem_reuse", &PySessionOptions::enable_mem_reuse,
+                     R"pbdoc(Enable the memory reuse optimization. Default is true.)pbdoc")
       .def_readwrite("logid", &PySessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &PySessionOptions::session_log_severity_level,
@@ -2049,6 +2093,14 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addGlobalMethods(m, env);
   addObjectMethods(m, env);
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  Ort::SessionOptions tmp_options;
+  if(!InitProvidersSharedLibrary()){
+    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
+  }
+#endif
+  
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING

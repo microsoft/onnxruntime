@@ -13,8 +13,8 @@
 namespace onnxruntime {
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderExternalAllocatorInfo {
-  const void* alloc{nullptr};
-  const void* free{nullptr};
+  void* alloc{nullptr};
+  void* free{nullptr};
 
   CUDAExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;

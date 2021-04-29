@@ -21,19 +21,5 @@ class IsFiniteOp final : public CudaKernel {
 template <typename TSrc>
 void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t N);
 
-template <typename TSrc>
-class IsAllFiniteOp final : public CudaKernel {
- public:
-  IsAllFiniteOp(const OpKernelInfo& info) : CudaKernel(info) {
-  }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-struct IsAllFiniteFunctor {
-  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output); 
-};
-
 }  // namespace cuda
 }  // namespace onnxruntime

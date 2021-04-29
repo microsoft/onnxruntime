@@ -186,6 +186,7 @@ ActivationFuncs::ActivationFuncs(const std::vector<std::string>& funcs,
   }
 }
 
+#if defined(DUMP_MATRIXES)
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col, int offset, int col_width) {
   std::cout << "Dump matrix: " << name << std::endl;
 
@@ -200,6 +201,7 @@ void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
   }
   std::cout << std::endl;
 }
+#endif
 
 void ComputeGemm(const int M,
                  const int N,
@@ -258,12 +260,12 @@ void ComputeGemm(const int M,
 
   float a_scale;
   uint8_t a_zero_point;
-  GetQuantizationParameter(A, M * K, a_scale, a_zero_point);
+  GetQuantizationParameter(A, M * K, a_scale, a_zero_point, thread_pool);
 
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(M * K) * sizeof(uint8_t)));
   BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
   // quantize the data
-  MlasQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point);
+  ParQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point, thread_pool);
 
   bool b_is_signed = weights.quant_para_->is_signed;
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
@@ -287,10 +289,13 @@ void ComputeGemm(const int M,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
-  MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-  gemm_params.M = static_cast<size_t>(M);
-  gemm_params.N = static_cast<size_t>(N);
-  gemm_params.K = static_cast<size_t>(K);
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  gemm_shape.M = static_cast<size_t>(M);
+  gemm_shape.N = static_cast<size_t>(N);
+  gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.BIsSigned = b_is_signed;
+  
+  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
   gemm_params.A = a_data_quant;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;
@@ -298,11 +303,11 @@ void ComputeGemm(const int M,
   gemm_params.ldb = static_cast<size_t>(N);
   gemm_params.ZeroPointB = &b_zero_point;
   gemm_params.BIsPacked = weights.is_prepacked_;
-  gemm_params.BIsSigned = b_is_signed;
   gemm_params.C = C_buffer;
   gemm_params.ldc = ld_C_buffer;
   gemm_params.OutputProcessor = &output_processor;
-  MlasGemm(&gemm_params, thread_pool);
+
+  MlasGemm(gemm_shape, gemm_params, thread_pool);
 }
 
 namespace deepcpu {
