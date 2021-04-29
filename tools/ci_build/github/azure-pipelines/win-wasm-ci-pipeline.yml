@@ -78,7 +78,15 @@ jobs:
 - job: build_onnxruntime_web
   dependsOn: build_WASM
   pool: 'Win-CPU-2019'
-  timeoutInMinutes: 120
+  strategy:
+    maxParallel: 2
+    matrix:
+      'debug':
+        BuildConfig: 'Debug'
+      'release':
+        BuildConfig: 'Release'
+
+  timeoutInMinutes: 30
   workspace:
     clean: all
   steps:
@@ -94,7 +102,7 @@ jobs:
       versionSpec: '14.x'
   - task: DownloadPipelineArtifact@2
     inputs:
-      patterns: 'Release_*/**/*'
+      patterns: '$(BuildConfig)_*/**/*'
       path: $(Pipeline.Workspace)\artifacts
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
