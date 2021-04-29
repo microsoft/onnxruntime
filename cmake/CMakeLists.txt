@@ -900,6 +900,8 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 if (onnxruntime_USE_TENSORRT)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT=1)
+    #TODO: remove the following line and change the test code in onnxruntime_shared_lib_test to use the new EP API.
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TENSORRT=1)
 endif()
 if (onnxruntime_USE_RKNPU)
