@@ -268,7 +268,7 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    string(APPEND CMAKE_CXX_FLAGS " -flto")
+    set (onnxruntime_ENABLE_LTO ON)
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
