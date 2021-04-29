@@ -10,7 +10,7 @@ jobs:
         WasmFileName: 'onnxruntime_wasm'
       'release':
         BuildConfig: 'Release'
-        CmdParams: ''
+        CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
         WasmFileName: 'onnxruntime_wasm'
       'threads debug':
         BuildConfig: 'Debug'
@@ -18,9 +18,9 @@ jobs:
         WasmFileName: 'onnxruntime_wasm_threads'
       'threads release':
         BuildConfig: 'Release'
-        CmdParams: '--enable_wasm_threads'
+        CmdParams: '--enable_wasm_threads --skip_tests --disable_wasm_exception_catching --disable_rtti'
         WasmFileName: 'onnxruntime_wasm_threads'
-    
+
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     EnvSetupScript: setup_env.bat
