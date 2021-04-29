@@ -186,7 +186,7 @@ jobs:
     displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML arm'
