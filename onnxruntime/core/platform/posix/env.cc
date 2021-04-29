@@ -354,10 +354,6 @@ class PosixEnv : public Env {
     return S_ISDIR(sb.st_mode);
   }
 
-  std::string GetRuntimePath() const override {
-    return "./";
-  }
-
   common::Status CreateFolder(const std::string& path) const override {
     size_t pos = 0;
     do {

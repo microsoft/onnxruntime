@@ -15,7 +15,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   const std::vector<OrtValue>& inputs,
                                   std::vector<OrtValue>& outputs,
                                   const NodeAttributes* attributes,
-                                  const std::string domain,
+                                  const std::string& domain,
                                   const int /*version*/) {
   //create a graph
   Model model("test", false, logger_);

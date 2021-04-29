@@ -881,8 +881,148 @@ TEST(QDQTransformerTests, QDQPropagation_QDQ_CancelOut_More) {
   test_case({1, 13, 13, 23}, true, true);
 }
 
+TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+
+      // add transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {input_arg}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Q
+      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      GraphViewer graph_viewer(session.GetGraph());
+      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "QuantizeLinear");
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "Transpose");
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+}
+
+TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output);
+
+      // add transpose
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {output_arg});
+      transpose_node.AddAttribute("perm", perms);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      GraphViewer graph_viewer(session.GetGraph());
+      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "Transpose");
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "DequantizeLinear");
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+}
+
+TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      auto* dq_scale = builder.Make1DInitializer(std::vector<float>(input_shape[1], 0.0035f));
+      auto* dq_zp = builder.Make1DInitializer(std::vector<uint8_t>(input_shape[1], 135));
+      builder.AddNode("DequantizeLinear", {input_arg, dq_scale, dq_zp}, {dq_output});
+
+      // add transpose
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {output_arg});
+      transpose_node.AddAttribute("perm", perms);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      GraphViewer graph_viewer(session.GetGraph());
+      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "DequantizeLinear");
+      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "Transpose");
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23}, {0, 2, 3, 1});
+}
+
+TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .0035f, 135, dq_output);
+
+      // add Q
+      builder.AddQuantizeLinearNode<uint8_t>(dq_output, .0035f, 135, output_arg);
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({1, 13, 13, 23});
+}
+
 TEST(QDQTransformerTests, Concat_UInt8) {
-  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes, int64_t axis, bool can_trans=true) {
+  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes, int64_t axis, bool can_trans = true) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto input_count = input_shapes.size();
       std::vector<NodeArg*> input_args;
