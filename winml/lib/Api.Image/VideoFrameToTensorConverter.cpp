@@ -508,24 +508,27 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
   // TODO: Make an allocator for upload heaps
   if (!upload_heap_ || upload_heap_->GetDesc().Width < bufferSize) {
+    CD3DX12_HEAP_PROPERTIES prop(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC buffer = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        &prop,
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+        &buffer,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&upload_heap_)));
   }
 
   void* pCPUTensorBuffer = nullptr;
-  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), &pCPUTensorBuffer));
+  CD3DX12_RANGE range0(0, 0);
+  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &range0, &pCPUTensorBuffer));
 
   // We avoid the Video Frame pipeline by manually sending the CPU data to the GPU, and we tensorize while we are filling the
   // upload heap. The image may already have been cropped/scaled by the video frame pipeline, so we send the scaled bounds
   // instead of the initial input bounds
   ConvertSoftwareBitmapToCPUTensor(convertedSoftwareBitmap, tensorDesc, scaledBounds, pCPUTensorBuffer);
-
-  upload_heap_->Unmap(0, &CD3DX12_RANGE(0, bufferSize));
+  CD3DX12_RANGE range(0, bufferSize);
+  upload_heap_->Unmap(0, &range);
 
   ResetCommandList(device_cache);
 
@@ -546,17 +549,20 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
     _Inout_ ID3D12Resource* output_resource) {
   // Copy the cpu memory into the gpu resource
   if (!upload_heap_ || upload_heap_->GetDesc().Width < buffer_size_in_bytes) {
+    CD3DX12_HEAP_PROPERTIES prop(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC buffer = CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes);
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        &prop,
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+        &buffer,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&upload_heap_)));
   }
 
   byte* gpu_buffer = nullptr;
-  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&gpu_buffer)));
+  CD3DX12_RANGE range0(0, 0);
+  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &range0, reinterpret_cast<void**>(&gpu_buffer)));
   auto gpu_buffer_span = gsl::span<byte>(gpu_buffer, buffer_size_in_bytes);
 
   _winml::LoadSpanFromDisjointBuffers(
@@ -569,7 +575,8 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
       },
       gpu_buffer_span);
 
-  upload_heap_->Unmap(0, &CD3DX12_RANGE(0, buffer_size_in_bytes));
+  CD3DX12_RANGE range(0, buffer_size_in_bytes);
+  upload_heap_->Unmap(0, &range);
   
   ResetCommandList(device_cache);
   

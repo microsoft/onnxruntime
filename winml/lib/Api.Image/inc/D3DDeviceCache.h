@@ -95,7 +95,7 @@ class D3DDeviceCache {
   winrt::com_ptr<ID3D12RootSignature> tensorize_root_signature_;
   winrt::com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
-  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
+  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[(int)PipelineStateCacheType::kCount][(int)PipelineStateCacheFormat::kCount][(int)PipelineStateCacheFormat::kCount][(int)PipelineStateCacheOperation::kCount];
 
   winrt::com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
 
