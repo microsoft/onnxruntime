@@ -50,6 +50,10 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
 
+  if (!allow_thread_spinning_) {
+    ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0");
+  }
+
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);
   auto session = UniqueOrtSession(ort_session, ort_api->ReleaseSession);
@@ -95,5 +99,10 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<
   
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
   intra_op_num_threads_override_ = intra_op_num_threads;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpThreadSpinning(bool allow_spinning) {
+  allow_thread_spinning_ = allow_spinning;
   return S_OK;
 }
