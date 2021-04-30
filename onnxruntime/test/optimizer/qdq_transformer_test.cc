@@ -72,7 +72,6 @@ TEST(QDQTransformerTests, Conv) {
     TransformerTester(build_test_case, check_conv_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5}, true);
   test_case({1, 12, 37}, {32, 12, 5}, false);
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, true);
@@ -126,7 +125,6 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
     TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
@@ -177,7 +175,6 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
     TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
@@ -210,7 +207,6 @@ TEST(QDQTransformerTests, Add) {
     TransformerTester(build_test_case, check_add_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37});
   test_case({1, 23, 13, 13});
   test_case({1, 22, 11, 13, 15});
@@ -243,10 +239,103 @@ TEST(QDQTransformerTests, Mul) {
     TransformerTester(build_test_case, check_mul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37});
   test_case({1, 23, 13, 13});
   test_case({1, 22, 11, 13, 15});
+}
+
+TEST(QDQTransformerTests, Gather) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
+      auto* output_arg = builder.MakeOutput();
+
+      // add Gather
+      auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
+      auto* dq_w_output = builder.MakeIntermediate();
+      auto* gather_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(weight, .003f, 1, dq_w_output);
+      builder.AddNode("Gather", {dq_w_output, input1_arg}, {gather_output});
+
+      // add Q
+      builder.AddQuantizeLinearNode<int8_t>(gather_output, .003f, 1, output_arg);
+    };
+
+    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Gather"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case({12, 37}, {24, 12});
+}
+
+TEST(QDQTransformerTests, Transpose) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Q
+      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
+    };
+
+    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case({2, 13, 12, 37}, {0, 3, 1, 2});
+}
+
+TEST(QDQTransformerTests, Transpose_No_Fusion) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
+
+      // add Transpose
+      auto* transpose_output = builder.MakeOutput(); // transpose output is graph output
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Q
+      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
+    };
+
+    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  };
+
+  test_case({2, 13, 12, 37}, {0, 3, 1, 2});
 }
 
 TEST(QDQTransformerTests, QLinearMatMul) {
@@ -276,7 +365,6 @@ TEST(QDQTransformerTests, QLinearMatMul) {
     TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({12, 37}, {37, 12});
   test_case({23, 13, 13}, {13, 13});
   test_case({22, 11, 13, 15}, {15, 13});
@@ -309,7 +397,6 @@ TEST(QDQTransformerTests, MatMul_No_Fusion) {
     TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({12, 37}, {37, 12});
   test_case({23, 13, 13}, {13, 13});
   test_case({22, 11, 13, 15}, {15, 13});
@@ -346,7 +433,6 @@ TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
     TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({12, 37}, {37, 12});
   test_case({23, 13, 13}, {13, 13});
   test_case({22, 11, 13, 15}, {15, 13});
@@ -389,7 +475,6 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
                       1e-5 /*relative_per_sample_tolerance*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({12, 37}, {37, 12});
   test_case({23, 13, 13}, {13, 13});
   test_case({22, 11, 13, 15}, {15, 13});
@@ -438,7 +523,6 @@ TEST(QDQTransformerTests, ConvRelu) {
     TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5}, true);
   test_case({1, 12, 37}, {32, 12, 5}, false);
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, true);
@@ -500,7 +584,6 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
                       0.01f /*relative_per_sample_tolerance*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
@@ -559,7 +642,6 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
                       0.01f /*relative_per_sample_tolerance*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
@@ -620,7 +702,6 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
                       0.01f /*relative_per_sample_tolerance*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
@@ -666,7 +747,6 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2});
 }
 
@@ -725,7 +805,6 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
 }
 
@@ -771,7 +850,6 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
 }
 
@@ -830,7 +908,6 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
 }
 
@@ -881,7 +958,6 @@ TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2});
 }
 
@@ -917,7 +993,6 @@ TEST(QDQTransformerTests, QDQPropagation_QDQ_CancelOut_More) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, false, false);
   test_case({1, 13, 13, 23}, false, true);
   test_case({1, 13, 13, 23}, true, false);
@@ -953,7 +1028,6 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
 }
 
@@ -989,7 +1063,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
 }
 
@@ -1027,7 +1100,6 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
 }
 
@@ -1060,7 +1132,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
                       12 /*opset_version*/);
   };
 
-  // Test the basic case of a single 1D/2D/3D convolution.
   test_case({1, 13, 13, 23});
 }
 

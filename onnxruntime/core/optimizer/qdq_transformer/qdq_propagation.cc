@@ -7,6 +7,7 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
@@ -22,41 +23,14 @@ static bool CanNodePropagate(const Node& node) {
 }
 
 static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
-  std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
-  std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-  if (dq_input_defs.size() != QDQInputCountRequired ||
-      q_input_defs.size() != QDQInputCountRequired ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx]) ||
+  if (!QDQ::IsQDQPairSupported(graph, q_node, dq_node)) {
+    return false;
+  }
+
+  // check if dq_node has only one output edge and,
+  // dq_node and q_node output are not graph outputs
+  if (!optimizer_utils::CheckOutputEdges(graph, dq_node, 1) ||
       !graph.GetNodeOutputsInGraphOutputs(q_node).empty()) {
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputScaleIdx]->Name());
-  const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputScaleIdx]->Name());
-  const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputZeroPointIdx]->Name());
-  const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputZeroPointIdx]->Name());
-  if (nullptr == q_zp_tensor_proto ||
-      nullptr == dq_zp_tensor_proto ||
-      nullptr == q_scale_tensor_proto ||
-      nullptr == dq_scale_tensor_proto) {
-    return false;
-  }
-
-  Initializer q_zp(*q_zp_tensor_proto, graph.ModelPath());
-  Initializer q_scale(*q_scale_tensor_proto, graph.ModelPath());
-  Initializer dq_zp(*dq_zp_tensor_proto, graph.ModelPath());
-  Initializer dq_scale(*dq_scale_tensor_proto, graph.ModelPath());
-
-  if (*q_zp.data<int8_t>() != *dq_zp.data<int8_t>() ||
-      *q_scale.data<float>() != *dq_scale.data<float>() ||
-      dq_node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
@@ -75,7 +49,7 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
   graph_utils::RemoveNodeOutputEdges(graph, q_node);  // Remove Q node output edges
   for (auto& output_edge : output_edges) {
     // set input NodeArg of Q's children to the 1st input of DQ
-    graph.GetNode(output_edge.dst_node)->MutableInputDefs()[output_edge.dst_arg_index] = dq_input_defs[0];
+    graph.GetNode(output_edge.dst_node)->MutableInputDefs()[output_edge.dst_arg_index] = dq_node.MutableInputDefs()[0];
 
     // add edge between parent of DQ to children of Q
     if (input_edge_info.second != -1) {
