@@ -8,7 +8,7 @@ android {
     buildToolsVersion "30.0.3"
 
     defaultConfig {
-        applicationId "ai.onnxruntime.example.javavalidater"
+        applicationId "ai.onnxruntime.example.javavalidator"
 
         minSdkVersion 24
         targetSdkVersion 30
