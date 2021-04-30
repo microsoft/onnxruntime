@@ -24,11 +24,11 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
     CudaT cudaT;
   };
   _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(input_data)),
-                                                                          reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(output_data)),
-                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(min_u)),
-                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(max_u)),
-                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(&min_default)),
-                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(&max_default)),
+                                                                          reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(output_data)),
+                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(min)),
+                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(max)),
+                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(&min_default)),
+                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(&max_default)),
                                                                           count);
 }
 
