@@ -375,7 +375,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
     // and writes pre-packed weights to the container
-    std::lock_guard<onnxruntime::OrtMutex>(prepacked_weights_container_->mutex_);
+    std::lock_guard<onnxruntime::OrtMutex> l(prepacked_weights_container_->mutex_);
     return prepacked_constant_weights(true);
   } else {
     return prepacked_constant_weights(false);
@@ -892,8 +892,8 @@ Status SessionState::CreateSubgraphSessionState() {
 
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
-                                                 thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                                 logger_, profiler_);
+                                         thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
+                                         logger_, profiler_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
