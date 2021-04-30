@@ -82,8 +82,10 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
 
         elif input_idx >= len(non_none_inputs):
             # Registered buffers are translated to user_input+initializer in ONNX
-            assert name in buffer_names_dict, f'Buffer name {name} not found!'
-            inp = buffer_names_dict[name]
+            try:
+                inp = buffer_names_dict[name]
+            except KeyError:
+                raise KeyError(f'Registered buffer name {name} not found.')
 
         if inp is not None:
             result.append(inp)
