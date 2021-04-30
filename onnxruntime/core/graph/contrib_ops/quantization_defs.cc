@@ -927,6 +927,86 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain weights types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::RNNShapeInference);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearConcat)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("axis", "Which axis to concat on", AttributeProto::INT)
+      .SetDoc(
+          "Concatenate a list of tensors into a single tensor."
+          "All input tensors must have the same shape, except "
+          "for the dimension size of the axis to concatenate on.")
+      .Input(0, "Y_scale", "Y's scale.", "TF")
+      .Input(1, "Y_zero_point", "Y's zero point.", "T8")
+      .Input(2, "inputs", "List of tensors/scale/zero_point for concatenation", "TV", OpSchema::Variadic, false)
+      .Output(0, "Y", "Concatenated tensor", "T8")
+      .TypeConstraint(
+          "T8",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint(
+          "TF",
+          {"tensor(float)"},
+          "Constrain scale types to any float tensor type.")
+      .TypeConstraint(
+          "TV",
+          {"tensor(uint8)", "tensor(int8)", "tensor(float)"},
+          "Sequence of (Tensor, Scale, ZeroPoint) tuples. The type is sequence of (T8, TF, T8).")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto numInputs = ctx.getNumInputs();
+        if (numInputs < 8 || (numInputs - 2) % 3 != 0 ||
+            !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
+          return;
+        }
+        auto rank = ctx.getInputType(2)->tensor_type().shape().dim_size();
+
+        auto axisAttr = ctx.getAttribute("axis");
+        if (!axisAttr) {
+          fail_shape_inference("Required attribute axis is missing");
+        }
+        int axis = static_cast<int>(axisAttr->i());
+        if (rank <= axis || axis < -rank) {
+          fail_shape_inference("axis must be in [-rank, rank)");
+        }
+        if (axis < 0) {
+          axis += rank;
+        }
+
+        bool all_lengths_known = true;
+        int total_length = 0;
+
+        auto* output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        for (int64_t i = 0; i < rank; ++i) {
+          output_shape->add_dim();
+        }
+
+        for (size_t i = 2; i < numInputs; i += 3) {
+          const auto& shape = ctx.getInputType(i)->tensor_type().shape();
+          if (shape.dim_size() != rank) {
+            fail_shape_inference("All inputs to Concat must have same rank");
+          }
+          for (int j = 0; j < rank; j++) {
+            if (j == axis) {
+              if (shape.dim(j).has_dim_value()) {
+                total_length += static_cast<int>(shape.dim(j).dim_value());
+              } else {
+                all_lengths_known = false;
+              }
+            } else {
+              auto& output_dim = *output_shape->mutable_dim(j);
+              const auto& input_dim = shape.dim(j);
+              mergeInDimensionInfo(input_dim, output_dim, j);
+            }
+          }
+        }
+
+        if (all_lengths_known) {
+          output_shape->mutable_dim(axis)->set_dim_value(total_length);
+        }
+      });
 }
 
 }  // namespace contrib

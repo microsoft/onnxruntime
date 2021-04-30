@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/make_unique.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -30,7 +29,7 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   CPUExecutionProviderInfo info;
-  return onnxruntime::make_unique<CPUExecutionProvider>(info);
+  return std::make_unique<CPUExecutionProvider>(info);
 }
 
 class ExecutionFrameTest : public ::testing::Test {
@@ -123,7 +122,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
   OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -332,52 +331,6 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
   ASSERT_EQ(p->PeakSize(), 0u);  // Peak size is 0.
-
-  SessionOptions so;
-  so.session_logid = "MemPatternWithExternalOutputsTest";
-  InferenceSession session_obj{so, GetEnvironment()};
-  std::stringstream buffer;
-  model.ToProto().SerializeToOstream(&buffer);
-  ASSERT_STATUS_OK(session_obj.Load(buffer));
-  ASSERT_STATUS_OK(session_obj.Initialize());
-
-  {
-    // Run with original InferenceSession::Run, it should fail due to the YieldOp.
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("X", x_value));
-
-    // prepare outputs
-    std::vector<std::string> output_names;
-    output_names.push_back("Y");
-    std::vector<OrtValue> fetches;
-
-    RunOptions run_options;
-    auto st = session_obj.Run(run_options, feeds, output_names, &fetches);
-    EXPECT_FALSE(st.IsOK());
-    EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Non-zero status code returned while running YieldOp node."));
-  }
-
-  {
-    // Run with new RunForward/RunBackward.
-    training::TrainingAgent training_agent(session_obj);
-    unique_ptr<IOBinding> io_binding;
-    ASSERT_STATUS_OK(session_obj.NewIOBinding(&io_binding));
-    io_binding->BindInput("X", x_value);
-    OrtValue output;
-    io_binding->BindOutput("Y", output);
-    RunOptions run_options;
-    std::vector<OrtValue> user_outputs;
-    int64_t run_id;
-    ASSERT_STATUS_OK(training_agent.RunForward(run_options, *io_binding, user_outputs, run_id));
-    const std::vector<float> yield_input_expected{2.0f, 2.0f, 2.0f, 2.0f};
-    EXPECT_THAT(user_outputs[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(yield_input_expected)));
-    ASSERT_STATUS_OK(training_agent.RunBackward(run_id, {t_value}));
-    // The output is MatMul(x_value, t_value);
-    const std::vector<float> output_expected{4.0f, 4.0f, 4.0f, 4.0f};
-    EXPECT_THAT(io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>(),
-                ::testing::ContainerEq(gsl::make_span(output_expected)));
-  }
 }
 #endif
 
@@ -435,7 +388,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     ASSERT_STATUS_OK(session.Initialize());
 
     auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-    auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
+    auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
     const void* orig_buffer = p_tensor->DataRaw();
 
     std::vector<OrtValue> results;

@@ -147,7 +147,7 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
 static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                               const IndexedSubGraph& nodes_to_fuse) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
-  auto op_schema = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
+  auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema->SetName(meta_def->name);
   op_schema->SetDomain(meta_def->domain);
   op_schema->SetDoc(meta_def->doc_string);
@@ -277,7 +277,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // as we might make some modifications to the FunctionProto along the way
 
   const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
-  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_.name());
   op_schema_->SetDomain(node_in_parent_graph->Domain());
   op_schema_->SetDoc(onnx_func_proto_.doc_string());
@@ -481,6 +481,6 @@ ViewerFunctionImpl::~ViewerFunctionImpl() = default;
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        const IndexedSubGraph& nodes_to_fuse,
                                        const logging::Logger& logger) {
-  return onnxruntime::make_unique<FunctionImpl>(graph, nodes_to_fuse, logger);
+  return std::make_unique<FunctionImpl>(graph, nodes_to_fuse, logger);
 }
 }  // namespace onnxruntime

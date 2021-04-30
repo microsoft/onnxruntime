@@ -10,6 +10,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -17,6 +18,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+
 
 #ifdef USE_TENSORRT
 #include "core/providers/cuda/cuda_allocator.h"
@@ -125,20 +127,20 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) override {
-    return onnxruntime::make_unique<CPUAllocator>(memory_info);
+    return std::make_unique<CPUAllocator>(memory_info);
   };
 
 #ifdef USE_TENSORRT
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<CUDAAllocator>(device_id, name);
+    return std::make_unique<CUDAAllocator>(device_id, name);
   }
 
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name);
+    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return onnxruntime::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
+    return std::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
   }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
@@ -229,7 +231,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // logging::Capture
   std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) override {
-    return onnxruntime::make_unique<logging::Capture>(logger, severity, category, dataType, location);
+    return std::make_unique<logging::Capture>(logger, severity, category, dataType, location);
   }
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
   std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }
@@ -251,7 +253,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_tensor_type(); }
 
   // AttributeProto
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> AttributeProto__construct() override { return onnxruntime::make_unique<ONNX_NAMESPACE::AttributeProto>(); }
+  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> AttributeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::AttributeProto>(); }
   void AttributeProto__operator_delete(ONNX_NAMESPACE::AttributeProto* p) override { delete p; }
   void AttributeProto__operator_assign(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::AttributeProto& v) override { *p = v; }
 
@@ -288,7 +290,7 @@ struct ProviderHostImpl : ProviderHost {
   void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override { *p = v; }
 
   // ModelProto
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ModelProto__construct() override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ModelProto__construct() override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(); }
   void ModelProto__operator_delete(ONNX_NAMESPACE::ModelProto* p) override { delete p; }
 
   bool ModelProto__SerializeToString(const ONNX_NAMESPACE::ModelProto* p, std::string& string) override { return p->SerializeToString(&string); }
@@ -319,11 +321,11 @@ struct ProviderHostImpl : ProviderHost {
 
   // TensorShapeProto_Dimensions
   std::unique_ptr<TensorShapeProto_Dimension_Iterator> TensorShapeProto_Dimensions__begin(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) override {
-    return onnxruntime::make_unique<TensorShapeProto_Dimension_Iterator_Impl>(p->begin());
+    return std::make_unique<TensorShapeProto_Dimension_Iterator_Impl>(p->begin());
   }
 
   std::unique_ptr<TensorShapeProto_Dimension_Iterator> TensorShapeProto_Dimensions__end(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) override {
-    return onnxruntime::make_unique<TensorShapeProto_Dimension_Iterator_Impl>(p->end());
+    return std::make_unique<TensorShapeProto_Dimension_Iterator_Impl>(p->end());
   }
 
   // TensorShapeProto
@@ -345,7 +347,7 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
   // ComputeCapability
-  std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return onnxruntime::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
+  std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
 
@@ -357,7 +359,7 @@ struct ProviderHostImpl : ProviderHost {
   Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) override { return p->IDataTransfer::CopyTensors(src_dst_pairs); }
 
   // IndexedSubGraph_MetaDef
-  std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() override { return onnxruntime::make_unique<IndexedSubGraph::MetaDef>(); }
+  std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() override { return std::make_unique<IndexedSubGraph::MetaDef>(); }
   void IndexedSubGraph_MetaDef__operator_delete(IndexedSubGraph_MetaDef* p) override { delete p; }
 
   std::string& IndexedSubGraph_MetaDef__name(IndexedSubGraph_MetaDef* p) override { return p->name; }
@@ -370,7 +372,7 @@ struct ProviderHostImpl : ProviderHost {
   std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
 
   // IndexedSubGraph
-  std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return onnxruntime::make_unique<IndexedSubGraph>(); }
+  std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return std::make_unique<IndexedSubGraph>(); }
   void IndexedSubGraph__operator_delete(IndexedSubGraph* p) override { delete p; }
 
   std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph* p) override { return p->nodes; }
@@ -383,7 +385,7 @@ struct ProviderHostImpl : ProviderHost {
   int KernelDef__ExecQueueId(const KernelDef* p) override { return p->ExecQueueId(); }
 
   // KernelDefBuilder
-  std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
+  std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() override { return std::make_unique<KernelDefBuilder>(); }
   void KernelDefBuilder__operator_delete(KernelDefBuilder* p) override { delete p; }
 
   void KernelDefBuilder__SetName(KernelDefBuilder* p, const char* op_name) override { p->SetName(op_name); }
@@ -426,14 +428,14 @@ struct ProviderHostImpl : ProviderHost {
   size_t Node__GetInputEdgesCount(const Node* p) noexcept override { return p->GetInputEdgesCount(); }
   size_t Node__GetOutputEdgesCount(const Node* p) noexcept override { return p->GetOutputEdgesCount(); }
 
-  std::unique_ptr<Node__NodeIterator> Node__InputNodesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->InputNodesBegin()); }
-  std::unique_ptr<Node__NodeIterator> Node__InputNodesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->InputNodesEnd()); }
+  std::unique_ptr<Node__NodeIterator> Node__InputNodesBegin(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->InputNodesBegin()); }
+  std::unique_ptr<Node__NodeIterator> Node__InputNodesEnd(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->InputNodesEnd()); }
 
-  std::unique_ptr<Node__NodeIterator> Node__OutputNodesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
-  std::unique_ptr<Node__NodeIterator> Node__OutputNodesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
+  std::unique_ptr<Node__NodeIterator> Node__OutputNodesBegin(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
+  std::unique_ptr<Node__NodeIterator> Node__OutputNodesEnd(const Node* p) noexcept override { return std::make_unique<Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
 
-  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
-  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
+  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesBegin(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
+  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
 
   void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
 
@@ -446,7 +448,7 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::TypeProto* NodeArg__TypeAsProto(const NodeArg* p) noexcept override { return p->TypeAsProto(); }
 
   // NodeAttributes
-  std::unique_ptr<NodeAttributes> NodeAttributes__construct() override { return onnxruntime::make_unique<NodeAttributes>(); }
+  std::unique_ptr<NodeAttributes> NodeAttributes__construct() override { return std::make_unique<NodeAttributes>(); }
   void NodeAttributes__operator_delete(NodeAttributes* p) noexcept override { delete p; }
   size_t NodeAttributes__size(const NodeAttributes* p) override { return p->size(); }
   void NodeAttributes__clear(NodeAttributes* p) noexcept override { return p->clear(); }
@@ -456,24 +458,24 @@ struct ProviderHostImpl : ProviderHost {
   void NodeAttributes__operator_assign(NodeAttributes* p, const NodeAttributes& v) override { *p = v; }
 
   std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__begin(const NodeAttributes* p) override {
-    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->begin());
+    return std::make_unique<NodeAttributes_Iterator_Impl>(p->begin());
   }
   std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__end(const NodeAttributes* p) override {
-    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->end());
+    return std::make_unique<NodeAttributes_Iterator_Impl>(p->end());
   }
   std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) override {
-    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->find(key));
+    return std::make_unique<NodeAttributes_Iterator_Impl>(p->find(key));
   }
   void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
 
   // Model
   void Model__operator_delete(Model* p) override { delete p; }
   Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
 
   // Graph
-  std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return onnxruntime::make_unique<GraphViewer>(*p); }
-  std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
+  std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }
+  std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
 
@@ -492,7 +494,7 @@ struct ProviderHostImpl : ProviderHost {
   // GraphViewer
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
-    return onnxruntime::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
+    return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
                                            IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
                                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
@@ -590,6 +592,10 @@ struct ProviderSharedLibrary {
 };
 
 static ProviderSharedLibrary s_library_shared;
+
+bool InitProvidersSharedLibrary(){
+  return s_library_shared.Ensure();
+}
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}

@@ -197,6 +197,10 @@ class ORTTrainerOptions(object):
                             'type': 'list',
                             'schema': {'type': 'string'},
                             'default': []
+                        },
+                        'allow_layer_norm_mod_precision': {
+                            'type': 'boolean',
+                            'default': False
                         }
                     }
                 },
@@ -363,6 +367,9 @@ class ORTTrainerOptions(object):
             if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
         graph_transformer.propagate_cast_ops_allow(list of str, [])
             List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        graph_transformer.allow_layer_norm_mod_precision(bool, default False)
+            Enable LayerNormalization/SimplifiedLayerNormalization fusion 
+            even if it requires modified compute precision
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -691,7 +698,11 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'list',
                 'schema': {'type': 'string'},
                 'default': []
-            }
+            },
+            'allow_layer_norm_mod_precision': {
+                'type': 'boolean',
+                'default': False
+            },
         }
     },
     'utils': {

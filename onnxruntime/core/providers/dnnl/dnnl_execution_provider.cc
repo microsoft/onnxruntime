@@ -232,7 +232,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   // There are several identical graphs in Model zoo and only differ in
   // few attribute values. GetGraphName return graph-name + first-node-output name
   std::string graph_name = GetGraphName(graph_viewer);
-  subgraph_ptr = onnxruntime::make_unique<ort_dnnl::Subgraph>(
+  subgraph_ptr = std::make_unique<ort_dnnl::Subgraph>(
       ort_dnnl::Subgraph(graph_name));
 
   // output name to node index map. Using it to find sub-graph end nodes

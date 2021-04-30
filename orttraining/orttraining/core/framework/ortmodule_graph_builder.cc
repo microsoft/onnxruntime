@@ -147,7 +147,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
 
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
                  config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
@@ -198,6 +198,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
   return Status::OK();
 }
 
@@ -274,10 +275,9 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
-      ;
-    } else {
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});

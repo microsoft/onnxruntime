@@ -227,6 +227,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+#if USE_TENSORRT
+        [Fact]
+        private void CanRunInferenceOnAModelWithTensorRT()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(0);
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+
+                using (var results = session.Run(container))
+                {
+                    validateRunResults(results);
+                }
+            }
+        }
+#endif
+
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
@@ -790,7 +824,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_cast_FLOAT_to_STRING", "node test error"},
-                { "test_identity_sequence", "data type not supported"}
+                { "test_identity_sequence", "data type not supported"},
+                { "test_gru_batchwise", "opset14 version not implemented yet"},
+                { "test_gru_defaults", "opset14 version not implemented yet"}, 
+                { "test_gru_seq_length", "opset14 version not implemented yet"}, 
+                { "test_gru_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_batchwise", "opset14 version not implemented yet"},
+                { "test_lstm_defaults", "opset14 version not implemented yet"},
+                { "test_lstm_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_with_peepholes", "opset14 version not implemented yet"},
+                { "test_rnn_seq_length", "opset14 version not implemented yet"},
+                { "test_simple_rnn_batchwise", "opset14 version not implemented yet"},
+                { "test_simple_rnn_defaults", "opset14 version not implemented yet"},
+                { "test_simple_rnn_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_sub_uint8", "data type not supported"},
+                { "test_mul_uint8", "data type not supported"},
+                { "test_add_uint8", "data type not supported"},
+                { "test_div_uint8", "data type not supported"},
+                { "test_batchnorm_epsilon", "opset14 version not implemented yet"},
+                { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
+                { "test_batchnorm_example", "opset14 version not implemented yet"},
+                { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI
