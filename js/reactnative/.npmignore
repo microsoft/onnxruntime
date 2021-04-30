@@ -1,0 +1,6 @@
+/script/
+
+/lib/commonjs/*.js.map
+/lib/module/*.js.map
+
+/tsconfig.json

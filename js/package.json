@@ -12,5 +12,6 @@
   "scripts": {
     "lint": "eslint . --ext .ts",
     "format": "clang-format --glob=\"{common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h}}\" --style=file -i"
-  }
+  },
+  "license": "MIT"
 }
