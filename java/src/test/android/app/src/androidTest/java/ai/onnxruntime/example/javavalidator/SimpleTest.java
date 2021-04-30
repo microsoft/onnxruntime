@@ -1,4 +1,4 @@
-package ai.onnxruntime.example.javavalidater;
+package ai.onnxruntime.example.javavalidator;
 
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtSession;
