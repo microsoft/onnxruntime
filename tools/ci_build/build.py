@@ -1222,7 +1222,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 adb_install(
                     os.path.join(
                         get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app ", "build", "outputs", "apk",
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
                         "androidTest", "debug", "app-debug-androidTest.apk"))
                 adb_shell(
                     'am instrument -w ai.onnxruntime.example.javavalidater.test/androidx.test.runner.AndroidJUnitRunner'
