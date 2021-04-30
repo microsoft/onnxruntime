@@ -18,7 +18,7 @@ struct CoreMLProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> CoreMLProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<CoreMLExecutionProvider>(coreml_flags_);
+  return std::make_unique<CoreMLExecutionProvider>(coreml_flags_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t coreml_flags) {

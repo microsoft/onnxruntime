@@ -760,7 +760,7 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 

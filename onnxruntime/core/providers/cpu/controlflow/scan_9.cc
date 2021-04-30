@@ -214,7 +214,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
+  info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
                                                   static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,

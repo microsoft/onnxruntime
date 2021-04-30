@@ -994,6 +994,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   set(HIP_CXX_FLAGS -fPIC)
+  list(APPEND HIP_CXX_FLAGS -std=c++14)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND HIP_CXX_FLAGS -g)

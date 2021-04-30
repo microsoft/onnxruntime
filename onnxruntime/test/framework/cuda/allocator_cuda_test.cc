@@ -17,7 +17,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
 
   AllocatorCreationInfo default_memory_info(
-      {[](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_device_id});
+      {[](OrtDevice::DeviceId id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, cuda_device_id});
 
   auto cuda_arena = CreateAllocator(default_memory_info);
 
@@ -33,7 +33,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_TRUE(cuda_addr);
 
   AllocatorCreationInfo pinned_memory_info(
-      [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); });
+      [](int) { return std::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); });
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
@@ -87,7 +87,7 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
   EXPECT_NE(free, total) << "All memory is free. Test logic does not handle this.";
 
   AllocatorCreationInfo default_memory_info(
-      {[](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+      {[](OrtDevice::DeviceId id) { return std::make_unique<CUDAAllocator>(id, CUDA); },
        cuda_device_id});
 
   auto cuda_arena = CreateAllocator(default_memory_info);
