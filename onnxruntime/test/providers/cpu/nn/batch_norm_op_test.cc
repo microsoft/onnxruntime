@@ -735,7 +735,6 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 }
 #endif
 
-
 // TODO fix flaky test for CUDA
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   OpTester test("BatchNormalization", 9);
@@ -761,7 +760,8 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   test.AddOutput<float>("saved_inv_std", channel_dims, {1.2288f, 0.861317f});
 
   // exclude CUDA Execution Provider due to flakiness
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset14) {
@@ -786,7 +786,8 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
 
   // exclude CUDA Execution Provider due to flakiness
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
