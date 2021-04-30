@@ -1582,7 +1582,6 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if(onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
