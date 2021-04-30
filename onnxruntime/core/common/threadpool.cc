@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <iostream>
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
@@ -40,6 +41,10 @@ limitations under the License.
 namespace onnxruntime {
 
 namespace concurrency {
+
+static bool testedMaxThreadsPerLoop = false;
+static bool setMaxThreadsPerLoop = false;
+static int maxThreadsPerLoop;
 
 #if !defined(ORT_MINIMAL_BUILD)
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_pool_name) : num_threads_(num_threads) {
@@ -386,6 +391,15 @@ ThreadPool::ThreadPool(Env* env,
                                                         thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
+  if (!testedMaxThreadsPerLoop) {
+    testedMaxThreadsPerLoop = true;
+    auto mt = env->GetEnvironmentVar("ORT_MAX_THREADS_PER_LOOP");
+    if (!mt.empty()) {
+      setMaxThreadsPerLoop = true;
+      maxThreadsPerLoop = ::std::stoi(mt);
+      ::std::cerr << "Overriding dop=" << degree_of_parallelism << " to maxThreadsPerLoop=" << maxThreadsPerLoop << ::std::endl;
+    }
+  }
 }
 
 ThreadPool::~ThreadPool() = default;
@@ -407,6 +421,9 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
   auto d_of_p = DegreeOfParallelism(this);
+  if (setMaxThreadsPerLoop) {
+    d_of_p = ::std::min(d_of_p, maxThreadsPerLoop);
+  }
   auto num_blocks = total / block_size;
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
@@ -620,10 +637,14 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
+    int nt = tp->NumThreads()+1;
+    if (setMaxThreadsPerLoop) {
+      nt = ::std::min(nt, maxThreadsPerLoop);
+    }
     if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
+      return nt * TaskGranularityFactor;
     } else {
-      return ((tp->NumThreads() + 1));
+      return nt;
     }
   } else {
     return 1;
