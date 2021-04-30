@@ -6,6 +6,7 @@
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/allocator.h"
+#include "core/platform/ort_mutex.h"
 #include <unordered_map>
 #include <string>
 
@@ -27,7 +28,6 @@ struct PrepackedWeight final {
   bool is_filled_ = false;  // By default, an instance of this class is "unfilled"
 };
 
-// TODO: Make this class thread-safe ?
 class PrepackedWeightsContainer final {
  public:
   PrepackedWeightsContainer() {
@@ -44,6 +44,12 @@ class PrepackedWeightsContainer final {
   bool HasCachedWeight(const std::string& key);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);
+
+  // Resource to be acquired by the method that is going to invoke calls to the kernels'
+  // PrePack() methods and does the read/write into the pre-packed weights' container.
+  // We only want to invoke PrePack() on a kernel that doesn't have a cached version
+  // of its pre-packed weight.
+  OrtMutex mutex_;
 
  private:
   // Define allocators ahead of the container containing tensors because the allocators

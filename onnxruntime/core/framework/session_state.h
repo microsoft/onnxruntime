@@ -19,6 +19,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
@@ -87,7 +88,8 @@ class SessionState {
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
-               bool enable_mem_reuse = true)
+               bool enable_mem_reuse = true,
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
@@ -97,7 +99,8 @@ class SessionState {
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse) {
+        enable_mem_reuse_(enable_mem_reuse),
+        prepacked_weights_container_(prepacked_weights_container) {
     SetupAllocators();
   }
 
@@ -293,7 +296,7 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
-                              SessionOptions& session_options,
+                              const SessionOptions& session_options,
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
@@ -322,7 +325,7 @@ class SessionState {
   * The original constant initialized tensors will be removed to save memory.
   */
   Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                           SessionOptions& session_options);
+                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -338,7 +341,7 @@ class SessionState {
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                   KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
-                                  SessionOptions& session_options,
+                                  const SessionOptions& session_options,
                                   bool remove_initializers,
                                   std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
@@ -450,6 +453,12 @@ class SessionState {
   bool enable_mem_reuse_;
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
+  PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;

@@ -47,6 +47,19 @@ namespace Microsoft.ML.OnnxRuntime
             Init(modelPath, _builtInSessionOptions);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model file and it will use the provided pre-packed weights container
+        /// to cache pre-packed buffers of shared initializers if any.
+        /// </summary>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(string modelPath, PrepackedWeightsContainer prepackedWeightsContainer)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(modelPath, _builtInSessionOptions, prepackedWeightsContainer);
+        }
+
 
         /// <summary>
         /// Constructs an InferenceSession from a model file, with some additional session options
@@ -56,6 +69,22 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath, SessionOptions options)
         {
             Init(modelPath, options);
+        }
+
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file, with some additional session options
+        /// and it will use the provided pre-packed weights container to cache pre-packed buffers 
+        /// of shared initializers if any.
+        /// </summary>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="options">Session options</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(string modelPath, SessionOptions options,
+            PrepackedWeightsContainer prepackedWeightsContainer)
+        {
+            Init(modelPath, options, prepackedWeightsContainer);
         }
 
         /// <summary>
@@ -310,7 +339,7 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<NamedOnnxValue> outputs,
             RunOptions options)
         {
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
                 var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
@@ -367,7 +396,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
             }
 
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
@@ -428,7 +457,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
@@ -515,7 +544,8 @@ namespace Microsoft.ML.OnnxRuntime
                         var ortValue = ortValues.ElementAt(i);
                         result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ortValue));
                     }
-                } catch(Exception e)
+                }
+                catch (Exception e)
                 {
                     result.Dispose();
                     throw e;
@@ -535,7 +565,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
                                                                    allocator.Pointer,
                                                                    out nameHandle));
-            using(var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            using (var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
@@ -609,8 +639,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-         private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
-            DisposableList<IDisposable> cleanupList)
+        private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
+           DisposableList<IDisposable> cleanupList)
         {
             var ortValues = new DisposableList<OrtValue>(outputNames.Length);
             cleanupList.Add(ortValues);
@@ -680,21 +710,32 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public ulong ProfilingStartTimeNs
         {
-           get
-           {
-               return _profilingStartTimeNs;
-           }
-        }  
+            get
+            {
+                return _profilingStartTimeNs;
+            }
+        }
 
         #endregion
 
         #region private methods
 
-        private void Init(string modelPath, SessionOptions options)
+        private void Init(string modelPath, SessionOptions options, PrepackedWeightsContainer prepackedWeightsContainer = null)
         {
             var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
+
+            if (prepackedWeightsContainer == null)
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    options.Handle, out session));
+            }
+
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    options.Handle, prepackedWeightsContainer.Pointer, out session));
+            }
 
             InitWithSessionHandle(session, options);
         }
@@ -757,8 +798,8 @@ namespace Microsoft.ML.OnnxRuntime
                 // set profiling's start time
                 UIntPtr startTime = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                    out startTime)); 
-                _profilingStartTimeNs = (ulong) startTime;
+                                                                    out startTime));
+                _profilingStartTimeNs = (ulong)startTime;
             }
             catch (OnnxRuntimeException e)
             {
@@ -821,7 +862,7 @@ namespace Microsoft.ML.OnnxRuntime
                                             (UIntPtr)index,
                                             allocator.Pointer,
                                             out nameHandle));
-            using(var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
@@ -963,7 +1004,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="disposing">true if invoked from Dispose() method</param>
         protected virtual void Dispose(bool disposing)
         {
-            if(_disposed)
+            if (_disposed)
             {
                 return;
             }
@@ -1137,7 +1178,7 @@ namespace Microsoft.ML.OnnxRuntime
                     }
 
                     // Process each key via the stored key handles
-                    foreach(var allocation in ortAllocationKeys)
+                    foreach (var allocation in ortAllocationKeys)
                     {
                         IntPtr keyHandle = allocation.Pointer;
                         IntPtr valueHandle = IntPtr.Zero;
@@ -1160,9 +1201,9 @@ namespace Microsoft.ML.OnnxRuntime
             {
 
                 // Free ModelMetadata handle
-                 NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
+                NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
 
-             }
+            }
 
         }
 

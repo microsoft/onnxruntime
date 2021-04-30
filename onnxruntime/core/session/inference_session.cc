@@ -195,7 +195,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
-                                         const Environment& session_env) {
+                                         const Environment& session_env,
+                                         PrepackedWeightsContainer* prepacked_weights_container) {
+  prepacked_weights_container_ = prepacked_weights_container;
+
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
@@ -294,7 +297,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
 }
 
-InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
+InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
+                                   PrepackedWeightsContainer* prepacked_weights_container)
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
@@ -303,12 +307,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   // Initialize assets of this session instance
-  ConstructorCommon(session_options, session_env);
+  ConstructorCommon(session_options, session_env, prepacked_weights_container);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
-                                   const std::string& model_uri)
+                                   const std::string& model_uri,
+                                   PrepackedWeightsContainer* prepacked_weights_container)
     : model_location_(ToWideString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
@@ -319,13 +324,14 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
               status.ErrorMessage());
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, session_env);
+  ConstructorCommon(session_options, session_env, prepacked_weights_container);
 }
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
-                                   const std::wstring& model_uri)
+                                   const std::wstring& model_uri,
+                                   PrepackedWeightsContainer* prepacked_weights_container)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
@@ -336,12 +342,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
               status.ErrorMessage());
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, session_env);
+  ConstructorCommon(session_options, session_env, prepacked_weights_container);
 }
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
-                                   std::istream& model_istream)
+                                   std::istream& model_istream,
+                                   PrepackedWeightsContainer* prepacked_weights_container)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
@@ -350,11 +357,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, session_env);
+  ConstructorCommon(session_options, session_env, prepacked_weights_container);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
-                                   const void* model_data, int model_data_len)
+                                   const void* model_data, int model_data_len,
+                                   PrepackedWeightsContainer* prepacked_weights_container)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
@@ -363,7 +371,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, session_env);
+  ConstructorCommon(session_options, session_env, prepacked_weights_container);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1187,7 +1195,8 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse);
+        session_options_.enable_mem_reuse,
+        prepacked_weights_container_);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 

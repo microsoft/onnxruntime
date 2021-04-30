@@ -196,10 +196,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetAttributeArray_float;
         public IntPtr KernelInfoGetAttributeArray_int64;
         public IntPtr CreatePrepackedWeightsContainer;
-        public IntPtr AddPrepackedWeightsContainer;
         public IntPtr ReleasePrepackedWeightsContainer;
-
+        public IntPtr CreateSessionWithPrepackedWeightsContainer;
     }
+
     internal static class NativeMethods
     {
         private const string nativeLib = "onnxruntime";
@@ -226,6 +226,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseStatus = (DOrtReleaseStatus)Marshal.GetDelegateForFunctionPointer(api_.ReleaseStatus, typeof(DOrtReleaseStatus));
 
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
+            OrtCreateSessionWithPrepackedWeightsContainer =
+                (DOrtCreateSessionWithPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionWithPrepackedWeightsContainer, typeof(DOrtCreateSessionWithPrepackedWeightsContainer));
             OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtRunWithBinding = (DOrtRunWithBinding)Marshal.GetDelegateForFunctionPointer(api_.RunWithBinding, typeof(DOrtRunWithBinding));
@@ -345,7 +347,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
 
             OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
-            OrtAddPrepackedWeightsContainer = (DOrtAddPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.AddPrepackedWeightsContainer, typeof(DOrtAddPrepackedWeightsContainer));
             OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
 
         }
@@ -393,6 +394,22 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="modelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        /// <param name="session">(Output) Created native OrtSession instance</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionWithPrepackedWeightsContainer(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        byte[] modelPath,
+                                        IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                        IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
+                                        out IntPtr /* (OrtSession**) */ session);
+        public static DOrtCreateSessionWithPrepackedWeightsContainer OrtCreateSessionWithPrepackedWeightsContainer;
 
         public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
                                                 IntPtr /* (OrtEnv*) */ environment,
@@ -645,15 +662,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                   IntPtr /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
-
-        /// <summary>
-        /// Add an instance of PrepackedWeightsContainer that is shared across sessions using this SessionOptions instance
-        /// </summary>
-        /// <param name="options">Native SessionOptions instance</param>
-        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddPrepackedWeightsContainer(IntPtr /*(OrtSessionOptions*)*/ options,
-                                                                  IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
-        public static DOrtAddPrepackedWeightsContainer OrtAddPrepackedWeightsContainer;
         #endregion
 
         #region RunOptions API

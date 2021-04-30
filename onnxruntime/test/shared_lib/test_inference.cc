@@ -1357,11 +1357,10 @@ TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
   std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
       rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
 
-  ASSERT_TRUE(api.AddPrepackedWeightsContainer(session_options, prepacked_weights_container) == nullptr);
-
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
   // create session 1
-  Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options);
+  Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
                     inputs,
@@ -1371,7 +1370,7 @@ TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
                     nullptr);
 
   // create session 2
-  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options);
+  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session2,
                     inputs,

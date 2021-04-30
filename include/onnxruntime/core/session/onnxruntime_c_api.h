@@ -1284,16 +1284,27 @@ struct OrtApi {
   ORT_API2_STATUS(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
 
   /*
-     * Add an OrtPrepackedWeightsContainer instance to an OrtSessionOptions instance.
-    */
-  ORT_API2_STATUS(AddPrepackedWeightsContainer, _Inout_ OrtSessionOptions* options,
-                  _In_ OrtPrepackedWeightsContainer* prepacked_weights_container);
-
-  /*
      * Release OrtPrepackedWeightsContainer instance
      *  Note: The OrtPrepackedWeightsContainer instance must not be released until the sessions using it are released
     */
   ORT_CLASS_RELEASE(PrepackedWeightsContainer);
+
+  /**
+     * Samr functionality offered by CreateSession() API except that a container that contains
+     pre-packed weights' buffers is written into/read from by the created session.
+     This is useful when used in conjunction with the AddInitializer() API which injects
+     shared initializer info into sessions. Wherever possible, the pre-packed versions of these 
+     shared initializers are cached in this container so that multiple sessions can just re-use
+     these instead of duplicating these in memory.
+     * \env - OrtEnv instance instance
+     * \model_path - model path
+     * \options - OrtSessionoptions instance
+     * \prepacked_weights_container - OrtPrepackedWeightsContainer instance
+     * \out - created sessio instance
+     */
+  ORT_API2_STATUS(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _Outptr_ OrtSession** out);
 };
 
 /*

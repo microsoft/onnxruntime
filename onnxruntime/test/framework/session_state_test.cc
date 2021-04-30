@@ -699,7 +699,6 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
 
     // Enable pre-packed weights container
     PrepackedWeightsContainer prepacked_weights_container;
-    sess_options.prepacked_weights_container = &prepacked_weights_container;
 
     // First session/model
     Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -715,7 +714,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
                                  nullptr, /*inter_op_thread_pool*/
                                  dtm,
                                  DefaultLoggingManager().DefaultLogger(),
-                                 profiler);
+                                 profiler,
+                                 false, true,
+                                 &prepacked_weights_container);
 
     ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                           kernel_registry_manager,
@@ -740,7 +741,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
                                  nullptr, /*inter_op_thread_pool*/
                                  dtm,
                                  DefaultLoggingManager().DefaultLogger(),
-                                 profiler);
+                                 profiler,
+                                 false, true,
+                                 &prepacked_weights_container);
 
     ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                           kernel_registry_manager,

@@ -2231,14 +2231,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             // We want to share initializers between the two sessions
                             options.AddInitializer("W", sharedInitializer);
 
-                            // We want the pre-packed versions of the shared initializer to be shared between sessions (memory savings)
-                            options.AddPrepackedWeightsContainer(prepackedWeightsContainer);
-
                             float[] expectedOutput = { 4.0F, 10.0F, 16.0F };
                             int[] expectedDimensions = { 3, 1 };
 
-                            using (var session = new InferenceSession(modelPath, options))
-                            using (var session2 = new InferenceSession(modelPath, options))
+                            // We want the pre-packed weights of the shared initializer to be shared between sessions (memory savings)
+                            // and hence we pass in the 'prepackedWeightsContainer' at sessio creation time
+                            using (var session = new InferenceSession(modelPath, options, prepackedWeightsContainer))
+                            using (var session2 = new InferenceSession(modelPath, options, prepackedWeightsContainer))
                             {
                                 var inputMeta = session.InputMetadata;
                                 var container = new List<NamedOnnxValue>();

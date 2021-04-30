@@ -4,7 +4,9 @@
 #include "core/framework/session_state.h"
 
 #include <sstream>
+#include <cstdint>
 
+#include "core/platform/ort_mutex.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -259,107 +261,125 @@ void SessionState::CleanInitializedTensorsFromGraph() {
 }
 
 Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                                       SessionOptions& session_options) {
-  bool should_cache_prepacked_weights_for_shared_initializers = (session_options.prepacked_weights_container != nullptr);
-  for (auto& node : GetGraphViewer().Nodes()) {
-    auto kernel = GetMutableKernel(node.Index());
-    int input_idx = 0;
-    for (auto& input_def : node.InputDefs()) {
-      if (input_def->Exists()) {
-        const std::string& input_name = input_def->Name();
-        SessionState* st = this;
-        // subgraph can use the value from outer scope,
-        // so it needs to check if current node uses constant initialized tensor from current and outer graphs
-        do {
-          int ort_value_idx;
-          if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+                                                       const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
+                                        bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
+    for (auto& node : GetGraphViewer().Nodes()) {
+      auto kernel = GetMutableKernel(node.Index());
+      int input_idx = 0;
+      for (auto& input_def : node.InputDefs()) {
+        if (input_def->Exists()) {
+          const std::string& input_name = input_def->Name();
+          SessionState* st = this;
+          // subgraph can use the value from outer scope,
+          // so it needs to check if current node uses constant initialized tensor from current and outer graphs
+          do {
+            int ort_value_idx;
+            if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
+              std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-            if (constant_initialized_tensors.count(ort_value_idx)) {
-              bool is_packed = false;
-              const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+              if (constant_initialized_tensors.count(ort_value_idx)) {
+                bool is_packed = false;
+                const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
 
-              auto iter = session_options.initializers_to_share_map.find(input_name);
-              bool is_shared_initializer = (iter != session_options.initializers_to_share_map.end());
+                auto iter = initializers_to_share_map.find(input_name);
+                bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-              // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-              if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
-                auto* prepacked_weights_container = session_options.prepacked_weights_container;
+                // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
+                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers && node.GetExecutionProviderType() == kCpuExecutionProvider) {
+                  const auto& op_type = node.OpType();
 
-                const auto& op_type = node.OpType();
+                  // Sanity check
+                  // TODO: Check if some version of the ONNX IR allows op_type to be empty
+                  ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                // Sanity check
-                // TODO: Check if some version of the ONNX IR allows op_type to be empty
-                ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
+                  // container lookup key is op_type + tensor buffer data pointer
+                  // The idea is if the same op_type spanning multiple sessions is consuming the same raw data as the initializer,
+                  // its pre-packed weights are the same.
+                  // TODO: Check if this is correct - particularly check if there can be other static attributes of a node
+                  // that will define the contents of a pre-packed buffer even for the same ra constant initializer data.
+                  // For example, does node attributes, the opset version of the op, etc. define the contents of the pre-packed
+                  // buffer. If so, we need to key on all of those that ultimately define the contents of the pre-packed buffer.
 
-                // container lookup key is op_type + node input name (which is a constant initializer)
-                std::ostringstream ss;
-                ss << op_type;
-                ss << "+";
-                ss << input_name;
+                  std::ostringstream ss;
+                  ss << op_type;
+                  ss << "+";
+                  ss << reinterpret_cast<uintptr_t>(const_initialized_tensor.DataRaw());  // Handles nullptr and is portable
 
-                const std::string& prepacked_weights_container_key = ss.str();
+                  const std::string& prepacked_weights_container_key = ss.str();
 
-                bool container_contains_packed_weight = prepacked_weights_container->HasCachedWeight(prepacked_weights_container_key);
+                  bool container_contains_packed_weight = prepacked_weights_container_->HasCachedWeight(prepacked_weights_container_key);
 
-                if (container_contains_packed_weight) {
-                  LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name
-                                      << " used in the node: " << node.Name() << " which is of op type: " << node.OpType();
+                  if (container_contains_packed_weight) {
+                    LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name
+                                        << " used in the node: " << node.Name() << " which is of op type: " << node.OpType();
 
-                  bool read_from_container = false;
-                  ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_container->GetCachedWeight(prepacked_weights_container_key),
-                                                                       input_idx, read_from_container));
+                    bool read_from_container = false;
+                    ORT_RETURN_IF_ERROR(kernel->UseCachedPrePackedWeight(prepacked_weights_container_->GetCachedWeight(prepacked_weights_container_key),
+                                                                         input_idx, read_from_container));
 
-                  // BUG CHECK: Ensure that the kernel read the cached weight (or atleast has an implementation that can consume the cached weight)
-                  ORT_ENFORCE(read_from_container, "The kernel corresponding to the node ", node.Name(),
-                              " doesn't have an implementation that can consume cached pre-packed weights");
-                } else {
-                  AllocatorPtr allocator_for_caching = prepacked_weights_container->GetAllocator(CPU);
-                  ORT_ENFORCE(allocator_for_caching.get() != nullptr);
+                    // BUG CHECK: Ensure that the kernel read the cached weight (or atleast has an implementation that can consume the cached weight)
+                    ORT_ENFORCE(read_from_container, "The kernel corresponding to the node ", node.Name(),
+                                " doesn't have an implementation that can consume cached pre-packed weights");
+                  } else {
+                    AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetAllocator(CPU);
+                    ORT_ENFORCE(allocator_for_caching.get() != nullptr);
 
-                  // Invoke PrePack()
-                  PrepackedWeight weight_to_be_filled_in;
-                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
-                                                      &weight_to_be_filled_in,
-                                                      allocator_for_caching));
+                    // Invoke PrePack()
+                    PrepackedWeight weight_to_be_filled_in;
+                    ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
+                                                        &weight_to_be_filled_in,
+                                                        allocator_for_caching));
 
-                  if (is_packed) {
-                    // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight to be cached if the weight was pre-packed
-                    ORT_ENFORCE(weight_to_be_filled_in.is_filled_, "The kernel corresponding to the node ", node.Name(),
-                                " doesn't have an implementation that can caches computed pre-packed weights");
+                    if (is_packed) {
+                      // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight to be cached if the weight was pre-packed
+                      ORT_ENFORCE(weight_to_be_filled_in.is_filled_, "The kernel corresponding to the node ", node.Name(),
+                                  " doesn't have an implementation that can caches computed pre-packed weights");
 
-                    // Write into the pre-packed weights cache
-                    prepacked_weights_container->WriteCachedWeight(prepacked_weights_container_key, std::move(weight_to_be_filled_in));
+                      // Write into the pre-packed weights cache
+                      prepacked_weights_container_->WriteCachedWeight(prepacked_weights_container_key, std::move(weight_to_be_filled_in));
+                    }
                   }
+                } else {
+                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
+                                                      nullptr,              // no caching required
+                                                      session_cpu_alloc));  // use allocator tied to this session
                 }
-              } else {
-                AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
-                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed,
-                                                    nullptr,              // no caching required
-                                                    session_cpu_alloc));  // use allocator tied to this session
-              }
 
-              if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
-                // release the constant initialized tensor
-                st->initialized_tensors_.erase(ort_value_idx);
-                constant_initialized_tensors.erase(ort_value_idx);
+                if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
+                  // release the constant initialized tensor
+                  st->initialized_tensors_.erase(ort_value_idx);
+                  constant_initialized_tensors.erase(ort_value_idx);
+                }
+              }
+              // stop searching in 2 cases:
+              // 1. value is not from OuterScope
+              // 2. value is from OuterScope and the current OuterScope has the value
+              if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
+                break;
               }
             }
-            // stop searching in 2 cases:
-            // 1. value is not from OuterScope
-            // 2. value is from OuterScope and the current OuterScope has the value
-            if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
-              break;
-            }
-          }
-          st = st->Parent();
-        } while (st);
+            st = st->Parent();
+          } while (st);
+        }
+        input_idx++;
       }
-      input_idx++;
     }
-  }
 
-  return Status::OK();
+    return Status::OK();
+  };
+
+  bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
+
+  if (should_cache_prepacked_weights_for_shared_initializers) {
+    // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
+    // and writes pre-packed weights to the container
+    std::lock_guard<onnxruntime::OrtMutex>(prepacked_weights_container_->mutex_);
+    return prepacked_constant_weights(true);
+  } else {
+    return prepacked_constant_weights(false);
+  }
 }
 
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
@@ -1003,7 +1023,7 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
-                                          SessionOptions& session_options,
+                                          const SessionOptions& session_options,
                                           const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
@@ -1043,7 +1063,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
-                                              SessionOptions& session_options,
+                                              const SessionOptions& session_options,
                                               bool remove_initializers,
                                               std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   CreateGraphInfo();
@@ -1129,7 +1149,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   if (disable_prepacking != "1") {
     // TODO: Remove const_cast ugliness
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count, session_options));
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
+                                                          session_options.initializers_to_share_map));
   }
 #endif
 

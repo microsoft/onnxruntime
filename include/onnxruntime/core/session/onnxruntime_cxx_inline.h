@@ -509,6 +509,11 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }
 
+inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
+                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
+}
+
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
