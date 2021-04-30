@@ -7,7 +7,8 @@
 #include <Python.h>
 
 namespace onnxruntime {
-namespace python {
+namespace language_interop_ops {
+namespace torch {
 
 class OrtTorchFunctionPool final {
  public:
@@ -53,5 +54,6 @@ class OrtTorchFunctionPool final {
   std::unordered_map<int64_t, PyObject*> func_context_pool;
   std::mutex func_context_pool_mutex_;
 };
-}  // namespace python
+}  // namespace torch
+}  // namespace language_interop_ops
 }  // namespace onnxruntime

@@ -29,7 +29,8 @@
 #include "core/language_interop_ops/torch/custom_function_register.h"
 
 namespace onnxruntime {
-
+namespace language_interop_ops {
+namespace torch {
 class Scope {
  public:
   Scope(const std::vector<PyObject*>& objs = {}) : objs_(objs) {
@@ -253,7 +254,7 @@ void TorchProxy::Forward(
     std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args) {
-  auto runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardRunner();
+  auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
   Invoke(
       runner,
       reinterpret_cast<PyObject*>(callback),
@@ -273,7 +274,7 @@ void TorchProxy::Backward(
     std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args) {
-  auto runner = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
+  auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
   Invoke(
       runner,
       reinterpret_cast<PyObject*>(callback),
@@ -284,5 +285,6 @@ void TorchProxy::Backward(
       obj_indices,
       returned_args);
 }
-
+}  // namespace torch
+}  // namespace language_interop_ops
 }  // namespace onnxruntime

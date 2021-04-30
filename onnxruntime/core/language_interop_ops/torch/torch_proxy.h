@@ -6,6 +6,9 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
 namespace onnxruntime {
+namespace language_interop_ops {
+namespace torch {
+
 using OnnxAttrs = std::unordered_map<std::string, std::string>;
 
 class TorchProxy {
@@ -39,5 +42,6 @@ class TorchProxy {
   ~TorchProxy();
   bool initialized_ = false;
 };
-
+}  // namespace torch
+}  // namespace language_interop_ops
 }  // namespace onnxruntime

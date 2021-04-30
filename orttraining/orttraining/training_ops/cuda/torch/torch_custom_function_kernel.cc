@@ -120,11 +120,11 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   }
 
   std::string err;
-  auto state = TorchProxy::GetInstance().GetGil();
+  auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
 
-  void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
-  TorchProxy::GetInstance().PutGil(state);
+  void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   std::cout << "InvokePythonAutoGradFunc complete, waiting for complete" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -133,7 +133,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // The 2nd output is address of OrtValue we got from Python script run.
   PyObject* ctx_addr = reinterpret_cast<PyObject*>(outputs[0]);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
-  int64_t ctx_index = onnxruntime::python::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+  int64_t ctx_index = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 
   std::cout << std::this_thread::get_id() << " [torch_kernel.cc] ctx of " << Node().Name() << ": " << ctx_addr << ", refcnt: " << static_cast<size_t>(Py_REFCNT(ctx_addr)) << std::endl;
   PyObject_Print(ctx_addr, stdout, 0);
@@ -192,7 +192,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   const Tensor* first_output_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(first_output_tensor != nullptr, "first_output_tensor should not be null.");
   const int64_t* context_index_ptr = first_output_tensor->template Data<int64_t>();
-  PyObject* ctx_ptr = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  PyObject* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
 
   for (size_t i = 1; i < inputs_count; ++i) {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
@@ -212,12 +212,12 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::cout << std::this_thread::get_id() << " (ctx_ptr == Py_None) is: " << (ctx_ptr == Py_None) << std::endl;
 
   std::string err;
-  auto state = TorchProxy::GetInstance().GetGil();
+  auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
 
-  void* callback = onnxruntime::python::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
-  TorchProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
 
-  TorchProxy::GetInstance().PutGil(state);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
   outputs_count = outputs_count > outputs.size() ? outputs.size() : outputs_count;

@@ -9,7 +9,8 @@
 #include "core/platform/env.h"
 
 namespace onnxruntime {
-namespace python {
+namespace language_interop_ops {
+namespace torch {
 
 void OrtTorchFunctionPool::RegisterForward(
     const std::string& custom_function_name,
@@ -131,5 +132,6 @@ void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   func_context_pool.erase(ctx);
 };
 
-}  // namespace python
+}  // namespace torch
+}  // namespace language_interop_ops
 }  // namespace onnxruntime

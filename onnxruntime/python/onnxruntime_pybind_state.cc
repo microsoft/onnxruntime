@@ -674,7 +674,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -785,7 +785,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -793,7 +793,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -942,43 +942,43 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
       });
   m.def("register_custom_torch_function_forward", [](std::string name, py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterForward(name, x);
   });
   m.def("register_custom_torch_function_backward", [](std::string name, py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterBackward(name, x);
   });
   m.def("register_python_object", [](py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterObject(x);
   });
   m.def("register_forward_runner", [](py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterForwardRunner(x);
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterBackwardRunner(x);
   });
   m.def("register_forward_core", [](std::string key, py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterForwardCore(key, x);
   });
   m.def("register_backward_core", [](std::string key, py::object obj) -> void {
-    auto& pool = onnxruntime::python::OrtTorchFunctionPool::GetInstance();
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* x = h.ptr();
     pool.RegisterBackwardCore(key, x);
@@ -2141,12 +2141,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING

@@ -2515,10 +2515,18 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS,
           false)
       .Attr(
+          "input_tensor_requires_grads",
+          "Flags to indicate which inputs has gradient",
+          AttributeProto::INTS)
+      .Attr(
           "output_tensor_types",
           "Output types of autograd.Function.backward.",
           AttributeProto::INTS,
           false)
+      .Attr(
+          "output_tensor_requires_grads",
+          "Flags to indicate which outputs has gradient",
+          AttributeProto::INTS)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),

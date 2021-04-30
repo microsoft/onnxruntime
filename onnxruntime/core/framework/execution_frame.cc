@@ -42,17 +42,11 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  if (!IsAllocatedExternally(ort_value_idx)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetOutputMLValue() is not allowed for OrtValue index ", ort_value_idx,
-                           " as its allocation kind is not kAllocatedExternally.");
-  }
-
   all_values_[ort_value_idx] = ort_value;
   return Status::OK();
 }
 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
-
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -66,9 +60,7 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 }
 
 void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
-
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
-
 
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
