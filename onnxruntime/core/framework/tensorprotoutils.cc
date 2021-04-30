@@ -111,10 +111,7 @@ static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_
 template <typename T>
 Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,
                                /*out*/ T* p_data) {
-  // std::is_trivially_copyable is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
-#endif
 
   return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_num_elements, sizeof(T),
                                      reinterpret_cast<unsigned char*>(p_data));
@@ -204,10 +201,7 @@ template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                     const ORTCHAR_T* tensor_proto_dir, size_t expected_num_elements,
                                     /*out*/ T* p_data) {
-  // std::is_trivially_copyable is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
-#endif
 
   return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
