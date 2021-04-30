@@ -14,13 +14,13 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/Microsoft/onnxruntime.git", :tag => "#{s.version}" }
 
   
-  s.source_files = "onnxruntime/js/reactnative/ios/*.{h,mm}", "onnxruntime/js/reactnative/ios/Libraries/**/*.h"
+  s.source_files = "ios/*.{h,mm}", "ios/Libraries/**/*.h"
 
   s.dependency "React-Core"
 
   s.subspec 'Onnxruntime' do |onnxruntime|
-    onnxruntime.preserve_paths = 'onnxruntime/js/reactnative/ios/Libraries/onnxruntime/include/*.h'
-    onnxruntime.vendored_libraries = 'onnxruntime/js/reactnative/ios/Libraries/onnxruntime/lib/libonnxruntime.1.6.0.dylib'
+    onnxruntime.preserve_paths = 'ios/Libraries/onnxruntime/include/*.h'
+    onnxruntime.vendored_libraries = 'ios/Libraries/onnxruntime/lib/libonnxruntime.1.6.0.dylib'
     onnxruntime.xcconfig = { 'HEADER_SEARCH_PATHS' => "${PODS_ROOT}/#{s.name}/Libraries/onnxruntime/include/**", 'LIBRARY_SEARCH_PATHS' => "${PODS_ROOT)/#{s.name}/Libraries/onnxruntime/lib/**" }
   end
 

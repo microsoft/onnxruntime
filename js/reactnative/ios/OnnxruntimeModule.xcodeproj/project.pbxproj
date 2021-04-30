@@ -103,7 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				DBDB588A2609B18F004F16BE /* Resources */,
-				DB8FC9B325C2861300C72F26 /* ReactNativeOnnxruntimeModule */,
+				DB8FC9B325C2861300C72F26 /* OnnxruntimeModule */,
 				DB8FC9A125C284E700C72F26 /* Libraries */,
 				DBDB57D82603211A004F16BE /* OnnxruntimeModuleTest */,
 				134814211AA4EA7D00B7C361 /* Products */,
@@ -158,13 +158,13 @@
 			path = onnxruntime;
 			sourceTree = SOURCE_ROOT;
 		};
-		DB8FC9B325C2861300C72F26 /* ReactNativeOnnxruntimeModule */ = {
+		DB8FC9B325C2861300C72F26 /* OnnxruntimeModule */ = {
 			isa = PBXGroup;
 			children = (
 				DB8FC9B725C2868700C72F26 /* TensorHelper.mm */,
 				DB8FC9B425C2867800C72F26 /* OnnxruntimeModule.mm */,
 			);
-			path = ReactNativeOnnxruntimeModule;
+			path = OnnxruntimeModule;
 			sourceTree = "<group>";
 		};
 		DBDB57D82603211A004F16BE /* OnnxruntimeModuleTest */ = {
