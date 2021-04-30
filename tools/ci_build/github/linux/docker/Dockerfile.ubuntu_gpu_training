@@ -35,13 +35,12 @@ USER $BUILD_USER
 ARG MINICONDA_PREFIX=/home/$BUILD_USER/miniconda3
 RUN if [ "$USE_CONDA" = true ] ; \
     then MINICONDA=miniconda.sh && \
-    wget --no-check-certificate --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $MINICONDA && \
+    wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-py37_4.9.2-Linux-x86_64.sh -O $MINICONDA && \
     chmod a+x $MINICONDA && \
     ./$MINICONDA -b -p $MINICONDA_PREFIX && \
     rm ./$MINICONDA && \
     $MINICONDA_PREFIX/bin/conda clean --yes --all && \
-    $MINICONDA_PREFIX/bin/conda install -y python=$PYTHON_VERSION && \
-    $MINICONDA_PREFIX/bin/conda install -c conda-forge -y protobuf ; \
+    $MINICONDA_PREFIX/bin/conda install -y python=$PYTHON_VERSION ; \
     fi
 
 ENV PATH /home/$BUILD_USER/miniconda3/bin:$PATH

@@ -27,7 +27,8 @@ echo "Python version=$PYTHON_VER"
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
 if [[ $USE_CONDA = true ]]; then
-  # conda python version has already been installed.
+  # conda python version has already been installed by
+  # tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu_training.
   # so, /home/onnxruntimedev/miniconda3/bin/python should point
   # to the correct version of the python version
    PYTHON_EXE="/home/onnxruntimedev/miniconda3/bin/python"

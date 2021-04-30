@@ -39,6 +39,8 @@ jobs:
     condition: succeededOrFailed()
 
     # Entry point for all ORTModule tests
+    # Test run not from inside the /build/RelWithDebInfo/ to ensure the
+    # tests pick up the installed wheel package of onnxruntime
   - script: |
       docker run \
         --gpus all \
@@ -50,9 +52,7 @@ jobs:
         --volume /bert_data:/bert_data \
         --volume /hf_models_cache:/hf_models_cache \
         onnxruntime_ortmodule_tests_image \
-          /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers" \
-            --cwd /build/RelWithDebInfo \
+          bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/" \
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
     timeoutInMinutes: 60

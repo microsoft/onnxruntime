@@ -92,8 +92,6 @@ if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_os_deps\.sh/install_protobuf\.sh}
 fi
 
-export ONNX_ML=1
-export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 if [ $DEVICE_TYPE = "gpu" ]; then
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
     source ${0/%install_os_deps.sh/install_openmpi.sh}
