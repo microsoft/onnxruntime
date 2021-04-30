@@ -444,7 +444,7 @@ endif()
 find_package(Threads)
 
 macro(CHECK_NVCC_COMPILER_FLAG _FLAG _RESULT)
-    execute_process(COMMAND ${CUDA_NVCC_EXECUTABLE} "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE ERROR ERROR_QUIET OUTPUT_QUIET)
+    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR ERROR_QUIET OUTPUT_QUIET)
     if("${NVCC_OUT}" MATCHES "0")
         set(${_RESULT} 1)
     else()
@@ -880,7 +880,7 @@ else()
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
   check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
-  check_nvcc_compiler_flag("-Wstrict-aliasing" NVCC_HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
