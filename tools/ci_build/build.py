@@ -340,6 +340,12 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
+    parser.add_argument(
+        "--enable_wasm_sourcemap", action='store_true',
+        help="Build WebAssembly with source map")
+    parser.add_argument(
+        "--wasm_sourcemap_base", default="http://localhost:9876/onnxruntime/",
+        help="Set base URL of the source map")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -734,6 +740,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
