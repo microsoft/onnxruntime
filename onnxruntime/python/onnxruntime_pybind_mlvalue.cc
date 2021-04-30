@@ -297,15 +297,15 @@ static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std
       // Use the memory of numpy array directly. The ownership belongs to the calling
       // python code. In this case, the incoming pyObject must itself be contiguous (pyObject == darray).
       // darray reference will be decremented but the original array is still alive
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
+      p_tensor = std::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
     } else {
       // This is the case when a contiguous array is a copy. We still can use it directly with OrtPybindSingleUseAllocator
       // which takes ownership of the array.
       auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(std::move(darray_guard), name_input, alloc->Info());
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
+      p_tensor = std::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
     }
   } else {
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(darray, npy_type, p_tensor, mem_cpy_to_device);
   }
 
@@ -357,7 +357,7 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
   // set the seq type
   MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
   p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
@@ -391,10 +391,10 @@ static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybin
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
     // We are able to reuse the memory of the contiguous python buffer and avoid
     // extra copy using OrtPybindAllocator which will take care of the memory
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, pybind_alloc);
   } else {
     // We still need to copy elements properly from the contiguous buffer
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
   }
 
@@ -460,7 +460,7 @@ static void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::str
                                  PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
                                  ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
-  dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
+  dst = std::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
@@ -471,7 +471,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                                 PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
-  dstVector = onnxruntime::make_unique<std::vector<std::map<KeyType, ValueType>>>();
+  dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());

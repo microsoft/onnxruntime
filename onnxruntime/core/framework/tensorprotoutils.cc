@@ -579,7 +579,7 @@ static Status GetFileContent(
   }
 
   // if that fails, try to copy
-  auto buffer = onnxruntime::make_unique<char[]>(length);
+  auto buffer = std::make_unique<char[]>(length);
   ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
       file_path, offset, length, gsl::make_span(buffer.get(), length)));
 
@@ -643,7 +643,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
     //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
-    //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
+    //auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
     //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
     //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
     //raw_data = buffer.release();
@@ -720,7 +720,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{GetTensorShapeFromTensorProto(tensor_proto)};
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::unique_ptr<Tensor> tensorp = onnxruntime::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
+  std::unique_ptr<Tensor> tensorp = std::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
   if (tensorp->SizeInBytes() > m.GetLen()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The preallocated buffer is too small. Requires ",
                            tensorp->SizeInBytes(), ", Got ", m.GetLen());

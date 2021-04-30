@@ -1169,7 +1169,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
@@ -1201,7 +1201,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = onnxruntime::make_unique<SessionState>(
+    session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
         session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
