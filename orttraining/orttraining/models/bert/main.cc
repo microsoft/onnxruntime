@@ -53,10 +53,9 @@ static SessionOptions session_options = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    nullptr,                           //prepacked_weights_container
     {},                                //session_configurations
     {},                                // initializers_to_share_map
-};
+}; 
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -772,7 +771,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-  auto random_perf_data_loader = std::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
+  auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
   TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
@@ -784,14 +783,14 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
     auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
-    auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+    auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,
                                                                      rank_in_data_parallel_group,
@@ -800,7 +799,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (MPIContext::GetInstance().GetWorldRank() == 0) {
-      test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+      test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                               params_for_phase.test_data_dir,
                                                               max_num_files_preload);
     }
@@ -830,8 +829,7 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while (keep_looping)
-    ;
+  while(keep_looping);
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

@@ -89,8 +89,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(
       std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
-  SessionOptions so;
-  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so));
+  ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   auto test_kernel = s.GetKernel(node.Index());
   std::cout << "orig: " << orig_num_outputs << " new: " << test_kernel->Node().OutputDefs().size() << std::endl;
@@ -145,8 +144,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
-  SessionOptions so;
-  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
@@ -530,7 +528,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
       .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
 
   ExecutionProviders execution_providers;
-  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
 
   DataTransferManager dtm;
@@ -616,9 +614,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
     std::unique_ptr<Tensor> tensor =
-        onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
+        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
 
-    auto value = onnxruntime::make_unique<OrtValue>();
+    auto value = std::make_unique<OrtValue>();
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
     value->Init(tensor.release(),
                 ml_tensor,
@@ -687,9 +685,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
     std::unique_ptr<Tensor> tensor =
-        onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
+        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
 
-    auto value = onnxruntime::make_unique<OrtValue>();
+    auto value = std::make_unique<OrtValue>();
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
     value->Init(tensor.release(),
                 ml_tensor,

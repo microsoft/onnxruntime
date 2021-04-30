@@ -16,7 +16,7 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
   // as pre-packing is only supported by CPU kernels for now.
   if (device_name == CPU) {
     /*we do not need an arena based allocator*/
-    AllocatorCreationInfo device_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
                                       0, false};
     auto allocator = CreateAllocator(device_info);
 

@@ -154,9 +154,9 @@ class PlannerTest : public ::testing::Test {
   // some standard components used to build test-cases:
   Type float_type_;
 
-  std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
-  std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
-  std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
+  std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;       // a unary kernel with no-aliasing and no-in-place
+  std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;  // a unary kernel with in-place
+  std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_; // an unary kernel with external outputs
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
   std::vector<std::unique_ptr<UnaryNode>> nodes_;
@@ -182,7 +182,7 @@ class PlannerTest : public ::testing::Test {
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
     CPUExecutionProviderInfo epi;
-    auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
+    auto execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
 
     state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
@@ -196,7 +196,7 @@ class PlannerTest : public ::testing::Test {
   }
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
-    auto node = std::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
+    auto node = onnxruntime::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
     auto* p_node = node->p_node;
     p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
     nodes_.push_back(std::move(node));
@@ -220,14 +220,14 @@ class PlannerTest : public ::testing::Test {
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
-    auto info = std::make_unique<OpKernelInfo>(
+    auto info = onnxruntime::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
         state_->GetFuncMgr(), state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
-          KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
+          KernelCreateInfo(onnxruntime::make_unique<KernelDef>(kernel_def),
                            [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
@@ -255,7 +255,7 @@ class PlannerTest : public ::testing::Test {
       BindKernel(binding.first, binding.second, reg.get(), kernel_create_info_map);
     }
 
-    auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
     kernel_registry_manager.RegisterKernelRegistry(reg);
     auto status = kernel_registry_manager.RegisterKernels(execution_providers_);
@@ -264,8 +264,7 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     const bool remove_initializers = false;
-    SessionOptions so;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, so, nullptr, remove_initializers);
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
@@ -416,9 +415,9 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddExternalOutputsNode(X1, X2);  // external-outputs operator; X1: input; X2: temporary
-  AddNormalNode(X2, X3);           // normal operator; X3: temporary
-  AddNormalNode(X3, X4);           // normal operator; X4: output
+  AddExternalOutputsNode(X1, X2);   // external-outputs operator; X1: input; X2: temporary
+  AddNormalNode(X2, X3);  // normal operator; X3: temporary
+  AddNormalNode(X3, X4);   // normal operator; X4: output
 
   // simulate shape-inference results:
   Shape shape1{"M", "N"};
