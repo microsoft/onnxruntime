@@ -26,7 +26,7 @@ Other
 * Don't use else after return. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the 'long' type, which could be either 32 bits or 64 bits.
-* If there is a legitimate need to allocate objects on the heap, prefer using onnxruntime::make_unique(). References for the reasoning:
+* If there is a legitimate need to allocate objects on the heap, prefer using std::make_unique(). References for the reasoning:
   * https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rh-make_unique
   * https://herbsutter.com/2013/05/29/gotw-89-solution-smart-pointers/
   * https://abseil.io/tips/126

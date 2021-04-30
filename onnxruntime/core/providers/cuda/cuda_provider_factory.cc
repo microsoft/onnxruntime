@@ -8,7 +8,6 @@
 
 #include "gsl/gsl"
 
-#include "core/common/make_unique.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/session/abi_session_options_impl.h"
@@ -31,7 +30,7 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<CUDAExecutionProvider>(info_);
+  return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(const CUDAExecutionProviderInfo& info) {

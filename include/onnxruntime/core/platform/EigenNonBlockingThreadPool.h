@@ -24,7 +24,7 @@
 #pragma warning(disable : 4127)
 #pragma warning(disable : 4805)
 #endif
-
+#include <memory>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -33,7 +33,6 @@
 #pragma warning(pop)
 #endif
 #include "core/common/denormal.h"
-#include "core/common/make_unique.h"
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
@@ -740,7 +739,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // preferable for pushing work.  We use a regular array given that a std::vector
     // cannot contain std::atomic.
     num_hint_words_ = static_cast<int>((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
-    good_worker_hints_ = onnxruntime::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
+    good_worker_hints_ = std::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
 
     worker_data_.resize(num_threads_);
     for (int i = 0; i < num_threads_; i++) {

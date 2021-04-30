@@ -1288,7 +1288,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
                                         int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
-    auto ort_arena_cfg = onnxruntime::make_unique<OrtArenaCfg>();
+    auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
     ort_arena_cfg->max_mem = max_mem;
     ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
@@ -1299,13 +1299,13 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
     if (strcmp(name, onnxruntime::CPU) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
+      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(
+      return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
           mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(
+      return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
           id, mem_type);
     } else {
@@ -1323,7 +1323,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = onnxruntime::make_unique<OrtValue>();
+        auto ml_value = std::make_unique<OrtValue>();
 
         // The tensor's memory is allocated on the CPU
         if (GetDeviceName(device) == CPU) {
@@ -1380,12 +1380,12 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = onnxruntime::make_unique<OrtValue>();
+        auto ml_value = std::make_unique<OrtValue>();
 
         std::unique_ptr<Tensor> tensor;
         // The tensor's memory is allocated on the CPU
         if (GetDeviceName(device) == CPU) {
-          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
         } else if (GetDeviceName(device) == CUDA) {
       // The tensor's memory is allocated on CUDA
 #ifdef USE_CUDA
@@ -1393,7 +1393,7 @@ void addObjectMethods(py::module& m, Environment& env) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
 
-          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
 #else
       throw std::runtime_error(
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -1493,7 +1493,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
       .def(py::init([](PyInferenceSession* sess) {
-        auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->GetSessionHandle());
+        auto sess_io_binding = std::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
@@ -1537,7 +1537,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
         std::unique_ptr<Tensor> p_tensor =
-            onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+            std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
@@ -1586,7 +1586,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
 
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+        std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
@@ -1897,7 +1897,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         // in a minimal build we only support load via Load(...) and not at session creation time
         if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-          sess = onnxruntime::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
+          sess = std::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
 
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
 
@@ -1906,7 +1906,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
-          sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
+          sess = std::make_unique<PyInferenceSession>(env, so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
 #endif
@@ -2121,7 +2121,7 @@ void InitializeEnv() {
       import_array1();
     })();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
+    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
                                                   std::unique_ptr<ISink>{new CLogSink{}},
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
