@@ -15,6 +15,8 @@ from .operators.split import QSplit
 from .operators.pad import QPad
 from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.resize import QResize, QDQResize
+from .operators.pooling import QLinearPool
+from .operators.concat import QLinearConcat, QDQConcat
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -45,6 +47,8 @@ QLinearOpsRegistry = {
     "Reshape": Direct8BitOp,
     "Transpose" : Direct8BitOp,
     "Resize": QResize,
+    "AveragePool" : QLinearPool,
+    "Concat": QLinearConcat,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
@@ -56,6 +60,8 @@ QDQRegistry = {
     "Transpose" : QDQDirect8BitOp,
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
+    "AveragePool" : QDQDirect8BitOp,
+    "Concat": QDQConcat,
 }
 
 

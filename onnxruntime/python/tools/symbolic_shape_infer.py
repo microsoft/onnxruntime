@@ -88,6 +88,7 @@ class SymbolicShapeInference:
             'Add': self._infer_symbolic_compute_ops,
             'ArrayFeatureExtractor': self._infer_ArrayFeatureExtractor,
             'AveragePool': self._infer_Pool,
+            'BatchNormalization': self._infer_BatchNormalization,
             'Cast': self._infer_Cast,
             'CategoryMapper': self._infer_CategoryMapper,
             'Compress': self._infer_Compress,
@@ -133,6 +134,7 @@ class SymbolicShapeInference:
             'Sub': self._infer_symbolic_compute_ops,
             'Tile': self._infer_Tile,
             'TopK': self._infer_TopK,
+            'Transpose': self._infer_Transpose,
             'Unsqueeze': self._infer_Unsqueeze,
             'Where': self._infer_symbolic_compute_ops,
             'ZipMap': self._infer_ZipMap,
@@ -856,6 +858,15 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
+    def _infer_BatchNormalization(self, node):
+        self._propagate_shape_and_type(node)
+
+        # this works for opsets < 14 and 14 since we check i < len(node.output) in the loop
+        for i in [1, 2, 3, 4]:
+            if i < len(node.output) and node.output[i] != "":
+                # all of these parameters have the same shape as the 1st input
+                self._propagate_shape_and_type(node, input_index=1, output_index=i)
+
     def _infer_Range(self, node):
         vi = self.known_vi_[node.output[0]]
         input_data = self._get_int_values(node)
@@ -1089,11 +1100,12 @@ class SymbolicShapeInference:
                                           get_shape_from_sympy_shape(new_sympy_shape)))
 
         # handle sympy_data if needed, for slice in shape computation
-        if node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1:
+        if (node.input[0] in self.sympy_data_ and [0] == axes and len(starts) == 1 and len(ends) == 1
+                and len(steps) == 1):
             input_sympy_data = self.sympy_data_[node.input[0]]
             if type(input_sympy_data) == list or (type(input_sympy_data) == np.array
                                                   and len(input_sympy_data.shape) == 1):
-                self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]]
+                self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]:steps[0]]
 
     def _infer_SoftmaxCrossEntropyLoss(self, node):
         vi = self.known_vi_[node.output[0]]
@@ -1130,7 +1142,44 @@ class SymbolicShapeInference:
     def _infer_SplitToSequence(self, node):
         self._infer_Split_Common(node, helper.make_sequence_value_info)
 
-    def _infer_Squeeze(self, node):
+    def _infer_Squeeze(self, node): 
+        input_shape = self._get_shape(node, 0)
+        op_set = get_opset(self.out_mp_)
+
+        # Depending on op-version 'axes' are provided as attribute or via 2nd input
+        if op_set < 13:    
+            axes = get_attribute(node, 'axes')
+            assert self._try_get_value(node, 1) is None
+        else:
+            axes = self._try_get_value(node, 1)
+            assert get_attribute(node, 'axes') is None
+
+        if axes is None:
+            # No axes have been provided (neither via attribute nor via input).
+            # In this case the 'Shape' op should remove all axis with dimension 1.
+            # For symbolic dimensions we guess they are !=1.
+            output_shape = [s for s in input_shape if s != 1]
+            if self.verbose_ > 0:
+                symbolic_dimensions = [s for s in input_shape if type(s) != int]
+                if len(symbolic_dimensions) > 0:
+                    print(f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
+                          f"Assuming the following dimensions are never equal to 1: {symbolic_dimensions}")
+        else:
+            axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
+            output_shape = []
+            for i in range(len(input_shape)):
+                if i not in axes:
+                    output_shape.append(input_shape[i])
+                else:
+                    assert input_shape[i] == 1 or type(input_shape[i]) != int
+                    if self.verbose_ > 0 and type(input_shape[i]) != int:
+                        print(f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. " +
+                              f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1.")
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                          output_shape))
         self._pass_on_sympy_data(node)
 
     def _infer_Tile(self, node):
@@ -1174,6 +1223,14 @@ class SymbolicShapeInference:
         for i_o in range(len(node.output)):
             vi = self.known_vi_[node.output[i_o]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[i_o], vi.type.tensor_type.elem_type, new_shape))
+
+    def _infer_Transpose(self, node):
+        if node.input[0] in self.sympy_data_:
+            data_shape = self._get_shape(node, 0)
+            perm = get_attribute(node, 'perm', reversed(list(range(len(data_shape)))))
+            input_data = self.sympy_data_[node.input[0]]
+            self.sympy_data_[node.output[0]] = np.transpose(np.array(input_data).reshape(*data_shape),
+                                                            axes=tuple(perm)).flatten().tolist()
 
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)

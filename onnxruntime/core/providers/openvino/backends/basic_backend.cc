@@ -9,6 +9,14 @@
 
 #include <inference_engine.hpp>
 
+#ifdef OPENVINO_2021_4
+using Exception = InferenceEngine::Exception;
+using WaitMode = InferenceEngine::InferRequest::WaitMode;
+#else
+using Exception = InferenceEngine::details::InferenceEngineException;
+using WaitMode = InferenceEngine::IInferRequest::WaitMode;
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 
 #include "../backend_utils.h"
@@ -70,7 +78,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(!openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
     SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
-  #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+  #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+      defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     if (const_outputs_map_.size() == subgraph_context_.output_names.size())
       subgraph_context_.is_constant = true;
   #endif
@@ -95,7 +104,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
           throw std::runtime_error("The compiled blob path is not set");
         exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
       }
-    } catch (InferenceEngine::details::InferenceEngineException &e) {
+    } catch (Exception &e) {
       ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
     } catch(...) {
       ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name);
@@ -108,7 +117,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
       ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
       SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
-    #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+    #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+        defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
       if (const_outputs_map_.size() == subgraph_context_.output_names.size())
         subgraph_context_.is_constant = true;
     #endif
@@ -123,7 +133,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
     #endif
       if (global_context_.device_type.find("MYRIAD") != std::string::npos) {
-    #if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+    #if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+        defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
         if (subgraph_context_.set_vpu_config) {
           config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
         }
@@ -146,7 +157,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
       try {
         exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
-      } catch (const InferenceEngine::details::InferenceEngineException& e) {
+      } catch (const Exception& e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
       } catch (...) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
@@ -185,7 +196,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     try {
       graph_input_blob = infer_request->GetBlob(input_name);
 
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
@@ -197,7 +208,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
   // Start Async inference
   try {
     infer_request->StartAsync();
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Couldn't start Inference");
@@ -209,8 +220,8 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
   // Wait for Async inference completion
   try {
-    infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    infer_request->Wait(WaitMode::RESULT_READY);
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception with completing Inference" + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
@@ -224,7 +235,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     auto output_name = output_info_iter->first;
     try {
       graph_output_blob = infer_request->GetBlob(output_name);
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name);
@@ -236,7 +247,8 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     size_t batch_slice = 0;
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice);
   }
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
   if (!const_outputs_map_.empty()) {
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
@@ -256,7 +268,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
   if (subgraph_context_.is_constant) {
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)  || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)  || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;

@@ -1,0 +1,40 @@
+{
+  "[cpp]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "[jsonc]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "clang-format.executable": "${workspaceRoot}/node_modules/.bin/clang-format",
+  "clang-format.style": "file",
+  "editor.detectIndentation": false,
+  "editor.insertSpaces": true,
+  "editor.rulers": [120],
+  "editor.tabSize": 2,
+  "editor.wrappingIndent": "none",
+  "files.exclude": {
+    "common/lib/**/*.js.map": true,
+    "common/lib/**/*.js": true,
+    "node/lib/**/*.js.map": true,
+    "node/lib/**/*.js": true,
+    "web/lib/**/*.js.map": true,
+    "web/lib/**/*.js": true
+  },
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "search.exclude": {
+    "**/node_modules": true,
+    "./types": true
+  },
+  "typescript.tsdk": "node_modules/typescript/lib"
+}

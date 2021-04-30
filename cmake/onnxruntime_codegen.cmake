@@ -16,7 +16,7 @@ file(GLOB_RECURSE onnxruntime_codegen_tvm_srcs CONFIGURE_DEPENDS
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_codegen_common_srcs} ${onnxruntime_codegen_tvm_srcs})
 
 #onnxruntime_codegen_tvm depends on onnxruntime framework
-add_library(onnxruntime_codegen_tvm ${onnxruntime_codegen_common_srcs} ${onnxruntime_codegen_tvm_srcs})
+onnxruntime_add_static_library(onnxruntime_codegen_tvm ${onnxruntime_codegen_common_srcs} ${onnxruntime_codegen_tvm_srcs})
 set_target_properties(onnxruntime_codegen_tvm PROPERTIES FOLDER "ONNXRuntime")
 target_include_directories(onnxruntime_codegen_tvm PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${MKLML_INCLUDE_DIR} ${eigen_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_codegen_tvm onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)

@@ -5,7 +5,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
-#include "orttraining/core/session/training_session.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
 namespace onnxruntime {
@@ -59,6 +58,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph.SetInputs(input_args);
+  logging::LoggingManager::SetDefaultLoggerSeverity(config_.loglevel);
   return Status::OK();
 }
 
@@ -145,17 +145,16 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
   Graph& gradient_graph = gradient_model_->MainGraph();
   ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
 
-  const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
                  config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       graph_transformation_mgr.Register(std::move(entry), level);
     }
@@ -199,6 +198,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
   return Status::OK();
 }
 
@@ -275,10 +275,9 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
-      ;
-    } else {
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});

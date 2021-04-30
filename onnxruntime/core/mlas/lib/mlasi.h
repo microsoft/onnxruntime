@@ -24,6 +24,7 @@ Abstract:
 #include <cmath>
 #include <type_traits>
 #include <stdexcept>
+#include <functional>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -654,6 +655,7 @@ MlasSgemmOperation(
 struct MLAS_GEMM_U8X8_DISPATCH;
 
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
@@ -765,6 +767,20 @@ MlasExecuteThreaded(
     void* Context,
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief Distribute multiple iterations of work over a thread pool if supported
+ *
+ * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
+ * @param Iterations [IN]          Total number of iterations
+ * @param Work [IN]                Logic for computing a range of iterations [begin, end)
+ */
+void
+MlasTrySimpleParallel(
+    MLAS_THREADPOOL* ThreadPool,
+    const std::ptrdiff_t Iterations,
+    const std::function<void(std::ptrdiff_t tid)>& Work
     );
 
 inline

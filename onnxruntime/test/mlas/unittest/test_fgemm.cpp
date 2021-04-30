@@ -7,7 +7,6 @@
 #include <memory>
 #include <sstream>
 
-
 template <> MlasFgemmTest<float, false, false>* MlasTestFixture<MlasFgemmTest<float, false, false>>::mlas_tester(nullptr);
 template <> MlasFgemmTest<float, false, true>* MlasTestFixture<MlasFgemmTest<float, false, true>>::mlas_tester(nullptr);
 template <> MlasFgemmTest<float, true, false>* MlasTestFixture<MlasFgemmTest<float, true, false>>::mlas_tester(nullptr);

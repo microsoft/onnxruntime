@@ -10,7 +10,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
-  return onnxruntime::make_unique<OpKernelInfo>(info);
+  return std::make_unique<OpKernelInfo>(info);
 }
 
 const onnxruntime::Node& OpKernel::Node() const {

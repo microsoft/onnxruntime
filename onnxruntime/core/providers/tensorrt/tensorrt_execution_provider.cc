@@ -451,6 +451,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   }
 
+  if (info.has_trt_options) {
+    force_sequential_engine_build_ = info.force_sequential_engine_build;
+  } else {
+    const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
+    if (!force_sequential_engine_build_env.empty()) {
+      force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
+    }
+  }
+
   const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
@@ -473,7 +482,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
-    runtime_ = nvinfer1::createInferRuntime(GetTensorrtLogger());
+    runtime_ = tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
   }
 
   const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
@@ -1012,6 +1021,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
+std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const {
+  static OrtMutex singleton;
+
+  // Acquire a lock only when force_sequential_engine_build_ is true;
+  return force_sequential_engine_build_ ? std::unique_lock<OrtMutex>(singleton) : std::unique_lock<OrtMutex>();
+}
+
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
@@ -1179,7 +1195,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         // Build engine
-        trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+        {
+          auto lock = GetEngineBuildLock();
+          trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+        }
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build engine for fused node: " + fused_node->Name());
@@ -1238,12 +1257,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     // TODO: remove default capture
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
+      std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &max_workspace_size_,
-            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_, nullptr,
+            trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
             allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_};
       *state = p.release();
       return 0;
@@ -1295,9 +1314,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
-          auto runtime_ = trt_state->runtime;
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+              trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (trt_state->engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
@@ -1503,8 +1521,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         // Build engine
-        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-            trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+        {
+          auto lock = GetEngineBuildLock();
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+              trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+        }
         if (trt_state->engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
