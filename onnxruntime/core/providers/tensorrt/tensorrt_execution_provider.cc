@@ -1551,13 +1551,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
 
-        // Set DLA (DLA can only run with FP16 or INT8) //slx
+        // Set DLA (DLA can only run with FP16 or INT8)
         if ((*(trt_state->fp16_enable_ptr) || *(trt_state->int8_enable_ptr)) && *(trt_state->dla_enable_ptr)) {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << *(trt_state->dla_core_ptr);
             trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
             trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
             trt_config->setDLACore(*(trt_state->dla_core_ptr));
-  		}
+        }
 
         // Build engine
         {
