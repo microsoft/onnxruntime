@@ -10,6 +10,10 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+using Fn = std::function<void(std::ptrdiff_t, std::ptrdiff_t)>;
+using SimpleFn = std::function<void(std::ptrdiff_t)>;
+using SchdFn = std::function<void()>;
+
 class ThreadPoolLite final : public ThreadPool {
  public:
   ThreadPoolLite(Env*,
@@ -20,9 +24,6 @@ class ThreadPoolLite final : public ThreadPool {
   ~ThreadPoolLite();
 
  private:
-  using Fn = std::function<void(std::ptrdiff_t, std::ptrdiff_t)>;
-  using SimpleFn = std::function<void(std::ptrdiff_t)>;
-  using SchdFn = std::function<void()>;
 
   struct Task {
     std::ptrdiff_t fn_ = 0;
@@ -45,6 +46,39 @@ class ThreadPoolLite final : public ThreadPool {
   std::vector<std::thread> sub_threads_;
   bool exit_ = false;
   ThreadPoolProfiler profiler_;
+};
+
+template<int32_t ThreadPerPool, int32_t PoolSize>
+class ThreadPoolLite2 final : public ThreadPool {
+ public:
+  ThreadPoolLite2(Env*,
+                  const ThreadOptions&,
+                  const NAME_CHAR_TYPE*,
+                  int num_threads,
+                  bool);
+  ~ThreadPoolLite2();
+
+ private:
+  struct Slot {
+    std::atomic_int32_t progress_{-1};
+    std::atomic_int32_t done_{0};
+    SchdFn schd_fn_;
+  };
+
+  std::unique_ptr<Slot[]> slots_;
+  int NumThreads() const override { return static_cast<int>(sub_threads_.size()); }
+  void ParallelFor(std::ptrdiff_t, double, const Fn&) override;
+  void ParallelFor(std::ptrdiff_t, const TensorOpCost&, const Fn&) override;
+  void SimpleParallelFor(std::ptrdiff_t, const SimpleFn&) override;
+  void Schedule(SchdFn) override;
+  void StartProfiling() override;
+  void MainLoop(int);
+  std::string StopProfiling() override;
+  std::vector<std::thread> sub_threads_;
+  bool exit_ = false;
+  ThreadPoolProfiler profiler_;
+  int32_t num_pools_{0};
+  int32_t num_slots_{0};
 };
 
 }  // namespace concurrency

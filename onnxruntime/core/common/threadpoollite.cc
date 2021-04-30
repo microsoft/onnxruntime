@@ -141,5 +141,117 @@ void ThreadPoolLite::MainLoop(int idx) {
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+ThreadPoolLite2<ThreadPerPool, PoolSize>::ThreadPoolLite2(Env*,
+                                                          const ThreadOptions&,
+                                                          const NAME_CHAR_TYPE*,
+                                                          int num_threads,
+                                                          bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
+  int num_sub_threads = num_threads - 1;
+  num_pools_ = num_sub_threads / ThreadPerPool + (num_sub_threads % ThreadPerPool ? 1 : 0);
+  num_slots_ = num_pools_ * PoolSize;
+  slots_.reset(new Slot[num_slots_]);
+  size_t affinity_mask = 3;
+  for (int i = 0; i < num_sub_threads; ++i) {
+    sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
+    SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask);
+    affinity_mask <<= 2;
+  }
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+ThreadPoolLite2<ThreadPerPool, PoolSize>::~ThreadPoolLite2() {
+  exit_ = true;
+  for (std::thread& t : sub_threads_) {
+    t.join();
+  }
+  slots_.reset();
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::StartProfiling() {
+  profiler_.Start();
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+std::string ThreadPoolLite2<ThreadPerPool, PoolSize>::StopProfiling() {
+  return profiler_.Stop();
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, double, const Fn& fn) {
+  SimpleFn simple_fn = [&](std::ptrdiff_t i) {
+    if (i < total) {
+      fn(i, i + 1);
+    };
+  };
+  SimpleParallelFor(total, simple_fn);
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
+  double cost = 0;
+  ParallelFor(total, cost, fn);
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
+  std::atomic<std::ptrdiff_t> iter{0};
+  SchdFn schd_fn = [&]() {
+    std::ptrdiff_t i{0};
+    while ((i = iter.fetch_add(1, std::memory_order_relaxed)) < total) {
+      fn(i);
+    }
+  };
+  std::vector<int32_t> pushed;
+  for (int32_t i = 0; i < num_pools_; i++) {
+    auto at_from = i * PoolSize;
+    auto at_to = at_from + PoolSize;
+    for (auto at = at_from; at < at_to; at++) {
+      auto progress = slots_[at].progress_.load(std::memory_order_acquire);
+      if (-1 == progress && slots_[at].progress_.compare_exchange_weak(progress, 0, std::memory_order_relaxed)) {
+        slots_[at].schd_fn_ = schd_fn;
+        slots_[at].done_.store(0, std::memory_order_relaxed);
+        slots_[at].progress_.store(ThreadPerPool, std::memory_order_release); //ready
+        pushed.push_back(at);
+        break;
+      }
+    }
+  }
+  schd_fn();
+  for (auto at : pushed) {
+    int32_t progress = slots_[at].progress_.load(std::memory_order_relaxed);
+    while (progress > 0 && !slots_[at].progress_.compare_exchange_weak(progress, 0, std::memory_order_relaxed)) {
+      progress = slots_[at].progress_.load(std::memory_order_relaxed); //revoke
+    }
+    int32_t expected_done = ThreadPerPool - progress;
+    while (slots_[at].done_.load(std::memory_order_relaxed) < expected_done) //wait for done
+      ;
+    slots_[at].progress_.store(-1, std::memory_order_relaxed); //release slot
+  }
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::Schedule(SchdFn) {}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::MainLoop(int idx) {
+  profiler_.LogThreadId(idx);
+  auto slot_from = idx / ThreadPerPool * PoolSize;
+  auto slot_to = slot_from + PoolSize;
+  while (!exit_) {
+    for (auto i = slot_from; i < slot_to; i++) {
+      auto progress = slots_[i].progress_.load(std::memory_order_acquire);
+      if (progress > 0 && slots_[i].progress_.compare_exchange_weak(progress, progress - 1, std::memory_order_relaxed)) {
+        slots_[i].schd_fn_();
+        slots_[i].done_.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+  }
+}
+
+template ThreadPoolLite2<2, 8>;
 }  // namespace concurrency
 }  // namespace onnxruntime
