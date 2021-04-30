@@ -19,13 +19,17 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(reinterpret_cast<const CudaT*>(input_data),
-                                                                  reinterpret_cast<CudaT*>(output_data),
-                                                                  reinterpret_cast<const CudaT*>(min),
-                                                                  reinterpret_cast<const CudaT*>(max),
-                                                                  *reinterpret_cast<CudaT*>(&min_default),
-                                                                  *reinterpret_cast<CudaT*>(&max_default),
-                                                                  count);
+  union alias {
+    T t;
+    CudaT cudaT;
+  };
+  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(input_data)),
+                                                                          reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(output_data)),
+                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(min_u)),
+                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(max_u)),
+                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(&min_default)),
+                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<const union alias*>(&max_default)),
+                                                                          count);
 }
 
 template void ClipImpl<float>(cudaStream_t stream, const float* input_data, float* output_data, const float* min, const float* max, float min_default, float max_default, size_t count);
