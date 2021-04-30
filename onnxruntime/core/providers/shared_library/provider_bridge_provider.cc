@@ -19,7 +19,7 @@
 
 // Override default new/delete so that we match the host's allocator
 _Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
-void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+void operator delete(void* p) noexcept { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
@@ -32,7 +32,7 @@ void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
   if (!s_run_on_unload_)
-    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::function<void()>>>();
+    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   s_run_on_unload_->push_back(std::move(function));
 }
 
@@ -197,14 +197,14 @@ Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {

@@ -70,7 +70,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
@@ -395,7 +395,7 @@ static void RunBertTrainingWithChecks(
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
@@ -407,10 +407,10 @@ static void RunBertTrainingWithChecks(
 
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
 #elif USE_ROCM
   ROCMExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
 #endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
@@ -1752,7 +1752,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
     sub_sess.run_options.training_mode = true;
 
-    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
+    sub_sess.sess = std::make_unique<TrainingSession>(sub_sess.so, *env);
     ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));
     ASSERT_STATUS_OK(sub_sess.sess->Initialize());
   }

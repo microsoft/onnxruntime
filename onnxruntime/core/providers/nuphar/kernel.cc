@@ -24,7 +24,7 @@ NupharKernelState::NupharKernelState(
     const NupharExecutionProvider& provider)
     : provider_(provider),
       ctx_(ctx) {
-  partition_info_ = onnxruntime::make_unique<OrtSubgraphAllocationInfo>(node);
+  partition_info_ = std::make_unique<OrtSubgraphAllocationInfo>(node);
 
   std::vector<NupharSubgraphUnit> subgraphs;
 
@@ -58,7 +58,7 @@ void NupharKernelState::Compile(const NupharSubgraphUnit& subgraph) {
   codegen_status_ = tvm_compiler.Build(subgraph);
 
   if (codegen_status_.IsOK()) {
-    func_infos_.emplace_back(onnxruntime::make_unique<NupharFuncInfo>());
+    func_infos_.emplace_back(std::make_unique<NupharFuncInfo>());
     codegen_status_ = tvm_compiler.Lower(subgraph,
                                          tvm_target,
                                          provider_.GetTVMHostTarget(),
@@ -94,7 +94,7 @@ Status NupharKernelState::Compute(OpKernelContext* op_kernel_context) const {
 
   // Create the unordered_map if it not exist
   if (nullptr == nuphar_compute_ctx_map_) {
-    nuphar_compute_ctx_map_ = onnxruntime::make_unique<NupharFuncStateToComputeCtxMap>();
+    nuphar_compute_ctx_map_ = std::make_unique<NupharFuncStateToComputeCtxMap>();
   }
 
   // Create KernelComputeCtx if it not exist
@@ -104,7 +104,7 @@ Status NupharKernelState::Compute(OpKernelContext* op_kernel_context) const {
 
     nuphar_compute_ctx_map_->emplace(
         std::make_pair(this,
-                       onnxruntime::make_unique<KernelComputeCtx>(
+                       std::make_unique<KernelComputeCtx>(
                            provider_.GetNupharRuntimeHandle(),
                            provider_.GetTLSRealizedDims(),
                            data_alloc_func,

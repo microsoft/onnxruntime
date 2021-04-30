@@ -724,7 +724,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   // creating an EP instance for every single node in ConstantFolding.
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
@@ -790,10 +790,10 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // Creating the CPU EP here to be used to get the
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   std::unordered_set<std::string> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-  transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+  transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
       horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
       config_result_out.weight_partition_info, init_optimizer_states_, *cpu_execution_provider, compatible_eps));

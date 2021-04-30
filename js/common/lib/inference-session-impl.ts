@@ -190,6 +190,13 @@ export class InferenceSession implements InferenceSessionInterface {
     return new InferenceSession(handler);
   }
 
+  startProfiling(): void {
+    this.handler.startProfiling();
+  }
+  endProfiling(): void {
+    this.handler.endProfiling();
+  }
+
   get inputNames(): readonly string[] {
     return this.handler.inputNames;
   }
