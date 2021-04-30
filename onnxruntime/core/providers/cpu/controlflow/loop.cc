@@ -269,7 +269,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
+  info_ = std::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on

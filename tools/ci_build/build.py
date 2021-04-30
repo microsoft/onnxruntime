@@ -247,6 +247,11 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -339,6 +344,12 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
+    parser.add_argument(
+        "--enable_wasm_sourcemap", action='store_true',
+        help="Build WebAssembly with source map")
+    parser.add_argument(
+        "--wasm_sourcemap_base", default="http://localhost:9876/onnxruntime/",
+        help="Set base URL of the source map")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -661,6 +672,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
@@ -734,6 +746,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "ON"),
         "-Donnxruntime_USE_TORCH=" + ("ON" if args.use_torch else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):

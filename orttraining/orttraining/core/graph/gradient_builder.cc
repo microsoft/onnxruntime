@@ -792,36 +792,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
-  std::vector<NodeDef> result;
   size_t numInputs = GetSrcNodeInputSize();
-  if (SrcNodeOpsetVersion() < 13) {  //axes attribute
+  if (SrcNodeOpsetVersion() < 13) {  // Axes attribute exists.
     auto attributes = SrcNodeAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      result.push_back(
-          NodeDef("Unsqueeze",
-                  {GO(0)},
-                  {GI(0)},
-                  {MakeAttribute("axes", axes_values)}));
+      return std::vector<NodeDef>{NodeDef("Unsqueeze",
+                                          {GO(0)},
+                                          {GI(0)},
+                                          {MakeAttribute("axes", axes_values)})};
     }
-  } else if (numInputs == 2) {  //optional input 'axes' is provided
-    result.push_back(
-        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
-                {GO(0), I(1)},
-                {GI(0)}));
-  } else {  // if axes attribute/input not provided for squeeze
-    result.push_back(
-        NodeDef("Shape",
-                {I(0)},
-                {IA("I0_shape")}));
-    result.push_back(
-        NodeDef("Reshape",
-                {GO(0), IA("I0_shape")},
-                {GI(0)}));
+  } else if (numInputs == 2) {  // Optional input 'axes' is provided
+    return std::vector<NodeDef>{NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                                        {GO(0), I(1)},
+                                        {GI(0)})};
   }
 
-  return result;
+  // If axes attribute/input is not provided for squeeze, no matter which OpSet version.
+  return std::vector<NodeDef>{NodeDef("Shape",
+                                      {I(0)},
+                                      {IA("I0_shape")}),
+                              NodeDef("Reshape",
+                                      {GO(0), IA("I0_shape")},
+                                      {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {

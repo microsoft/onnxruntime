@@ -9,7 +9,7 @@ jobs:
     - template: templates/run-docker-build-steps.yml
       parameters:
         # Latest TensorRT container only supports ubuntu20.04 and python 3.8
-        RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.8 -x "--build_wheel"'
+        RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.8 -x "--build_wheel --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52"'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

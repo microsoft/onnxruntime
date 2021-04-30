@@ -367,7 +367,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       if (it == equivalence_classes.end()) {
         // Because nodes are processed in topological order, this will always be
         // a non-op value (graph input or constant initializer).
-        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def);
+        auto value = std::make_unique<EquivalenceClass>(input_def);
         const auto* raw_ptr = value.get();
         unique_equivalence_classes.push_back(std::move(value));
         value_to_representative.emplace(raw_ptr, Representative{input_def, 0, kInvalidOutputIndex});
@@ -385,7 +385,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     for (OutputIndex output_index = 0, end = static_cast<int>(node->OutputDefs().size());
          output_index < end; ++output_index) {
       const NodeArg* output_def = node->OutputDefs()[output_index];
-      auto equivalence_class = onnxruntime::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
+      auto equivalence_class = std::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
       auto* raw_ptr = equivalence_class.get();
 
       auto it = value_to_representative.find(raw_ptr);
