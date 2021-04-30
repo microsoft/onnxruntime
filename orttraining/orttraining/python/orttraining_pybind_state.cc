@@ -385,7 +385,7 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(onnxruntime::make_unique<PipelineTrainingSession>(so, env)) {
+        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so, env)) {
     }
   };
 
@@ -393,11 +393,11 @@ void addObjectMethodsForTraining(py::module& m) {
   training_session
       .def(py::init([](const PySessionOptions& so) {
         Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, so);
+        return std::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
+        return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_MPI)
@@ -493,7 +493,7 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<PartialGraphExecutionState>(m, "PartialGraphExecutionState")
       .def(py::init([]() {
-        return onnxruntime::make_unique<PartialGraphExecutionState>();
+        return std::make_unique<PartialGraphExecutionState>();
       }));
 
   py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
@@ -501,7 +501,7 @@ void addObjectMethodsForTraining(py::module& m) {
                        const std::vector<std::string>& fw_fetches_names, const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_feed_names, const std::vector<std::string>& bw_fetches_names,
                        const std::vector<OrtDevice>& bw_outputs_device_info) {
-        return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
+        return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_fetches_names, fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
         Status status = agent->RunForward(feeds, fetches, *state);
@@ -564,7 +564,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
-  ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
+  ortmodule_graph_builder.def(py::init([]() { return std::make_unique<OrtModuleGraphBuilder>(); }))
       .def("initialize",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
               const OrtModuleGraphBuilderConfiguration& config) {

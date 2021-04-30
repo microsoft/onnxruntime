@@ -15,7 +15,7 @@ class Einsum : public OpKernel {
   Einsum(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
                 "Missing 'equation' attribute");
-    einsum_equation_preprocessor_ = onnxruntime::make_unique<EinsumEquationPreprocessor>(equation_);
+    einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
   }
 
   virtual Status Compute(OpKernelContext* context) const override;

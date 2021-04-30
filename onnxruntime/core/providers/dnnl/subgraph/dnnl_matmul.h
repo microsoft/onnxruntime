@@ -82,18 +82,18 @@ class DnnlMatmul : public DnnlKernel {
     InferOutputShape(x_shape, w_shape, y_dims);
     primitive_dst_shape_ = TensorShape(y_dims);
 
-    std::unique_ptr<dnnl::memory::desc> src_md = onnxruntime::make_unique<dnnl::memory::desc>(
+    std::unique_ptr<dnnl::memory::desc> src_md = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::dims(x_shape.GetDims().begin(), x_shape.GetDims().end()), DnnnType<T>(), dnnl::memory::format_tag::any);
 
-    std::unique_ptr<dnnl::memory::desc> weights_md = onnxruntime::make_unique<dnnl::memory::desc>(
+    std::unique_ptr<dnnl::memory::desc> weights_md = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::dims(w_shape.GetDims().begin(), w_shape.GetDims().end()), DnnnType<T>(), dnnl::memory::format_tag::any);
 
-    primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    primitive_dst_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::dims(y_dims.begin(), y_dims.end()), DnnnType<T>(), dnnl::memory::format_tag::any);
 
-    std::unique_ptr<dnnl::matmul::desc> matmul_desc = onnxruntime::make_unique<dnnl::matmul::desc>(*src_md, *weights_md, *primitive_dst_md_);
-    matmul_pd_ = onnxruntime::make_unique<dnnl::matmul::primitive_desc>(*matmul_desc, engine_to_use);
-    matmul_ = onnxruntime::make_unique<dnnl::matmul>(dnnl::matmul(*matmul_pd_));
+    std::unique_ptr<dnnl::matmul::desc> matmul_desc = std::make_unique<dnnl::matmul::desc>(*src_md, *weights_md, *primitive_dst_md_);
+    matmul_pd_ = std::make_unique<dnnl::matmul::primitive_desc>(*matmul_desc, engine_to_use);
+    matmul_ = std::make_unique<dnnl::matmul>(dnnl::matmul(*matmul_pd_));
 
     primitive_src_desc_ = static_cast<dnnl::memory::desc>(matmul_pd_.get()->src_desc());
     primitive_dst_desc_ = static_cast<dnnl::memory::desc>(matmul_pd_.get()->dst_desc());
@@ -101,10 +101,10 @@ class DnnlMatmul : public DnnlKernel {
     weights_size_ = matmul_pd_.get()->weights_desc().get_size();
     dst_size_ = matmul_pd_.get()->dst_desc().get_size();
 
-    weights_mem_ = onnxruntime::make_unique<dnnl::memory>(
+    weights_mem_ = std::make_unique<dnnl::memory>(
         dnnl::memory(matmul_pd_.get()->weights_desc(), cpu_engine, nullptr));
     if (gpu_available_) {
-      weights_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+      weights_mem_gpu_ = std::make_unique<dnnl::memory>(
           dnnl::memory(matmul_pd_.get()->weights_desc(), gpu_engine, nullptr));
     }
 
@@ -113,20 +113,20 @@ class DnnlMatmul : public DnnlKernel {
         if (mklnode_ptr_->parent_nodes.empty()) {
           dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
           auto pd = dnnl::memory::desc({{src_dims}, DnnnType<T>(), ort_source_format_});
-          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_from_ = std::make_unique<dnnl::memory>(
               dnnl::memory(pd, cpu_engine, nullptr));
         }
         else
           src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-        src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(matmul_pd_->src_desc(), cpu_engine, nullptr));
         net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_));
         net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
                             {DNNL_ARG_TO, *src_mem_}});
       } else {
         if (mklnode_ptr_->parent_nodes.empty()) {
-          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_->src_desc(), cpu_engine, nullptr));
         } else {
           src_mem_ = parents_[0].get()->primitive_dst_mem_;
@@ -135,10 +135,10 @@ class DnnlMatmul : public DnnlKernel {
 
       if (mklnode_ptr_->output_index >= 0) {
         if (primitive_dst_desc_ != ort_source_desc_) {
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_.get()->dst_desc(), cpu_engine));
         } else {
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_.get()->dst_desc(), cpu_engine, nullptr));
         }
       }
@@ -147,21 +147,21 @@ class DnnlMatmul : public DnnlKernel {
         if (mklnode_ptr_->parent_nodes.empty()) {
           dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
           auto pd = dnnl::memory::desc({{src_dims}, DnnnType<T>(), ort_source_format_});
-          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_from_ = std::make_unique<dnnl::memory>(
               dnnl::memory(pd, cpu_engine, nullptr));
         } else {
           src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
         }
-        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(
             dnnl::memory(matmul_pd_->src_desc(), gpu_engine));
         net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_gpu_));
         net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
                             {DNNL_ARG_TO, *src_mem_gpu_}});
       } else {
         if (mklnode_ptr_->parent_nodes.empty()) {
-          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_->src_desc(), cpu_engine, nullptr));
-          src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_gpu_ = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_->src_desc(), gpu_engine));
           net.push_back(dnnl::reorder(*src_mem_, *src_mem_gpu_));
           net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
@@ -171,7 +171,7 @@ class DnnlMatmul : public DnnlKernel {
         }
       }
 
-      primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      primitive_dst_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory(matmul_pd_.get()->dst_desc(), gpu_engine));
     }
 
@@ -215,7 +215,7 @@ class DnnlMatmul : public DnnlKernel {
         dnnl::memory src = dnnl::memory({{weights_dims_dnnl}, DnnnType<T>(), weights_format_}, cpu_engine, (void*)weights_data);
         IAllocatorUniquePtr<void> weights_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc_, weights_size_);
         if (!gpu_available_) {
-          weights_dst_mem = onnxruntime::make_unique<dnnl::memory>(
+          weights_dst_mem = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_->weights_desc(), cpu_engine, weights_reorder_buffer.get()));
 
           dnnl::reorder(src, *weights_dst_mem)
@@ -224,7 +224,7 @@ class DnnlMatmul : public DnnlKernel {
           provider_->SaveAllocatedMemory(std::move(weights_reorder_buffer));
           weights_data = static_cast<T*>(weights_dst_mem->get_data_handle());
         } else {  // gpu_available_
-          weights_dst_mem = onnxruntime::make_unique<dnnl::memory>(
+          weights_dst_mem = std::make_unique<dnnl::memory>(
               dnnl::memory(matmul_pd_->weights_desc(), dnnl_engine_gpu_));
 
           dnnl::reorder(src, *weights_dst_mem)

@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
@@ -21,10 +20,12 @@ namespace onnxruntime {
 namespace optimizer_utils {
 
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+         tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 }
 
-inline bool IsScalar(const NodeArg& input_arg) {
+bool IsScalar(const NodeArg& input_arg) {
   auto shape = input_arg.Shape();
   if (shape == nullptr) {
     // shape inferencing wasn't able to populate shape information for this NodeArg

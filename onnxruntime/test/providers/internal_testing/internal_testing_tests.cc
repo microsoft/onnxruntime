@@ -26,7 +26,7 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
                           const ORTCHAR_T* model_path = ORT_TSTR("testdata/mnist.onnx"),  // arbitrary test model
                           bool enable_custom_ep = true,
                           const std::unordered_set<std::string>* override_supported_ops = nullptr) {
-  session = onnxruntime::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
   // set supported ops to ops that are ideally found consecutively in the model.
   // we can say the EP potentially handles them all, but can also test removing handling of one or more ops
@@ -38,7 +38,7 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
 
   if (enable_custom_ep) {
     ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-        onnxruntime::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
+        std::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
   }
 
   ASSERT_STATUS_OK(session->Load(model_path));
@@ -133,11 +133,11 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   SessionOptions so;
   so.optimized_model_filepath = ORT_TSTR("invalid_model.ort");
 
-  auto session = onnxruntime::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
   const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu", "MaxPool"};
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-      onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+      std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
   ASSERT_STATUS_OK(session->Load(ort_model_path));
   auto status = session->Initialize();
@@ -250,7 +250,7 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   // compare outputs from CPU EP vs custom EP
   RunAndVerifyOutputsWithEP(ort_model_path,
                             "InternalTestingEP.TestModelWithSubgraph",
-                            onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops),
+                            std::make_unique<InternalTestingExecutionProvider>(supported_ops),
                             feeds);
 }
 
@@ -310,7 +310,7 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
   {
     InferenceSessionWrapper session(SessionOptions(), GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+        std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
     ASSERT_STATUS_OK(session.Load(ort_model_path));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -326,7 +326,7 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
   {
     InferenceSessionWrapper session(SessionOptions(), GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        onnxruntime::make_unique<CompileFailureTestExecutionProvider>(supported_ops, compile_failure_ops)));
+        std::make_unique<CompileFailureTestExecutionProvider>(supported_ops, compile_failure_ops)));
     ASSERT_STATUS_OK(session.Load(ort_model_path));
     ASSERT_STATUS_OK(session.Initialize());
 
