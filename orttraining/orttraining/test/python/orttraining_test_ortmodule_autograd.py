@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training import _utils, ORTModule
+from onnxruntime.training.ortmodule import _utils, ORTModule
 import _test_helpers
 
 from torch.nn.parameter import Parameter
@@ -24,7 +24,6 @@ from torch.nn.parameter import Parameter
 import onnx
 import torch
 torch.manual_seed(1)
-from onnxruntime.training import ORTModule
 import onnxruntime as ort
 import os
 from torch.utils.dlpack import from_dlpack, to_dlpack

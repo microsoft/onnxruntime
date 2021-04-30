@@ -84,7 +84,7 @@ class GraphExecutionManager(ABC):
         self._run_symbolic_shape_infer = False
 
         # flag to enable PyTorch autograd functions fall back to Python for execution.
-        self._enable_autograd_func_fallback = False
+        self._enable_autograd_func_fallback = True
 
         self._input_info = None
         self._module_output_schema = None
@@ -239,9 +239,10 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            if self._enable_autograd_func_fallback is False:
+            if self._enable_autograd_func_fallback is True:
+                cloned_flattened_module = copy.deepcopy(self._flattened_module)
                 with _logger.suppress_os_stream_output(log_level=self._loglevel):
-                    torch.onnx.export(copy.deepcopy(self._flattened_module),
+                    torch.onnx.export(cloned_flattened_module,
                                     sample_inputs_as_tuple,
                                     f,
                                     input_names=self._input_info.names,
@@ -252,10 +253,26 @@ class GraphExecutionManager(ABC):
                                     dynamic_axes=self._input_info.dynamic_axes,
                                     operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
                                     custom_opsets={"prim": 1},
-                                    verbose=self._loglevel < _logger.LogLevel.WARNING,
-                                    export_params=False,
-                                    keep_initializers_as_inputs=True)
-                
+                                    verbose=self._loglevel < _logger.LogLevel.WARNING)
+
+                my_model = onnx.load_model_from_string(f.getvalue())
+                if len(my_model.opset_import) > 1:
+                    my_model.opset_import[1].domain = 'com.microsoft'
+                index = 0
+                for node in my_model.graph.node:
+                    if node.domain == 'prim':
+                        node.domain = 'com.microsoft'
+                        output_names = list(node.output)
+                        del node.output[:]
+                        node.output.append(output_names[0] + '_ctx')
+                        node.output.extend(output_names)
+                    if not node.name:
+                        # give a name for debugging
+                        node.name = node.op_type + "_id_" + str(index)
+                        index += 1
+
+                onnx.save(my_model, 'my_model_new.onnx')
+
             else:
                 with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                     torch.onnx.export(self._flattened_module,
@@ -270,7 +287,7 @@ class GraphExecutionManager(ABC):
                                     verbose=self._loglevel < _logger.LogLevel.WARNING,
                                     export_params=False,
                                     keep_initializers_as_inputs=True)
-            except RuntimeError as e:
+        except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         return onnx.load_model_from_string(f.getvalue())

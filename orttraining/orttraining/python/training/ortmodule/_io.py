@@ -360,7 +360,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       schema=schema,
                       num_positionals=len(inputs),
                       num_positionals_non_none=len([i for i in inputs if i is not None]),
-                      keyword_names=kwargs.keys())
+                      keyword_names=[v for v in kwargs.keys()])
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):

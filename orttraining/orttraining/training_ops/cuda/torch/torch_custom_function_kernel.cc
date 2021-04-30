@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "torch_custom_function_kernel.h"
+#include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include <thread>
@@ -170,7 +170,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
       std::cout << "CUDA PythonOp::Compute shape : " << input_shape.GetDims()[i] << std::endl;
     }
 
-    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr)) ;
+    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr));
   }
 
   std::cout << std::this_thread::get_id() << " std::this_thread::get_id() in CUDA PythonOp::Compute done : " << std::this_thread::get_id() << std::endl;

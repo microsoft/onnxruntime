@@ -3,16 +3,8 @@
 
 #pragma once
 #include "core/platform/env.h"
-#define LOAD_PYOP_SYM(n, v, m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_, n, reinterpret_cast<void**>(&v)) == Status::OK(), m)
 #include "core/framework/ml_value.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/op_kernel_context_internal.h"
-#ifdef _WIN32
-#include <Windows.h>
-#else
-#define HMODULE void*
-#endif
-
 namespace onnxruntime {
 using OnnxAttrs = std::unordered_map<std::string, std::string>;
 

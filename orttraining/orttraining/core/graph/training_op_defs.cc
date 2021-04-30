@@ -1453,7 +1453,7 @@ Example 4:
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
             if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
-              return false; // ONNX op Where doesn't support bfloat16 yet.
+              return false;  // ONNX op Where doesn't support bfloat16 yet.
 
             if (ctx.hasInput(2)) {
               // ratio specified.
@@ -2318,7 +2318,7 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Wrapper of Pytorch's autograd.Function implementaiton.")
+      .SetDoc("Wrapper of Pytorch's autograd.Function implementation.")
       .Input(
           0,
           "inputs",

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "custom_function_register.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
 #include <Python.h>
 #include <sstream>
 #include <mutex>
 #include <iostream>
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace python {
