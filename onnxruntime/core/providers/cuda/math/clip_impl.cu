@@ -19,16 +19,22 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  union alias {
-    T t;
-    CudaT cudaT;
+  union const_alias {
+    const T *t;
+    const CudaT *cudaT;
+    const_alias(const T* _t) { t = _t;}
   };
-  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(input_data)),
-                                                                          reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(output_data)),
-                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(min)),
-                                                                          reinterpret_cast<const CudaT*>(reinterpret_cast<const union alias*>(max)),
-                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(&min_default)),
-                                                                          *reinterpret_cast<CudaT*>(reinterpret_cast<union alias*>(&max_default)),
+  union alias {
+    T *t;
+    CudaT *cudaT;
+    alias(T* _t) { t = _t;}
+  };
+  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union const_alias)input_data).cudaT,
+                                                                          ((union alias)output_data).cudaT,
+                                                                          ((union const_alias)min).cudaT,
+                                                                          ((union const_alias)max).cudaT,
+                                                                          *((union alias)&min_default).cudaT,
+                                                                          *((union alias)&max_default).cudaT,
                                                                           count);
 }
 
