@@ -519,7 +519,11 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
+
+    parser.add_argument(
+        "--build_eager_mode", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
 
     return parser.parse_args()
 
@@ -740,6 +744,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
