@@ -4,8 +4,10 @@
 import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
+import {onnxruntime} from './ortSchema/ort_generated';
+import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {ProtoUtil} from './util';
+import {LongUtil, ProtoUtil} from './util';
 
 export declare namespace Graph {
   export interface Shape {
@@ -75,7 +77,8 @@ export const Graph = {
   /**
    * construct a graph from a graph protobuf type
    */
-  from: (graphProto: onnx.IGraphProto, initializer?: Graph.Initializer) => new GraphImpl(graphProto, initializer)
+  from: (graphProto: onnx.IGraphProto|ortFbs.Graph, initializer?: Graph.Initializer) =>
+      new GraphImpl(graphProto, initializer),
 };
 
 class Value implements Graph.Value {
@@ -103,12 +106,19 @@ class Value implements Graph.Value {
 }
 
 class Node implements Graph.Node {
-  constructor(_nodeProto: onnx.INodeProto) {
-    this.name = _nodeProto.name!;
-    this.opType = _nodeProto.opType!;
+  constructor(_nodeProto: onnx.INodeProto|ortFbs.Node, name?: string) {
+    if (_nodeProto instanceof onnx.NodeProto) {
+      this.name = _nodeProto.name;
+      this.opType = _nodeProto.opType;
+      this.attributes = new Attribute(_nodeProto.attribute);
+    } else if (_nodeProto instanceof ortFbs.Node) {
+      this.name = name ?? _nodeProto.name()!;
+      this.opType = _nodeProto.opType()!;
+      this.attributes = new Attribute(ProtoUtil.tensorAttributesFromORTFormat(_nodeProto));
+    }
+
     this.inputs = [];
     this.outputs = [];
-    this.attributes = new Attribute(_nodeProto.attribute);
     this.executeNode = true;
   }
 
@@ -131,7 +141,7 @@ class GraphImpl implements Graph, Graph.Transformer {
 
   private _nodes: Node[];
 
-  constructor(graph: onnx.IGraphProto, graphInitializer?: Graph.Initializer) {
+  constructor(graph: onnx.IGraphProto|ortFbs.Graph, graphInitializer?: Graph.Initializer) {
     if (!graph) {
       throw new TypeError('graph is empty');
     }
@@ -170,7 +180,17 @@ class GraphImpl implements Graph, Graph.Transformer {
     return this._nodes;
   }
 
-  private buildGraph(graph: onnx.IGraphProto) {
+  private buildGraph(graph: onnx.IGraphProto|ortFbs.Graph) {
+    // build the graph - will throw exceptions if something fatal is detected
+    if (graph instanceof onnx.GraphProto) {
+      this.buildGraphFromOnnxFormat(graph);
+    } else if (graph instanceof ortFbs.Graph) {
+      this.buildGraphFromOrtFormat(graph);
+    } else {
+      throw new TypeError('Graph type is not supported.');
+    }
+  }
+  private buildGraphFromOnnxFormat(graph: onnx.IGraphProto) {
     const dataIndices = new Map<string, number>();
     this._allData = [];
 
@@ -322,6 +342,173 @@ class GraphImpl implements Graph, Graph.Transformer {
     return true;
   }
 
+  private buildGraphFromOrtFormat(graph: ortFbs.Graph) {
+    const dataIndices = new Map<string, number>();
+    this._allData = [];
+
+    this._allInputIndices = [];
+    this._allInputNames = [];
+
+    this._allOutputIndices = [];
+    this._allOutputNames = [];
+
+    this._nodes = [];
+
+    const nodesIndices = new Map<string, number>();
+
+    // scan all inputs
+    const inputValueNames = [];
+    for (let i = 0; i < graph.inputsLength(); i++) {
+      const inputName = graph.inputs(i);
+      if (dataIndices.has(inputName)) {
+        throw new Error(`duplicated input name: ${inputName}`);
+      }
+      // Find the input typeInfo from nodeargs
+      for (let j = 0; j < graph.nodeArgsLength(); j++) {
+        if (graph.nodeArgs(j)?.name() === inputName) {
+          const value = new Value();
+          const valueType = graph.nodeArgs(j)?.type()?.valueType();
+          if (valueType !== ortFbs.TypeInfoValue.tensor_type) {
+            throw new Error('Unexpected value type for the nodeArg.');
+          }
+          const valueInfo = graph.nodeArgs(j)!.type()!.value(new ortFbs.TensorTypeAndShape())!;
+          const type = ProtoUtil.tensorDataTypeFromProto(valueInfo.elemType());
+          const shape = valueInfo.shape()!;
+          const dims = [];
+          for (let k = 0; k < shape.dimLength()!; k++) {
+            dims.push(LongUtil.longToNumber(shape.dim(k)!.value()!.dimValue()!));
+          }
+          value.type = {shape: {dims}, tensorType: type};
+          const currentIndex = this._allData.push(value) - 1;
+          dataIndices.set(inputName, currentIndex);
+          inputValueNames.push(inputName);
+        }
+      }
+    }
+    // check initializers
+    for (let i = 0; i < graph.initializersLength(); i++) {
+      const initializer = graph.initializers(i)!;
+      let index = dataIndices.get(initializer.name()!);
+      if (index === undefined) {
+        const value = new Value();
+        const dims = ProtoUtil.tensorDimsFromORTFormat(initializer);
+        const type = ProtoUtil.tensorDataTypeFromProto(initializer.dataType());
+        value.type = {shape: {dims}, tensorType: type};
+        index = this._allData.push(value) - 1;
+        dataIndices.set(initializer.name()!, index);
+      }
+      this._allData[index]._from = -1;
+      this._allData[index].tensor = Tensor.fromOrtTensor(initializer);
+    }
+
+    // filter out input indices
+    for (let i = 0; i < this._allData.length; i++) {
+      if (!this._allData[i].tensor) {
+        this._allInputIndices.push(i);
+        this._allInputNames.push(inputValueNames[i]);
+      }
+    }
+
+    // scan all outputs
+    for (let i = 0; i < graph.outputsLength(); i++) {
+      const outputName = graph.outputs(i);
+      if (dataIndices.has(outputName)) {
+        throw new Error(`duplicated output name: ${outputName}`);
+      }
+      const currentIndex = this._allData.push(new Value()) - 1;
+      dataIndices.set(outputName, currentIndex);
+      this._allOutputIndices.push(currentIndex);
+      this._allOutputNames.push(outputName);
+    }
+
+    // scan all nodes
+    if (!graph.nodes) {
+      throw new Error('missing information in graph: node');
+    }
+    for (let i = 0; i < graph.nodesLength(); i++) {
+      const nodeProto = graph.nodes(i);
+      let name = nodeProto!.name();
+      if (!name) {
+        // assign a name to the node if it doesn't have one
+        for (let pick = 0;; pick++) {
+          name = `unnamed_${nodeProto!.opType()}_${pick}`;
+          if (!nodesIndices.has(name)) {
+            // an unique name is found. break.
+            break;
+          }
+        }
+      }
+
+      if (nodesIndices.has(name)) {
+        throw new Error(`duplicated node name: ${name}`);
+      }
+      const currentIndex = this._nodes.push(new Node(nodeProto!, name)) - 1;
+      nodesIndices.set(name, currentIndex);
+    }
+
+    // scan node's outputs
+    for (let i = 0; i < this._nodes.length; i++) {
+      const node = this._nodes[i];
+      const nodeProto = graph.nodes(i);
+      if (nodeProto == null) {
+        throw new Error(`No node exists at index ${i}`);
+      }
+      if (nodeProto?.outputsLength() === 0) {
+        throw new Error(`missing output for node: ${nodeProto.name}`);
+      }
+      for (let j = 0; j < nodeProto?.outputsLength(); j++) {
+        const output = nodeProto?.outputs(j);
+        let dataIndex = dataIndices.get(output);
+        if (typeof dataIndex === 'undefined') {
+          dataIndex = this._allData.push(new Value()) - 1;
+          dataIndices.set(output, dataIndex);
+        }
+        node.outputs.push(dataIndex);
+
+        if (this._allData[dataIndex]._from !== undefined) {
+          throw new Error(`multiple nodes output to one data value: ${dataIndex}`);
+        }
+        this._allData[dataIndex]._from = i;
+
+        // for the 'Constant' operator, just create a new edge in the graph corresponding to the 'output' of the
+        // operator and ignore the node from the graph
+        if (nodeProto.opType() === 'Constant') {
+          if (nodeProto.attributesLength() !== 1 || !nodeProto.attributes(0)!.t()) {
+            throw new Error('missing attributes or missing tensor value in attributes for this Constant operator');
+          }
+          if (nodeProto.outputsLength() !== 1) {
+            throw new Error('missing output or incorrect number of outputs for this Constant operator');
+          }
+          node.outputs.pop();
+          node.executeNode = false;
+
+          this._allData[dataIndex]._from = -1;
+          this._allData[dataIndex].tensor = Tensor.fromOrtTensor(nodeProto.attributes(0)!.t()!);
+        }
+      }
+    }
+
+    // scan node's inputs
+    for (let i = 0; i < this._nodes.length; i++) {
+      const node = this._nodes[i];
+      const nodeProto = graph.nodes(i)!;
+
+      if (nodeProto.inputsLength() === 0) {
+        throw new Error(`missing input for node: ${nodeProto.name}`);
+      }
+      for (let j = 0; j < nodeProto.inputsLength()!; j++) {
+        const input = nodeProto.inputs(j)!;
+        const dataIndex = dataIndices.get(input);
+        if (typeof dataIndex === 'undefined') {
+          throw new Error(`unrecognized input '${input}' for node: ${nodeProto!.name()}`);
+        }
+        node.inputs.push(dataIndex);
+
+        this._allData[dataIndex]._to.push(i);
+      }
+    }
+  }
+
   private checkIsAcyclic() {
     // go through the graph and check for cycles or other fatal inconsistencies
     const starters: Set<number> = new Set<number>();
@@ -414,7 +601,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         });
         this._nodes[i].outputs.forEach(value => {
           if (this._allData[value]._from && this._allData[value]._from! === i + offset) {
-            this._allData[value]._from = i;
+            this._allData[value]._from! = i;
           }
         });
       }

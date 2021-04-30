@@ -7,145 +7,12 @@ import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../.
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLPack} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
 import {WebGLUnpack} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
-import {WebGLContext} from '../../../../lib/onnxjs/backends/webgl/webgl-context';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
 
-let backend: Backend|undefined;
-let sessionhandler: SessionHandler|undefined;
-let inferenceHandler: InferenceHandler|undefined;
-
-function createAscendingArray(size: number): Float32Array {
-  return new Float32Array(Array.from({length: size}, (v, i) => (i + 1)));
-}
-
-// create a webgl texture and fill it with the array content
-function createTextureFromArray(
-    glContext: WebGLContext, dataArray: Float32Array, type: GLenum, width: number, height: number) {
-  const gl = glContext.gl;
-
-  // create the texture
-  const texture = gl.createTexture();
-  // bind the texture so the following methods effect this texture.
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  if (glContext.version === 2) {
-    const webgl2Gl = gl as WebGL2RenderingContext;
-    gl.texImage2D(webgl2Gl.TEXTURE_2D, 0, webgl2Gl.RGBA32F, width, height, 0, webgl2Gl.RGBA, webgl2Gl.FLOAT, dataArray);
-  } else {
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.FLOAT, dataArray);
-  }
-
-  glContext.checkError();
-  return texture;
-}
-
-// create a cpu array and download GPU texture data to this array
-function createArrayFromTexture(
-    gl: WebGLRenderingContext, texture: WebGLTexture, width: number, height: number): Float32Array {
-  const resultDataBuffer = new Float32Array(width * height * 4);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture,
-      0);  // 0, we aren't using MIPMAPs
-  gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, resultDataBuffer);
-  return resultDataBuffer;
-}
-
-function getExpectedElementCount(inputShape: number[], isPacked = true): number {
-  const rank = inputShape.length;
-
-  if (isPacked) {
-    // scalar
-    if (rank === 0) {
-      return 4;
-    }
-
-    // 1D tensor
-    if (rank === 1) {
-      if (inputShape[0] % 2) {
-        return (inputShape[0] + 1) * 2;
-      } else {
-        return inputShape[0] * 2;
-      }
-    }
-
-    // process width
-    let inputWidth = inputShape[rank - 2] % 2 ? inputShape[rank - 2] + 1 : inputShape[rank - 2];
-    if (rank > 2) {
-      for (let i = 0; i < rank - 2; ++i) {
-        inputWidth *= inputShape[i];
-      }
-    }
-    // process height
-    let inputHeight = inputShape[rank - 1];
-    if (inputHeight % 2) {
-      inputHeight++;
-    }
-    return inputWidth * inputHeight;
-  } else {
-    let totalCount = 1;
-    for (let i = 0; i < rank; i++) {
-      totalCount *= inputShape[i];
-    }
-    return totalCount;
-  }
-}
-
-function generateExpected(inputArray: Float32Array, inputShape: number[]): Float32Array {
-  if (inputShape.length === 0) {
-    const result = new Float32Array(4);
-    result[0] = inputArray[0];
-    return result;
-  }
-  const rank = inputShape.length;
-
-  const inputHeight = rank === 1 ? 1 : inputShape[rank - 2];
-  const inputWidth = inputShape[rank - 1];
-  const paddedW = inputWidth % 2 ? inputWidth + 1 : inputWidth;
-  const paddedH = inputHeight % 2 ? inputHeight + 1 : inputHeight;
-
-  let B = 1;
-  if (rank > 2) {
-    for (let i = 0; i < rank - 2; ++i) {
-      B *= inputShape[i];
-    }
-  }
-
-  const result = new Float32Array(B * paddedW * paddedH);
-  let ii = 0;
-  for (let b = 0; b < B; ++b) {
-    for (let j = 0; j < paddedH; j += 2) {
-      for (let i = 0; i < paddedW; i += 2) {
-        const index = j * inputWidth + i + b * (inputHeight * inputWidth);
-        result[ii++] = inputArray[index];
-
-        if (i + 1 < inputWidth) {
-          result[ii++] = inputArray[index + 1];
-        } else {
-          result[ii++] = 0;
-        }
-
-        if ((j + 1) < inputHeight) {
-          result[ii++] = inputArray[(j + 1) * inputWidth + i + b * (inputHeight * inputWidth)];
-        } else {
-          result[ii++] = 0;
-        }
-
-        if (i + 1 < inputWidth && j + 1 < inputHeight) {
-          result[ii++] = inputArray[(j + 1) * inputWidth + i + 1 + b * (inputHeight * inputWidth)];
-        } else {
-          result[ii++] = 0;
-        }
-      }
-    }
-  }
-  return result;
-}
+import {createArrayFromTexture, createAscendingArray} from './test_utils';
+import {createTextureFromArray, generateExpected, getExpectedElementCount} from './test_utils';
 
 interface TestData {
   elementCount: number;
@@ -186,18 +53,30 @@ function getTestData(isPacked = true): TestData[] {
       {elementCount: 24, inputShape: [2, 3, 4], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 2]},
       {elementCount: 30, inputShape: [5, 3, 2], outputShape: [], inputTextureShape: [], outputTextureShape: [10, 1]},
       {elementCount: 9, inputShape: [1, 3, 3], outputShape: [], inputTextureShape: [], outputTextureShape: [2, 2]},
+      {elementCount: 8, inputShape: [1, 4, 2], outputShape: [], inputTextureShape: [], outputTextureShape: [2, 1]},
+      {elementCount: 8, inputShape: [4, 2, 1], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 1]},
+      {elementCount: 8, inputShape: [4, 1, 2], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 1]},
 
       // test 4D tensor
       {elementCount: 1, inputShape: [1, 1, 1, 1], outputShape: [], inputTextureShape: [], outputTextureShape: [1, 1]},
+      {elementCount: 15, inputShape: [1, 1, 3, 5], outputShape: [], inputTextureShape: [], outputTextureShape: [2, 3]},
       {elementCount: 16, inputShape: [1, 2, 2, 4], outputShape: [], inputTextureShape: [], outputTextureShape: [2, 2]},
       {elementCount: 32, inputShape: [2, 2, 2, 4], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 2]},
       {elementCount: 36, inputShape: [2, 2, 3, 3], outputShape: [], inputTextureShape: [], outputTextureShape: [8, 2]},
       {elementCount: 80, inputShape: [2, 5, 2, 4], outputShape: [], inputTextureShape: [], outputTextureShape: [10, 2]},
       {elementCount: 12, inputShape: [2, 1, 3, 2], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 1]},
+      {elementCount: 8, inputShape: [4, 1, 1, 2], outputShape: [], inputTextureShape: [], outputTextureShape: [4, 1]},
+      {
+        elementCount: 3840,
+        inputShape: [1, 1, 48, 80],
+        outputShape: [],
+        inputTextureShape: [],
+        outputTextureShape: [24, 40]
+      },
     ];
   } else {
     return [
-      // // test 1D tensor
+      // test 1D tensor
       {
         elementCount: 8,
         inputShape: [8],
@@ -206,7 +85,14 @@ function getTestData(isPacked = true): TestData[] {
         outputTextureShape: [1, 8],
         rawData: new Float32Array([1, 2, 0, 0, 3, 4, 0, 0, 5, 6, 0, 0, 7, 8, 0, 0]),
       },
-
+      {
+        elementCount: 18,
+        inputShape: [3, 6],
+        outputShape: [3, 6],
+        inputTextureShape: [3, 2],
+        outputTextureShape: [3, 6],
+        rawData: new Float32Array([1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12, 13, 14, 0, 0, 15, 16, 0, 0, 17, 18, 0, 0]),
+      },
       // // test 2D tensor
       {
         elementCount: 16,
@@ -274,6 +160,10 @@ function getTestData(isPacked = true): TestData[] {
   }
 }
 
+let backend: Backend|undefined;
+let sessionhandler: SessionHandler|undefined;
+let inferenceHandler: InferenceHandler|undefined;
+
 describe('#UnitTest# - pack - Tensor pack', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
@@ -282,40 +172,71 @@ describe('#UnitTest# - pack - Tensor pack', () => {
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
   const testDataSet = getTestData();
-  for (let k = 0; k < testDataSet.length; ++k) {
-    const testData = testDataSet[k];
-    describe(`Test pack ${JSON.stringify(testData)}`, () => {});
-    it(`Test pack kernal ${JSON.stringify(testData)}`, () => {
-      const op = new WebGLPack();
 
-      const elementCount = testData.elementCount;
-      const inputData = createAscendingArray(elementCount);
-      const inputTensorShape = testData.inputShape;
-      const outputTextureShape = testData.outputTextureShape;
+  // iterate through different input texture layout.
+  // 'hw-reverted' is the new texture layout all packed kernels use
+  // 'hw-unreverted' is the old texture layout existing unpacked kernels use
+  // before we unify those two texture layout, pack kernel should be able to handle
+  // both texture layout correctly
+  const textureLayout = ['hw-reverted', 'hw-unreverted'];
 
-      const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
+  for (let w = 0; w < textureLayout.length; ++w) {
+    for (let k = 0; k < testDataSet.length; ++k) {
+      const testData = testDataSet[k];
+      describe('Test pack', () => {});
+      it(`Test pack kernal ${textureLayout[w]} ${JSON.stringify(testData)}`, () => {
+        const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
-      // compile shader code
-      const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-      const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(op, artifact);
+        // TODO support WebGl 1.0
+        if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
+          console.log('Running pack with webgl1 is not supported. Skipping.');
+          return;
+        }
 
-      // run kernal and get output
-      const runData = op.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
-      webglInferenceHandler.session.programManager.run(artifact, runData);
-      const resultTexture = runData.outputTextureData.texture;
-      const gl = webglInferenceHandler.session.textureManager.glContext.gl;
-      const resultDataBuffer = createArrayFromTexture(gl, resultTexture, outputTextureShape[1], outputTextureShape[0]);
+        const op = new WebGLPack();
 
-      expect(resultDataBuffer).to.not.equal(null);
+        const elementCount = testData.elementCount;
+        const inputData = createAscendingArray(elementCount);
+        const inputTensorShape = testData.inputShape;
+        const outputTextureShape = testData.outputTextureShape;
 
-      const outputElementCount = getExpectedElementCount(testData.inputShape);
-      expect(resultDataBuffer).to.have.lengthOf(outputElementCount);
-      console.log(resultDataBuffer);
-      const expectedOutput = generateExpected(inputData, testData.inputShape);
-      expect(resultDataBuffer).to.deep.equal(expectedOutput);
-    });
+        const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
+
+        // test old texture layout with width and height not inverted
+        if (w === 1) {
+          console.log('Testing unreverted HW input texture');
+
+          // use inputTensorShape to create a texture layout that is unpacked(channel === 1)&& hw unreverted.
+          const inputUnpackedLayout = webglInferenceHandler.createTextureLayoutFromShape(inputTensorShape);
+
+          // create texture data from the layout. The texture data is cached inside inference handler such that
+          // when pack kernel is invoked, it will read this texture data from cache instead of creating it from
+          // scratch
+          webglInferenceHandler.createTextureDataFromLayoutBindTensor(
+              inputUnpackedLayout, inputTensor.type, inputTensor.numberData, inputTensor);
+        }
+
+        // compile shader code
+        const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
+        const artifact = webglInferenceHandler.session.programManager.build(programInfo);
+        webglInferenceHandler.session.programManager.setArtifact(op, artifact);
+
+        // run kernal and get output
+        const runData = op.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
+        webglInferenceHandler.session.programManager.run(artifact, runData);
+        const resultTexture = runData.outputTextureData.texture;
+        const gl = webglInferenceHandler.session.textureManager.glContext.gl;
+        const resultDataBuffer =
+            createArrayFromTexture(gl, resultTexture, outputTextureShape[1], outputTextureShape[0]);
+
+        expect(resultDataBuffer).to.not.equal(null);
+
+        const outputElementCount = getExpectedElementCount(testData.inputShape);
+        expect(resultDataBuffer).to.have.lengthOf(outputElementCount);
+        const expectedOutput = generateExpected(inputData, testData.inputShape);
+        expect(resultDataBuffer).to.deep.equal(expectedOutput);
+      });
+    }
   }
 });
 
@@ -327,10 +248,19 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
   const testDataSet = getTestData(false);
+
   for (let k = 0; k < testDataSet.length; ++k) {
     const testData = testDataSet[k];
     describe(`Test unpack ${JSON.stringify(testData)}`, () => {});
-    it('Test unpack kernal ', () => {
+    it(`Test unpack kernal ${testData.inputShape}`, () => {
+      const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
+
+      // TODO support WebGl 1.0
+      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
+        console.log('Running unpack with webgl1 is not supported. Skipping.');
+        return;
+      }
+
       const op = new WebGLUnpack();
 
       const elementCount = testData.elementCount;
@@ -342,8 +272,6 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       // same value but possibly different order depending on our packing algorithm.
       const inputData = createAscendingArray(elementCount);
       const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
-
-      const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
       // manually creat packed texture from inputTensor, and insert in cache
       const gl = webglInferenceHandler.session.textureManager.glContext.gl;
@@ -365,7 +293,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
         texture: webglTexture!
       };
 
-      webglInferenceHandler.setTextureData(inputTensor.dataId, textureData);
+      webglInferenceHandler.setTextureData(inputTensor.dataId, textureData, true);
 
       // compile shader code
       const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
@@ -391,6 +319,65 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
 
       expect(resultDataBuffer).to.have.lengthOf(outputElementCount);
       expect(result).to.deep.equal(expectedOutput);
+    });
+  }
+});
+
+describe('#UnitTest# - pack-unpack round trip', () => {
+  before('Initialize Context', async () => {
+    const profiler = Profiler.create();
+    backend = await resolveBackend('webgl');
+    sessionhandler = backend.createSessionHandler({profiler});
+    inferenceHandler = sessionhandler.createInferenceHandler();
+  });
+  const testDataSet = getTestData();
+
+  for (let k = 0; k < testDataSet.length; ++k) {
+    const testData = testDataSet[k];
+    describe(`Test pack-unpack ${JSON.stringify(testData)}`, () => {});
+    it(`Test pack-unpack round trip ${JSON.stringify(testData)}`, () => {
+      const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
+
+      // TODO support WebGl 1.0
+      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
+        console.log('Running pack with webgl1 is not supported. Skipping.');
+        return;
+      }
+
+      const packOp = new WebGLPack();
+
+      const elementCount = testData.elementCount;
+      const inputData = createAscendingArray(elementCount);
+      const inputTensorShape = testData.inputShape;
+
+      const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
+
+      // compile pack shader code
+      let programInfo = packOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
+      let artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      webglInferenceHandler.session.programManager.setArtifact(packOp, artifact);
+
+      // run pack kernal and get output
+      let runData = packOp.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
+      webglInferenceHandler.session.programManager.run(artifact, runData);
+
+      // create unpack kernel
+      const unpackOp = new WebGLUnpack();
+
+      // compile unpack shader code
+      programInfo =
+          unpackOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [runData.outputTextureData.tensor]);
+      artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      webglInferenceHandler.session.programManager.setArtifact(unpackOp, artifact);
+
+      // run unpack kernal and get output
+      runData = unpackOp.createRunData(webglInferenceHandler, artifact.programInfo, [runData.outputTextureData.tensor]);
+      webglInferenceHandler.session.programManager.run(artifact, runData);
+
+      const resultData = runData.outputTextureData.tensor.data;
+      expect(resultData).to.not.equal(null);
+      expect(resultData).to.have.lengthOf(testData.elementCount);
+      expect(runData.outputTextureData.tensor.data).to.deep.equal(inputTensor.data);
     });
   }
 });

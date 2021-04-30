@@ -63,7 +63,7 @@ export class WebGLPack implements WebGLOperator {
       shaderSource,
       hasMain: true,
       expectPackedInputs: false,
-      expectPackedoutputs: true,
+      expectPackedOutputs: true,
     };
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
