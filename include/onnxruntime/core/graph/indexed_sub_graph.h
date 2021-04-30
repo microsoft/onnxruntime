@@ -37,8 +37,8 @@ struct IndexedSubGraph {
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
     
-    /** Type and shape inference function that should be defined for the fused node */
-    std::function<void (ONNX_NAMESPACE::InferenceContext&)> inference_function;
+    /** Type and shape inference function that can optionally be defined for the fused node */
+    std::function<void (ONNX_NAMESPACE::InferenceContext&)> type_and_shape_inference_function;
   };
 
   /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
