@@ -17,7 +17,6 @@ if (['prod', 'dev', 'test'].indexOf(MODE) === -1) {
 // Path variables
 const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding');
 const WASM_JS_PATH = path.join(WASM_BINDING_FOLDER, 'onnxruntime_wasm.js');
-const WASM_PATH = path.join(WASM_BINDING_FOLDER, 'onnxruntime_wasm.wasm');
 const WASM_DIST_FOLDER = path.join(__dirname, '..', 'dist');
 const WASM_DIST_PATH = path.join(WASM_DIST_FOLDER, 'onnxruntime_wasm.wasm');
 
@@ -26,18 +25,14 @@ try {
   if (!fs.pathExistsSync(WASM_JS_PATH)) {
     throw new Error(`file does not exist: ${WASM_JS_PATH}`);
   }
-  npmlog.info('Build', `Ensure file: ${WASM_PATH}`);
-  if (!fs.pathExistsSync(WASM_PATH)) {
-    throw new Error(`file does not exist: ${WASM_PATH}`);
+  npmlog.info('Build', `Ensure file: ${WASM_DIST_PATH}`);
+  if (!fs.pathExistsSync(WASM_DIST_PATH)) {
+    throw new Error(`file does not exist: ${WASM_DIST_PATH}`);
   }
 } catch (e) {
   npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
   throw e;
 }
-
-npmlog.info('Build', `Copying file "${WASM_PATH}" to "${WASM_DIST_PATH}"...`);
-fs.ensureDirSync(WASM_DIST_FOLDER);
-fs.copyFileSync(WASM_PATH, WASM_DIST_PATH);
 
 npmlog.info('Build', 'Building bundle...');
 {

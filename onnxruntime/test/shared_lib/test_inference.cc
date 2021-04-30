@@ -13,7 +13,6 @@
 #include <gtest/gtest.h>
 
 #include "core/common/common.h"
-#include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -134,7 +133,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   // caller wants to test running the model (not just loading the model)
   if (!test_session_creation_only) {
     // Now run
-    auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     //without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
@@ -907,7 +906,7 @@ TEST(CApiTest, io_binding_cuda) {
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -928,7 +927,7 @@ TEST(CApiTest, create_tensor) {
 TEST(CApiTest, fill_string_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -947,7 +946,7 @@ TEST(CApiTest, get_string_tensor_element) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
   int64_t element_index = 0;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -1057,7 +1056,7 @@ TEST(CApiTest, access_tensor_data_elements) {
 
 TEST(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
   bool Label_input[] = {true};
   std::vector<int64_t> dims = {1, 1};
@@ -1111,7 +1110,7 @@ TEST(CApiTest, override_initializer) {
 
 TEST(CApiTest, end_profiling) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
 
   // Create session with profiling enabled (profiling is automatically turned on)
   Ort::SessionOptions session_options_1;
@@ -1162,7 +1161,7 @@ TEST(CApiTest, get_profiling_start_time) {
 }
 
 TEST(CApiTest, model_metadata) {
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
   // The following all tap into the c++ APIs which internally wrap over C APIs
 
   // The following section tests a model containing all metadata supported via the APIs
@@ -1303,7 +1302,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   ASSERT_FALSE(status_releaser.get() == nullptr);
 
   Ort::SessionOptions session_options;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
@@ -1357,7 +1356,7 @@ TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
   std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
       rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
 
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   // create session 1
   Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);

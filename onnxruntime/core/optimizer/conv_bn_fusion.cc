@@ -79,7 +79,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
+    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node

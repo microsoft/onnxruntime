@@ -164,7 +164,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
 
@@ -181,10 +181,10 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
 #elif USE_ROCM
   ROCMExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 

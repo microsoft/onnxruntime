@@ -68,6 +68,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_int8_enable = false;
     std::string trt_int8_calibration_table_name = "";
     bool trt_int8_use_native_calibration_table = false;
+    bool trt_force_sequential_engine_build = false;
 
     #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -77,7 +78,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
-      if(token == "") {
+      if (token == "") {
         continue;
       }
       auto pos = token.find("|");
@@ -85,10 +86,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
-      auto key = token.substr(0,pos);
-      auto value = token.substr(pos+1);
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
       if (key == "has_trt_options") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           has_trt_options = true;
         } else if (value == "false" || value == "False") {
           has_trt_options = false;
@@ -96,13 +97,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_max_workspace_size") {
-        if(!value.empty()) {
+        if (!value.empty()) {
           trt_max_workspace_size = std::stoull(value);
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number.\n");
         }
       } else if (key == "trt_fp16_enable") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_fp16_enable = true;
         } else if (value == "false" || value == "False") {
           trt_fp16_enable = false;
@@ -110,7 +111,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_enable") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_int8_enable = true;
         } else if (value == "false" || value == "False") {
           trt_int8_enable = false;
@@ -118,21 +119,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_calibration_table_name") {
-        if(!value.empty()) {
+        if (!value.empty()) {
           trt_int8_calibration_table_name = value;
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
         }
       } else if (key == "trt_int8_use_native_calibration_table") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_int8_use_native_calibration_table = true;
         } else if (value == "false" || value == "False") {
           trt_int8_use_native_calibration_table = false;
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_force_sequential_engine_build") {
+        if (value == "true" || value == "True") {
+          trt_force_sequential_engine_build = true;
+        } else if (value == "false" || value == "False") {
+          trt_force_sequential_engine_build = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-          ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_force_sequential_engine_build'] \n");
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
@@ -145,6 +154,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_int8_enable = trt_int8_enable;
     tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
     tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
+    tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options{

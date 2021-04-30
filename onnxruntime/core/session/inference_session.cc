@@ -49,6 +49,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
+#include "onnxruntime_config.h"
 
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -295,6 +296,29 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // Add log to allow serving platforms to quantify ORT usage.
+  // To avoid flooding the test logs, this is done for non-debug mode only
+  // TODO: plug-in a platform specific telemetry provider to send the telemetry to
+#ifdef NDEBUG
+#ifdef _WIN32
+  std::wostringstream ostr;
+#else
+  std::ostringstream ostr;
+#endif
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = EventName (event_attr1: foo.onnx, event_attr2: 400us)"
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = SessionCreation (model: foo.onnx, ts: 400us)"
+  ostr << "ORT Telemetry: "
+       << "Ver = " << ORT_VERSION << "; Event = SessionCreation";
+  if (!model_location_.empty()) {
+    ostr << " (model: " << model_location_ << ")";
+  }
+#ifdef _WIN32
+  std::wcout << ostr.str() << "\n";
+#else
+  std::cout << ostr.str() << "\n";
+#endif
+#endif
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
@@ -1153,7 +1177,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
@@ -1185,7 +1209,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = onnxruntime::make_unique<SessionState>(
+    session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
         session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
@@ -1275,11 +1299,13 @@ common::Status InferenceSession::Initialize() {
                             "Please disable any execution providers which generate compiled nodes."));
       }
 
-      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
+      // add a warning if the NchwcTransformer was enabled, as it contains the hardware specific logic
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3 &&
+          optimizers_to_disable_.find("NchwcTransformer") == optimizers_to_disable_.cend()) {
         LOGS(*session_logger_, WARNING)
-            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
-               "The generated model may contain hardware and execution provider specific optimizations, "
-               "and should only be used in the same environment the model was optimized for.";
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED and the "
+               "NchwcTransformer enabled. The generated model may contain hardware specific optimizations, and "
+               "should only be used in the same environment the model was optimized in.";
       }
 
       if (saving_ort_format) {

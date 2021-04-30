@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/make_unique.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -30,7 +29,7 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   CPUExecutionProviderInfo info;
-  return onnxruntime::make_unique<CPUExecutionProvider>(info);
+  return std::make_unique<CPUExecutionProvider>(info);
 }
 
 class ExecutionFrameTest : public ::testing::Test {
@@ -124,7 +123,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
   OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -393,7 +392,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     ASSERT_STATUS_OK(session.Initialize());
 
     auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-    auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
+    auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
     const void* orig_buffer = p_tensor->DataRaw();
 
     std::vector<OrtValue> results;

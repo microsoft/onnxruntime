@@ -3,7 +3,6 @@
 
 #include "core/codegen/common/utils.h"
 #include "core/common/cpuid_info.h"
-#include "core/common/make_unique.h"
 #include "core/common/safeint.h"
 
 #include <stdlib.h>
@@ -33,7 +32,7 @@ std::unique_ptr<char[]> GetEnv(const char* var) {
   // a unique_ptr, and it will be destroyed automatically after the caller
   // completes.
   size_t len_val = strlen(val) + 1;
-  auto p = onnxruntime::make_unique<char[]>(len_val);
+  auto p = std::make_unique<char[]>(len_val);
   // use explicit loop to get ride of VC's warning on unsafe copy
   for (size_t i = 0; i < len_val; ++i) {
     p[i] = val[i];

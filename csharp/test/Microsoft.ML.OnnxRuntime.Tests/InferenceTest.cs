@@ -227,6 +227,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+#if USE_TENSORRT
+        [Fact]
+        private void CanRunInferenceOnAModelWithTensorRT()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(0);
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+
+                using (var results = session.Run(container))
+                {
+                    validateRunResults(results);
+                }
+            }
+        }
+#endif
+
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]

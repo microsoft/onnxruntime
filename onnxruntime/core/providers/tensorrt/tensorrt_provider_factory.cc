@@ -23,7 +23,7 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<TensorrtExecutionProvider>(info_);
+  return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
@@ -55,6 +55,7 @@ struct Tensorrt_Provider : Provider {
     info.int8_enable = options.trt_int8_enable;
     info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
     info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table;
+    info.force_sequential_engine_build = options.trt_force_sequential_engine_build;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
