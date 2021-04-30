@@ -11,10 +11,3 @@ onnxruntime_add_include_to_target(onnxruntime_pyop onnxruntime_common onnxruntim
 target_include_directories(onnxruntime_pyop PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 target_include_directories(onnxruntime_pyop PRIVATE ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_link_libraries(onnxruntime_pyop PRIVATE onnxruntime_util ${PYTHON_LIBRARIES})
-# Enable compiler warnings
-if (CMAKE_COMPILER_IS_GNUCC)
-    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall -Wno-unused-function")
-endif()
-
-
-
