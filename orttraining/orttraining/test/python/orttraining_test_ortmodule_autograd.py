@@ -38,21 +38,26 @@ import sys
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
 
-def run_with_pytorch_on_gpu(model, input_list, output_shape):
+def run_with_pytorch_on_gpu(model, input_list, label_input):
     print('Use PyTorch for CUDA run....')
     device = torch.device('cuda:0')
     model.to(device)
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
+    forward_outputs=[output]
     criterion = torch.nn.MSELoss()
 
-    target=torch.ones(*output_shape).to(device)
+    target = label_input.to(device)
     loss = criterion(output, target)
     loss.backward()
     torch.cuda.synchronize()
-    return output, [input_.grad for input_ in inputs_on_cuda if input_.requires_grad is True]
+    grad_outputs = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            grad_outputs.append(param.grad)
+    return forward_outputs, grad_outputs
 
-def run_with_ort_on_gpu(model, input_list, output_shape):
+def run_with_ort_on_gpu(model, input_list, label_input):
     print('Use ORTModule for CUDA run....')
     device = torch.device('cuda:0')
     model = copy.deepcopy(model)
@@ -60,13 +65,58 @@ def run_with_ort_on_gpu(model, input_list, output_shape):
     model = ORTModule(model)
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
+    forward_outputs=[output]
     criterion = torch.nn.MSELoss()
 
-    target=torch.ones(*output_shape).to(device)
+    target = label_input.to(device)
     loss = criterion(output, target)
     loss.backward()
     torch.cuda.synchronize()
-    return output, [input_.grad for input_ in inputs_on_cuda if input_.requires_grad is True]
+    grad_outputs = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            grad_outputs.append(param.grad)
+    return forward_outputs, grad_outputs
+
+def compare_numpy_list(val_a, val_b):
+    for np_a, np_b in zip(val_a, val_b):
+        equal_ = np.allclose(np_a, np_b, 1e-7, 1e-6, equal_nan=True)
+        if equal_ is False:
+            print("== details ==")
+            k=np_a.reshape(-1)[:100]
+            l=np_b.reshape(-1)[:100]
+            is_equal = np.isclose(k, l, 1e-7, 1e-6, equal_nan=True)
+            res = (is_equal + 1) % 2
+            diff_indices = np.nonzero(res)
+            print(diff_indices)
+            print(k, l)
+            raise ValueError("find a diff")
+
+    print("outputs matched successfully.")
+
+
+def run_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
+    m = pt_model_builder_func()
+    x = pt_model_inputs_generator()
+
+    m_ort = copy.deepcopy(m)
+    x_ort = copy.deepcopy(x)
+
+    outputs, grads = run_with_pytorch_on_gpu(m, [x], pt_model_label_input)
+    torch.cuda.synchronize()
+
+    outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input)
+
+    torch.cuda.synchronize()
+    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
+    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
+    compare_numpy_list(val_a, val_b)
+
+    # For some test, it is expected the diff might be big due to inconsistent computation orders.
+    if ignore_grad_compare is False:
+        val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
+        val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
+        compare_numpy_list(val_a, val_b)
 
 ###################################################################################
 
@@ -100,7 +150,6 @@ class GeLUFunction(torch.autograd.Function):
         tmp = bias_gelu_back(grad_output, bias, input)
         return tmp, tmp
 
-
 class GeLUModel(torch.nn.Module):
     def __init__(self, output_size):
         super(GeLUModel, self).__init__()
@@ -119,42 +168,20 @@ class GeLUModel(torch.nn.Module):
         out = self.relu(model_input, self.bias)
         return out
 
-def compare_numpy_list(val_a, val_b):
-    for np_a, np_b in zip(val_a, val_b):
-        equal_ = np.allclose(np_a, np_b, 1e-7, 1e-6, equal_nan=True)
-        if equal_ is False:
-            print("== details ==")
-            k=np_a.reshape(-1)[:100]
-            l=np_b.reshape(-1)[:100]
-            is_equal = np.isclose(k, l, 1e-7, 1e-6, equal_nan=True)
-            res = (is_equal + 1) % 2
-            diff_indices = np.nonzero(res)
-            print(diff_indices)
-            print(k, l)
-            raise ValueError("find a diff")
-
-    print("outputs matched successfully.")
-
 def test_GeLU():
     output_size = 1024
-    m = GeLUModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
-    torch.cuda.synchronize()
+    def model_builder():
+        ort.register_forward_core("GeLUFunction", GeLUFunction.apply)
+        ort.register_backward_core("GeLUFunction", GeLUFunction.backward)
+        return GeLUModel(output_size)
 
-    ort.register_forward_core("GeLUFunction", GeLUFunction.apply)
-    ort.register_backward_core("GeLUFunction", GeLUFunction.backward)
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input)
 
 ###################################################################################
 
@@ -191,23 +218,18 @@ class MegatronFModel(torch.nn.Module):
 
 def test_MegatronF():
     output_size = 1024
-    m = MegatronFModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
-    torch.cuda.synchronize()
+    def model_builder():
+        ort.register_forward_core("MegatronFFunction", MegatronFFunction.apply)
+        ort.register_backward_core("MegatronFFunction", MegatronFFunction.backward)
+        return MegatronFModel(output_size)
 
-    ort.register_forward_core("MegatronFFunction", MegatronFFunction.apply)
-    ort.register_backward_core("MegatronFFunction", MegatronFFunction.backward)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input)
 
 #############################################################
 
@@ -247,26 +269,23 @@ class ScalarAndTupleModel(torch.nn.Module):
 
 def test_ScalarAndTuple():
     output_size = 2
-    m = ScalarAndTupleModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
-    torch.cuda.synchronize()
+    def model_builder():
+        ort.register_forward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.apply)
+        ort.register_backward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.backward)
+        return ScalarAndTupleModel(output_size)
 
-    ort.register_forward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.apply)
-    ort.register_backward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.backward)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input)
 
 #############################################################
-
+# without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
+# so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
+# ignore the gradient compare here.
 class InplaceUpdateInputAsOutputNotRequireGradFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -296,31 +315,28 @@ class InplaceUpdateInputAsOutputNotRequireGradModel(torch.nn.Module):
         x = model_input.mul(2)
         y1 = self.inplace_op(self.bias, x) # x did not require grad
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     output_size = 1024
-    m = InplaceUpdateInputAsOutputNotRequireGradModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
-    torch.cuda.synchronize()
+    def model_builder():
+        ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.apply)
+        ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.backward)
+        return InplaceUpdateInputAsOutputNotRequireGradModel(output_size)
 
-    ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.apply)
-    ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.backward)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 #########################################################################################
-
+# without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
+# so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
+# ignore the gradient compare here.
 class InplaceUpdateInputNotAsOutputNotRequireGradFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -351,32 +367,25 @@ class InplaceUpdateInputNotAsOutputNotRequireGradModel(torch.nn.Module):
         x = model_input.mul(2)
         y1 = self.inplace_op(self.bias, x)
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
 def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     output_size = 1024
-    m = InplaceUpdateInputNotAsOutputNotRequireGradModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
-    torch.cuda.synchronize()
+    def model_builder():
+        ort.register_forward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply)
+        ort.register_backward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.backward)
+        return InplaceUpdateInputNotAsOutputNotRequireGradModel(output_size)
 
-    ort.register_forward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply)
-    ort.register_backward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.backward)
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 #########################################################################################
-
 class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -411,49 +420,28 @@ class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(torch.nn.Module
         x = model_input.mul(2)
         y1 = self.inplace_op(self.bias, x)
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
-#                       model_input
-#                           |
-#                         Mul(2)
-#                           |
-#                      PythonOP (inplace update)
-#                          /   \
-#                         /     \
-#                      Add       Add
-#                        \       /
-#                         \     /
-#                           Add
-#                            |
-#                          output0
 def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     output_size = 1024
-    m = InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
+    def model_builder():
+        ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply)
+        ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.backward)
+        return InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(output_size)
 
-    torch.cuda.synchronize()
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply)
-    ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.backward)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    print("input data: ", x)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
-
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    print("comparing forward outputs")
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    print("comparing gradient outputs")
-    compare_numpy_list(val_a, val_b)
-
+    run_test_and_compare(model_builder, input_generator, label_input)
 
 ##########################################################################################
+# without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
+# so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
+# ignore the gradient compare here.
 class InplaceUpdateInputAsOutputRequireGradFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -486,52 +474,30 @@ class InplaceUpdateInputAsOutputRequireGradModel(torch.nn.Module):
         x = model_input + self.bias
         y1 = self.inplace_op(self.bias, x)
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
-#                       model_input
-#                           |
-#                         Mul(2)
-#                           |
-#                      PythonOP (inplace update)
-#                          /   \
-#                         /     \
-#                      Add       Add
-#                        \       /
-#                         \     /
-#                           Add
-#                            |
-#                          output0
 # This case is known to have an warning message: "The output torch tensor @140214094625024, 140212816617984 should reuse the input torch tensor @140214095996104, 140212816617984 but actually not."
 # So seems, if we don't have mark_dirty() in auto grad forward, the result is not using the input_, (maybe a view of it, because data address is same)
 def test_InplaceUpdateInputAsOutputRequireGrad():
     output_size = 1024
-    m = InplaceUpdateInputAsOutputRequireGradModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
+    def model_builder():
+        ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.apply)
+        ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.backward)
+        return InplaceUpdateInputAsOutputRequireGradModel(output_size)
 
-    torch.cuda.synchronize()
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.apply)
-    ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.backward)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    print("input data: ", x)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
-
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    print("comparing forward outputs")
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    print("comparing gradient outputs")
-    compare_numpy_list(val_a, val_b)
-
+    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 ##########################################################################################
-
+# without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
+# so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
+# ignore the gradient compare here.
 class InplaceUpdateInputNotAsOutputRequireGradFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, inplace_update_input):
@@ -563,48 +529,26 @@ class InplaceUpdateInputNotAsOutputRequireGradModel(torch.nn.Module):
         x = model_input + self.bias
         y1 = self.inplace_op(self.bias, x)
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
-#                       model_input
-#                           |
-#                         Mul(2)
-#                           |
-#                      PythonOP (inplace update)
-#                          /   \
-#                         /     \
-#                      Add       Add
-#                        \       /
-#                         \     /
-#                           Add
-#                            |
-#                          output0
+
 # This case is known to have an warning message: "The output torch tensor @140214094625024, 140212816617984 should reuse the input torch tensor @140214095996104, 140212816617984 but actually not."
 # So seems, if we don't have mark_dirty() in auto grad forward, the result is not using the input_, (maybe a view of it, because data address is same)
 def test_InplaceUpdateInputNotAsOutputRequireGrad():
     output_size = 1024
-    m = InplaceUpdateInputNotAsOutputRequireGradModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
+    def model_builder():
+        ort.register_forward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.apply)
+        ort.register_backward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.backward)
+        return InplaceUpdateInputNotAsOutputRequireGradModel(output_size)
 
-    torch.cuda.synchronize()
-    ort.register_forward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.apply)
-    ort.register_backward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.backward)
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    print("input data: ", x)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    print("comparing forward outputs")
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    print("comparing gradient outputs")
-    compare_numpy_list(val_a, val_b)
-
+    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 ##########################################################################################
 
@@ -642,46 +586,23 @@ class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(torch.nn.Module):
         x = model_input + self.bias
         y1 = self.inplace_op(self.bias, x)
         y2 = x.add(self.bias)
-        out = x + y1 + y2
+        out = y1 + y2
         return out
 
-#                       model_input
-#                           |
-#                         Mul(2)
-#                           |
-#                      PythonOP (inplace update)
-#                          /   \
-#                         /     \
-#                      Add       Add
-#                        \       /
-#                         \     /
-#                           Add
-#                            |
-#                          output0
 def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     output_size = 1024
-    m = InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(output_size)
-    x = torch.randn(output_size, dtype=torch.float)
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size])
+    def model_builder():
+        ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply)
+        ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.backward)
+        return InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(output_size)
 
-    torch.cuda.synchronize()
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
 
-    ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply)
-    ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.backward)
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
 
-    print("input data: ", x)
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m, [x], [output_size])
-
-    torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    print("comparing forward outputs")
-    compare_numpy_list(val_a, val_b)
-
-    val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-    print("comparing gradient outputs")
-    compare_numpy_list(val_a, val_b)
+    run_test_and_compare(model_builder, input_generator, label_input)
 
 def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, *args):
     try:
@@ -804,12 +725,12 @@ test_GeLU()
 test_MegatronF()
 test_ScalarAndTuple()
 
-## test case, some input are in-place updated, and the input did not require gradient.
+# input is in-place updated, but does not require gradient.
 test_InplaceUpdateInputAsOutputNotRequireGrad()
 test_InplaceUpdateInputNotAsOutputNotRequireGrad()
 test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
 
-### test case, some input are in-place updated, and the input require gradient.
+# input is in-place updated, but does require gradient.
 test_InplaceUpdateInputAsOutputRequireGrad()
 test_InplaceUpdateInputNotAsOutputRequireGrad()
-#test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
+# test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
