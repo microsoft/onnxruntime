@@ -102,5 +102,3 @@ fi
 
 cd /
 rm -rf /tmp/src
-rm -rf /usr/include/google
-rm -rf /usr/$LIBDIR/libproto*
