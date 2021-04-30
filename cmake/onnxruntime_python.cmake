@@ -278,6 +278,14 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
+# Files needed to convert ONNX model to ORT format
+set(onnxruntime_ort_format_model_conversion_srcs
+    ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/logger.py
+)
+file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/ort_format_model/*.py)
+
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
@@ -288,6 +296,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
@@ -332,6 +342,15 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_featurizers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_conversion_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/

@@ -150,6 +150,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -268,9 +269,22 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
   string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
 endif()
 
-# Build WebAssembly source map on debug build.
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  string(APPEND CMAKE_CXX_FLAGS_DEBUG " -g4 --source-map-base http://localhost:8000/")
+  # Enable LTO for release build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    # currently, wasm-ld does not work correctly with "-flto=thin"
+    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+    string(APPEND CMAKE_CXX_FLAGS " -flto")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
+    # Build with sourcemap support
+    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  else()
+    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load 
+    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+  endif()
 
   # Build WebAssembly with multi-threads support.
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -987,7 +1001,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
     if(onnxruntime_USE_CUDA)
-      if(HAS_STRICT_ALIASING AND ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL "11.0.0")
+      if(HAS_STRICT_ALIASING)
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()

@@ -116,15 +116,17 @@ Node.js v12+ (recommended v14+)
 
 1. Install NPM packages
 
-   1. in `/js/`, run `npm ci`.
-   2. in `/js/common/`, run `npm ci`.
-   3. in `/js/web/`, run `npm ci`.
+   1. in `<ORT_ROOT>/js/`, run `npm ci`.
+   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
+   3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
 2. Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly.
 
-3. Copy files `onnxruntime_wasm.*` from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`.
+3. Copy files `onnxruntime_wasm*.wasm` from build output folder to `<ORT_ROOT>/js/web/dist/`.
 
-4. Use following command in folder `<ORT_ROOT>/js/web` to build:
+4. Copy files `onnxruntime_wasm*.js` from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`.
+
+5. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
