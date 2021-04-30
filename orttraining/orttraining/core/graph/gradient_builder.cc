@@ -12,6 +12,7 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
@@ -1193,16 +1194,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
   bool has_concrete_shape = true;
-  const auto& x_dims = X.type_proto->tensor_type().shape().dim();
-  ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
-  int64_t scale = 1;
-  for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
-    if (dim->has_dim_value()) {
-      scale *= dim->dim_value();
-    } else {
-      has_concrete_shape = false;
-      break;
+  SafeInt<int64_t> scale = 1;
+  std::vector<Dimension> x_dims;
+  if (GetShape(X, x_dims).IsOK()) {
+    ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
+    for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
+      if (dim->has_dim_value()) {
+        scale *= dim->dim_value();
+      } else {
+        has_concrete_shape = false;
+        break;
+      }
     }
+  } else {
+    has_concrete_shape = false;
   }
 
   std::vector<NodeDef> result;
