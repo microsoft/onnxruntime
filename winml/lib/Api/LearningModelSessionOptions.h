@@ -7,7 +7,7 @@
 #include <thread>
 namespace WINMLP {
 
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative, ILearningModelSessionOptionsNative1> {
   LearningModelSessionOptions() = default;
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
