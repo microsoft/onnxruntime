@@ -155,6 +155,9 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on s
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+# build eager mode
+option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -1592,8 +1595,13 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
-  include(${target_name}.cmake)    
+#names in this var must match the directory names under onnxruntime/core/providers
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if(onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
+endif()
+foreach(target_name ${ONNXRUNTIME_TARGETS})
+  include(${target_name}.cmake)  
 endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
