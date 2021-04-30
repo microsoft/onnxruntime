@@ -1585,6 +1585,38 @@ def test_model_with_registered_buffers():
     output = ort_model(x)
     assert output is not None
 
+
+def test_model_with_unused_registered_buffers():
+    class UnusedBufferNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(UnusedBufferNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.register_buffer("buffer1s", torch.ones(num_classes))
+            self.register_buffer("buffer2s", 1+torch.ones(num_classes))
+            self.register_buffer("buffer3s", 2+torch.ones(num_classes))
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            out += self.buffer3s
+            return out
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = UnusedBufferNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    output = ort_model(x)
+    assert output is not None
+
+
 def test_model_with_constant_and_registered_parameters():
     class NeuralNetWithRegisteredParamsWithConstant(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
