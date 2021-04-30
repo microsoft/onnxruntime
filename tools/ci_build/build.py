@@ -1225,7 +1225,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                         "java", "androidtest", "android", "app", "build", "outputs", "apk",
                         "androidTest", "debug", "app-debug-androidTest.apk"))
                 adb_shell(
-                    'am instrument -w ai.onnxruntime.example.javavalidater.test/androidx.test.runner.AndroidJUnitRunner'
+                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
                     )
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))

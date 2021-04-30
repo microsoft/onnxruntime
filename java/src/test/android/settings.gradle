@@ -1,2 +1,2 @@
 include ':app'
-rootProject.name = "JavaValidater"
+rootProject.name = "JavaValidator"
