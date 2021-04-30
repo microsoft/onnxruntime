@@ -11,10 +11,10 @@ class Node;
 namespace QDQ {
 
 enum QDQInputIndex : int {
-  Input = 0,
-  Scale = 1,
-  ZeroPoint = 2,
-  Count = 3,
+  INPUT_ID = 0,
+  SCALE_ID = 1,
+  ZERO_POINT_ID = 2,
+  TOTAL_COUNT = 3,
 };
 
 // Check if Q/DQ pair is supported in the QDQ transformer. It requires:

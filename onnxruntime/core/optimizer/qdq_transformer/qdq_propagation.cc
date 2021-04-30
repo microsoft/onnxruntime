@@ -12,10 +12,6 @@
 
 namespace onnxruntime {
 
-static constexpr size_t QDQInputCountRequired = 3;
-static constexpr size_t QDQInputScaleIdx = 1;
-static constexpr size_t QDQInputZeroPointIdx = 2;
-
 static bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13}) ||
@@ -136,19 +132,19 @@ bool QDQPropagationTransformer::PropagateDQForward(Graph& graph) const {
     }
 
     std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
-    if (dq_input_defs.size() != QDQInputCountRequired) {
+    if (dq_input_defs.size() != QDQ::QDQInputIndex::TOTAL_COUNT) {
       continue;
     }
 
-    if (!optimizer_utils::IsScalar(*dq_input_defs[QDQInputZeroPointIdx]) ||
-        !optimizer_utils::IsScalar(*dq_input_defs[QDQInputScaleIdx])) {
+    if (!optimizer_utils::IsScalar(*dq_input_defs[QDQ::QDQInputIndex::ZERO_POINT_ID]) ||
+        !optimizer_utils::IsScalar(*dq_input_defs[QDQ::QDQInputIndex::SCALE_ID])) {
       continue;
     }
 
     const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputZeroPointIdx]->Name());
+        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQ::QDQInputIndex::ZERO_POINT_ID]->Name());
     const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputScaleIdx]->Name());
+        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQ::QDQInputIndex::SCALE_ID]->Name());
 
     if (nullptr == dq_zp_tensor_proto || nullptr == dq_scale_tensor_proto) {
       continue;
@@ -193,16 +189,16 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
     }
 
     std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-    if (q_input_defs.size() != QDQInputCountRequired ||
-        !optimizer_utils::IsScalar(*q_input_defs[QDQInputZeroPointIdx]) ||
-        !optimizer_utils::IsScalar(*q_input_defs[QDQInputScaleIdx])) {
+    if (q_input_defs.size() != QDQ::QDQInputIndex::TOTAL_COUNT ||
+        !optimizer_utils::IsScalar(*q_input_defs[QDQ::QDQInputIndex::ZERO_POINT_ID]) ||
+        !optimizer_utils::IsScalar(*q_input_defs[QDQ::QDQInputIndex::SCALE_ID])) {
       continue;
     }
 
     const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputZeroPointIdx]->Name());
+        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQ::QDQInputIndex::ZERO_POINT_ID]->Name());
     const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputScaleIdx]->Name());
+        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQ::QDQInputIndex::SCALE_ID]->Name());
 
     if (nullptr == q_zp_tensor_proto || nullptr == q_scale_tensor_proto) {
       continue;
