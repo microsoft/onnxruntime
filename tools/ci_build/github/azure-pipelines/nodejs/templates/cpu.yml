@@ -39,22 +39,22 @@ jobs:
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecentoscpubuild
+        Repository: onnxruntimecpubuild
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecentoscpubuild /bin/bash -c "python3 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_nodejs \
-          --skip_submodule_sync  --parallel --build_shared_lib && cd /onnxruntime_src/nodejs && npm pack"
+          --skip_submodule_sync --parallel --build_shared_lib && cd /onnxruntime_src/js/node && npm pack"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
-       cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-       cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+       cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+       cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
       displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'

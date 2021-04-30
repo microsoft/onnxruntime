@@ -15,9 +15,13 @@
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#endif
 #endif
 
 using namespace onnxruntime::logging;
@@ -66,7 +70,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
@@ -299,14 +303,14 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   ASSERT_TRUE(count > 1);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
@@ -316,9 +320,13 @@ static void RunBertTrainingWithChecks(
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
+#ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
-
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+#elif USE_ROCM
+  ROCMExecutionProviderInfo xp_info;
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+#endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
   RunOptions run_options;
@@ -494,7 +502,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   SessionOptions so;
   RunBertTrainingWithChecks(so, backprop_model_file);
 #endif
@@ -1659,7 +1667,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
     sub_sess.run_options.training_mode = true;
 
-    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
+    sub_sess.sess = std::make_unique<TrainingSession>(sub_sess.so, *env);
     ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));
     ASSERT_STATUS_OK(sub_sess.sess->Initialize());
   }

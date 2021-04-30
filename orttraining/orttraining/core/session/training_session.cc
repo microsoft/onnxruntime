@@ -723,7 +723,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   // creating an EP instance for every single node in ConstantFolding.
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
@@ -740,51 +740,39 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
                                                  GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-
-    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
-
+                                                 TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if ((graph_optimization_level >= level)) {
+      auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+          level, weights_to_train, config, execution_provider);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry), level);
+      }
     }
   }
 }
 
 // Registers all the predefined transformers with transformer manager
 void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                TransformerLevel graph_optimization_level,
-                                                const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(
-        level, weights_to_train_, GetSessionOptions().free_dimension_overrides, custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
-
+                                                TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if ((graph_optimization_level >= level)) {
+      // Generate and register transformers for level
+      auto transformers_to_register = transformer_utils::GenerateTransformers(
+          level, weights_to_train_, GetSessionOptions().free_dimension_overrides, {});
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry), level);
+      }
     }
   }
 }
@@ -801,10 +789,10 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // Creating the CPU EP here to be used to get the
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   std::unordered_set<std::string> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-  transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+  transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
       horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
       config_result_out.weight_partition_info, init_optimizer_states_, *cpu_execution_provider, compatible_eps));
@@ -824,8 +812,8 @@ Status TrainingSession::AddGistEncoding() {
   try {
     Graph& graph = model_->MainGraph();
 
-    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>());
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
@@ -1000,6 +988,16 @@ static Status UpdateWeightsBeforeSaving(
     ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(new_tensor_proto));
   }
   return Status::OK();
+}
+
+Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri,
+                                                     const std::string& external_file_name,
+                                                     size_t initializer_size_threshold) {
+  // Delete the old files before saving.
+  std::remove(ToMBString(model_uri).c_str());
+  std::remove(external_file_name.c_str());
+
+  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
 }
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {

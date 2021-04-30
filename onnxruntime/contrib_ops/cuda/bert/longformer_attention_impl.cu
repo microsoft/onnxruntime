@@ -610,7 +610,7 @@ bool launchSoftmaxKernel(
       // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space.
       // In that case, elements_per_batch is num_heads * max_num_global * head_size, and stride_per_head is max_num_global * head_size.
 
-      void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;  
+      void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;
       void* global_k_batch = (char*)global_k + (i * elements_per_batch) * element_size;
       qk_batch = (char*)input_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
 
@@ -825,7 +825,7 @@ bool launchSoftmaxKernel(
 
 template <typename T>
 bool LongformerQkvToContext(
-    cublasHandle_t& cublas, cudaStream_t stream,
+  const cudaDeviceProp& device_prop, cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
@@ -840,8 +840,10 @@ bool LongformerQkvToContext(
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
   const int elements = batch_size * num_heads * sequence_length * head_size;
 
+  const int max_threads_per_block(device_prop.maxThreadsPerBlock);
+
   // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, qkv)) {
+  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, input, qkv)) {
     return false;
   }
 
@@ -850,7 +852,7 @@ bool LongformerQkvToContext(
 
   // When there is no global token, no need to process global Q, K and V
   if (max_num_global > 0 && nullptr != global_input) {
-    if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, global_input, global_qkv)) {
+    if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, global_input, global_qkv)) {
       return false;
     }
   }
@@ -923,10 +925,10 @@ bool LongformerQkvToContext(
       return false;
     }
   }
-  
+
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, temp_output, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, temp_output, output);
 }
 
 bool LaunchLongformerAttentionKernel(
@@ -953,7 +955,7 @@ bool LaunchLongformerAttentionKernel(
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
   if (element_size == 2) {
-    return LongformerQkvToContext(cublas, stream,
+    return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
                                   reinterpret_cast<const half*>(attention_mask),
@@ -968,7 +970,7 @@ bool LaunchLongformerAttentionKernel(
                                   softmax_workspace_size,
                                   use_fast_kernel);
   } else {
-    return LongformerQkvToContext(cublas, stream,
+    return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const float*>(input),
                                   reinterpret_cast<const float*>(attention_mask),

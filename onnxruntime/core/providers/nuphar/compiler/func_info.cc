@@ -197,7 +197,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
   ORT_ENFORCE(nullptr != partition_info);
 
   // create Scan control-flow info
-  auto scan_info = onnxruntime::make_unique<ScanExecInfo>();
+  auto scan_info = std::make_unique<ScanExecInfo>();
 
   int64_t num_state_variables;
   int64_t num_scan_inputs;

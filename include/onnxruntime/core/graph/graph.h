@@ -760,7 +760,7 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
@@ -940,6 +940,15 @@ class Graph {
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
+
+  /** Gets the GraphProto representation of this Graph
+  @params external_file_name name of the binary file to use for initializers
+  @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
+  in the external file. Initializer smaller than this threshold are included in the onnx file.
+  @returns GraphProto serialization of the graph.
+  */
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;

@@ -23,7 +23,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
 }
 
 Status ModelBuilder::Initialize() {
-  coreml_model_ = onnxruntime::make_unique<CoreML::Specification::Model>();
+  coreml_model_ = std::make_unique<CoreML::Specification::Model>();
   {  // initialize CoreML model
     // We support CorelML Specification Version 4 (Core ML 3)
     coreml_model_->set_specificationversion(4);
@@ -90,18 +90,23 @@ Status ModelBuilder::RegisterInitializers() {
 }
 
 Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) {
+  const auto& name = node_arg.Name();
+  const std::string input_output_type = is_input ? "input" : "output";
+
+  if (is_input) {
+    // input should not be an initializer
+    if (Contains(GetInitializerTensors(), name))
+      return Status::OK();
+
+    // This input will not be used
+    if (Contains(skipped_inputs_, name))
+      return Status::OK();
+  }
+
   auto* model_description = coreml_model_->mutable_description();
   auto& input_output = is_input
                            ? *model_description->mutable_input()->Add()
                            : *model_description->mutable_output()->Add();
-
-  const auto& name = node_arg.Name();
-  const std::string input_output_type = is_input ? "input" : "output";
-
-  // input should not be an initializer
-  if (is_input && Contains(GetInitializerTensors(), name)) {
-    return Status::OK();
-  }
 
   input_output.set_name(name);
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
@@ -224,6 +229,10 @@ void ModelBuilder::AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> lay
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
+}
+
+void ModelBuilder::AddInputToSkip(const std::string& input_name) {
+  skipped_inputs_.insert(input_name);
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

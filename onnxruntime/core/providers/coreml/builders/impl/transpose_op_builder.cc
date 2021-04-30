@@ -47,7 +47,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(onnxruntime::make_unique<TransposeOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<TransposeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

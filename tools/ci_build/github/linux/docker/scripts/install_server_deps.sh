@@ -18,8 +18,8 @@ if [ $SYS_LONG_BIT = "64" ]; then
   tar -zxf cmake-3.18.1-Linux-x86_64.tar.gz --strip=1 -C /usr
 
   echo "Installing onnxruntime"
-  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.4.0/onnxruntime-linux-x64-1.4.0.tgz
-  tar -zxf onnxruntime-linux-x64-1.4.0.tgz --strip=1
+  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.7.0/onnxruntime-linux-x64-1.7.0.tgz
+  tar -zxf onnxruntime-linux-x64-1.7.0.tgz --strip=1
   cp -r include/* /usr/include 
   cp -r lib/* /usr/lib
   ldconfig /usr/lib
@@ -42,7 +42,7 @@ rm -rf /tmp/googletest
 echo "Installing protobuf from source"
 git clone https://github.com/protocolbuffers/protobuf.git
 cd protobuf
-git checkout v3.11.2
+git checkout v3.15.8
 mkdir b
 cd b
 cmake ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Debug
@@ -76,3 +76,5 @@ make -j$(getconf _NPROCESSORS_ONLN)
 make install
 cd /tmp
 rm -rf /tmp/grpc
+
+python3 -m pip install grpcio==1.27.2 requests protobuf

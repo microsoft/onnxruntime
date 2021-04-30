@@ -4,7 +4,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -16,31 +16,31 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'x86'
-
-- job: WindowsAI_CPU_ARM64
+      
+- job: WindowsAI_DirectML_ARM64
   timeoutInMinutes: 120
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2021'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'arm64'
 
-- job: WindowsAI_CPU_ARM
+- job: WindowsAI_DirectML_ARM
   timeoutInMinutes: 120
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2021'
+    name: 'onnxruntime-gpu-winbuild'
     demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
@@ -52,7 +52,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -65,7 +65,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: 'Win-GPU-2019'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -73,12 +73,12 @@ jobs:
         BuildArch: 'x86'
         Runtime: 'static'
 
-- job: WindowsAI_CPU_ARM64_StaticRuntime
+- job: WindowsAI_DirectML_ARM64_StaticRuntime
   timeoutInMinutes: 120
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2021'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -86,12 +86,12 @@ jobs:
         BuildArch: 'arm64'
         Runtime: 'static'
 
-- job: WindowsAI_CPU_ARM_StaticRuntime
+- job: WindowsAI_DirectML_ARM_StaticRuntime
   timeoutInMinutes: 120
   workspace:
     clean: all
   pool:
-    name: 'Win-CPU-2021'
+    name: 'onnxruntime-gpu-winbuild'
     demands: [ ]
   steps:
     - template: ../../templates/windowsai-nuget-build.yml
@@ -154,20 +154,20 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-gpu-winbuild'
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
-  - WindowsAI_CPU_ARM64
-  - WindowsAI_CPU_ARM
+  - WindowsAI_DirectML_ARM64
+  - WindowsAI_DirectML_ARM
   - WindowsAI_CPU_X64_Store
   - WindowsAI_CPU_X86_Store
   - WindowsAI_CPU_ARM64_Store
   - WindowsAI_CPU_ARM_Store
   - WindowsAI_DirectML_X64_StaticRuntime
   - WindowsAI_DirectML_X86_StaticRuntime
-  - WindowsAI_CPU_ARM64_StaticRuntime
-  - WindowsAI_CPU_ARM_StaticRuntime
+  - WindowsAI_DirectML_ARM64_StaticRuntime
+  - WindowsAI_DirectML_ARM_StaticRuntime
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
@@ -181,15 +181,15 @@ jobs:
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
-
+      
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet CPU ARM64'
+    displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet CPU ARM'
+    displayName: 'Download Pipeline Artifact - NuGet DirectML arm'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
@@ -231,13 +231,13 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet CPU ARM64 StaticRuntime'
+    displayName: 'Download Pipeline Artifact - NuGet DirectML arm64 StaticRuntime'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm64.StaticRuntime'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet CPU ARM StaticRuntime'
+    displayName: 'Download Pipeline Artifact - NuGet DirectML arm StaticRuntime'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm.StaticRuntime'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm-static-runtime'

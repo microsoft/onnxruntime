@@ -15,9 +15,13 @@ namespace contrib {
 class ReorderInput : public OpKernel {
  public:
   ReorderInput(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("channels_last", &channels_last_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t channels_last_;
 };
 
 class ReorderOutput : public OpKernel {

@@ -19,11 +19,10 @@ Abstract:
 // Stack frame layout for the floating point kernels.
 //
 
-        .equ    .LFgemmKernelFrame_SavedR12, -40
-        .equ    .LFgemmKernelFrame_SavedR13, -32
-        .equ    .LFgemmKernelFrame_SavedR14, -24
-        .equ    .LFgemmKernelFrame_alpha, -16
-        .equ    .LFgemmKernelFrame_mask, -8
+        .equ    .LFgemmKernelFrame_SavedR12, -32
+        .equ    .LFgemmKernelFrame_SavedR13, -24
+        .equ    .LFgemmKernelFrame_SavedR14, -16
+        .equ    .LFgemmKernelFrame_alpha, -8
         .equ    .LFgemmKernelFrame_SavedR15, 0
         .equ    .LFgemmKernelFrame_SavedRbx, 8
         .equ    .LFgemmKernelFrame_SavedRbp, 16

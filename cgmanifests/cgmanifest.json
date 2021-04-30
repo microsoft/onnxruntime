@@ -459,6 +459,16 @@
             },
             "comments": "gtest-ios-framework"
          }
+      },
+      {
+         "component": {
+           "type": "git",
+           "git": {
+             "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+             "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+           },
+           "comments": "dlpack"
+         }
       }
    ],
    "Version": 1

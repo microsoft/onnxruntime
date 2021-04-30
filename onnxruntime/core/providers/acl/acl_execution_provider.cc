@@ -93,7 +93,7 @@ ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
 
   AllocatorCreationInfo default_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
       },
       0,
       info.create_arena};
@@ -102,7 +102,7 @@ ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
 
   AllocatorCreationInfo cpu_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(
+        return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       },
       0,

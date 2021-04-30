@@ -44,18 +44,18 @@ struct PySessionOptions : public SessionOptions {
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(Environment& env, const PySessionOptions& so) {
-    sess_ = onnxruntime::make_unique<InferenceSession>(so, env);
+    sess_ = std::make_unique<InferenceSession>(so, env);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, arg);
+      sess_ = std::make_unique<InferenceSession>(so, env, arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+      sess_ = std::make_unique<InferenceSession>(so, env, buffer);
     }
   }
 #endif
@@ -129,7 +129,8 @@ Environment& GetEnv();
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
                        const std::vector<std::string>& provider_types = {},
-                       const ProviderOptionsVector& provider_options = {});
+                       const ProviderOptionsVector& provider_options = {},
+                       const std::unordered_set<std::string>& disabled_optimizer_names = {});
 
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();

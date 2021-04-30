@@ -8,16 +8,20 @@ from .operators.gather import GatherQuant
 from .operators.conv import QLinearConv, ConvInteger, QDQConv
 from .operators.activation import QLinearActivation, QDQRemovableActivation
 from .operators.binary_op import QLinearBinaryOp
-from .operators.maxpool import QMaxPool
+from .operators.maxpool import QDQMaxPool, QMaxPool
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.lstm import LSTMQuant
 from .operators.split import QSplit
 from .operators.pad import QPad
-from .operators.reshape import ReshapeQuant
+from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
+from .operators.resize import QResize, QDQResize
+from .operators.pooling import QLinearPool
+from .operators.concat import QLinearConcat, QDQConcat
 
-CommonOpsRegistry = {"Gather": GatherQuant,
-                     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
-                     "Reshape": ReshapeQuant}
+CommonOpsRegistry = {
+    "Gather": GatherQuant,
+    "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
+}
 
 IntegerOpsRegistry = {
     "Conv": ConvInteger,
@@ -40,6 +44,11 @@ QLinearOpsRegistry = {
     "GlobalAveragePool": QGlobalAveragePool,
     "Split": QSplit,
     "Pad": QPad,
+    "Reshape": Direct8BitOp,
+    "Transpose" : Direct8BitOp,
+    "Resize": QResize,
+    "AveragePool" : QLinearPool,
+    "Concat": QLinearConcat,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
@@ -47,6 +56,12 @@ QDQRegistry = {
     "Conv": QDQConv,
     "Clip": QDQRemovableActivation,
     "Relu": QDQRemovableActivation,
+    "Reshape": QDQDirect8BitOp,
+    "Transpose" : QDQDirect8BitOp,
+    "Resize": QDQResize,
+    "MaxPool": QDQMaxPool,
+    "AveragePool" : QDQDirect8BitOp,
+    "Concat": QDQConcat,
 }
 
 

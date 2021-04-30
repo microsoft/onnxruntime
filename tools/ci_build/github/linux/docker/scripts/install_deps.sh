@@ -4,14 +4,20 @@ set -e -x
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
+ORTMODULE_BUILD=false
+TARGET_ROCM=false
+CU_VER="11.1"
 
-while getopts p:d:tm parameter_Option
+while getopts p:d:v:tmur parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
+v) CU_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
+u) ORTMODULE_BUILD=true;;
+r) TARGET_ROCM=true;;
 esac
 done
 
@@ -116,7 +122,28 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "gpu" ]; then
   if [[ $INSTALL_DEPS_TRAINING = true ]]; then
-    ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+    if [[ $ORTMODULE_BUILD = false ]]; then
+      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+    else
+      if [[ $TARGET_ROCM = false ]]; then
+        ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage1\/requirements_torch_cu${CU_VER}.txt}
+        # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
+        ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
+      else
+        ${PYTHON_EXE} -m pip install \
+          --pre -f https://download.pytorch.org/whl/nightly/rocm4.1/torch_nightly.html \
+          torch torchvision torchtext
+        ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/ortmodule\/stage1\/requirements-rocm.txt}
+        ${PYTHON_EXE} -m pip install fairscale
+	      # remove triton requirement from getting triggered in requirements-sparse_attn.txt
+        git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
+        cd DeepSpeed &&\
+          rm requirements/requirements-sparse_attn.txt &&\
+          ${PYTHON_EXE} setup.py bdist_wheel &&\
+          ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
+	      cd ..
+      fi
+    fi
   fi
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
     source ${0/%install_deps.sh/install_openmpi.sh}

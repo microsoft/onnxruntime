@@ -14,7 +14,7 @@ import time
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
-from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
+from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,15 @@ class GPT2ModelNoPastState(GPT2Model):
     def forward(self, input_ids):
         return super().forward(input_ids, use_cache=False, return_dict=False)
 
+class TFGPT2ModelNoPastState(TFGPT2Model):
+    """ Here we wrap a class to disable past state output.
+    """
+    def __init__(self, config):
+        config.use_cache = False
+        super().__init__(config)
+
+    def forward(self, input_ids):
+        return super().call(input_ids, use_cache=False)
 
 class MyGPT2Model(GPT2Model):
     """ Here we wrap a class for Onnx model conversion for GPT2Model with past state.

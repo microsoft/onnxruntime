@@ -27,7 +27,7 @@ endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
-add_library(onnxruntime_framework ${onnxruntime_framework_srcs})
+onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
@@ -46,7 +46,7 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
-if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD)
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 

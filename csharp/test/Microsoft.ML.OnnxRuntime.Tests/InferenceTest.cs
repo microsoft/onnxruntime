@@ -96,6 +96,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
+#if USE_ROCM
+                opt.AppendExecutionProvider_ROCM(0);
+#endif
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
@@ -185,6 +188,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 # if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
 #endif
+# if USE_ROCM
+            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"););
+#endif
+
         }
 
         [Fact]
@@ -219,6 +226,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+#if USE_TENSORRT
+        [Fact]
+        private void CanRunInferenceOnAModelWithTensorRT()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(0);
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+
+                using (var results = session.Run(container))
+                {
+                    validateRunResults(results);
+                }
+            }
+        }
+#endif
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
@@ -783,6 +824,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_identity_sequence", "data type not supported"},
+                { "test_gru_batchwise", "opset14 version not implemented yet"},
+                { "test_gru_defaults", "opset14 version not implemented yet"}, 
+                { "test_gru_seq_length", "opset14 version not implemented yet"}, 
+                { "test_gru_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_batchwise", "opset14 version not implemented yet"},
+                { "test_lstm_defaults", "opset14 version not implemented yet"},
+                { "test_lstm_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_lstm_with_peepholes", "opset14 version not implemented yet"},
+                { "test_rnn_seq_length", "opset14 version not implemented yet"},
+                { "test_simple_rnn_batchwise", "opset14 version not implemented yet"},
+                { "test_simple_rnn_defaults", "opset14 version not implemented yet"},
+                { "test_simple_rnn_with_initial_bias", "opset14 version not implemented yet"},
+                { "test_sub_uint8", "data type not supported"},
+                { "test_mul_uint8", "data type not supported"},
+                { "test_add_uint8", "data type not supported"},
+                { "test_div_uint8", "data type not supported"},
+                { "test_batchnorm_epsilon", "opset14 version not implemented yet"},
+                { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
+                { "test_batchnorm_example", "opset14 version not implemented yet"},
+                { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI
@@ -1015,7 +1077,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             catch (Exception ex)
             {
                 var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                throw new Exception(msg + "\n" + ex.StackTrace);
+                if(ex.Message.Contains("ONNX Runtime only *guarantees* support for models stamped with official released onnx opset versions"))
+                {
+                    // If the exception is thrown because the opset version of the test model is
+                    // not supported by ONNXRuntime yet, then ignore the test and proceed.
+                    // ORT allows commits from ONNX master and in such cases we do come across new opsets which are
+                    // not supported in ORT yet. In order to force these tests to run set env var ALLOW_RELEASED_ONNX_OPSET_ONLY=0
+                    output.WriteLine("Skipping the model test as the latest ONNX opset is not supported yet. Error Message: " + msg);
+                }
+                else
+                {
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
             }
         }
 
@@ -2019,6 +2092,34 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+#if USE_ROCM
+        void TestROCMAllocatorInternal(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorROCM, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            {
+                Assert.Equal("Rocm", info_rocm.Name);
+                Assert.Equal(device_id, info_rocm.Id);
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_rocm.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_rocm.GetMemoryType());
+
+                using (var allocator = new OrtAllocator(session, info_rocm))
+                {
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_rocm.Equals(alloc_info));
+
+                    uint size = 1024;
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.Equals(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+#endif
+
+
         [Fact]
         private void TestAllocator()
         {
@@ -2029,12 +2130,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 options.AppendExecutionProvider_CUDA(0);
 #endif
+
+#if USE_ROCM
+                options.AppendExecutionProvider_ROCM(0);
+#endif
+
                 using (var session = new InferenceSession(modelPath, options))
                 {
                     TestCPUAllocatorInternal(session);
 #if USE_CUDA
                     TestCUDAAllocatorInternal(session);
 #endif
+#if USE_ROCM
+                    TestROCMAllocatorInternal(session);
+#endif
+
                 }
             }
         }
@@ -2293,6 +2403,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_ROCM
+            ,"OrtSessionOptionsAppendExecutionProvider_ROCM"
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
@@ -2560,6 +2673,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
+                new SessionOptions())
+            {
+                if(!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+#elif USE_ROCM
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithRocmProvider(deviceId.Value) :
                 new SessionOptions())
             {
                 if(!deviceId.HasValue)

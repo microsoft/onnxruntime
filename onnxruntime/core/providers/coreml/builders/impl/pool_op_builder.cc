@@ -137,6 +137,9 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
       return false;
     }
 
+    // TODO, add support of the ceil_mode by adjusting the padding
+    // See https://stackoverflow.com/questions/59906456/in-pytorchs-maxpool2d-is-padding-added-depending-on-ceil-mode
+    // and https://github.com/apple/coremltools/blob/1931758aae383c83daddfc56f11a24a9d2bf4b87/coremltools/converters/mil/frontend/torch/ops.py#L621-L644
     if (helper.Get("ceil_mode", 0) == 1) {
       LOGS(logger, VERBOSE) << "ceil_mode == 1 is not supported for pooling";
       return false;
@@ -169,7 +172,7 @@ void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
           "MaxPool",
       };
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<PoolOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<PoolOpBuilder>());
   for (const auto& op_type : op_types) {
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }

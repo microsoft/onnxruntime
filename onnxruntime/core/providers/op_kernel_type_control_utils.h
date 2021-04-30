@@ -5,10 +5,9 @@
 
 #include "boost/mp11.hpp"
 
-#include "core/framework/data_types.h"
-
 namespace onnxruntime {
 namespace utils {
+
 /**
 * Check if the set of types contains the specified type.
 */
@@ -44,13 +43,3 @@ using TypeSetUnion = boost::mp11::mp_set_union<TypeSets...>;
 
 }  // namespace utils
 }  // namespace onnxruntime
-
-/** Data types that are used in DataTypeImpl::AllTensorTypes()
-*/
-#define ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES \
-  bool,                                               \
-      float, double,                                  \
-      uint8_t, uint16_t, uint32_t, uint64_t,          \
-      int8_t, int16_t, int32_t, int64_t,              \
-      MLFloat16, BFloat16,                            \
-      std::string

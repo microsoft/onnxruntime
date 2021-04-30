@@ -325,6 +325,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);
 };
@@ -578,7 +579,7 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float, int64_t, and string
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);

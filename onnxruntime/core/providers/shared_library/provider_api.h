@@ -25,71 +25,6 @@
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
 
-namespace onnxruntime {
-namespace logging {
-
-enum class DataType {
-  SYSTEM = 0,  ///< System data.
-  USER = 1     ///< Contains potentially sensitive user data.
-};
-
-}  // namespace logging
-
-enum class AutoPadType {
-  NOTSET = 0,
-  VALID = 1,
-  SAME_UPPER = 2,
-  SAME_LOWER = 3,
-};
-
-// onnx Protobuf types (all of these are actually just Provider_<type> -> ONNX_NAMESPACE::<type>)
-struct Provider_int64s;  // RepeatedPtrField
-struct Provider_AttributeProto;
-struct Provider_GraphProto;
-struct Provider_ModelProto;
-struct Provider_NodeProto;
-struct Provider_TensorProto;
-struct Provider_TensorProtos;
-struct Provider_TensorShapeProto_Dimension;
-struct Provider_TensorShapeProto_Dimensions;  // RepeatedPtrField
-struct Provider_TensorShapeProto;
-struct Provider_TypeProto_Tensor;
-struct Provider_TypeProto;
-struct Provider_ValueInfoProto;
-struct Provider_ValueInfoProtos;  // RepeatedPtrField
-
-// OnnxRuntime Types (these are the internal types)
-struct CPUIDInfo;
-namespace logging {
-struct Logger;
-struct Capture;
-}  // namespace logging
-struct ComputeCapability;
-struct DataTransferManager;
-struct IDataTransfer;
-struct IndexedSubGraph;
-struct IndexedSubGraph_MetaDef;
-struct KernelCreateInfo;
-struct KernelDef;
-struct KernelDefBuilder;
-struct KernelRegistry;
-struct Function;
-struct Graph;
-struct GraphViewer;
-struct Model;
-struct Path;
-struct Node;
-struct NodeArg;
-struct NodeAttributes;
-struct OpKernelContext;
-struct OpKernelInfo;
-struct PrimitiveDataTypeBase;
-struct Tensor;
-
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
-}  // namespace onnxruntime
-
 namespace ONNX_NAMESPACE {
 
 // These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
@@ -150,8 +85,73 @@ enum OperatorStatus : int {
   STABLE = 1
 };
 
+// onnx Protobuf types (All of these are direct mappings to the onnx types except for the Repeated*Field ones which map to a Repeated*Field type)
+struct int64s;  // RepeatedField
+struct AttributeProto;
+struct GraphProto;
+struct ModelProto;
+struct NodeProto;
+struct TensorProto;
+struct TensorProtos;  // RepeatedPtrField
+struct TensorShapeProto_Dimension;
+struct TensorShapeProto_Dimensions;  // RepeatedPtrField
+struct TensorShapeProto;
+struct TypeProto_Tensor;
+struct TypeProto;
+struct ValueInfoProto;
+struct ValueInfoProtos;  // RepeatedPtrField
 }  // namespace ONNX_NAMESPACE
 
+namespace onnxruntime {
+namespace logging {
+
+enum class DataType {
+  SYSTEM = 0,  ///< System data.
+  USER = 1     ///< Contains potentially sensitive user data.
+};
+
+}  // namespace logging
+
+enum class AutoPadType {
+  NOTSET = 0,
+  VALID = 1,
+  SAME_UPPER = 2,
+  SAME_LOWER = 3,
+};
+
+// OnnxRuntime Types (these are the internal types)
+struct CPUIDInfo;
+namespace logging {
+struct Logger;
+struct Capture;
+}  // namespace logging
+struct ComputeCapability;
+struct DataTransferManager;
+struct IndexedSubGraph;
+struct IndexedSubGraph_MetaDef;
+struct KernelCreateInfo;
+struct KernelDef;
+struct KernelDefBuilder;
+struct KernelRegistry;
+struct Function;
+struct Graph;
+struct GraphViewer;
+struct Model;
+struct Path;
+struct Node;
+struct NodeArg;
+struct NodeAttributes;
+struct OpKernelContext;
+struct OpKernelInfo;
+struct PrimitiveDataTypeBase;
+struct Tensor;
+
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
+using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
+}  // namespace onnxruntime
+
+#include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "core/framework/op_kernel.h"

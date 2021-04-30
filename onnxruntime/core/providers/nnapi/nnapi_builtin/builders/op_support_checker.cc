@@ -49,7 +49,7 @@ void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
   if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
     return;
 
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<T>());
+  op_registrations.support_checkers.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
   }
@@ -85,7 +85,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
   virtual bool HasSupportedInputsImpl(const Node& node) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 13; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 14; }
 
  private:
   bool HasSupportedOpSet(const Node& node) const;
@@ -160,7 +160,8 @@ bool BaseOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 bool BaseOpSupportChecker::HasSupportedOpSet(const Node& node) const {
   auto since_version = node.SinceVersion();
   if (since_version < GetMinSupportedOpSet(node) || since_version > GetMaxSupportedOpSet(node)) {
-    LOGS_DEFAULT(VERBOSE) << node.OpType() << "is only supported for opset ["
+    LOGS_DEFAULT(VERBOSE) << node.OpType() << " opset [" << since_version
+                          << "] is only supported for opset ["
                           << GetMinSupportedOpSet(node) << ", "
                           << GetMaxSupportedOpSet(node) << "]";
     return false;
@@ -388,15 +389,24 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
     return false;
   }
 
-  const auto& shape_tensor = *initializers.at(perm_name);
-  const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
-  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
+  const auto& perm_tensor = *initializers.at(perm_name);
+  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
-  for (uint32_t i = 0; i < size; i++) {
+  NodeAttrHelper helper(node);
+  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
-    if (raw_shape[i] == 0 && i < input_shape.size() && input_shape[i] == 0) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
-      return false;
+    if (raw_perm[i] == 0) {
+      if (i < input_shape.size() && input_shape[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension on a dynamic dimension";
+        return false;
+      }
+
+      if (allow_zero) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
+        return false;
+      }
     }
   }
 
@@ -496,25 +506,29 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
           "GlobalMaxPool",
           "AveragePool",
           "MaxPool",
+          "QLinearAveragePool",
       });
 }
 
-bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                             const OpSupportCheckParams& /* params */) const {
+bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                             const OpSupportCheckParams& params) const {
+  const auto& op_name = node.Name();
   const auto& op_type = node.OpType();
+  const auto& input_defs = node.InputDefs();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(*input_defs[0], input_shape))
     return false;
 
   const auto input_size = input_shape.size();
   if (input_size != 4) {
     LOGS_DEFAULT(VERBOSE)
         << op_type << " only supports rank-4 tensor, input ["
-        << node.InputDefs()[0]->Name() << "] has actual dim count " << input_size;
+        << input_defs[0]->Name() << "] has actual dim count " << input_size;
     return false;
   }
 
-  if (op_type == "AveragePool" || op_type == "MaxPool") {
+  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
+  if (op_type == "AveragePool" || op_type == "MaxPool" || is_qlinear_average_pool) {
     NodeAttrHelper helper(node);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
@@ -554,13 +568,77 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
     return false;
   }
 
+  // We need to check if we have valid scales and zero points for QLinearAveragePool
+  if (is_qlinear_average_pool) {
+    if (input_defs.size() < 4)
+      return false;
+
+    // the output zero point can be optional
+    bool has_output_zp = input_defs.size() == 5;
+
+    if (!HasValidQuantizationScales(initializers, node, {1, 3}, params))
+      return false;
+
+    if (!HasValidQuantizationZeroPoints(initializers, node,
+                                        has_output_zp
+                                            ? std::vector<size_t>{2}
+                                            : std::vector<size_t>{2, 4})) {
+      return false;
+    }
+
+    // NNAPI requires Quantized Average Pool has same scale and zero point for both input and output
+    auto input_scale = GetQuantizationScale(initializers, node, 1);
+    auto output_scale = GetQuantizationScale(initializers, node, 3);
+    if (input_scale != output_scale) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] has different input_scale: " << input_scale
+                            << " than the output_scale: " << output_scale;
+      return false;
+    }
+
+    int32_t input_zp = 0;
+    int32_t output_zp = 0;
+    auto status = GetQuantizationZeroPoint(initializers, node, 2, input_zp);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationZeroPoint for input_zp failed, message: "
+                          << status.ErrorMessage();
+      return false;
+    }
+
+    if (has_output_zp) {
+      status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                            << "] GetQuantizationZeroPoint for output_zp failed, message: "
+                            << status.ErrorMessage();
+        return false;
+      }
+    }
+
+    if (input_zp != output_zp) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] has different input_zp: " << input_zp
+                            << " than the output_zp: " << output_zp;
+      return false;
+    }
+  }
+
   return true;
 }
 
 bool PoolOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
-  if (node.OpType() != "MaxPool")
+  bool is_max_pool = node.OpType() == "MaxPool";
+  bool is_qlinear_average_pool = node.OpType() == "QLinearAveragePool";
+  if (!is_max_pool && !is_qlinear_average_pool)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
+  if (is_qlinear_average_pool) {
+    return HasValidUnaryOpQuantizedInputs(node);
+  }
+
+  // is_max_pool
+  // For max pool, we can support both float and uint8 input
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type))
     return false;
@@ -620,10 +698,16 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
+  const bool is_qlinear_conv = (op_type == "QLinearConv");
+
+  // We don't support nhwc com.microsoft.QLinearConv for now
+  if (is_qlinear_conv && node.Domain() == kMSDomain) {
+    LOGS_DEFAULT(VERBOSE) << "com.microsoft.QLinearConv is not supported";
+    return false;
+  }
+
   const auto input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-
-  bool is_qlinear_conv = (op_type == "QLinearConv");
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
   const auto weight_name = input_defs[w_idx]->Name();
@@ -1015,18 +1099,7 @@ bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearSigmoid")
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
-  int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return HasValidUnaryOpQuantizedInputs(node);
 }
 
 // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
@@ -1563,7 +1636,7 @@ bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 // This is for ops with dedicated OpSupportChecker
 #define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
   {                                                                                                           \
-    op_registrations.support_checkers.push_back(onnxruntime::make_unique<SUPPORT_CHECKER_NAME>());            \
+    op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());            \
     op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
   }
 
@@ -1591,6 +1664,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("GlobalMaxPool", PoolOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("AveragePool", PoolOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("MaxPool", PoolOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAveragePool", PoolOpSupportChecker);
   }
 
   {

@@ -10,6 +10,16 @@
 #include "contexts.h"
 #include <iomanip>
 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+#include <sys/stat.h>
+
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
@@ -19,18 +29,27 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
-void SetIODefs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto,
+bool UseCompiledNetwork();
+
+std::string GetCurrentWorkingDir();
+
+bool IsDirExists(const std::string& pathname);
+
+void CreateDirectory(const std::string& ov_compiled_blobs_dir);
+
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
                std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
                std::string device);
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
 
 template <typename T>
@@ -44,7 +63,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
 #endif
 
 InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::Provider_TypeProto& onnx_type, std::string device);
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,

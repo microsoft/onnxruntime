@@ -344,16 +344,18 @@ class MLTypeCallDispatcher {
    * @tparam Fn The function object template.
    * @tparam Args The argument types.
    */
-  template <template <typename> class Fn, typename... Args>
+  template <template <typename...> class Fn, typename... Args>
   void Invoke(Args&&... args) const {
     InvokeWithLeadingTemplateArgs<Fn, TypeList<>>(std::forward<Args>(args)...);
   }
 
   /**
-   * Invokes Fn<..., T> with leading template arguments and the specified arguments.
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments.
    *
    * @tparam Fn The function object template.
-   * @tparam LeadingTemplateArgTypeList A type list of the leading template arguments.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
    * @tparam Args The argument types.
    */
   template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
@@ -384,7 +386,7 @@ class MLTypeCallDispatcher {
    * @tparam Fn The function object template.
    * @tparam Args The argument types.
    */
-  template <class Ret, template <typename> class Fn, typename... Args>
+  template <class Ret, template <typename...> class Fn, typename... Args>
   Ret InvokeRet(Args&&... args) const {
     return InvokeRetWithUnsupportedPolicy<
         Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>>(
@@ -401,13 +403,57 @@ class MLTypeCallDispatcher {
    *         for an example.
    * @tparam Args The argument types.
    */
-  template <class Ret, template <typename> class Fn, class UnsupportedPolicy, typename... Args>
+  template <class Ret, template <typename...> class Fn, class UnsupportedPolicy, typename... Args>
   Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, UnsupportedPolicy, TypeList<>>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret, template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  Ret InvokeRetWithLeadingTemplateArgs(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>, LeadingTemplateArgTypeList>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam UnsupportedPolicy The policy used to handle unsupported types.
+   *         See mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy
+   *         for an example.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret,
+            template <typename...> class Fn,
+            class UnsupportedPolicy,
+            typename LeadingTemplateArgTypeList,
+            typename... Args>
+  Ret InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
 
-    // call helper.Invoke() with Fn<T> for each T in Types
+    // given LeadingTemplateArgTypeList is a type list L<U1, U2, ...>,
+    //   call helper.Invoke() with Fn<U1, U2, ..., T> for each T in Types
     static_cast<void>(std::array<int, sizeof...(Types)>{
-        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
+        helper.template Invoke<Types>(
+            boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
+            std::forward<Args>(args)...)...});
 
     // avoid "unused parameter" warning for the case where Types is empty
     static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});

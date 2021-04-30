@@ -130,13 +130,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time;
+  TimePoint kernel_begin_time, kernel_end_time;
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().StartTime();
+    tp = session_state.Profiler().Now();
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
@@ -235,7 +235,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Now();
     }
 
     // sync before compute
@@ -285,15 +285,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      node_name_for_profiling + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
-
+      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
-
-      kernel_begin_time = session_state.Profiler().StartTime();
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
+      kernel_begin_time = session_state.Profiler().Now();
     }
 
     Status compute_status;
@@ -341,6 +340,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (is_profiler_enabled) {
+      kernel_end_time = session_state.Profiler().Now();
       // Calculate total output sizes for this operation.
       CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
 
@@ -356,10 +356,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << " Output_Size=" << total_output_sizes
                 << "\n";
 #endif
-
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time,
+                                                     kernel_begin_time, kernel_end_time,
                                                      // Log additional operation args / info.
                                                      {
                                                          {"op_name", p_op_kernel->KernelDef().OpName()},
@@ -369,9 +368,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
+                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Now();
     }
 
     // sync after compute for outputs
@@ -467,7 +466,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (all_tensors) {
-      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }

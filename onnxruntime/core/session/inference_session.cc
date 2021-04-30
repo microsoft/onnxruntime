@@ -49,6 +49,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
+#include "onnxruntime_config.h"
 
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -104,11 +105,12 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // Only update this version when there is a file format change which will break the compatibilites
 // Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
 // below will also need to be updated.
-// See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
+// See onnxruntime/core/flatbuffers/schema/README.md for more details on versioning.
 // Version 1 - history begins
 // Version 2 - add serialization/deserialization of sparse_initializer
 // Version 3 - add `graph_doc_string` to Model
-static constexpr const char* kOrtModelVersion = "3";
+// Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
+static constexpr const char* kOrtModelVersion = "4";
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 // Check if the given ort model version is supported in this build
@@ -116,9 +118,6 @@ static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   static const std::unordered_set<std::string> kSupportedOrtModelVersions{
-      std::string("1.4.0"),  // This is a special model version for existing converted model
-      std::string("1"),
-      std::string("2"),
       std::string(kOrtModelVersion),
   };
 
@@ -235,9 +234,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       bool allow_intra_op_spinning =
           session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.intra_op_param;
-      if (to.name == nullptr) {
-        to.name = ORT_TSTR("intra-op");
+      std::basic_stringstream<ORTCHAR_T> ss;
+      if (to.name) {
+        ss << to.name << ORT_TSTR("-");
       }
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
+      thread_pool_name_ = ss.str();
+      to.name = thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
@@ -249,15 +252,20 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      bool allow_inter_op_spinning = 
+      bool allow_inter_op_spinning =
           session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
       to.auto_set_affinity =
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-      if (to.name == nullptr)
-        to.name = ORT_TSTR("intra-op");
+      std::basic_stringstream<ORTCHAR_T> ss;
+      if (to.name) {
+        ss << to.name << ORT_TSTR("-");
+      }
+      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
+      inter_thread_pool_name_ = ss.str();
+      to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       to.allow_spinning = allow_inter_op_spinning;
       inter_op_thread_pool_ =
@@ -285,6 +293,29 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // Add log to allow serving platforms to quantify ORT usage.
+  // To avoid flooding the test logs, this is done for non-debug mode only
+  // TODO: plug-in a platform specific telemetry provider to send the telemetry to
+#ifdef NDEBUG
+#ifdef _WIN32
+  std::wostringstream ostr;
+#else
+  std::ostringstream ostr;
+#endif
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = EventName (event_attr1: foo.onnx, event_attr2: 400us)"
+  // Format: "ORT Telemetry: Ver = 1.7.0; Event = SessionCreation (model: foo.onnx, ts: 400us)"
+  ostr << "ORT Telemetry: "
+       << "Ver = " << ORT_VERSION << "; Event = SessionCreation";
+  if (!model_location_.empty()) {
+    ostr << " (model: " << model_location_ << ")";
+  }
+#ifdef _WIN32
+  std::wcout << ostr.str() << "\n";
+#else
+  std::cout << ostr.str() << "\n";
+#endif
+#endif
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -503,9 +534,8 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
-  std::copy(transformers_to_enable.begin(), transformers_to_enable.end(), std::back_inserter(transformers_to_enable_));
-
+common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable) {
+  optimizers_to_disable_ = optimizers_to_disable;
   return Status::OK();
 }
 
@@ -554,7 +584,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
   ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -935,9 +965,11 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                                        GraphPartitioner::Mode::kOrtFormatLoad,
                                                        &compiled_kernel_hashes));
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
   if (!compiled_kernel_hashes.empty()) {
     session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
   }
+#endif
 
   return Status::OK();
 }
@@ -1106,7 +1138,7 @@ common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
   ORT_TRY {
@@ -1137,7 +1169,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
@@ -1148,7 +1180,7 @@ common::Status InferenceSession::Initialize() {
     // Read shared allocators from the environment and update them in the respective providers.
     //
     // The reason for updating the providers is so that when the session state is created the allocators
-    // are setup appropariately keyed by OrtMemoryInfo with delegates going to the respective providers.
+    // are setup appropriately keyed by OrtMemoryInfo with delegates going to the respective providers.
     // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
     // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
     // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
@@ -1169,7 +1201,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = onnxruntime::make_unique<SessionState>(
+    session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
         session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
@@ -1178,7 +1210,8 @@ common::Status InferenceSession::Initialize() {
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute);
+        session_options_.use_deterministic_compute,
+        session_options_.enable_mem_reuse);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -1206,8 +1239,7 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
       // add predefined transformers
-      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                                transformers_to_enable_);
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level);
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -1258,11 +1290,13 @@ common::Status InferenceSession::Initialize() {
                             "Please disable any execution providers which generate compiled nodes."));
       }
 
-      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
+      // add a warning if the NchwcTransformer was enabled, as it contains the hardware specific logic
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3 &&
+          optimizers_to_disable_.find("NchwcTransformer") == optimizers_to_disable_.cend()) {
         LOGS(*session_logger_, WARNING)
-            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
-               "The generated model may contain hardware and execution provider specific optimizations, "
-               "and should only be used in the same environment the model was optimized for.";
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED and the "
+               "NchwcTransformer enabled. The generated model may contain hardware specific optimizations, and "
+               "should only be used in the same environment the model was optimized in.";
       }
 
       if (saving_ort_format) {
@@ -1498,13 +1532,80 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
+#ifdef ENABLE_TRAINING
+Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
+                                    const std::vector<OrtValue>& feeds,
+                                    std::vector<OrtValue>& fetches,
+                                    PartialGraphExecutionState& state,
+                                    FeedsFetchesManager& feeds_fetches_manager) {
+  Status retval = Status::OK();
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    if (!run_options.run_tag.empty()) {
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+    }
+
+    // scope of owned_run_logger is just the call to Execute.
+    // If Execute ever becomes async we need a different approach
+    std::unique_ptr<logging::Logger> owned_run_logger;
+    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call OnRunStart for all providers in-use
+    for (auto& xp : execution_providers_) {
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
+    }
+
+    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false, "only_execute_path_to_fetches is not supported.");
+
+    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
+
+    // execute the graph
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
+                                                        run_logger, state));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+  }
+
+  // info all execution providers InferenceSession:Run ended
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+#endif
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.StartTime();
+    tp = session_profiler_.Now();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -1899,27 +2000,17 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                 TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level) {
-    // Generate and register transformers for level
-    auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_,
-                                              *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
-                                              custom_list);
-    for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry), level);
-    }
-  };
-
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
-
+                                                 TransformerLevel graph_optimization_level) {
+  const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if ((graph_optimization_level >= level) || !custom_list.empty()) {
-      add_transformers(level);
+    if (graph_optimization_level >= level) {
+      // Generate and register transformers for level
+      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                                            optimizers_to_disable_);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry), level);
+      }
     }
   }
 }

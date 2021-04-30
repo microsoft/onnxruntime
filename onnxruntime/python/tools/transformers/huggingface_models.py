@@ -13,13 +13,24 @@ MODEL_CLASSES = [
 # Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
 MODELS = {
     # BERT
-    "bert-base-uncased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "bert-large-uncased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "bert-large-uncased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask",
-                                                               "token_type_ids"], 11, False, "bert"),
-    "bert-base-cased-finetuned-mrpc": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-
+    "bert-base-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    "bert-large-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-large-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-multilingual-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-multilingual-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-chinese": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-german-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-large-uncased-whole-word-masking": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-large-cased-whole-word-masking": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-large-uncased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask",
+    #                                                            "token_type_ids"], 12, False, "bert"),
+    # "bert-large-cased-whole-word-masking-finetuned-squad": (["input_ids", "attention_mask",
+    #                                                          "token_type_ids"], 12, False, "bert"),
+    # "bert-base-cased-finetuned-mrpc": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-german-dbmdz-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # "bert-base-german-dbmdz-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    # todo: more models to add
     # GPT (no past state)
     "openai-gpt": (["input_ids"], 11, False, "gpt2"),
     # GPT-2 (no past state, use benchmark_gpt2.py for past_key_values)
@@ -29,7 +40,8 @@ MODELS = {
     "gpt2-xl": (["input_ids"], 11, True, "gpt2"),
     "distilgpt2": (["input_ids"], 11, False, "gpt2"),
     # Transformer-XL
-    #"transfo-xl-wt103": (["input_ids"], 11, False, "bert"),
+    "transfo-xl-wt103":
+    (["input_ids", "mems"], 12, False, "bert"),  # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     # XLNet
     "xlnet-base-cased": (["input_ids"], 12, False, "bert"),
     "xlnet-large-cased": (["input_ids"], 12, False, "bert"),
@@ -37,14 +49,12 @@ MODELS = {
     "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
     "xlm-mlm-ende-1024": (["input_ids"], 11, False, "bert"),
     "xlm-mlm-enfr-1024": (["input_ids"], 11, False, "bert"),
-    # XML Roberta
-    "xlm-roberta-base": (["input_ids"], 12, False, "bert"),
     # RoBERTa
-    "roberta-base": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "roberta-large": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "roberta-large-mnli": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "roberta-base": (["input_ids", "attention_mask"], 12, False, "bert"),
+    "roberta-large": (["input_ids", "attention_mask"], 12, False, "bert"),
+    "roberta-large-mnli": (["input_ids", "attention_mask"], 12, False, "bert"),
     "deepset/roberta-base-squad2": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilroberta-base": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "distilroberta-base": (["input_ids", "attention_mask"], 12, False, "bert"),
 
     # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
@@ -63,11 +73,11 @@ MODELS = {
     "albert-xlarge-v2": (["input_ids"], 12, True, "bert"),
     #"albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
     # T5 (use benchmark_t5.py instead)
-    #"t5-small": (["input_ids"], 12, False, "bert"),
-    #"t5-base": (["input_ids"], 12, False, "bert"),
-    #"t5-large": (["input_ids"], 12, True, "bert"),
-    #"t5-3b": (["input_ids"], 12, True, "bert"),
-    #"t5-11b": (["input_ids"], 12, True, "bert"),
+    # "t5-small": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
+    # "t5-base": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
+    # "t5-large": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    # "t5-3b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
+    # "t5-11b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
     #"valhalla/t5-small-qa-qg-hl": (["input_ids"], 12, True, "bert"),
     # XLM-RoBERTa
     "xlm-roberta-base": (["input_ids"], 11, False, "bert"),
@@ -98,6 +108,20 @@ MODELS = {
     # MBart
     "facebook/mbart-large-cc25": (["input_ids"], 11, True, "bert"),
     "facebook/mbart-large-en-ro": (["input_ids"], 11, True, "bert"),
+    # "Helsinki-NLP/opus-mt-ROMANCE-en": (["input_ids"], 12, False, "bert"),
+    # # Longformer
+    # "allenai/longformer-base-4096": (["input_ids"], 12, False, "bert"),
+    # "allenai/longformer-large-4096": (["input_ids"], 12, True, "bert"),
+    # "funnel-transformer/small": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/small-base": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/medium": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/medium-base": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/intermediate": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/intermediate-base": (["input_ids"], 12, False, "bert"),
+    # "funnel-transformer/large": (["input_ids"], 12, True, "bert"),
+    # "funnel-transformer/large-base": (["input_ids"], 12, True, "bert"),
+    # "funnel-transformer/xlarge": (["input_ids"], 12, True, "bert"),
+    # "funnel-transformer/xlarge-base": (["input_ids"], 12, True, "bert"),    
     # Layoutlm
     "microsoft/layoutlm-base-uncased": (["input_ids"], 11, False, "bert"),
     "microsoft/layoutlm-large-uncased": (["input_ids"], 11, False, "bert"),
@@ -105,4 +129,7 @@ MODELS = {
     "squeezebert/squeezebert-uncased": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli-headless": (["input_ids"], 11, False, "bert"),
+    "unc-nlp/lxmert-base-uncased": (["input_ids", "visual_feats", "visual_pos"], 11, False, "bert"),
+    # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
+    # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 }

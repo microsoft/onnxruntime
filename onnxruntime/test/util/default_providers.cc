@@ -18,7 +18,7 @@
 namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path);
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
@@ -43,7 +43,7 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  OrtTensorRTProviderOptions params{0, 0, nullptr};
+  OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 1 << 30, 0, 0, nullptr, 0, 0};
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
 #endif

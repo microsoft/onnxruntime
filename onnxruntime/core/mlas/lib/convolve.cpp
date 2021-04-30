@@ -39,7 +39,7 @@ struct MLAS_CONV_WORK_BLOCK {
         size_t StartN;
         size_t CountN;
     } Segments[MLAS_MAXIMUM_THREAD_COUNT];
-    int32_t TargetThreadCount;
+    ptrdiff_t TargetThreadCount;
 };
 
 void
@@ -609,7 +609,7 @@ Return Value:
 void
 MlasConvOperationThreaded(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     )
 /*++
 
@@ -645,7 +645,7 @@ Return Value:
 void
 MlasConvGemmDirectThreaded(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     )
 /*++
 
@@ -677,21 +677,13 @@ Return Value:
     const size_t GroupCount = Parameters->GroupCount;
     const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
 
-    const size_t TargetThreadCount = WorkBlock->TargetThreadCount;
-
-    const size_t BatchGroupCountPerThread = BatchGroupCount / TargetThreadCount;
-    const size_t BatchGroupCountExtra = BatchGroupCount % TargetThreadCount;
-
     size_t BatchGroupStart;
-    size_t BatchGroupEnd;
+    size_t BatchGroupRemaining;
 
-    if (uint32_t(Index) < BatchGroupCountExtra) {
-        BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
-        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
-    } else {
-        BatchGroupStart = BatchGroupCountPerThread * Index + BatchGroupCountExtra;
-        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread;
-    }
+    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
+        &BatchGroupStart, &BatchGroupRemaining);
+
+    size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
 
     //
     // Iterate over the batch and groups allocated to this thread.
@@ -889,10 +881,10 @@ Return Value:
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
-        int32_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
-            TargetThreadCount = int32_t(BatchGroupCount);
+            TargetThreadCount = ptrdiff_t(BatchGroupCount);
         }
 
         MLAS_CONV_WORK_BLOCK WorkBlock;
@@ -910,10 +902,19 @@ Return Value:
         return;
     }
 
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+    if (Algorithm == MlasConvAlgorithmDepthwise) {
+        // Fill the Working Buffer with Zero for use by the depthwise kernel.
+        // The length for the zeros are input image wide + 2 currently.
+        std::fill_n(WorkingBuffer, Parameters->InputShape[1] + 2, 0.0f);
+    }
+
+#endif
+
     //
     // Iterate over each batch and group.
     //
-
     for (size_t batch = 0; batch < BatchCount; batch++) {
 
         const float* filter = Filter;
@@ -972,6 +973,17 @@ Return Value:
 
                     break;
                 }
+
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+                case MlasConvAlgorithmDepthwise:
+                {
+                    MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                    break;
+                }
+
+#endif
 
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
@@ -1204,6 +1216,26 @@ Return Value:
 
     } else {
 
+#if defined(MLAS_TARGET_WASM_SCALAR)
+
+        // Scalar direct conv for depthwise convolution.
+        // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
+        // TODO: support more general depthwise convolution.
+
+        if (Dimensions == 2
+                && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
+                && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
+                && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
+                && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+                && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+
+            *WorkingBufferSize = Parameters->InputShape[1] + 2;
+            Parameters->Algorithm = MlasConvAlgorithmDepthwise;
+            return;
+        }
+
+#endif
+
         //
         // Segment the operation across multiple threads by slicing the N
         // dimension (see MlasSgemmTryMultithread).
@@ -1213,16 +1245,16 @@ Return Value:
         // threaded path.
         //
 
-        int32_t TargetThreadCount;
+        ptrdiff_t TargetThreadCount;
         double Complexity = double(FilterCount) * double(OutputSize) * double(K);
 
         if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-            TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+            TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
         } else {
             TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
 
-        int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+        ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;
