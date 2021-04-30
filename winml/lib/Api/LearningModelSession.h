@@ -13,7 +13,7 @@
 
 namespace WINMLP {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative> {
+struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
   LearningModelSession(_winml::IEngine* engine);
 
@@ -70,7 +70,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
 
   STDMETHOD(GetIntraOpThreadSpinning)
   (boolean* allowSpinning);
-
 
  public:
   /* Non-ABI methods */

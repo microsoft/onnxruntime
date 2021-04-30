@@ -59,6 +59,11 @@ interface ILearningModelEvaluationResultNative : IUnknown
 interface ILearningModelSessionNative : IUnknown
 {
     HRESULT GetIntraOpNumThreads(UINT32* numThreads);
+};
+
+[uuid(995ec4b4-73fc-4b65-b544-3de1c9b9eba4), object, local]
+interface ILearningModelSessionNative1 : IUnknown
+{
     HRESULT GetIntraOpThreadSpinning(boolean* allowSpinning);
 };
 
