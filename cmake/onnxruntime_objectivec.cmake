@@ -61,17 +61,17 @@ add_library(onnxruntime_objc SHARED
     ${onnxruntime_objc_common_srcs})
 
 target_include_directories(onnxruntime_objc
-    PUBLIC
-        "${OBJC_ROOT}/include"
     PRIVATE
+        "${OBJC_ROOT}/include"
         "${ONNXRUNTIME_ROOT}"
         "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
 target_link_libraries(onnxruntime_objc
-    PRIVATE
+    PUBLIC
         onnxruntime
+    PRIVATE
         safeint_interface
         ${FOUNDATION_LIB})
 
@@ -84,7 +84,24 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK_VERSION "A"
     PUBLIC_HEADER "${onnxruntime_objc_headers}"
     FOLDER "ONNXRuntime"
-    CXX_STANDARD 17) # TODO remove when everything else moves to 17
+    CXX_STANDARD 17 # TODO remove when everything else moves to 17
+    )
+
+target_link_options(onnxruntime_objc PRIVATE "-Wl,-headerpad_max_install_names")
+
+add_custom_command(TARGET onnxruntime_objc POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc>/Libraries"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "$<TARGET_FILE:onnxruntime>"
+        "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc>/Libraries"
+    COMMAND install_name_tool
+        -change "@rpath/$<TARGET_FILE_NAME:onnxruntime>"
+                "@rpath/$<TARGET_NAME:onnxruntime_objc>.framework/Libraries/$<TARGET_FILE_NAME:onnxruntime>"
+        "$<TARGET_FILE:onnxruntime_objc>")
+
+install(TARGETS onnxruntime_objc
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)
