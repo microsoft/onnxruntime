@@ -27,6 +27,9 @@ echo "Python version=$PYTHON_VER"
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
 if [[ $USE_CONDA = true ]]; then
+  # conda python version has already been installed.
+  # so, /home/onnxruntimedev/miniconda3/bin/python should point
+  # to the correct version of the python version
    PYTHON_EXE="/home/onnxruntimedev/miniconda3/bin/python"
 elif [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
    PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
