@@ -443,7 +443,7 @@ endif()
 #must after OpenMP settings
 find_package(Threads)
 
-macro(CHECK_NVCC_COMPILER_FLAG _FLAG _RESULT)
+macro(check_nvcc_compiler_flag _FLAG _RESULT)
     execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR ERROR_QUIET OUTPUT_QUIET)
     if("${NVCC_OUT}" MATCHES "0")
         set(${_RESULT} 1)
