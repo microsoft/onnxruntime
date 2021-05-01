@@ -18,9 +18,9 @@ const backendsSortedByPriority: string[] = [];
 /**
  * Register a backend.
  *
- * @param name the name as a key to lookup as an execution provider.
- * @param backend the backend object.
- * @param priority an integer indicating the priority of the backend. Higher number means higher priority.
+ * @param name - the name as a key to lookup as an execution provider.
+ * @param backend - the backend object.
+ * @param priority - an integer indicating the priority of the backend. Higher number means higher priority.
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
   if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
@@ -49,7 +49,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
 /**
  * Resolve backend by specified hints.
  *
- * @param backendHints a list of execution provider names to lookup. If omitted use registered backends as list.
+ * @param backendHints - a list of execution provider names to lookup. If omitted use registered backends as list.
  * @returns a promise that resolves to the backend.
  */
 export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
