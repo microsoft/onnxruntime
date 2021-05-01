@@ -3,7 +3,7 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
-from .ortmodule import PropagateCastOpsStrategy
+from . import PropagateCastOpsStrategy
 import onnxruntime as ort
 
 class ORTTrainerOptions(object):
@@ -196,7 +196,7 @@ class ORTTrainerOptions(object):
                             'default': {},
                             'schema': {
                                 'propagate_cast_ops_strategy': {
-                                    'type': 'PropagateCastOpsStrategy',
+                                    'type': 'onnxruntime.training.PropagateCastOpsStrategy',
                                     'default': INSERT_AND_REDUCE
                                 },
                                 'propagate_cast_ops_level': {
@@ -373,16 +373,17 @@ class ORTTrainerOptions(object):
         graph_transformer.gelu_recompute(bool, default False)
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
-        graph_transformer.propagate_cast_ops_strategy(PropagateCastOpsStrategy, default INSERT_AND_REDUCE)
-            Specify the choice of the cast propagation optimization strategy. The available options are
-            0. Insert-and-reduce cast operations around the nodes with allowed opcodes
-            1. Flood-fill algorithms to expand float16 regions in the graph using the allowed opcodes.
-        graph_transformer.propagate_cast_ops_level(integer, default -1)
-            Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
-            Use predetermined list of opcodes considered safe to move before/after cast operation
-            if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
-        graph_transformer.propagate_cast_ops_allow(list of str, [])
-            List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        graph_transformer.propagate_cast_ops_config (dict):
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default INSERT_AND_REDUCE)
+                Specify the choice of the cast propagation optimization strategy. The available options are
+                0. Insert-and-reduce cast operations around the nodes with allowed opcodes
+                1. Flood-fill algorithms to expand float16 regions in the graph using the allowed opcodes.
+            graph_transformer.propagate_cast_ops_config.level(integer, default -1)
+                Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+                Use predetermined list of opcodes considered safe to move before/after cast operation
+                if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+            graph_transformer.propagate_cast_ops_config.allow(list of str, [])
+                List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         graph_transformer.allow_layer_norm_mod_precision(bool, default False)
             Enable LayerNormalization/SimplifiedLayerNormalization fusion 
             even if it requires modified compute precision
@@ -520,10 +521,14 @@ class ORTTrainerOptionsValidator(cerberus.Validator):
     _SESSION_OPTIONS = cerberus.TypeDefinition(
         'session_options', (ort.SessionOptions,),())
 
+    _PROPAGATE_CAST_OPS_STRATEGY = cerberus.TypeDefinition(
+        "propagate_cast_ops_strategy", (PropagateCastOpsStrategy,),())
+
     types_mapping = cerberus.Validator.types_mapping.copy()
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
     types_mapping['session_options'] = _SESSION_OPTIONS
+    types_mapping['propagate_cast_ops_strategy'] = _PROPAGATE_CAST_OPS_STRATEGY
 
 
 def _check_is_callable(field, value, error):
@@ -710,21 +715,27 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': False
             },
             'propagate_cast_ops_config': {
-                'strategy': {
-                    'type': 'PropagateCastOpsStrategy',
-                    'min': PropagateCastOpsStrategy.INSERT_AND_REDUCE,
-                    'max': PropagateCastOpsStrategy.FLOOD_FILL,
-                    'default': PropagateCastOpsStrategy.INSERT_AND_REDUCE
-                },
-                'level': {
-                    'type': 'integer',
-                    'min': -1,
-                    'default': -1
-                },
-                'allow': {
-                    'type': 'list',
-                    'schema': {'type': 'string'},
-                    'default': []
+                'type': 'dict',
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'strategy': {
+                        'type': 'propagate_cast_ops_strategy',
+                        'nullable': True,
+                        'min': PropagateCastOpsStrategy.INSERT_AND_REDUCE,
+                        'max': PropagateCastOpsStrategy.FLOOD_FILL,
+                        'default': PropagateCastOpsStrategy.INSERT_AND_REDUCE
+                    },
+                    'level': {
+                        'type': 'integer',
+                        'min': -1,
+                        'default': -1
+                    },
+                    'allow': {
+                        'type': 'list',
+                        'schema': {'type': 'string'},
+                        'default': []
+                    }
                 }
            }
         }

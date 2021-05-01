@@ -10,7 +10,6 @@ ONNX_OPSET_VERSION = 12
 MINIMUM_TORCH_VERSION_STR = '1.8.1'
 
 from .ortmodule import ORTModule
-from onnxruntime.capi._pybind_state import PropagateCastOpsStrategy
 
 
 # Verify proper PyTorch is installed before proceding to ONNX Runtime initializetion
