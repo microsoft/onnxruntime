@@ -938,7 +938,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-  m.def("unload_shared_providers", &UnloadSharedProviders, "Unload the shared providers (needs to be done for a safe shutdown)");
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
@@ -2098,9 +2097,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 
-//  atexit([] {
-//    UnloadSharedProviders();
-//  });
+  atexit([] {
+    UnloadSharedProviders();
+  });
 #endif
 
 #ifdef ENABLE_TRAINING
