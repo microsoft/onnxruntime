@@ -520,8 +520,8 @@ void addObjectMethodsForTraining(py::module& m) {
       });
 
   py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local())
-      .value("InsertAndReduce", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
-      .value("FllodFill", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill);
+      .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
+      .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill);
       
   py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration> propagate_cast_ops_config(
       m, "PropagateCastOpsConfiguration",

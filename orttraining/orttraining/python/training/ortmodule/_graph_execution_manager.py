@@ -63,7 +63,7 @@ class GraphExecutionManager(ABC):
         # Graph transformer config
         # Specify cast propagation strategy. Currently two strategies are available, insert-and-reduce and flood-fill
         # the default is insert-and-reduce
-        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.InsertAndReduce
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.INSERT_AND_REDUCE
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # In addition to propagate_cast_ops_allow use predetermined list of opcodes considered safe to move before/after cast operation
         # if propagate_cast_ops_level is positive and use only propagate_cast_ops_allow otherwise.
@@ -286,10 +286,10 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         grad_builder_config.graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
         grad_builder_config.graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
-        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
-                                        _logger.LogLevel.INFO : C.Severity.INFO,
-                                        _logger.LogLevel.WARNING : C.Severity.WARNING,
-                                        _logger.LogLevel.ERROR : C.Severity.ERROR,
-                                        _logger.LogLevel.FATAL : C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
+        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE: C.Severity.VERBOSE,
+                                        _logger.LogLevel.INFO: C.Severity.INFO,
+                                        _logger.LogLevel.WARNING: C.Severity.WARNING,
+                                        _logger.LogLevel.ERROR: C.Severity.ERROR,
+                                        _logger.LogLevel.FATAL: C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)

@@ -73,15 +73,17 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'enabled': False,
             'loss_scaler': None
         },
-        'graph_transformer': {
+        'graph_transformer_config': {
             'attn_dropout_recompute': False,
             'gelu_recompute': False,
             'transformer_layer_recompute': False,
             'number_recompute_layers': 0,
-            'propagate_cast_ops_strategy': 0,
-            'propagate_cast_ops_level': -1,
-            'propagate_cast_ops_allow': [],
-            'allow_layer_norm_mod_precision': False
+            'allow_layer_norm_mod_precision': False,
+            'propagate_cast_ops_config': {
+                'strategy': 0,
+                'level': -1,
+                'allow': []
+            }
         },
         'utils': {
             'frozen_weights': [],

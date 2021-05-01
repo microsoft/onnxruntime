@@ -3,6 +3,7 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
+from .ortmodule import PropagateCastOpsStrategy
 import onnxruntime as ort
 
 class ORTTrainerOptions(object):
@@ -189,18 +190,25 @@ class ORTTrainerOptions(object):
                             'min': 0,
                             'default': 0
                         },
-                        'propagate_cast_ops_strategy': {
-                            'type': 'integer',
-                            'default': 0
-                        },
-                        'propagate_cast_ops_level': {
-                            'type': 'integer',
-                            'default': -1
-                        },
-                        'propagate_cast_ops_allow': {
-                            'type': 'list',
-                            'schema': {'type': 'string'},
-                            'default': []
+                        'propagate_cast_ops_config': {
+                            'type': 'dict',
+                            'required': False,
+                            'default': {},
+                            'schema': {
+                                'propagate_cast_ops_strategy': {
+                                    'type': 'PropagateCastOpsStrategy',
+                                    'default': INSERT_AND_REDUCE
+                                },
+                                'propagate_cast_ops_level': {
+                                    'type': 'integer',
+                                    'default': -1
+                                },
+                                'propagate_cast_ops_allow': {
+                                    'type': 'list',
+                                    'schema': {'type': 'string'},
+                                    'default': []
+                                }
+                            }
                         },
                         'allow_layer_norm_mod_precision': {
                             'type': 'boolean',
@@ -365,11 +373,11 @@ class ORTTrainerOptions(object):
         graph_transformer.gelu_recompute(bool, default False)
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
-        graph_transformer.propagate_cast_ops_strategy(integet, default 0)
+        graph_transformer.propagate_cast_ops_strategy(PropagateCastOpsStrategy, default INSERT_AND_REDUCE)
             Specify the choice of the cast propagation optimization strategy. The available options are
             0. Insert-and-reduce cast operations around the nodes with allowed opcodes
             1. Flood-fill algorithms to expand float16 regions in the graph using the allowed opcodes.
-        graph_transformer.propagate_cast_ops_level(integet, default -1)
+        graph_transformer.propagate_cast_ops_level(integer, default -1)
             Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
             Use predetermined list of opcodes considered safe to move before/after cast operation
             if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
@@ -697,26 +705,28 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'min': 0,
                 'default': 0
             },
-            'propagate_cast_ops_strategy': {
-                'type': 'integer',
-                'min': 0,
-                'max': 1,
-                'default': 0
-            },
-            'propagate_cast_ops_level': {
-                'type': 'integer',
-                'min': -1,
-                'default': -1
-            },
-            'propagate_cast_ops_allow': {
-                'type': 'list',
-                'schema': {'type': 'string'},
-                'default': []
-            },
             'allow_layer_norm_mod_precision': {
                 'type': 'boolean',
                 'default': False
             },
+            'propagate_cast_ops_config': {
+                'strategy': {
+                    'type': 'PropagateCastOpsStrategy',
+                    'min': PropagateCastOpsStrategy.INSERT_AND_REDUCE,
+                    'max': PropagateCastOpsStrategy.FLOOD_FILL,
+                    'default': PropagateCastOpsStrategy.INSERT_AND_REDUCE
+                },
+                'level': {
+                    'type': 'integer',
+                    'min': -1,
+                    'default': -1
+                },
+                'allow': {
+                    'type': 'list',
+                    'schema': {'type': 'string'},
+                    'default': []
+                }
+           }
         }
     },
     'utils': {
