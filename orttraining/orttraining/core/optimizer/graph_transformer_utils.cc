@@ -120,7 +120,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       if (config.propagate_cast_ops_config.level >= 0) {
         std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
-        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
+        transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                              static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                              config.propagate_cast_ops_config.allow,
                                                                              cuda_execution_provider));

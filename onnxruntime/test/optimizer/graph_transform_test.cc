@@ -4224,7 +4224,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       ASSERT_STATUS_OK(graph.Resolve());
       onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
       ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-          onnxruntime::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
+          std::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
           TransformerLevel::Level1));
       ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
       Path p = Path::Parse(test_case.model_uri);
