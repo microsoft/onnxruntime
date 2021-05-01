@@ -9,13 +9,13 @@ import * as zlib from 'zlib';
 
 function updatePackageJson() {
   const commonPackageJsonPath = path.join(__dirname, '..', '..', 'common', 'package.json');
-  const nodePackageJsonPath = path.join(__dirname, '..', 'package.json');
-  console.log(`=== start to update package.json: ${nodePackageJsonPath}`);
+  const selfPackageJsonPath = path.join(__dirname, '..', 'package.json');
+  console.log(`=== start to update package.json: ${selfPackageJsonPath}`);
   const packageCommon = fs.readJSONSync(commonPackageJsonPath);
-  const packageNode = fs.readJSONSync(nodePackageJsonPath);
+  const packageSelf = fs.readJSONSync(selfPackageJsonPath);
   const version = packageCommon.version;
-  packageNode.dependencies['onnxruntime-common'] = version;
-  fs.writeJSONSync(nodePackageJsonPath, packageNode);
+  packageSelf.dependencies['onnxruntime-common'] = version;
+  fs.writeJSONSync(selfPackageJsonPath, packageSelf, {spaces: 2});
   console.log('=== finished updating package.json.');
 }
 
