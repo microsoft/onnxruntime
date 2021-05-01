@@ -32,7 +32,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
-  rule_based_graph_transformer->Register(make_unique<AdjustBatchNormOutputs>());
 
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
                                      TransformerLevel::Level2);
