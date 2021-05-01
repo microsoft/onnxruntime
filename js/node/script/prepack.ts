@@ -14,7 +14,7 @@ function updatePackageJson() {
   const packageCommon = fs.readJSONSync(commonPackageJsonPath);
   const packageSelf = fs.readJSONSync(selfPackageJsonPath);
   const version = packageCommon.version;
-  packageSelf.dependencies['onnxruntime-common'] = version;
+  packageSelf.dependencies['onnxruntime-common'] = `~${version}`;
   fs.writeJSONSync(selfPackageJsonPath, packageSelf, {spaces: 2});
   console.log('=== finished updating package.json.');
 }
