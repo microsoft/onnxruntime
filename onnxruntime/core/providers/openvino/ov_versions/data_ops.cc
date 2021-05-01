@@ -1105,7 +1105,7 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
         unsupported_nodes_idx.push_back(node_idx);
       }
     }
-    return unsupported_nodes_idx;        
+    return unsupported_nodes_idx;
 }
 
 bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
