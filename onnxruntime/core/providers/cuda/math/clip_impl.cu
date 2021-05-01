@@ -19,22 +19,22 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  union const_alias {
+  union ConstAliasUnion {
     const T *t;
     const CudaT *cudaT;
-    const_alias(const T* _t) { t = _t;}
+    ConstAliasUnion(const T* _t) { t = _t;}
   };
-  union alias {
+  union AliasUnion {
     T *t;
     CudaT *cudaT;
-    alias(T* _t) { t = _t;}
+    AliasUnion(T* _t) { t = _t;}
   };
-  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union const_alias)input_data).cudaT,
-                                                                          ((union alias)output_data).cudaT,
-                                                                          ((union const_alias)min).cudaT,
-                                                                          ((union const_alias)max).cudaT,
-                                                                          *((union alias)&min_default).cudaT,
-                                                                          *((union alias)&max_default).cudaT,
+  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union ConstAliasUnion)input_data).cudaT,
+                                                                          ((union AliasUnion)output_data).cudaT,
+                                                                          ((union ConstAliasUnion)min).cudaT,
+                                                                          ((union ConstAliasUnion)max).cudaT,
+                                                                          *((union AliasUnion)&min_default).cudaT,
+                                                                          *((union AliasUnion)&max_default).cudaT,
                                                                           count);
 }
 
