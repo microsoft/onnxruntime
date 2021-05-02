@@ -1055,6 +1055,9 @@ class SymbolicShapeInference:
             """ normalizes a negative index to be in [0, bound) """
             try:
                 if not less_equal(0, index):
+                    if is_literal(index) and index <= -self.int_max_:
+                        # this case is handled separately
+                        return index
                     return bound + index
             except TypeError:
                 print("Cannot determine if {} < 0".format(index))
