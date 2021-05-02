@@ -120,7 +120,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
-    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, true);
+    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, is_W_signed_);
 
     if (packed_W_size_ != 0) {
       auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(group_count) * packed_W_size_));

@@ -255,6 +255,16 @@ ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* s
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::SessionGetIntraOpThreadSpinning, _In_ OrtSession* session, _Out_ bool* allow_spinning) {
+    API_IMPL_BEGIN
+    auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+    auto session_options = inference_session->GetSessionOptions();
+    auto iter = session_options.session_configurations.find("session.intra_op.allow_spinning");
+    *allow_spinning = iter == session_options.session_configurations.cend() || iter->second != "0";
+    return nullptr;
+    API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(winmla::SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);

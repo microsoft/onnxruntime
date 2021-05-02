@@ -470,7 +470,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     }
 
     if (all_tensors) {
-      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }

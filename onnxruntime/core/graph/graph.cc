@@ -1874,7 +1874,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -2395,7 +2395,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
         return;  // Incompatible. Do not use this function expansion.
     }
 
-    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
                                                                         logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
@@ -3461,7 +3461,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
   node.SetFunctionBody(*function_container_.back());
 #endif
