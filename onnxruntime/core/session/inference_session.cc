@@ -1164,6 +1164,15 @@ common::Status InferenceSession::Initialize() {
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
 
+    // Verify that there are no external initializers in the graph if external data is disabled.
+    onnxruntime::Graph& graph = model_->MainGraph();
+    if (session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigDisableExternalData, "0") == "1") {
+      const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
+      for (auto& it: initializers) {
+        ORT_ENFORCE(!utils::HasExternalData(*it.second), "Initializer tensors with external data is not allowed.");
+      }
+    }
+
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
@@ -1212,8 +1221,6 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_.use_deterministic_compute,
         session_options_.enable_mem_reuse);
-
-    onnxruntime::Graph& graph = model_->MainGraph();
 
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,
