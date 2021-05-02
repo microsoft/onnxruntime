@@ -155,6 +155,17 @@ jobs:
           arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+    - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
+      - ${{ if eq(parameters.BuildCSharp, true) }}:
+        - task: DotNetCoreCLI@2
+          displayName: 'Test C#'
+          inputs:
+            command: test
+            projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+            configuration: '$(BuildConfig)'
+            arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
       - ${{ if eq(parameters.RunTests, true) }}:
         - script: |
            mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
