@@ -32,14 +32,18 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
-npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
+let whitelist: Test.WhiteList;
+const shouldLoadSuiteTestData = (args.mode === 'suite0');
+if (shouldLoadSuiteTestData) {
+  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
 
-// The following is a whitelist of unittests for already implemented operators.
-// Modify this list to control what node tests to run.
-const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
-const json = stripJsonComments(jsonWithComments, {whitespace: true});
-const whitelist = JSON.parse(json) as Test.WhiteList;
-npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+  // The following is a whitelist of unittests for already implemented operators.
+  // Modify this list to control what node tests to run.
+  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
+  const json = stripJsonComments(jsonWithComments, {whitespace: true});
+  whitelist = JSON.parse(json) as Test.WhiteList;
+  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+}
 
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
@@ -55,7 +59,6 @@ const nodeTests = new Map<string, Test.ModelTestGroup[]>();
 const onnxTests = new Map<string, Test.ModelTestGroup>();
 const opTests = new Map<string, Test.OperatorTestGroup[]>();
 
-const shouldLoadSuiteTestData = (args.mode === 'suite0');
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test...');
 

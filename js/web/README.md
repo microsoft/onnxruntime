@@ -150,4 +150,4 @@ ONNX Runtime Web currently supports most operators in [ai.onnx](https://github.c
 
 ## License
 
-License information can be found [here](../../README.md#license).
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).
