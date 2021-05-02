@@ -79,14 +79,14 @@ static std::unordered_map<std::string, std::vector<int>> opcode_to_input_map = {
     {"Gather", {0}},
     {"Reshape", {0}},
     {"Dropout", {0}},
-    {"Layernormalization", {0}},
+    {"LayerNormalization", {0, 1, 2}},
 };
 
 static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = {
     {"Gather", {0}},
     {"Reshape", {0}},
     {"Dropout", {0}},
-    {"Layernormalization", {0}},
+    {"LayerNormalization", {0}},
 };
 
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
