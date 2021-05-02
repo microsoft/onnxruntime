@@ -28,22 +28,78 @@ class TestSymbolicShapeInference(unittest.TestCase):
                 guess_output_rank=True)
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
-    def test_flip(self):
-        starts = onnx.helper.make_tensor("starts", TensorProto.INT64, [1], [-1])
-        ends = onnx.helper.make_tensor("ends", TensorProto.INT64, [1], [-2**32])
-        axes = onnx.helper.make_tensor("axes", TensorProto.INT64, [1], [0])
-        steps = onnx.helper.make_tensor("steps", TensorProto.INT64, [1], [-1])
-        node_def = onnx.helper.make_node(
-            "Slice",
-            ["data", "starts", "ends", "axes", "steps"], ["output"]
+    def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
+        _dimstrmap = {dim: f"dim{i}" for i, dim in enumerate(input_dims)}
+        def dimstrmap(dim):
+            return _dimstrmap.get(dim, dim)
+        zero = onnx.helper.make_tensor("zero", TensorProto.INT64, [1], [0])
+        one = onnx.helper.make_tensor("one", TensorProto.INT64, [1], [1])
+        two = onnx.helper.make_tensor("two", TensorProto.INT64, [1], [2])
+        intmax = onnx.helper.make_tensor("intmax", TensorProto.INT64, [1], [2**32])
+        neg_one = onnx.helper.make_tensor("neg_one", TensorProto.INT64, [1], [-1])
+        neg_intmax = onnx.helper.make_tensor("neg_intmax", TensorProto.INT64, [1], [-2**32])
+        inputs = []
+        nodes = []
+        for i, dim in enumerate(input_dims):
+            inputs.append(onnx.helper.make_tensor_value_info(f"t{i}", TensorProto.FLOAT, ["B", dim]))
+            nodes.extend(
+                [
+                    onnx.helper.make_node("Shape", [f"t{i}"], [f"shape{i}"]),
+                    onnx.helper.make_node(
+                        "Slice",
+                        [f"shape{i}", "one", "two", "zero", "one"],
+                        [f"dim{i}"]
+                    ),
+                    onnx.helper.make_node("Neg", [f"dim{i}"], [f"neg_dim{i}"])
+                ]
+            )
+
+        def make_concat_dims(concat_name, dims):
+            dims = [
+                f"neg_{dimstrmap(dim[1:])}" if dim.startswith("-") else dimstrmap(dim) for dim in dims
+            ]
+            return onnx.helper.make_node("Concat", dims, [concat_name], axis=0)
+
+        nodes.extend(
+            [
+                onnx.helper.make_node("Concat", [inp.name for inp in inputs], ["concat"], axis=1),
+                make_concat_dims("starts", ["zero", start]),
+                make_concat_dims("ends", ["intmax", end]),
+                make_concat_dims("axes", ["zero", "one"]),
+                make_concat_dims("steps", ["one", step]),
+                onnx.helper.make_node("Slice", ["concat", "starts", "ends", "axes", "steps"], ["output"])
+            ]
         )
-        data = onnx.helper.make_tensor_value_info("data", TensorProto.FLOAT, ["N"])
-        output = onnx.helper.make_tensor_value_info("data", TensorProto.FLOAT, ["output_dim"])
-        graph_def = onnx.helper.make_graph([node_def], "graph", [data], [output], initializer=[starts, ends, axes, steps])
+        output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, ["d1", "d2"])
+        graph_def = onnx.helper.make_graph(
+            nodes,
+            "graph",
+            inputs,
+            [output],
+            initializer=[zero, one, two, intmax, neg_one, neg_intmax]
+        )
         model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
         output = unique_element(model.graph.output)
-        dim = unique_element(output.type.tensor_type.shape.dim)
-        self.assertEqual(dim.dim_param, "N")
+        shape = [d.dim_param for d in output.type.tensor_type.shape.dim]
+        self.assertEqual(shape, ["B", expected_output_dim])
+
+    def test_symbolic_negative_start_index(self):
+        self.check_slice_of_concat(["M", "N"], "-N", "intmax", "one", "N")
+
+    def test_non_unit_step(self):
+        self.check_slice_of_concat(["N", "N"], "zero", "intmax", "two", "N")
+
+    def test_symbolic_step(self):
+        self.check_slice_of_concat(["N", "N"], "zero", "intmax", "N", "floor((3*N - 1)/N)")
+
+    def test_symbolic_negative_step(self):
+        self.check_slice_of_concat(["N", "N"], "-one", "-intmax", "-N", "floor(-(1 - 3*N)/N)")
+
+    def test_flip(self):
+        self.check_slice_of_concat(["N"], "-one", "-intmax", "-one", "N")
+
+    def test_flip_of_concat(self):
+        self.check_slice_of_concat(["N", "N", "N"], "-one", "-intmax", "-one", "3*N")
 
 
 if __name__ == '__main__':
