@@ -171,6 +171,11 @@ ThreadPoolLite2<ThreadPerPool, PoolSize>::~ThreadPoolLite2() {
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::Schedule(SchdFn) {
+  ORT_ENFORCE(false);
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::StartProfiling() {
   profiler_.Start();
 }
@@ -234,11 +239,7 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t 
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
-void ThreadPoolLite2<ThreadPerPool, PoolSize>::Schedule(SchdFn) {}
-
-template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::MainLoop(int idx) {
-  profiler_.LogThreadId(idx);
   auto slot_from = idx / ThreadPerPool * PoolSize;
   auto slot_to = slot_from + PoolSize;
   while (!exit_) {
@@ -253,5 +254,127 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::MainLoop(int idx) {
 }
 
 template ThreadPoolLite2<2, 8>;
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+template <int32_t PoolSize>
+ThreadPoolLite3<PoolSize>::ThreadPoolLite3(Env*,
+                                           const ThreadOptions&,
+                                           const NAME_CHAR_TYPE*,
+                                           int num_threads,
+                                           bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
+  num_sub_threads_ = num_threads - 1;
+  for (int i = 0; i < PoolSize; ++i) {
+    slots_[i].thread_stages_.reset(new AtomicStage[num_sub_threads_]);
+    for (int j = 0; j < num_sub_threads_; ++j) {
+      slots_[i].thread_stages_[j].store(empty, std::memory_order_relaxed);
+    }
+  }
+  size_t affinity_mask = 3;
+  for (int i = 0; i < num_sub_threads_; ++i) {
+    sub_threads_.emplace_back(&ThreadPoolLite3::MainLoop, this, i);
+    SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask);
+    affinity_mask <<= 2;
+  }
+}
+
+template <int32_t PoolSize>
+ThreadPoolLite3<PoolSize>::~ThreadPoolLite3() {
+  exit_ = true;
+  for (std::thread& t : sub_threads_) {
+    t.join();
+  }
+}
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::Schedule(SchdFn) {
+  ORT_ENFORCE(false);
+}
+
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::StartProfiling() {
+  profiler_.Start();
+}
+
+template <int32_t PoolSize>
+std::string ThreadPoolLite3<PoolSize>::StopProfiling() {
+  return profiler_.Stop();
+}
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::ParallelFor(std::ptrdiff_t total, double, const Fn& fn) {
+  SimpleFn simple_fn = [&](std::ptrdiff_t i) {
+    if (i < total) {
+      fn(i, i + 1);
+    };
+  };
+  SimpleParallelFor(total, simple_fn);
+}
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::ParallelFor(std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
+  double cost = 0;
+  ParallelFor(total, cost, fn);
+}
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
+  std::atomic<std::ptrdiff_t> iter{0};
+  SchdFn schd_fn = [&]() {
+    std::ptrdiff_t i{0};
+    while ((i = iter.fetch_add(1, std::memory_order_relaxed)) < total) {
+      fn(i);
+    }
+  };
+  int at = -1;
+  for (int i = 0; i < PoolSize; ++i) {
+    Stage stage = slots_[i].slot_stage_.load(std::memory_order_relaxed);
+    if (empty == stage && slots_[i].slot_stage_.compare_exchange_weak(stage, running, std::memory_order_relaxed)) {
+      slots_[i].schd_fn_ = schd_fn;
+      for (int j = 0; j < num_sub_threads_; ++j) {
+        slots_[i].thread_stages_[j].store(ready, std::memory_order_release);
+      }
+      at = i;
+      break;
+    }
+  }
+  schd_fn();
+  if (at > -1) {
+    Slot& slot = slots_[at];
+    for (int i = 0; i < num_sub_threads_; ++i) {
+      AtomicStage& atomic_stage = slot.thread_stages_[i];
+      Stage stage = atomic_stage.load(std::memory_order_relaxed);
+      if (ready == stage && atomic_stage.compare_exchange_weak(stage, empty, std::memory_order_relaxed)) {
+        continue;
+      }
+      if (running == stage) {
+        while (atomic_stage.load(std::memory_order_acquire) != done)
+          ;
+      } else if (done != stage) {
+        ORT_ENFORCE(false);
+      }
+      atomic_stage.store(empty, std::memory_order_relaxed);
+    }
+    slots_[at].slot_stage_.store(empty, std::memory_order_relaxed);
+  }
+}
+
+template <int32_t PoolSize>
+void ThreadPoolLite3<PoolSize>::MainLoop(int idx) {
+  while (!exit_) {
+    for (int i = 0; i < PoolSize; ++i) {
+      AtomicStage& atomic_stage = slots_[i].thread_stages_[idx];
+      Stage stage = atomic_stage.load(std::memory_order_relaxed);
+      if (ready == stage && atomic_stage.compare_exchange_weak(stage, running, std::memory_order_acquire)) {
+        slots_[i].schd_fn_();
+        atomic_stage.store(done, std::memory_order_release);
+      }
+    }
+  }
+}
+
+template ThreadPoolLite3<16>;
+
 }  // namespace concurrency
 }  // namespace onnxruntime
