@@ -466,7 +466,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
               }
               new_consumers.push_back(consumer);
             }
-            if (graph.IsOutput(child_output)) {
+            if (graph.IsOutput(child_output) && nullptr != producer) {
               Node& identity = graph.AddNode(graph.GenerateNodeName(producer->Name() + "_identity"),
                                              "Identity",
                                              "Created as a place-holder for a graph output",
