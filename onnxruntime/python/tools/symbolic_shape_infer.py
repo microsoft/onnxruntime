@@ -624,7 +624,7 @@ class SymbolicShapeInference:
                                           output_shape))
 
     def _infer_Concat(self, node):
-        if any([i in self.sympy_data_ for i in node.input]):
+        if any([i in self.sympy_data_ or i in self.initializers_ for i in node.input]):
             values = self._get_int_values(node)
             if all([v is not None for v in values]):
                 assert 0 == get_attribute(node, 'axis')
