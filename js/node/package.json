@@ -7,7 +7,7 @@
     ]
   },
   "license": "MIT",
-  "name": "onnxruntime",
+  "name": "onnxruntime-node",
   "repository": {
     "url": "https://github.com/Microsoft/onnxruntime.git",
     "type": "git"
@@ -16,7 +16,7 @@
   "version": "1.7.0",
   "dependencies": {
     "onnxruntime-common": "file:../common",
-    "prebuild-install": "^6.0.1"
+    "prebuild-install": "^6.1.2"
   },
   "scripts": {
     "build": "tsc && node ./script/build",
@@ -62,5 +62,5 @@
     "linux"
   ],
   "types": "./types/lib/index.d.ts",
-  "description": "Node.js binding of ONNXRuntime"
+  "description": "ONNXRuntime Node.js binding"
 }
