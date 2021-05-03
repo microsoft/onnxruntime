@@ -147,9 +147,9 @@ module.exports = () => {
       buildOrtWebConfig({ suffix: '.min' }),
       // ort-web.js
       buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
-      // ort-web.min.js
+      // ort-web.es6.min.js
       buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
-      // ort-web.js
+      // ort-web.es6.js
       buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
 
       // ort-web.node.js
