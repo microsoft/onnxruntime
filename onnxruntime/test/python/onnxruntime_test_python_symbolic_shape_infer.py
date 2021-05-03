@@ -57,7 +57,6 @@ class TestSymbolicShapeInferenceForUnsqueeze(unittest.TestCase):
         ])
         model = helper.make_model(graph, producer_name='Unsqueeze_Test_Model')
         model.opset_import[0].version = 11
-        onnx.save_model(model, "unsqueeze.onnx")
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
         expected_shapes = [
             helper.make_tensor_value_info('temp', TensorProto.FLOAT, [1, 'b', 's']),
@@ -78,7 +77,6 @@ class TestSymbolicShapeInferenceForUnsqueeze(unittest.TestCase):
         ])
         model = helper.make_model(graph, producer_name='Unsqueeze_Test_Model')
         model.opset_import[0].version = 13
-        onnx.save_model(model, "unsqueeze.onnx")
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
         expected_shapes = [
             helper.make_tensor_value_info('temp', TensorProto.FLOAT, ['b', 's', 1]),
