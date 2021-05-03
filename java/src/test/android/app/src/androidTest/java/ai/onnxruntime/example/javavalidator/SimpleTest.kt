@@ -23,23 +23,16 @@ class SimpleTest {
             val session = env.createSession(readModel("sigmoid.ort"), opts)
             val inputName = session.inputNames.iterator().next()
             val testdata = Array(3) { Array(4) { FloatArray(5) } }
-            for (i in 0..2) {
-                for (j in 0..3) {
-                    for (k in 0..4) {
-                        testdata[i][j][k] = (i+j+k).toFloat()
-                    }
-                }
-            }
-            //expected sigmoid output is y = 1.0 / (1.0 + exp(-x))
             val expected =  Array(3) { Array(4) { FloatArray(5) } }
             for (i in 0..2) {
                 for (j in 0..3) {
                     for (k in 0..4) {
+                        testdata[i][j][k] = (i+j+k).toFloat()
+                        //expected sigmoid output is y = 1.0 / (1.0 + exp(-x))
                         expected[i][j][k] = (1.0 / (1.0 + kotlin.math.exp(-testdata[i][j][k]))).toFloat()
                     }
                 }
             }
-
             val inputTensor = OnnxTensor.createTensor(env, testdata)
             inputTensor.use {
                 val output = session.run(Collections.singletonMap(inputName, inputTensor))
