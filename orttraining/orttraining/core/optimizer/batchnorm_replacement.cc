@@ -40,7 +40,7 @@ Status BatchNormReplacement::Apply(Graph& graph, Node& bn_node, RewriteRuleEffec
                                              bn_outputs,
                                              &bn_node.GetAttributes(),
                                              kMSDomain);
-  batchnorm_internal_node.AddAttribute("is_training", static_cast<int64_t>(1));
+  batchnorm_internal_node.AddAttribute("training_mode", static_cast<int64_t>(1));
   // Assign provider to this new node. Provider should be same as the provider for old node.
   batchnorm_internal_node.SetExecutionProviderType(bn_node.GetExecutionProviderType());
   graph_utils::FinalizeNodeFusion(graph, batchnorm_internal_node, bn_node);

@@ -1987,9 +1987,9 @@ Return true if all elements are true and false otherwise.
 
           if (ctx.getAttribute("training_mode") &&
                static_cast<int>(ctx.getAttribute("training_mode")->i()) != 0) {
-            if (ctx.getNumOutputs() != 3)
+            if (ctx.getNumOutputs() != 5)
               fail_shape_inference(
-                "This number of op outputs should be 3 when Training_mode = True, but it is not.");
+                "This number of op outputs should be 5 when Training_mode = True, but it is not.");
           } else {
             if (ctx.getNumOutputs() != 1)
               fail_shape_inference(
@@ -2002,11 +2002,12 @@ Return true if all elements are true and false otherwise.
 
             propagateElemTypeFromInputToOutput(ctx, 3, 1);
             updateOutputShape(ctx, 1, outputs_shape);
-
-            if (ctx.getNumOutputs() > 2) {
-              propagateElemTypeFromInputToOutput(ctx, 4, 2);
-              updateOutputShape(ctx, 2, outputs_shape);
-            }
+            propagateElemTypeFromInputToOutput(ctx, 4, 2);
+            updateOutputShape(ctx, 2, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            updateOutputShape(ctx, 3, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 4);
+            updateOutputShape(ctx, 4, outputs_shape);
           }
         });
 

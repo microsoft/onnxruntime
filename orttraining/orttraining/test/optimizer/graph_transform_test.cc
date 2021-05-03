@@ -16,6 +16,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
@@ -32,6 +33,49 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
+
+TEST_F(GraphTransformationTests, BatchNormReplacement) {
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
+              {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  // 1x3x3x3
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  TypeProto scale_tensor_type;
+  scale_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  scale_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  auto& input_X = graph.GetOrCreateNodeArg("X", &input_tensor_type);
+  auto& input_scale = graph.GetOrCreateNodeArg("scale", &scale_tensor_type);
+  auto& input_B = graph.GetOrCreateNodeArg("B", &scale_tensor_type);
+  auto& input_mean = graph.GetOrCreateNodeArg("input_mean", &scale_tensor_type);
+  auto& input_var = graph.GetOrCreateNodeArg("input_var", &scale_tensor_type);
+
+  auto& output_Y = graph.GetOrCreateNodeArg("Y", &input_tensor_type);
+  graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var}, {&output_Y});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
+  rule_transformer_L1->Register(onnxruntime::make_unique<BatchNormReplacement>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  
+  ASSERT_TRUE(graph.NumberOfNodes() == 1);
+  // Make sure that BN was updated to add outputs
+  ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
+}
 
 TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   auto model_uri = MODEL_FOLDER "dropout_ratio.onnx";
