@@ -204,7 +204,7 @@ dependencies {
         implementation jscFlavor
     }
 
-    implementation project(':reactnativeonnxruntimemodule')
+    implementation project(':onnxruntimereactnative')
 }
 
 // Run this once to be able to run the application with BUCK

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Button, Image, Text, View } from 'react-native';
-import { InferenceSession, Tensor } from 'onnxruntime-reactnative';
+import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import MNIST, {
   MNISTInput,
   MNISTOutput,

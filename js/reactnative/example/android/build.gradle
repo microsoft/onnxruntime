@@ -36,7 +36,7 @@ allprojects {
         maven { url 'https://www.jitpack.io' }
 
         flatDir {
-          dir project(':reactnativeonnxruntimemodule').file('libs')
+          dir project(':onnxruntimereactnative').file('libs')
         }
     }
 }

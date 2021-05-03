@@ -1,6 +1,6 @@
 {
-  "name": "onnxruntime-reactnative",
-  "version": "0.5.0",
+  "name": "onnxruntime-react-native",
+  "version": "1.7.0",
   "description": "Onnxruntime bridge for react native",
   "main": "dist/commonjs/index",
   "module": "dist/module/index",
@@ -12,8 +12,8 @@
     "dist",
     "android",
     "ios",
-    "onnxruntime-reactnative.iphoneos.podspec",
-    "onnxruntime-reactnative.iphonesimulator.podspec",
+    "onnxruntime-react-native.iphoneos.podspec",
+    "onnxruntime-react-native.iphonesimulator.podspec",
     "!dist/typescript/example",
     "!android/build",
     "!ios/build",
@@ -34,7 +34,10 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "ONNX",
+    "ONNXRuntime",
+    "ONNX Runtime"
   ],
   "repository": "https://github.com/Microsoft/onnxruntime.git",
   "author": "hanbitmyths",
@@ -42,7 +45,7 @@
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"
   },
-  "homepage": "https://github.com/Microsoft/onnxruntime/js/reactnative#readme",
+  "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },

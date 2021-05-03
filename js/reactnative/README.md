@@ -1,30 +1,29 @@
-# -onnxruntime-reactnative
+# onnxruntime-react-native
 
-Onnxruntime bridge for react native
+ONNX Runtime React Native provides a JavaScript library for running ONNX models on React Native app.
 
 ## Installation
 
 ```sh
-npm install onnxruntime-common
-npm install onnxruntime-reactnative
+yarn add onnxruntime-react-native
 ```
 
 ## Usage
 
 ```js
-import { InferenceSesion } from "onnxruntime-reactnative";
+import { InferenceSesion } from "onnxruntime-react-native";
 
-// ...
-
+// load a model
 const session: InferenceSession = await InferenceSession.create(modelPath);
 // input as InferenceSession.OnnxValueMapType
-const result = sesion.run(input, ['num_detection:0', 'detection_classes:0'])
+const result = session.run(input, ['num_detection:0', 'detection_classes:0'])
 ```
 
-## Contributing
+Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/js) for samples and tutorials. Different from other JavaScript frameworks like node.js and web, React Native library doesn't support these features yet.
 
-See the [contributing guide](CONTRIBUTING.md) to learn how to contribute to the repository and the development workflow.
+- Unsigned data type at Tensor
+- Model loading using ArrayBuffer
 
 ## License
 
-MIT
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).
