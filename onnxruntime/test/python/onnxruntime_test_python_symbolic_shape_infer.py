@@ -90,10 +90,10 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
         self.check_slice_of_concat(["N", "N"], "zero", "intmax", "two", "N")
 
     def test_symbolic_step(self):
-        self.check_slice_of_concat(["N", "N"], "zero", "intmax", "N", "floor((3*N - 1)/N)")
+        self.check_slice_of_concat(["N", "N"], "zero", "intmax", "N", "floor(-1/N) + 3")
 
     def test_symbolic_negative_step(self):
-        self.check_slice_of_concat(["N", "N"], "-one", "-intmax", "-N", "floor(-(1 - 3*N)/N)")
+        self.check_slice_of_concat(["N", "N"], "-one", "-intmax", "-N", "floor(-1/N) + 3")
 
     def test_flip(self):
         self.check_slice_of_concat(["N"], "-one", "-intmax", "-one", "N")
