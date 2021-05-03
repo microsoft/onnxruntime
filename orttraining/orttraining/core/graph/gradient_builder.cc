@@ -12,6 +12,7 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
@@ -788,36 +789,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
-  std::vector<NodeDef> result;
   size_t numInputs = GetSrcNodeInputSize();
-  if (SrcNodeOpsetVersion() < 13) {  //axes attribute
+  if (SrcNodeOpsetVersion() < 13) {  // Axes attribute exists.
     auto attributes = SrcNodeAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      result.push_back(
-          NodeDef("Unsqueeze",
-                  {GO(0)},
-                  {GI(0)},
-                  {MakeAttribute("axes", axes_values)}));
+      return std::vector<NodeDef>{NodeDef("Unsqueeze",
+                                          {GO(0)},
+                                          {GI(0)},
+                                          {MakeAttribute("axes", axes_values)})};
     }
-  } else if (numInputs == 2) {  //optional input 'axes' is provided
-    result.push_back(
-        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
-                {GO(0), I(1)},
-                {GI(0)}));
-  } else {  // if axes attribute/input not provided for squeeze
-    result.push_back(
-        NodeDef("Shape",
-                {I(0)},
-                {IA("I0_shape")}));
-    result.push_back(
-        NodeDef("Reshape",
-                {GO(0), IA("I0_shape")},
-                {GI(0)}));
+  } else if (numInputs == 2) {  // Optional input 'axes' is provided
+    return std::vector<NodeDef>{NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                                        {GO(0), I(1)},
+                                        {GI(0)})};
   }
 
-  return result;
+  // If axes attribute/input is not provided for squeeze, no matter which OpSet version.
+  return std::vector<NodeDef>{NodeDef("Shape",
+                                      {I(0)},
+                                      {IA("I0_shape")}),
+                              NodeDef("Reshape",
+                                      {GO(0), IA("I0_shape")},
+                                      {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
@@ -1196,37 +1191,48 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
-  const ArgDef X = I(0);
+  const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
-  // TODO: ONNX supports unknown shape for the input feed, e.g. [1, 3, -1, 28],
-  // thus the shape of input might be missing at graph construction time.
-  // However, in practice, we haven't seen a single model with unknown input shape.
-  // We need to get the shape at runtime if this case need to be supported.
-  // One way to do it is: scale = Size_Op(X, from=2); scaled_dY = Mul_Op(dY, scale)
-  const auto& x_dims = X.type_proto->tensor_type().shape().dim();
-  ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
-  int64_t scale = 1;
-  for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
-    if (dim->has_dim_value()) {
-      scale *= dim->dim_value();
-    } else {
-      ORT_ENFORCE(false, "Dimension missing");
+  bool has_concrete_shape = true;
+  SafeInt<int64_t> scale = 1;
+  std::vector<Dimension> x_dims;
+  if (GetShape(X, x_dims).IsOK()) {
+    ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
+    for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
+      if (dim->has_dim_value()) {
+        scale *= dim->dim_value();
+      } else {
+        has_concrete_shape = false;
+        break;
+      }
     }
+  } else {
+    has_concrete_shape = false;
   }
 
-  NodeDef scale_node = ConstantScalarNode(1.0f / static_cast<float>(scale), Name("Scale"), IElemType(0));
-  ArgDef SCALE = scale_node.output_args[0];
-  return std::vector<NodeDef>{
-      scale_node,
-      NodeDef("Mul",
-              {GO(0), SCALE},
-              {IA("scaled_dY")}),
-      NodeDef("Shape",
-              {X},
-              {IA("x_shape")}),
-      NodeDef("Expand",
-              {IA("scaled_dY"), IA("x_shape")},
-              {GI(0)})};
+  std::vector<NodeDef> result;
+  ArgDef scale_argdef;
+  if (has_concrete_shape) {
+    NodeDef scale_node = ConstantScalarNode(static_cast<float>(scale), Name("Scale"), IElemType(0));
+    result.push_back(scale_node);
+
+    scale_argdef = scale_node.output_args[0];
+  } else {
+    result.push_back(NodeDef("Size", {X}, {IA("X_Size")}));
+    result.push_back(NodeDef("Size", {Y}, {IA("Y_Size")}));
+
+    scale_argdef = IA("Scale");
+    result.push_back(NodeDef("Div", {IA("X_Size"), IA("Y_Size")}, {scale_argdef}));
+  }
+
+  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1},
+                           {dY, scale_argdef},
+                           {IA("scaled_dY")},
+                           {MakeAttribute("scale_down", int64_t(1))}));
+  result.push_back(NodeDef("Shape", {X}, {IA("x_shape")}));
+  result.push_back(NodeDef("Expand", {IA("scaled_dY"), IA("x_shape")}, {dX}));
+
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {

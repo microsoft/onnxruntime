@@ -440,7 +440,7 @@ std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
   info.device_id = device_id;
   info.gpu_mem_limit = gpu_mem_limit;
   info.arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
-  return onnxruntime::make_unique<CUDAExecutionProvider>(info);
+  return std::make_unique<CUDAExecutionProvider>(info);
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
@@ -526,7 +526,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 
@@ -705,7 +705,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 
@@ -849,7 +849,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 
@@ -955,7 +955,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 
@@ -1063,7 +1063,7 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 
@@ -1171,7 +1171,7 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
   auto test_cuda_ep = create_cuda_execution_provider();
  
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(test_cuda_ep)).IsOK());
 

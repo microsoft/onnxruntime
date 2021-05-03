@@ -248,6 +248,14 @@
         18128921553709069152
     ],
     [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        13094179255141648608
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        17832136363477464736
+    ],
+    [
         "BitShift ai.onnx CPUExecutionProvider",
         4758677670685660688
     ],
@@ -893,15 +901,15 @@
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
-        13401700334046441640
-    ],
-    [
-        "Identity ai.onnx CPUExecutionProvider",
         16879814636194901248
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
         18001636502361632792
+    ],
+    [
+        "Identity ai.onnx CPUExecutionProvider",
+        16515685968327103576
     ],
     [
         "If ai.onnx CPUExecutionProvider",

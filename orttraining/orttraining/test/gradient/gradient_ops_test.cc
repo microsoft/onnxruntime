@@ -796,13 +796,17 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
 
   //globalaveragepool
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error, {},
+                                          /*check_not_have_gradient*/ true,
+                                          /*check_not_have_shape_inferencing*/ true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   //globalaveragepool_precomputed
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error, {},
+                                          /*check_not_have_gradient*/ true,
+                                          /*check_not_have_shape_inferencing*/ true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -1308,6 +1312,14 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
     x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+
+    // Test case w/o axes attribute/input, only valid for Squeeze Op.
+    if (op_def.type == "Squeeze") {
+      gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes);
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
+
+    // test case w/ axes attribute/input.
     if (axes_input) {
       std::vector<float> axes_float;
       std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
