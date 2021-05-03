@@ -230,6 +230,14 @@ class ModelTestBuilder {
     return AddNode(op_type, input_args, {output_arg}, kMSDomain);
   }
 
+  void SetGraphOutputs() {
+    std::vector<const NodeArg*> outputs;
+    for (auto& output_name : output_names_) {
+      outputs.push_back(graph_.GetNodeArg(output_name));
+    }
+    graph_.SetOutputs(outputs);
+  }
+
   Graph& graph_;
   NameMLValMap feeds_;
   std::vector<std::string> output_names_;
