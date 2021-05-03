@@ -1523,12 +1523,12 @@ int CurrentThreadId() const EIGEN_FINAL {
                         [&]() {
                           blocked_--;
                         });
-          // Thread just unblocked.  Aside from exit conditions,
-          // either work was pushed to us, or it was pushed to an
-          // overloaded queue
-          assert(!t);
-          t = q.PopFront();
-          if (!t) t = Steal(StealAttemptKind::TRY_ALL);}
+          // Thread just unblocked.  Unless we picked up work while
+          // blocking, or are exiting, then either work was pushed to
+          // us, or it was pushed to an overloaded queue
+          if (!t) t = q.PopFront();
+          if (!t) t = Steal(StealAttemptKind::TRY_ALL);
+        }
       }
       if (t) {
         td.SetActive();
