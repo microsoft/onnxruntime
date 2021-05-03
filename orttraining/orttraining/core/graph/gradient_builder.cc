@@ -1528,14 +1528,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-    //NodeDef even_indices_node = ConstantVectorNode(even_indices, Name("even_indices"));
-    //result.push_back(even_indices_node);
-    //int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
-    //result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-    //                         {IA("reshape_tile_grad_op"), even_indices_node.output_args[0]},
-    //                         {GI(0)},
-    //                         {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
-    
+   
     AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
