@@ -738,12 +738,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       ComputeCoprimes(i, &all_coprimes_.back());
     }
 
-    // Allocate space for per-thread bits to indicate which threads to consider
-    // preferable for pushing work.  We use a regular array given that a std::vector
-    // cannot contain std::atomic.
-    num_hint_words_ = static_cast<int>((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
-    good_worker_hints_ = std::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
-
     worker_data_.resize(num_threads_);
     for (auto i = 0u; i < num_threads_; i++) {
       worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
@@ -1429,16 +1423,6 @@ int CurrentThreadId() const EIGEN_FINAL {
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
 
-  // Allow control over how many bits to use in each entry in good_worker_hints_.
-  // We reduce this below the full 64-bit word size for two reasons.  First, it
-  // helps test coverage on machines without 64 vCPUS.  Second, it lets us
-  // reduce contention by having different threads start work searching for hints
-  // at different locations in the bitmap.
-
-  static const unsigned bits_per_hint_word_ = 4;
-  unsigned num_hint_words_;
-  std::unique_ptr<std::atomic<uint64_t>[]> good_worker_hints_;
-
   // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
   // a clean exit, each thread will observe (1) done_ set, indicating that the
   // destructor has been called, (2) all threads blocked, and (3) no
@@ -1486,27 +1470,51 @@ int CurrentThreadId() const EIGEN_FINAL {
           td.SetBlocked(// Pre-block test
                         [&]() -> bool {
                           bool should_block = true;
-                          // Number of blocked threads is used as termination condition.
-                          // If we are shutting down and all worker threads blocked without work,
-                          // that's we are done.
-                          blocked_++;
-                          if (done_ && blocked_ == num_threads_) {
+                          // Check whether work was pushed to us while attempting to block.  We make
+                          // this test while holding the per-thread status lock, and after setting
+                          // our status to ThreadStatus::Blocking.
+                          //
+                          // This synchronizes with ThreadPool::Schedule which pushes work to the queue
+                          // and then tests for ThreadStatus::Blocking/Blocked (via EnsureAwake):
+                          //
+                          // Main thread:                    Worker:
+                          //   #1 Push work                   #A Set status blocking
+                          //   #2 Read worker status          #B Check queue
+                          //   #3 Wake if blocking/blocked
+                          //
+                          // If #A is before #2 then main sees worker blocked and wakes
+                          //
+                          // If #A if after #2 then #B will see #1, and we abandon blocking
+                          assert(!t);
+                          t = q.PopFront();
+                          if (t) {
                             should_block = false;
-                            // Almost done, but need to re-check queues.
-                            // Consider that all queues are empty and all worker threads are preempted
-                            // right after incrementing blocked_ above. Now a free-standing thread
-                            // submits work and calls destructor (which sets done_). If we don't
-                            // re-check queues, we will exit leaving the work unexecuted.
-                            if (NonEmptyQueueIndex() != -1) {
-                              // Note: we must not pop from queues before we decrement blocked_,
-                              // otherwise the following scenario is possible. Consider that instead
-                              // of checking for emptiness we popped the only element from queues.
-                              // Now other worker threads can start exiting, which is bad if the
-                              // work item submits other work. So we just check emptiness here,
-                              // which ensures that all worker threads exit at the same time.
-                              blocked_--;
-                            } else {
-                              should_exit = true;
+                          }
+
+                          // No work pushed to us, continue attempting to block.  The remaining
+                          // test  is to synchronize with termination requests.  If we are
+                          // shutting down and all worker threads blocked without work, that's
+                          // we are done.
+                          if (should_block) {
+                            blocked_++;
+                            if (done_ && blocked_ == num_threads_) {
+                              should_block = false;
+                              // Almost done, but need to re-check queues.
+                              // Consider that all queues are empty and all worker threads are preempted
+                              // right after incrementing blocked_ above. Now a free-standing thread
+                              // submits work and calls destructor (which sets done_). If we don't
+                              // re-check queues, we will exit leaving the work unexecuted.
+                              if (NonEmptyQueueIndex() != -1) {
+                                // Note: we must not pop from queues before we decrement blocked_,
+                                // otherwise the following scenario is possible. Consider that instead
+                                // of checking for emptiness we popped the only element from queues.
+                                // Now other worker threads can start exiting, which is bad if the
+                                // work item submits other work. So we just check emptiness here,
+                                // which ensures that all worker threads exit at the same time.
+                                blocked_--;
+                              } else {
+                                should_exit = true;
+                              }
                             }
                           }
                           return should_block;
@@ -1515,12 +1523,12 @@ int CurrentThreadId() const EIGEN_FINAL {
                         [&]() {
                           blocked_--;
                         });
-          // Thread just unblocked.  Aside from exit conditions,
-          // either work was pushed to us, or it was pushed to an
-          // overloaded queue
-          assert(!t);
-          t = q.PopFront();
-          if (!t) t = Steal(StealAttemptKind::TRY_ALL);}
+          // Thread just unblocked.  Unless we picked up work while
+          // blocking, or are exiting, then either work was pushed to
+          // us, or it was pushed to an overloaded queue
+          if (!t) t = q.PopFront();
+          if (!t) t = Steal(StealAttemptKind::TRY_ALL);
+        }
       }
       if (t) {
         td.SetActive();

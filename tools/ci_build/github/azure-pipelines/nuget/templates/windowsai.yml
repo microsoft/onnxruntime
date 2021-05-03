@@ -630,12 +630,12 @@ jobs:
         popd
         
         Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\Debug\net5.0-windows10.0.19041.0
+        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
         
         Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (AnyCpu)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.19041.0
+        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
         
