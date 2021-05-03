@@ -54,3 +54,6 @@ fi
 
 # Clear the build
 rm -rf /build/MinSizeRel
+
+# Use a newer version of gradle for Android Test
+/bin/bash /onnxruntime_src/tools/ci_build/github/android/setup_gradle_wrapper.sh /onnxruntime_src
