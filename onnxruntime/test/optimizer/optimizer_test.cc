@@ -84,7 +84,7 @@ TEST(OptimizerTest, Basic) {
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     std::vector<OrtValue> fetches;
-    frame.GetOutputs(fetches);
+    frame.GetOutputs(fetch_mlvalue_idxs, fetches);
     auto& tensor = fetches[0].Get<Tensor>();
     const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;

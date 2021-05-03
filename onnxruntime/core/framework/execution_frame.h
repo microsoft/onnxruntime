@@ -55,9 +55,6 @@ class IExecutionFrame {
   void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
   void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                      const std::unordered_map<int, OrtValue>& initializers);
-
-  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
-  Status GetOutputsAndRelease(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
   // TO DO: make it thread safe
@@ -74,7 +71,7 @@ class IExecutionFrame {
    * write the output values to the 'fetches' vector
    * Don't access the values after SessionState is destroyed 
    */
-  Status GetOutputs(std::vector<OrtValue>& fetches);
+  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches, bool release = true);
 
   AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
@@ -90,6 +87,13 @@ class IExecutionFrame {
 
   // returns true if the ort_value_idx is an output from the graph
   bool IsOutput(int ort_value_idx) const;
+
+  // All the intermediate values for the entire graph.
+  // Input and Output values are passed in by executors
+  OrtValue* all_values_;
+
+  // ml_value_idxs from all_values_ that should be destructed when execution frame goes out of scope.
+  std::vector<int> ml_values_idxs_destroy_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
@@ -111,10 +115,6 @@ class IExecutionFrame {
   }
 
   const NodeIndexInfo& node_index_info_;
-
-  // All the intermediate values for the entire graph.
-  // Input and Output values are passed in by executors
-  OrtValue* all_values_;
 
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;

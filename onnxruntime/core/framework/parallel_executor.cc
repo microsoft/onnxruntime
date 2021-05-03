@@ -78,7 +78,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output
-  ORT_RETURN_IF_ERROR(root_frame_->GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(root_frame_->GetOutputs(fetch_mlvalue_idxs, fetches));
   VLOGS(logger, 1) << "Done execution.";
 
   if (root_frame_->HasMemoryPatternPlanner()) {

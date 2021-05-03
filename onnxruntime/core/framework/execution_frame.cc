@@ -52,7 +52,6 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
-
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -66,9 +65,7 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 }
 
 void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
-
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
-
 
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
@@ -100,52 +97,6 @@ void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, 
     }
   }
 }
-
-Status IExecutionFrame::GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches) {
-  auto num_fetches = fetch_mlvalue_idxs.size();
-
-  if (fetches.empty()) {
-    fetches.resize(num_fetches);
-  } else {
-    // if there's a mismatch things are out so sync so fail
-    if (fetches.size() != num_fetches) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
-                             " entries which doesn't match the number of fetches the frame was initialized with of ",
-                             num_fetches);
-    }
-  }
-
-  for (size_t idx = 0; idx < num_fetches; ++idx) {
-    fetches[idx] = GetMLValue(fetch_mlvalue_idxs[idx]);
-  }
-
-  return Status::OK();
-}
-
-Status IExecutionFrame::GetOutputsAndRelease(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches) {
-  auto num_fetches = fetch_mlvalue_idxs.size();
-
-  if (fetches.empty()) {
-    fetches.resize(num_fetches);
-  } else {
-    // if there's a mismatch things are out so sync so fail
-    if (fetches.size() != num_fetches) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
-                             " entries which doesn't match the number of fetches the frame was initialized with of ",
-                             num_fetches);
-    }
-  }
-
-  for (size_t idx = 0; idx < num_fetches; ++idx) {
-    auto ort_value_index = fetch_mlvalue_idxs[idx];
-    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
-    fetches[idx] = all_values_[ort_value_index];
-    all_values_[ort_value_index] = OrtValue();
-  }
-
-  return Status::OK();
-}
-
 #endif
 
 // Return nullptr if index map to an value that is an unused optional input/output
@@ -231,10 +182,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // 1. resize the all_value_ vector
-  all_values_ = new OrtValue[all_values_size_];
-  for (size_t index; index < all_values_size_; index += 1) {
-    all_values_[index] = OrtValue();
-  }
+
+  all_values_ = reinterpret_cast<OrtValue*>(malloc(sizeof(OrtValue) * all_values_size_));
+  memset(all_values_, 0, sizeof(OrtValue) * all_values_size_);
 
   //all_values_.resize(all_values_size_, OrtValue());
 
@@ -247,6 +197,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
       all_values_[ort_value_idx] = fetches[idx];
     }
   }
+
+  ml_values_idxs_destroy_.resize(initializers.size() + feed_mlvalue_idxs.size());
 
   // 3. handle the weights.
   // We do this after the fetches to handle an edge case where an initializer is an output.
@@ -287,6 +239,12 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
     } else {
       all_values_[ort_value_index] = entry.second;
     }
+
+    ml_values_idxs_destroy_.emplace_back(ort_value_index);
+  }
+
+  if (feed_mlvalue_idxs.size() > 0) {
+    ml_values_idxs_destroy_.insert(ml_values_idxs_destroy_.end(), feed_mlvalue_idxs.begin(), feed_mlvalue_idxs.end());
   }
 
   // 4. handle feed in values. these can override initializer values so must be last
@@ -297,8 +255,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   }
 }
 
-Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
-  auto num_fetches = fetch_mlvalue_idxs_.size();
+Status IExecutionFrame::GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+                                   bool release) {
+  auto num_fetches = fetch_mlvalue_idxs.size();
 
   if (fetches.empty()) {
     fetches.resize(num_fetches);
@@ -311,8 +270,19 @@ Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
     }
   }
 
-  for (size_t idx = 0; idx < num_fetches; ++idx) {
-    fetches[idx] = GetMLValue(fetch_mlvalue_idxs_[idx]);
+  if (release) {
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      auto ort_value_index = fetch_mlvalue_idxs[idx];
+      ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
+      fetches[idx] = all_values_[ort_value_index];
+      all_values_[ort_value_index] = OrtValue();
+    }
+  } else {
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      auto ort_value_index = fetch_mlvalue_idxs[idx];
+      ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
+      fetches[idx] = all_values_[ort_value_index];
+    }
   }
 
   return Status::OK();
@@ -432,7 +402,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   }
 }
 
-ExecutionFrame::~ExecutionFrame() = default;
+ExecutionFrame::~ExecutionFrame() {
+  /*for (auto index : ml_values_idxs_destroy_) {
+    all_values_[index].~OrtValue();
+  }*/
+
+  free(all_values_);
+}
 
 Status ExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {
   return session_state_.GetDataTransferMgr().CopyTensor(src, dest);

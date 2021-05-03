@@ -144,7 +144,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
       std::vector<OrtValue> fetches;
-      ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+      ORT_RETURN_IF_ERROR(frame.GetOutputs(fetch_mlvalue_idxs, fetches));
 
       // Go over all output node args and substitute them with the newly computed tensors, which will be
       // added to the graph as initializers.

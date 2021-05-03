@@ -446,12 +446,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
   VLOGS(logger, 1) << "Fetching output.";
-  // ExecutionFrame::Finalize will update 'fetches' with the final output
-  if (state_.GetReleaseOutputs()) {
-    ORT_RETURN_IF_ERROR(frame.GetOutputsAndRelease(fetch_mlvalue_idxs, fetches));
-  } else {
-    ORT_RETURN_IF_ERROR(frame.GetOutputs(fetch_mlvalue_idxs, fetches));
-  }
+    ORT_RETURN_IF_ERROR(frame.GetOutputs(fetch_mlvalue_idxs, fetches, state_.GetReleaseOutputs()));
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
