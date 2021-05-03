@@ -16,16 +16,16 @@ static bool debug_output_ = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static std::string CurrentModulePath() {
-  char path[MAX_PATH];
-  FAIL_FAST_IF(0 == GetModuleFileNameA((HINSTANCE)&__ImageBase, path, _countof(path)));
+static std::wstring CurrentModulePath() {
+  WCHAR path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-  char absolute_path[MAX_PATH];
-  char* name;
-  FAIL_FAST_IF(0 == GetFullPathNameA(path, _countof(path), absolute_path, &name));
+  WCHAR absolute_path[MAX_PATH];
+  WCHAR* name;
+  FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
   auto idx = std::distance(absolute_path, name);
-  auto out_path = std::string(absolute_path);
+  auto out_path = std::wstring(absolute_path);
   out_path.resize(idx);
 
   return out_path;
@@ -36,8 +36,8 @@ static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   // Store + Redist (note that this is never built into the inbox dll)
   auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
 #else
-  auto onnxruntime_dll = CurrentModulePath() + "\\onnxruntime.dll"; 
-  auto out_module = LoadLibraryExA(onnxruntime_dll.c_str(), nullptr, 0);
+  auto onnxruntime_dll = CurrentModulePath() + L"\\onnxruntime.dll"; 
+  auto out_module = LoadLibraryExW(onnxruntime_dll.c_str(), nullptr, 0);
 #endif
 
   if (out_module == nullptr) {

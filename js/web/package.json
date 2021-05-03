@@ -1,14 +1,15 @@
 {
   "name": "onnxruntime-web",
   "version": "1.7.0",
-  "description": "A Javascript library for running ONNX models on browsers and on Node.js",
+  "description": "A Javascript library for running ONNX models on browsers",
   "main": "./lib/index.js",
   "browser": "./dist/ort-web.min.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
-    "prepare": "tsc && node ./script/prepare-test-data.js",
-    "build": "node ./script/build.js",
-    "test": "node ./script/test-runner-cli.js"
+    "prepare": "tsc && node ./script/prepare-test-data",
+    "build": "node ./script/build",
+    "test": "node ./script/test-runner-cli",
+    "prepack": "node ./script/prepack"
   },
   "repository": {
     "type": "git",

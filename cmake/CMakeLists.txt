@@ -155,6 +155,9 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on s
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+# build eager mode
+option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -442,6 +445,17 @@ endif()
 
 #must after OpenMP settings
 find_package(Threads)
+
+macro(check_nvcc_compiler_flag _FLAG _RESULT)
+    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    message("NVCC_ERROR = ${NVCC_ERROR}")
+    message("NVCC_OUT = ${NVCC_OUT}")
+    if("${NVCC_OUT}" MATCHES "0")
+        set(${_RESULT} 1)
+    else()
+        set(${_RESULT} 0)
+    endif()
+endmacro()
 
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
@@ -871,6 +885,7 @@ else()
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
   check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -998,7 +1013,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
     if(onnxruntime_USE_CUDA)
-      if(HAS_STRICT_ALIASING)
+      if((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda")  OR (HAS_STRIC_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()
@@ -1364,11 +1379,7 @@ if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-    set(CMAKE_CUDA_STANDARD 14)
-  else()
-    set(CMAKE_CUDA_STANDARD 11)
-  endif()
+  set(CMAKE_CUDA_STANDARD 14)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -1592,8 +1603,13 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
-  include(${target_name}.cmake)    
+#names in this var must match the directory names under onnxruntime/core/providers
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if(onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
+endif()
+foreach(target_name ${ONNXRUNTIME_TARGETS})
+  include(${target_name}.cmake)  
 endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
