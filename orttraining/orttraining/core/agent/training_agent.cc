@@ -51,6 +51,7 @@ common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, st
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
+  state.SetReleaseOutputs(true);
   return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_);
 }
 

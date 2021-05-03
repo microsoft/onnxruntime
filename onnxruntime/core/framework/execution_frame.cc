@@ -122,6 +122,30 @@ Status IExecutionFrame::GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, s
   return Status::OK();
 }
 
+Status IExecutionFrame::GetOutputsAndRelease(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches) {
+  auto num_fetches = fetch_mlvalue_idxs.size();
+
+  if (fetches.empty()) {
+    fetches.resize(num_fetches);
+  } else {
+    // if there's a mismatch things are out so sync so fail
+    if (fetches.size() != num_fetches) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
+                             " entries which doesn't match the number of fetches the frame was initialized with of ",
+                             num_fetches);
+    }
+  }
+
+  for (size_t idx = 0; idx < num_fetches; ++idx) {
+    auto ort_value_index = fetch_mlvalue_idxs[idx];
+    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
+    fetches[idx] = all_values_[ort_value_index];
+    all_values_[ort_value_index] = OrtValue();
+  }
+
+  return Status::OK();
+}
+
 #endif
 
 // Return nullptr if index map to an value that is an unused optional input/output
@@ -207,7 +231,12 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
   // 1. resize the all_value_ vector
-  all_values_.resize(all_values_size_);
+  all_values_ = new OrtValue[all_values_size_];
+  for (size_t index; index < all_values_size_; index += 1) {
+    all_values_[index] = OrtValue();
+  }
+
+  //all_values_.resize(all_values_size_, OrtValue());
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {

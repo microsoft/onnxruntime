@@ -53,8 +53,11 @@ class IExecutionFrame {
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
   void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
-  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
+  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+                     const std::unordered_map<int, OrtValue>& initializers);
+
   Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+  Status GetOutputsAndRelease(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
 #endif
 
   // TO DO: make it thread safe
@@ -111,7 +114,7 @@ class IExecutionFrame {
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
-  std::vector<OrtValue> all_values_;
+  OrtValue* all_values_;
 
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;

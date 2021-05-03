@@ -12,6 +12,7 @@ struct PartialGraphExecutionState {
  public:
   PartialGraphExecutionState() {
     execution_frame_ = nullptr;
+    release_outputs_ = false;
   }
 
   ~PartialGraphExecutionState() = default;
@@ -22,13 +23,16 @@ struct PartialGraphExecutionState {
   size_t GetProgramCounterStart() { return program_counter_start_; }
   size_t GetProgramCounterEnd() { return program_counter_end_; }
 
+  void SetReleaseOutputs(bool release) { release_outputs_ = release; }
+  bool GetReleaseOutputs() { return release_outputs_; }
+
   ExecutionFrame& GetExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                     const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                     const SessionState& session_state) {
     if (execution_frame_ == nullptr) {
       execution_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                                  fetch_allocators, session_state);
+                                                          fetch_allocators, session_state);
     } else {
       execution_frame_->UpdateFeeds(feed_mlvalue_idxs, feeds);
       execution_frame_->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
@@ -41,6 +45,7 @@ struct PartialGraphExecutionState {
   std::unique_ptr<ExecutionFrame> execution_frame_;
   size_t program_counter_start_;
   size_t program_counter_end_;
+  bool release_outputs_;
 };
 }  // namespace onnxruntime
 #endif
