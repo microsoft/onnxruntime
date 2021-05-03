@@ -15,7 +15,7 @@ python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
     --config $BUILD_CONFIG \
     --android_sdk_path /android_home \
     --android_ndk_path /ndk_home \
-    --include_ops_by_config /onnxruntime_src/tools/ci_build/github/android/mobile_package.required_operators.config
+    --include_ops_by_config /onnxruntime_src/tools/ci_build/github/android/mobile_package.required_operators.config \
     /onnxruntime_src/tools/ci_build/github/android/default_mobile_aar_build_settings.json
 
 # Copy the built artifacts to give folder for publishing
