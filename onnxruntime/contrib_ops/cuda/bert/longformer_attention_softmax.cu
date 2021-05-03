@@ -103,7 +103,7 @@ __launch_bounds__(blockSize)
   if (is_local_row) {
     for (int g = tid; g < global_num; g += blockSize) {
       int i = global_index[g];
-      if (i < col_start || i > col_end) {
+      if (i < col_start || i >= col_end) {
         float x = input_block[i];
         x = x * scaler + (float)mask_block[i];
         if (max_input < x) {
@@ -130,7 +130,7 @@ __launch_bounds__(blockSize)
   if (is_local_row) {
     for (int g = tid; g < global_num; g += blockSize) {
       int i = global_index[g];
-      if (i < col_start || i > col_end) {
+      if (i < col_start || i >= col_end) {
         float x = input_block[i];
         x = expf((x)*scaler + (float)mask_block[i] - max_shared);
         sum_input += x;
@@ -163,17 +163,20 @@ __launch_bounds__(blockSize)
     }
 
     for (int i = tid + zero_start; i < zero_end; i += blockSize) {
-      output_block[i] = (T)(0.);
+      if (i < col_start || i >= col_end) {
+        output_block[i] = (T)(0.);
+      }
     }
 
     for (int g = tid; g < global_num; g += blockSize) {
       int i = global_index[g];
-      float x = input_block[i];
-      x = expf((x)*scaler + (float)mask_block[i] - max_shared);
-      output_block[i] = (T)(recip_sum * x);
+      if ((i < col_start || i >= col_end) && (i < zero_start && i >= zero_end)) {
+        float x = input_block[i];
+        x = expf((x)*scaler + (float)mask_block[i] - max_shared);
+        output_block[i] = (T)(recip_sum * x);
+      }
     }
   }
-  __syncthreads();
 
   // #pragma unroll 16
   for (int i = tid + col_start; i < col_end; i += blockSize) {
