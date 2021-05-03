@@ -105,6 +105,58 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
+TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), 
+      {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+
+  onnx::TensorShapeProto new_shape;
+  new_shape.add_dim()->set_dim_value(2);
+  new_shape.add_dim()->set_dim_value(3);
+  output_def.SetShape(new_shape);
+
+  onnxruntime::Node* node = &graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto cpu_xp = CreateCPUExecutionProvider();
+  auto xp_typ = cpu_xp->Type();
+  ExecutionProviders execution_providers;
+  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
+                     DefaultLoggingManager().DefaultLogger(), profiler);
+
+  node->SetExecutionProviderType(xp_typ);
+
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  vector<OrtValue> outputs;
+  ExecutionFrame frame({}, {}, {}, outputs, {}, state);
+
+  int start_index = frame.GetNodeOffset(node->Index());
+  ASSERT_EQ(start_index, 0);
+  TensorShape actual_shape_same_as_input(std::vector<int64_t>{2, 3});
+  TensorShape actual_shape_diff_from_input(std::vector<int64_t>{2, 9});
+  
+  OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
+  ASSERT_TRUE(p_ml_value != nullptr);
+
+  // Calling the method with correct shape. It should work without any warnings.
+  ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_same_as_input, p_ml_value, *node, size_t(0)));
+
+  frame.ReleaseMLValue(1);
+  // Calling the method with in-correct shape. It should work but this time it should display a warning message.
+  ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node, size_t(0)));
+}
+
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            std::unordered_map<std::string, int>{{"", 10}}, {},

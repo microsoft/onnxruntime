@@ -61,7 +61,8 @@ class IExecutionFrame {
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
+  Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape, 
+                                      OrtValue*& p_ort_value, const Node& node, size_t nnz = 0);
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrival is sucessful, this function returns true and false otherwise.
@@ -95,6 +96,11 @@ class IExecutionFrame {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
   }
+
+  void VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
+                         const onnxruntime::TensorShape* output_shape);
+
+  virtual const logging::Logger* GetLogger() = 0;
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
@@ -174,6 +180,7 @@ class ExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
+  const logging::Logger* GetLogger() override;
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;

@@ -120,6 +120,10 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
   Init(std::vector<int>(), std::vector<OrtValue>(), info.GetInitializers(), fetches);
 }
 
+const logging::Logger* OptimizerExecutionFrame::GetLogger() {
+  return nullptr;
+}
+
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
   return info_.GetAllocator(info);
 }

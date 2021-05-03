@@ -168,6 +168,7 @@ void TestPoolCreation(const std::string&, int iter) {
   ASSERT_EQ(ctr, iter * per_iter);
 }
 
+// Test multi-loop parallel sections, with a series of fixed-size loops
 void TestMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
     const int num_tasks = 1024;
@@ -183,6 +184,35 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 	}
       });
     ValidateTestData(*test_data, num_loops);
+  }
+}
+
+// Test multi-loop parallel sections, with alternating larger and
+// smaller loops.  This helps test that we can dispatch work to
+// differing numbers of threads over time.
+void TestStagedMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
+  for (int rep = 0; rep < 5; rep++) {
+    auto test_data1 = CreateTestData(num_threads/2);
+    auto test_data2 = CreateTestData(num_threads);
+    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
+	ThreadPool::ParallelSection ps(tp);
+	for (int l = 0; l < num_loops; l++) {
+          // Loop needing few threads
+          ThreadPool::TrySimpleParallelFor(tp,
+                                           num_threads / 2,
+                                           [&](std::ptrdiff_t i) {
+                                             IncrementElement(*test_data1, i);
+                                           });
+          // Loop needing more threads, forcing growth of set of threads in use
+          ThreadPool::TrySimpleParallelFor(tp,
+                                           num_threads,
+                                           [&](std::ptrdiff_t i) {
+                                             IncrementElement(*test_data2, i);
+                                           });
+	}
+      });
+    ValidateTestData(*test_data1, num_loops);
+    ValidateTestData(*test_data2, num_loops);
   }
 }
 
@@ -351,6 +381,10 @@ TEST(ThreadPoolTest, TestMultiLoopSections_1Thread_1Loop) {
   TestMultiLoopSections("TestMultiLoopSections_1Thread_1Loop", 1, 1);
 }
 
+TEST(ThreadPoolTest, TestMultiLoopSections_1Thread_2Loop) {
+  TestMultiLoopSections("TestMultiLoopSections_1Thread_2Loop", 1, 2);
+}
+
 TEST(ThreadPoolTest, TestMultiLoopSections_2Thread_0Loop) {
   TestMultiLoopSections("TestMultiLoopSections_2Thread_0Loop", 2, 0);
 }
@@ -379,6 +413,17 @@ TEST(ThreadPoolTest, TestMultiLoopSections_4Thread_100Loop) {
   TestMultiLoopSections("TestMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_1Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_1Loop", 4, 1);
+}
+
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_10Loop", 4, 10);
+}
+
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
+}
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 6387)
