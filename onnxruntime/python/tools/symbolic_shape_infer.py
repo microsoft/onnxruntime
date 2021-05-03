@@ -437,7 +437,7 @@ class SymbolicShapeInference:
                 self.sympy_data_[node.output[0]] = op_func(values)
 
     def _pass_on_sympy_data(self, node):
-        assert len(node.input) == 1 or node.op_type == 'Reshape'
+        assert len(node.input) == 1 or node.op_type in ['Reshape', 'Unsqueeze', 'Squeeze']
         self._compute_on_sympy_data(node, lambda x: x[0])
 
     def _pass_on_shape_and_type(self, node):
@@ -1293,7 +1293,7 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           output_shape))
-                                          
+
         self._pass_on_sympy_data(node)
 
     def _infer_ZipMap(self, node):
