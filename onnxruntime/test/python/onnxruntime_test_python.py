@@ -930,12 +930,5 @@ class TestInferenceSession(unittest.TestCase):
                         set())
         print("Create session with customize execution provider successfully!")
 
-    def testUnloadSharedProviders(self):
-
-        print("Unloading shared providers")
-        from onnxruntime.capi import _pybind_state as C
-        C.unload_shared_providers()
-        print("Finished unloading")
-
 if __name__ == '__main__':
     unittest.main()
