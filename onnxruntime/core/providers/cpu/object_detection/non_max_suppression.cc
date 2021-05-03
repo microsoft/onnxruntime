@@ -144,16 +144,17 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         // boxes data format [y1, x1, y2, x2],
         MaxMin(box[1], box[3], box_[1], box_[3]);
         MaxMin(box[0], box[2], box_[0], box_[2]);
+        area_ = (box_[2] - box_[0]) * (box_[3] - box_[1]);
       } else {
         // boxes data format [x_center, y_center, width, height]
         float box_width_half = box[2] / 2;
         float box_height_half = box[3] / 2;
+        area_ = box[2] * box[3];
         box_[1] = box[0] - box_width_half;
         box_[3] = box[0] + box_width_half;
         box_[0] = box[1] - box_height_half;
         box_[2] = box[1] + box_height_half;
       }
-      area_ = (box_[2] - box_[0]) * (box_[3] - box_[1]);
     }
 
     inline bool operator<(const BoxInfo& rhs) const {
@@ -162,12 +163,16 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
     inline bool SuppressByIOU(const BoxInfo& rhs, float iou_threshold) const {
       const float intersection_x_min = std::max(box_[1], rhs.box_[1]);
-      const float intersection_y_min = std::max(box_[0], rhs.box_[0]);
       const float intersection_x_max = std::min(box_[3], rhs.box_[3]);
+      if (intersection_x_max <= intersection_x_min)
+        return false;
+      const float intersection_y_min = std::max(box_[0], rhs.box_[0]);
       const float intersection_y_max = std::min(box_[2], rhs.box_[2]);
+      if (intersection_y_max <= intersection_y_min)
+        return false;
 
-      const float intersection_area = std::max(intersection_x_max - intersection_x_min, .0f) *
-                                      std::max(intersection_y_max - intersection_y_min, .0f);
+      const float intersection_area = (intersection_x_max - intersection_x_min) *
+                                      (intersection_y_max - intersection_y_min);
       if (intersection_area <= .0f) {
         return false;
       }
