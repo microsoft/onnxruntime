@@ -1293,6 +1293,8 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           output_shape))
+                                          
+        self._pass_on_sympy_data(node)
 
     def _infer_ZipMap(self, node):
         map_key_type = None
