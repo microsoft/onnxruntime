@@ -12,6 +12,7 @@
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/framework/test_utils.h"
 #include <csignal>
 #include <exception>
 #include <memory>
@@ -25,12 +26,23 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
+template<typename T>
+Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
+  Tensor result(src.DataType(), src.Shape(), allocator);
+  memcpy(result.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
+  auto dst_span = gsl::make_span(result.MutableData<T>(), result.MutableData<T>() + result.Shape().Size());
+  std::sort(dst_span.begin(), dst_span.end());
+  return result;
+}
+
 // Check functions for tensor types
 template <typename T>
-void sort_expected_and_actual_buffers(const T* expected, const T* actual,
-                                      int64_t size) {
-  std::sort(const_cast<T*>(expected), const_cast<T*>(expected + size));
-  std::sort(const_cast<T*>(actual), const_cast<T*>(actual + size));
+void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
+                                      const Tensor& actual, Tensor& actual_sorted) {
+
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  expected_sorted = copy_sort<T>(expected, allocator);
+  actual_sorted = copy_sort<T>(actual, allocator);
 }
 
 // Check functions for tensor types
@@ -59,10 +71,11 @@ template <typename T>
 struct TensorCheck {
   void operator()(const Tensor& expected_tensor, const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<T>();
-    auto* output = output_tensor.template Data<T>();
-    auto size = output_tensor.Shape().Size();
 
+    Tensor expected_sorted, output_sorted;
+    const T* expected;
+    const T* output;
+    const auto size = output_tensor.Shape().Size();
     if (params.sort_output_) {
       // if order can be jumbled in the output of an operator, sort both the
       // expected and output buffers prior to
@@ -70,8 +83,14 @@ struct TensorCheck {
       // requirement for the few ops that do require this
       // support without investing in a more sophisticated infrastructure for the
       // same
-      sort_expected_and_actual_buffers<T>(expected, output, size);
+      sort_expected_and_actual_buffers<T>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<T>();
+      output = output_sorted.Data<T>();
+    } else {
+      expected = expected_tensor.template Data<T>();
+      output = output_tensor.template Data<T>();
     }
+
     for (int i = 0; i < size; ++i) {
       EXPECT_EQ(expected[i], output[i]) << "i:" << i
                                         << ", provider_type: " << provider_type;
@@ -84,13 +103,14 @@ struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<uint8_t>();
-    auto* output = output_tensor.template Data<uint8_t>();
-    auto size = output_tensor.Shape().Size();
 
-    bool has_abs_err = params.absolute_error_.has_value();
-    bool has_rel_err = params.relative_error_.has_value();
+    const bool has_abs_err = params.absolute_error_.has_value();
+    const bool has_rel_err = params.relative_error_.has_value();
 
+    Tensor expected_sorted, output_sorted;
+    const uint8_t* expected;
+    const uint8_t* output;
+    const auto size = output_tensor.Shape().Size();
     if (params.sort_output_) {
       // if order can be jumbled in the output of an operator, sort both the
       // expected and output buffers prior to
@@ -98,7 +118,12 @@ struct TensorCheck<uint8_t> {
       // requirement for the few ops that do require this
       // support without investing in a more sophisticated infrastructure for the
       // same
-      sort_expected_and_actual_buffers<uint8_t>(expected, output, size);
+      sort_expected_and_actual_buffers<uint8_t>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<uint8_t>();
+      output = output_sorted.Data<uint8_t>();
+    } else {
+      expected = expected_tensor.template Data<uint8_t>();
+      output = output_tensor.template Data<uint8_t>();
     }
 
     // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
@@ -133,8 +158,6 @@ struct TensorCheck<double> {
                   const Tensor& output_tensor,
                   const std::string& provider_type,
                   const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<double>();
-    auto* output = output_tensor.template Data<double>();
     auto size = output_tensor.Shape().Size();
 
     bool has_abs_err = params.absolute_error_.has_value();
@@ -142,8 +165,16 @@ struct TensorCheck<double> {
 
     // deal with rare cases in which order of output data from a kernel MAY be
     // undefined
+    Tensor expected_sorted, output_sorted;
+    const double* expected;
+    const double* output;
     if (params.sort_output_) {
-      sort_expected_and_actual_buffers<double>(expected, output, size);
+      sort_expected_and_actual_buffers<double>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<double>();
+      output = output_sorted.Data<double>();
+    } else {
+      expected = expected_tensor.template Data<double>();
+      output = output_tensor.template Data<double>();
     }
 
     double threshold = 0.001;
@@ -186,20 +217,26 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
                             const Tensor& output_tensor,
                             const std::string& provider_type,
                             const CheckParams& params) {
-  auto* expected = expected_tensor.template Data<TypeToCheck>();
-  auto* output = output_tensor.template Data<TypeToCheck>();
-  auto size = output_tensor.Shape().Size();
 
-  bool has_abs_err = params.absolute_error_.has_value();
-  bool has_rel_err = params.relative_error_.has_value();
+  const bool has_abs_err = params.absolute_error_.has_value();
+  const bool has_rel_err = params.relative_error_.has_value();
 
   // deal with rare cases in which order of output data from a kernel MAY be
   // undefined
+  Tensor expected_sorted, output_sorted;
+  const TypeToCheck* expected;
+  const TypeToCheck* output;
+  auto size = output_tensor.Shape().Size();
   if (params.sort_output_) {
-    sort_expected_and_actual_buffers<float>(expected, output, size);
+    sort_expected_and_actual_buffers<TypeToCheck>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+    expected = expected_sorted.Data<TypeToCheck>();
+    output = output_sorted.Data<TypeToCheck>();
+  } else {
+    expected = expected_tensor.template Data<TypeToCheck>();
+    output = output_tensor.template Data<TypeToCheck>();
   }
 
-  float threshold = 0.0001f;
+  constexpr float threshold = 0.0001f;
 #if defined(USE_CUDA) || defined(USE_ROCM)
   threshold = 0.005f;
 #endif
