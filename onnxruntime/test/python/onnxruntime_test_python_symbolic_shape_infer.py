@@ -32,12 +32,12 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
         _dimstrmap = {dim: f"dim{i}" for i, dim in enumerate(input_dims)}
         def dimstrmap(dim):
             return _dimstrmap.get(dim, dim)
-        zero = onnx.helper.make_tensor("zero", TensorProto.INT64, [1], [0])
-        one = onnx.helper.make_tensor("one", TensorProto.INT64, [1], [1])
-        two = onnx.helper.make_tensor("two", TensorProto.INT64, [1], [2])
-        intmax = onnx.helper.make_tensor("intmax", TensorProto.INT64, [1], [2**32])
-        neg_one = onnx.helper.make_tensor("neg_one", TensorProto.INT64, [1], [-1])
-        neg_intmax = onnx.helper.make_tensor("neg_intmax", TensorProto.INT64, [1], [-2**32])
+        def get_initializer(name):
+            valuemap = {"zero": 0, "one": 1, "two": 2, "ten": 10, "intmax": 2**32}
+            value = -valuemap[name[4:]] if name.startswith("neg_") else valuemap[name]
+            return onnx.helper.make_tensor(name, TensorProto.INT64, [1], [value])
+
+        initializers = [get_initializer(name) for name in  ["zero", "one", "two", "ten", "intmax", "neg_intmax", "neg_one", "neg_ten"]]
         inputs = []
         nodes = []
         for i, dim in enumerate(input_dims):
@@ -76,12 +76,21 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
             "graph",
             inputs,
             [output],
-            initializer=[zero, one, two, intmax, neg_one, neg_intmax]
+            initializer=initializers
         )
         model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
         output = unique_element(model.graph.output)
-        shape = [d.dim_param for d in output.type.tensor_type.shape.dim]
+        shape = [d.dim_param if d.dim_param else d.dim_value for d in output.type.tensor_type.shape.dim]
         self.assertEqual(shape, ["B", expected_output_dim])
+
+    def test_numeric_negative_indices_forward(self):
+        self.check_slice_of_concat(["M"], "-ten", "-one", "one", 9)
+
+    def test_numeric_negative_indices_backward(self):
+        self.check_slice_of_concat(["M"], "-one", "-ten", "-one", 9)
+
+    def test_symbolic_end_index(self):
+        self.check_slice_of_concat(["M", "N"], "zero", "M", "one", "M")
 
     def test_symbolic_negative_start_index(self):
         self.check_slice_of_concat(["M", "N"], "-N", "intmax", "one", "N")
