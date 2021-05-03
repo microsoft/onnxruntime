@@ -8,5 +8,5 @@ target 'OnnxruntimeModuleExample' do
 
   use_react_native!(:path => config["reactNativePath"])
 
-  pod 'onnxruntime-reactnative', :path => '../..'
+  pod 'onnxruntime-reactnative.iphonesimulator', :path => '../..'
 end

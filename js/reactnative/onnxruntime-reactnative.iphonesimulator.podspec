@@ -3,7 +3,7 @@ require "json"
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
 Pod::Spec.new do |s|
-  s.name         = "onnxruntime-reactnative"
+  s.name         = "onnxruntime-reactnative.iphonesimulator"
   s.version      = package["version"]
   s.summary      = package["description"]
   s.homepage     = package["homepage"]
@@ -20,7 +20,7 @@ Pod::Spec.new do |s|
 
   s.subspec 'Onnxruntime' do |onnxruntime|
     onnxruntime.preserve_paths = 'ios/Libraries/onnxruntime/include/*.h'
-    onnxruntime.vendored_libraries = 'ios/Libraries/onnxruntime/lib/libonnxruntime.1.6.0.dylib'
+    onnxruntime.vendored_libraries = 'ios/Libraries/onnxruntime/lib/iphonesimulator/libonnxruntime.1.6.0.dylib'
     onnxruntime.xcconfig = { 'HEADER_SEARCH_PATHS' => "${PODS_ROOT}/#{s.name}/Libraries/onnxruntime/include/**", 'LIBRARY_SEARCH_PATHS' => "${PODS_ROOT)/#{s.name}/Libraries/onnxruntime/lib/**" }
   end
 
