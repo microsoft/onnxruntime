@@ -8,7 +8,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {getCoordsDataType} from '../utils';
 
-import {getChannels, unpackFromChannel} from './packing_utils';
+import {getChannels, unpackFromChannel} from './packing-utils';
 
 export class WebGLPackedConcat extends Concat implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {

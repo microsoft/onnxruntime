@@ -6,7 +6,7 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {getCoordsDataType} from '../utils';
-import {getChannels, unpackFromChannel} from './packing_utils';
+import {getChannels, unpackFromChannel} from './packing-utils';
 
 export class WebGLUnpack implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -36,16 +36,16 @@ export class WebGLUnpack implements WebGLOperator {
     const coords = rank <= 1 ? 'rc' : `vec2(${innerDims.join(',')})`;
     const glsl = getGlsl(handler.session.backend.glContext.version);
     const shaderSource = `
-        ${unpackChannel}
-        void main() {
-          ${coordsDataType} rc = getOutputCoords();
+    ${unpackChannel}
+    void main() {
+      ${coordsDataType} rc = getOutputCoords();
 
-          // Sample the texture with the coords to get the rgba channel value.
-          vec4 packedInput = getA(${sourceCoords});
+      // Sample the texture with the coords to get the rgba channel value.
+      vec4 packedInput = getA(${sourceCoords});
 
-          ${glsl.output} = vec4(getChannel(packedInput, ${coords}), 0, 0, 0);
-        }
-      `;
+      ${glsl.output} = vec4(getChannel(packedInput, ${coords}), 0, 0, 0);
+    }
+  `;
 
     return {
       inputLayouts: [handler.getOrCreateTextureLayout(inputs[0], 4, true, inputs[0].dims, true)],

@@ -6,7 +6,7 @@ import Long from 'long';
 import {onnx} from 'onnx-proto';
 
 import {Graph} from './graph';
-import {onnxruntime} from './ortSchema/ort_generated';
+import {onnxruntime} from './ort-schema/ort-generated';
 import {Tensor} from './tensor';
 
 // check the inputs shape before running an OP.

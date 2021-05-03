@@ -7,7 +7,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {getCoordsDataType} from '../utils';
 
-import {getChannels} from './packing_utils';
+import {getChannels} from './packing-utils';
 
 export class WebGLPack implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {

@@ -6,7 +6,7 @@ import {onnx} from 'onnx-proto';
 
 import {Graph} from './graph';
 import {OpSet} from './opset';
-import {onnxruntime} from './ortSchema/ort_generated';
+import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {LongUtil} from './util';
 

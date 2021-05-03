@@ -4,8 +4,15 @@ module.exports = {
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
-  plugins: ['@typescript-eslint', 'prefer-arrow', 'import', 'jsdoc'],
+  plugins: ['@typescript-eslint', 'prefer-arrow', 'header', 'import', 'unicorn', 'jsdoc'],
   rules: {
+    'unicorn/filename-case': 'error',
+    'header/header': [
+      2, 'line', [
+        ' Copyright (c) Microsoft Corporation. All rights reserved.',
+        ' Licensed under the MIT License.'
+      ], 2
+    ],
     'import/no-extraneous-dependencies': ['error', { 'devDependencies': false }],
     'import/no-internal-modules': 'error',
     'import/no-unassigned-import': 'error',
@@ -35,11 +42,11 @@ module.exports = {
     '@typescript-eslint/no-for-in-array': 'error',
     '@typescript-eslint/no-inferrable-types': 'error',
     '@typescript-eslint/no-misused-new': 'error',
-    '@typescript-eslint/no-namespace': ['error', { "allowDeclarations": true }],
+    '@typescript-eslint/no-namespace': ['error', { 'allowDeclarations': true }],
     '@typescript-eslint/no-non-null-assertion': 'error',
     '@typescript-eslint/no-require-imports': 'error',
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-    '@typescript-eslint/no-unused-vars': ["error", { "argsIgnorePattern": "^_" }],
+    '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
     '@typescript-eslint/promise-function-async': 'error',
     '@typescript-eslint/quotes': ['error', 'single'],
     '@typescript-eslint/restrict-plus-operands': 'error',
@@ -77,7 +84,7 @@ module.exports = {
     'no-octal-escape': 'error',
     'no-param-reassign': 'error',
     'no-redeclare': 'off',
-    "@typescript-eslint/no-redeclare": ["error"],
+    '@typescript-eslint/no-redeclare': ['error'],
     'no-regex-spaces': 'error',
     'no-return-await': 'error',
     'no-sparse-arrays': 'error',
@@ -145,6 +152,8 @@ module.exports = {
     }
   }, {
     files: ['web/lib/wasm/binding/**/*.ts'], rules: {
+      // TODO: turn filename-case on after renaming "onnxruntime_wasm" to "ort-wasm"
+      'unicorn/filename-case': 'off',
       '@typescript-eslint/naming-convention': 'off'
     }
   }],

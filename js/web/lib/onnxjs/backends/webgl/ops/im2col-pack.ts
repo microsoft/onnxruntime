@@ -4,7 +4,7 @@
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
-import {unpackFromChannel} from './packing_utils';
+import {unpackFromChannel} from './packing-utils';
 
 export class WebGLIm2ColPacked implements WebGLOperator {
   protected convOutputShape: number[];

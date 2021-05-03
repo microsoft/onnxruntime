@@ -5,7 +5,7 @@ import {Guid} from 'guid-typescript';
 import Long from 'long';
 import {onnx} from 'onnx-proto';
 
-import {onnxruntime} from './ortSchema/ort_generated';
+import {onnxruntime} from './ort-schema/ort-generated';
 
 import ortFbs = onnxruntime.experimental.fbs;
 

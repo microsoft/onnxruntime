@@ -8,7 +8,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {Artifact, ProgramInfo, RunData, TextureLayout, WebGLOperator} from '../types';
 import {getCoordsDataType} from '../utils';
 
-import {unpackFromChannel} from './packing_utils';
+import {unpackFromChannel} from './packing-utils';
 
 export class WebGLResizePacked extends Upsample implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {

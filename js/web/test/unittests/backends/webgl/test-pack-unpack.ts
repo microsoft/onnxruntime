@@ -11,8 +11,8 @@ import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
 
-import {createArrayFromTexture, createAscendingArray} from './test_utils';
-import {createTextureFromArray, generateExpected, getExpectedElementCount} from './test_utils';
+import {createArrayFromTexture, createAscendingArray} from './test-utils';
+import {createTextureFromArray, generateExpected, getExpectedElementCount} from './test-utils';
 
 interface TestData {
   elementCount: number;

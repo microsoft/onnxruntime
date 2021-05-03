@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 if (typeof window !== 'undefined') {
-  require('./backends/webgl/test_glsl_function_inliner');
-  require('./backends/webgl/test_conv_new');
-  require('./backends/webgl/test_pack_unpack');
-  require('./backends/webgl/test_concat_packed');
-  require('./backends/webgl/test_reshape_packed');
+  require('./backends/webgl/test-glsl-function-inliner');
+  require('./backends/webgl/test-conv-new');
+  require('./backends/webgl/test-pack-unpack');
+  require('./backends/webgl/test-concat-packed');
+  require('./backends/webgl/test-reshape-packed');
 }
 
 require('./opset');

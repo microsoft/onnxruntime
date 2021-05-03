@@ -9,7 +9,7 @@ import {PoolConvUtil} from '../../../../lib/onnxjs/util';
 import {TensorResultValidator} from '../../../test-runner';
 import {createMockGraph} from '../../../test-shared';
 
-import {conv2d} from './test_conv_utils';
+import {conv2d} from './test-conv-utils';
 
 function createRandomArray(size: number): Float32Array {
   const randomTable = [0, 3, 6, 9, 2, 5, 8, 1, 4, 7];

@@ -4,7 +4,7 @@
 import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
-import {onnxruntime} from './ortSchema/ort_generated';
+import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
 import {LongUtil, ProtoUtil} from './util';

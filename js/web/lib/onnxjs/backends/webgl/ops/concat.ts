@@ -7,7 +7,7 @@ import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 
-import {WebGLPackedConcat} from './concat_packed';
+import {WebGLPackedConcat} from './concat-packed';
 
 // We provide a wrapper class so that the kernel can switch between packed and unpacked depending on the inputs on the
 // fly.

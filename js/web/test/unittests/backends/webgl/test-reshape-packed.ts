@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {expect} from 'chai';
 
@@ -10,7 +10,7 @@ import {WebGLReshapePacked} from '../../../../lib/onnxjs/backends/webgl/ops/resh
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 
-import {createAscendingArray} from './test_utils';
+import {createAscendingArray} from './test-utils';
 
 interface TestData {
   elementCount: number;
