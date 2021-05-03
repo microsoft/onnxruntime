@@ -22,18 +22,6 @@ allprojects {
 	}
 }
 
-def cmakeBuildDir = System.properties['cmakeBuildDir']
-def cmakeJavaDir = "${cmakeBuildDir}/java"
-def cmakeAndroidTestDir = "${cmakeJavaDir}/androidtest"
-def cmakeBuildOutputDir = "${cmakeAndroidTestDir}/android/app/build"
-
-if (cmakeBuildDir != null) {
-	task cmakeBuild(type: Copy) {
-		from rootProject.buildDir
-		into cmakeBuildOutputDir
-	}
-
-	task clean(type: Delete) {
-		delete rootProject.buildDir
-	}
+task clean(type: Delete) {
+	delete rootProject.buildDir
 }
