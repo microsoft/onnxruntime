@@ -4,8 +4,7 @@
 # -*- coding: UTF-8 -*-
 import onnx
 import os
-#from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from symbolic_shape_infer import SymbolicShapeInference
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from pathlib import Path
 import unittest
 
@@ -18,14 +17,12 @@ class TestSymbolicShapeInference(unittest.TestCase):
             if filename.name.startswith('.'):
                 continue  # skip some bad model files
             print("Running symbolic shape inference on : " + str(filename))
-            SymbolicShapeInference.infer_shapes(
-                in_mp=onnx.load(str(filename)),
-                auto_merge=True,
-                int_max=100000,
-                guess_output_rank=True)
+            SymbolicShapeInference.infer_shapes(in_mp=onnx.load(str(filename)),
+                                                auto_merge=True,
+                                                int_max=100000,
+                                                guess_output_rank=True)
 
-    def _check_shapes(self, graph, inferred_graph,
-                         vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
+    def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
         names_in_vis = set(x.name for x in vis)
         vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
         inferred_vis = list(inferred_graph.value_info)
