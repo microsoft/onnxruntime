@@ -6,6 +6,7 @@
 #include "../backend_manager.h"
 #include "capabilities.h"
 #include "utils.h"
+#include "../contexts.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
@@ -114,11 +115,16 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
   } else {  // unsupported_nodes_idx.empty()
    
-  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION)
+  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION) // disable_graph_partition at build time
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
     return result;
   #endif
+    if(openvino_ep::BackendManager::GetGlobalContext().disable_graph_partition == true) { // disable_graph_partition at runtime
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set at runtime";
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
+      return result;
+    }
 
     std::vector<NodeIndex> modified_unsupported_nodes;
     for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {

@@ -722,6 +722,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           } else if (option.first == "blob_dump_path") {
             blob_dump_path = option.second;
             params.blob_dump_path = blob_dump_path.c_str();
+          } else if (option.first == "disable_graph_partition") {
+            if (option.second == "True") {
+              params.disable_graph_partition = true;
+            } else if (option.second == "False") {
+              params.disable_graph_partition = false;
+            } else {
+              ORT_THROW("Invalid value passed for disable_graph_partition: ", option.second);
+            }
           } else {
             ORT_THROW("Invalid OpenVINO EP option: ", option.first);
           }
@@ -1022,7 +1030,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, ""),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device_type, false, "", 8, false, "", false),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(

@@ -20,6 +20,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
   openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
   openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
+  openvino_ep::BackendManager::GetGlobalContext().disable_graph_partition = info.disable_graph_partition_;
 
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
