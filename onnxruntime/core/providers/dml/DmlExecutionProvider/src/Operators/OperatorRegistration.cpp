@@ -544,8 +544,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
     {REG_INFO(      9,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported|DmlGraphSupport::Prefer64BitTensorsDirectly|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
-    {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported|DmlGraphSupport::Prefer64BitTensorsDirectly|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
+    {REG_INFO(      7,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported)},
+    {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmlGraphSupport::Supported|DmlGraphSupport::SupportedWith64BitTensorsVia32BitStrides)},
@@ -619,6 +619,12 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         typeConstraints.resize(information.tensorTypeNames.size());
         desc.typeConstraints = typeConstraints.data();
         desc.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
+
+#if _DEBUG
+        // If some version of the operator is supported for fusion, check that each registered version is also supported.
+        // This ensures that table of operators and versions supporting fusion does not become stale as operator sets are added.
+        FusionHelpers::AssertFusableOperatorSupportsVersionIfExists(desc.name, desc.domain, desc.minimumOperatorSetVersion);
+#endif
 
         // edgeDescs will accumulate the edge descriptions across all type constraints.  
         // The values of allowedTypeCount will indicate how many elements of edgeDescs

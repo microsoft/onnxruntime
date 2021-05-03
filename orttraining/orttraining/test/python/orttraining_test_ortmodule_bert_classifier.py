@@ -17,7 +17,7 @@ import datetime
 
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================

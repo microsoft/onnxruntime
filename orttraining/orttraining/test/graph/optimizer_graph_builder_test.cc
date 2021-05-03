@@ -172,7 +172,7 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     NameMLValMap per_weight_states;
     OrtValue ml_value;
 
-    for (const auto key : MOMENTS_PREFIXES) {
+    for (const auto& key : MOMENTS_PREFIXES) {
       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }

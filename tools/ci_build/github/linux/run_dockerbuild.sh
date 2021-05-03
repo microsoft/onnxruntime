@@ -7,10 +7,11 @@ CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
+USE_CONDA=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y:t:i:mu parameter_Option
+while getopts c:o:d:r:p:x:a:v:y:t:i:mue parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04, ubuntu18.04, CentOS7
@@ -39,6 +40,8 @@ i) IMAGE_CACHE_CONTAINER_REGISTRY_NAME=${OPTARG};;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 # install ortmodule specific dependencies
 u) ORTMODULE_BUILD=true;;
+# install and use conda
+e) USE_CONDA=true;;
 esac
 done
 
@@ -82,6 +85,7 @@ else
         DOCKER_FILE=Dockerfile.ubuntu_gpu
         if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
+            DOCKER_FILE=Dockerfile.ubuntu_gpu_training
         fi
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
@@ -90,7 +94,7 @@ else
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA}" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.12

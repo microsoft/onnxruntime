@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
 #include "core/mlas/inc/mlas.h"
@@ -48,7 +49,6 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
-#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -71,57 +71,56 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
   switch (level) {
     case TransformerLevel::Level1: {
       rule_transformer =
-          onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
+          std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
-      rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
-      rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
-      rule_transformer->Register(make_unique<UnsqueezeElimination>());
-      rule_transformer->Register(make_unique<ExpandElimination>());
-      rule_transformer->Register(make_unique<CastElimination>());
-      rule_transformer->Register(make_unique<DivMulFusion>());
-      rule_transformer->Register(make_unique<EliminateDropout>());
-      rule_transformer->Register(make_unique<GemmTransposeFusion>());
-      rule_transformer->Register(make_unique<NotWhereFusion>());
-      rule_transformer->Register(make_unique<NonZeroShapeSetter>());
-      rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
+      rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
+      rule_transformer->Register(std::make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
+      rule_transformer->Register(std::make_unique<ExpandElimination>());
+      rule_transformer->Register(std::make_unique<CastElimination>());
+      rule_transformer->Register(std::make_unique<DivMulFusion>());
+      rule_transformer->Register(std::make_unique<EliminateDropout>());
+      rule_transformer->Register(std::make_unique<GemmTransposeFusion>());
+      rule_transformer->Register(std::make_unique<NotWhereFusion>());
+      rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
-      transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
+      transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
 
-      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
-      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
-      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<IsInfReduceSumFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
-        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
+        transformers.emplace_back(std::make_unique<GeluApproximation>(compatible_eps));
       }
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(
+      transformers.emplace_back(std::make_unique<ConstantFolding>(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
-      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
-      transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.gelu_recompute) {
-        transformers.emplace_back(onnxruntime::make_unique<GeluRecompute>());
+        transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
       if (config.attn_dropout_recompute) {
-        transformers.emplace_back(onnxruntime::make_unique<AttentionDropoutRecompute>());
+        transformers.emplace_back(std::make_unique<AttentionDropoutRecompute>());
       }
       if (config.transformer_layer_recompute) {
-        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(
+        transformers.emplace_back(std::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_level >= 0) {
         std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
-        transformers.emplace_back(onnxruntime::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
+        transformers.emplace_back(std::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
                                                                              config.propagate_cast_ops_allow,
                                                                              cuda_execution_provider));
       }
@@ -129,9 +128,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
     case TransformerLevel::Level2: {
       rule_transformer =
-          onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
+          std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
-      rule_transformer->Register(onnxruntime::make_unique<ConcatReplacement>());
+      rule_transformer->Register(std::make_unique<ConcatReplacement>());
     } break;
 
     case TransformerLevel::Level3: {
@@ -182,13 +181,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
+      //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
+      transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
+      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
+      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
                                                                             l1_execution_providers);
@@ -201,14 +200,14 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
                                                                             cpu_execution_providers);
 
-      transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_execution_providers));
     } break;
 
     case TransformerLevel::Level3: {
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
+        transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
     } break;
 
