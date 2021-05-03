@@ -1,16 +1,13 @@
 /.vscode/
-/bin/
-/build/
-/prebuilds/
 /script/
-/src/
 /test/
 
 /types/**/*.d.ts
 !/types/lib/**/*.d.ts
 
-CMakeLists.txt
+karma.conf.js
 tsconfig.json
 tsconfig.tsbuildinfo
+webpack.config.js
 
 *.tgz
