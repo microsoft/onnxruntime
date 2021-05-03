@@ -210,22 +210,22 @@ class TestInferenceSession(unittest.TestCase):
                     option = {'invalid_option': 123}
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-#            libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
-#           for libname in libnames:
-#                try:
-#                    cuda = ctypes.CDLL(libname)
-#                    runBaseTest1()
-#                    runBaseTest2()
-#                    runAdvancedTest()
+            libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
+            for libname in libnames:
+                try:
+                    cuda = ctypes.CDLL(libname)
+                    runBaseTest1()
+                    runBaseTest2()
+                    runAdvancedTest()
 
-#                except OSError:
-#                    continue
-#                else:
-#                    break
-#            else:
-#                runBaseTest1()
-#                runBaseTest2()
-#                # raise OSError("could not load any of: " + ' '.join(libnames))
+                except OSError:
+                    continue
+                else:
+                    break
+            else:
+                runBaseTest1()
+                runBaseTest2()
+                # raise OSError("could not load any of: " + ' '.join(libnames))
 
     def testInvalidSetProviders(self):
         with self.assertRaises(RuntimeError) as context:
