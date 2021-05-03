@@ -3,7 +3,7 @@
 
 const path = require('path');
 const webpack = require('webpack');
-const NodePolyfillPlugin = require("node-polyfill-webpack-plugin");
+const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const minimist = require('minimist');
 
 // common config for release bundle

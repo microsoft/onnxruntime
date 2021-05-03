@@ -110,6 +110,8 @@ so that you can consume the file `ort.min.js` from a CDN provider demonstrated a
 
 ### Developers
 
+<!-- TODO development documents and API -->
+
 For information on ONNX.js development, please check [Development](./docs/development.md)
 
 For API reference, please check [API](./docs/api.md).
