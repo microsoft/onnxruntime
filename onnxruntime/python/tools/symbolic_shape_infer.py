@@ -1142,12 +1142,12 @@ class SymbolicShapeInference:
     def _infer_SplitToSequence(self, node):
         self._infer_Split_Common(node, helper.make_sequence_value_info)
 
-    def _infer_Squeeze(self, node): 
+    def _infer_Squeeze(self, node):
         input_shape = self._get_shape(node, 0)
         op_set = get_opset(self.out_mp_)
 
         # Depending on op-version 'axes' are provided as attribute or via 2nd input
-        if op_set < 13:    
+        if op_set < 13:
             axes = get_attribute(node, 'axes')
             assert self._try_get_value(node, 1) is None
         else:
@@ -1233,7 +1233,34 @@ class SymbolicShapeInference:
                                                             axes=tuple(perm)).flatten().tolist()
 
     def _infer_Unsqueeze(self, node):
-        self._pass_on_sympy_data(node)
+        input_shape = self._get_shape(node, 0)
+        op_set = get_opset(self.out_mp_)
+
+        if op_set < 13:
+            axes = get_attribute(node, 'axes')
+            assert self._try_get_value(node, 1) is None
+        else:
+            # In opset version 13, 'axes' of Unsqueeze are provided in the second input instead of attribute
+            axes = self._try_get_value(node, 1)
+            assert get_attribute(node, 'axes') is None
+
+        assert axes is not None, 'axes is required for Unsqueeze'
+
+        output_rank = len(input_shape) + len(axes)
+        axes = [handle_negative_axis(a, output_rank) for a in axes]
+        assert len(axes) == len(set(axes)), "duplicated axes is not allowed for Unsqueeze"
+
+        output_shape = [1] * output_rank
+        j = 0
+        for i in range(output_rank):
+            if i not in axes:
+                output_shape[i] = input_shape[j]
+                j += 1
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                          output_shape))
 
     def _infer_ZipMap(self, node):
         map_key_type = None
