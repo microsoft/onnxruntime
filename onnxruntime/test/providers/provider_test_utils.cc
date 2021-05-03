@@ -236,9 +236,10 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
     output = output_tensor.template Data<TypeToCheck>();
   }
 
-  constexpr float threshold = 0.0001f;
 #if defined(USE_CUDA) || defined(USE_ROCM)
-  threshold = 0.005f;
+  constexpr float threshold = 0.005f;
+#else 
+  constexpr float threshold = 0.0001f;
 #endif
 
   for (int i = 0; i < size; ++i) {
