@@ -77,10 +77,6 @@ struct TensorCheck {
                                         << ", provider_type: " << provider_type;
     }
   }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
-  }
 };
 
 template <>
@@ -128,10 +124,6 @@ struct TensorCheck<uint8_t> {
                                           << ", provider_type: " << provider_type;
       }
     }
-  }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
   }
 };
 
@@ -186,10 +178,6 @@ struct TensorCheck<double> {
         }
       }
     }
-  }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
   }
 };
 
@@ -253,10 +241,6 @@ struct TensorCheck<float> {
                   const CheckParams& params) const {
     InternalNumericalCheck<float>(expected_tensor, output_tensor, provider_type, params);
   }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
-  }
 };
 
 template <>
@@ -295,10 +279,6 @@ struct TensorCheck<MLFloat16> {
             << "i:" << i << ", provider_type: " << provider_type;
       }
     }
-  }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
   }
 };
 
@@ -341,10 +321,6 @@ struct TensorCheck<BFloat16> {
       }
     }
   }
-  void operator()(const OpTester::Data& expected_data, const Tensor& output_tensor,
-                  const std::string& provider_type) const {
-    this->operator()(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
-  }
 };
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
@@ -362,7 +338,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
                               BFloat16>
       t_disp(output_tensor.GetElementType());
 
-  t_disp.Invoke<TensorCheck>(expected_data, output_tensor, provider_type);
+  t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
 }
 
 // Check for non tensor types
