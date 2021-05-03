@@ -1058,7 +1058,7 @@ Status SequentialPlanner::CreatePlan(
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = onnxruntime::make_unique<SequentialExecutionPlan>();
+  plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, ort_value_name_idx_map, context, *plan);

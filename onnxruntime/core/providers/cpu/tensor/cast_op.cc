@@ -96,7 +96,7 @@ CastToString(const SrcType& input, std::string& output) {
 
     if (required_buffer_size > buffer_span.size()) {
       // didn't get it all, allocate a bigger buffer and retry
-      dynamic_buffer = onnxruntime::make_unique<char[]>(required_buffer_size);
+      dynamic_buffer = std::make_unique<char[]>(required_buffer_size);
       buffer_span = gsl::make_span(dynamic_buffer.get(), required_buffer_size);
       snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
       ORT_ENFORCE(

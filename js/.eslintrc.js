@@ -108,13 +108,14 @@ module.exports = {
       'jsdoc/newline-after-description': 'error',
     }
   }, {
-    files: ['node/script/**/*.ts', 'node/test/**/*.ts'], rules: {
+    files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {
       '@typescript-eslint/naming-convention': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-var-requires': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       'camelcase': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
       'import/no-extraneous-dependencies': 'off',
@@ -123,6 +124,28 @@ module.exports = {
       'no-console': 'off',
       'no-empty': 'off',
       'no-unused-expressions': 'off',
+    }
+  }, {
+    files: ['web/lib/**/*.ts'], rules: {
+      'no-underscore-dangle': 'off',
+    }
+  }, {
+    files: ['web/lib/onnxjs/**/*.ts'], rules: {
+      // TODO: those rules are useful. should turn on them in future (webgl refactor)
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-use-before-define': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      '@typescript-eslint/restrict-plus-operands': 'off',
+      'import/no-internal-modules': 'off',
+      'prefer-arrow/prefer-arrow-functions': 'off',
+      'no-param-reassign': 'off',
+      'guard-for-in': 'off'
+    }
+  }, {
+    files: ['web/lib/wasm/binding/**/*.ts'], rules: {
+      '@typescript-eslint/naming-convention': 'off'
     }
   }],
   extends: [

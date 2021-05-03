@@ -147,17 +147,9 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     tp = session_state.Profiler().Now();
   }
 
-  if (state_.GetExecutionFrame() == nullptr) {
-    auto frame = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs,
-                                                          fetches, fetch_allocators, session_state);
+  ExecutionFrame& frame = state_.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+                                                   fetch_allocators, session_state);
 
-    state_.SetExecutionFrame(std::move(frame));
-  } else {
-    state_.GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
-    state_.GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
-  }
-
-  ExecutionFrame& frame = *(state_.GetExecutionFrame());
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
@@ -479,7 +471,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     }
 
     if (all_tensors) {
-      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }
