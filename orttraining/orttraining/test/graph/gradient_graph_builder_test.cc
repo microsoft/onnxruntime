@@ -264,7 +264,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
 
   // Add cuda execution provider for gist encode/decode nodes
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
 
   ORT_THROW_IF_ERROR(training_session.Initialize());
 
