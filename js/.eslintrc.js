@@ -152,8 +152,6 @@ module.exports = {
     }
   }, {
     files: ['web/lib/wasm/binding/**/*.ts'], rules: {
-      // TODO: turn filename-case on after renaming "onnxruntime_wasm" to "ort-wasm"
-      'unicorn/filename-case': 'off',
       '@typescript-eslint/naming-convention': 'off'
     }
   }],
