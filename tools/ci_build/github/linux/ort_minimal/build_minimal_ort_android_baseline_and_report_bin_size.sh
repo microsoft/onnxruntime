@@ -9,10 +9,6 @@ export PATH=/opt/python/cp37-cp37m/bin:$PATH
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
 echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
 
-# Use a newer version of gradle for Android Test
-/bin/bash /onnxruntime_src/tools/ci_build/github/android/setup_gradle_wrapper.sh 
-/onnxruntime_src
-
 # Run a baseline minimal build of ORT Android arm64-v8a
 # Generate binary size as /build/MinSizeRel/binary_size_data.txt
 python3 /onnxruntime_src/tools/ci_build/build.py \
