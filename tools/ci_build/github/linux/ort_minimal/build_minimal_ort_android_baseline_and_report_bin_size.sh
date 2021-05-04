@@ -10,7 +10,8 @@ export PATH=/opt/python/cp37-cp37m/bin:$PATH
 echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
 
 # Use a newer version of gradle for Android Test
-/bin/bash /onnxruntime_src/tools/ci_build/github/android/setup_gradle_wrapper.sh /onnxruntime_src
+/bin/bash /onnxruntime_src/tools/ci_build/github/android/setup_gradle_wrapper.sh 
+/onnxruntime_src
 
 # Run a baseline minimal build of ORT Android arm64-v8a
 # Generate binary size as /build/MinSizeRel/binary_size_data.txt
