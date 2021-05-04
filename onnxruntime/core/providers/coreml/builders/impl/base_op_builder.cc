@@ -50,7 +50,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 /* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> BaseOpBuilder::CreateNNLayer(const Node& node) {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer =
-      onnxruntime::make_unique<COREML_SPEC::NeuralNetworkLayer>();
+      std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
   layer->set_name(node.Name());
   return layer;
 }

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-static void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n) {
+void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n) {
   for (; n >= 4; n -= 4) {
     const size_t x_value0 = x[0];
     const size_t x_value1 = x[1];
@@ -35,20 +35,20 @@ static void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, 
 }
 
 template <typename T>
-static void QlinearBuildLookupTable(uint8_t* table,
-                                    const Tensor* tensor_x_scale,
-                                    const Tensor* tensor_x_zero_point,
-                                    const Tensor* tensor_y_scale,
-                                    const Tensor* tensor_y_zero_point,
-                                    const LookupTableArrayTransformer& array_values_transformer) {
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableArrayTransformer& array_values_transformer) {
   ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_scale),
-              "QLinearLeakyRelu : input X_scale must be a scalar or 1D tensor of size 1");
+              "QlinearBuildLookupTable : input X_scale must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(tensor_x_zero_point == nullptr || IsScalarOr1ElementVector(tensor_x_zero_point),
-              "QLinearLeakyRelu : input X_zero_point must be a scalar or 1D tensor of size 1");
+              "QlinearBuildLookupTable : input X_zero_point must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(tensor_y_scale),
-              "QLinearLeakyRelu : input Y_scale must be a scalar or 1D tensor of size 1");
+              "QlinearBuildLookupTable : input Y_scale must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(tensor_y_zero_point == nullptr || IsScalarOr1ElementVector(tensor_y_zero_point),
-              "QLinearLeakyRelu : input Y_zero_point must be a scalar or 1D tensor of size 1");
+              "QlinearBuildLookupTable : input Y_zero_point must be a scalar or 1D tensor of size 1");
 
   const float X_scale = *(tensor_x_scale->Data<float>());
   const T X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->template Data<T>());
@@ -66,12 +66,12 @@ static void QlinearBuildLookupTable(uint8_t* table,
 }
 
 template <typename T>
-static void QlinearBuildLookupTable(uint8_t* table,
-                                    const Tensor* tensor_x_scale,
-                                    const Tensor* tensor_x_zero_point,
-                                    const Tensor* tensor_y_scale,
-                                    const Tensor* tensor_y_zero_point,
-                                    const LookupTableScalarTransformer& value_transformer) {
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableScalarTransformer& value_transformer) {
   LookupTableArrayTransformer array_values_transformer =
       [&value_transformer](const float* input, float* output, size_t length) {
         for (size_t i = 0; i < length; ++i) {
@@ -81,6 +81,20 @@ static void QlinearBuildLookupTable(uint8_t* table,
   return QlinearBuildLookupTable<T>(table, tensor_x_scale, tensor_x_zero_point,
                                     tensor_y_scale, tensor_y_zero_point, array_values_transformer);
 }
+
+template void QlinearBuildLookupTable<uint8_t>(uint8_t* table,
+                                               const Tensor* tensor_x_scale,
+                                               const Tensor* tensor_x_zero_point,
+                                               const Tensor* tensor_y_scale,
+                                               const Tensor* tensor_y_zero_point,
+                                               const LookupTableScalarTransformer& value_transformer);
+
+template void QlinearBuildLookupTable<int8_t>(uint8_t* table,
+                                              const Tensor* tensor_x_scale,
+                                              const Tensor* tensor_x_zero_point,
+                                              const Tensor* tensor_y_scale,
+                                              const Tensor* tensor_y_zero_point,
+                                              const LookupTableScalarTransformer& value_transformer);
 
 template <typename T>
 template <typename Transformer>
@@ -119,8 +133,8 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
         context->Input<Tensor>(3), context->Input<Tensor>(4), fn);
   }
 
-  using onnxruntime::concurrency::ThreadPool;
   using onnxruntime::TensorOpCost;
+  using onnxruntime::concurrency::ThreadPool;
   ThreadPool* tp = context->GetOperatorThreadPool();
   const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.template Data<T>());
   uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.template MutableData<T>());

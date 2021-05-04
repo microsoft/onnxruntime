@@ -41,14 +41,14 @@ RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
   AllocatorCreationInfo default_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
       }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
   AllocatorCreationInfo cpu_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(
+        return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       }};
 
@@ -135,7 +135,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         node_set.insert(node_index[index]);
       }
       std::unique_ptr<IndexedSubGraph> sub_graph =
-          onnxruntime::make_unique<IndexedSubGraph>();
+          std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg*, int>
           fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -233,7 +233,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
       // Assign inputs and outputs to subgraph's meta_def
       auto meta_def =
-          onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+          std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
       meta_def->name = "RKNPU_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
@@ -249,7 +249,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       sub_graph->SetMetaDef(std::move(meta_def));
 
       result.push_back(
-          onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+          std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -301,7 +301,7 @@ common::Status RknpuExecutionProvider::Compile(
     compute_info.create_state_func = [&](ComputeContext* context,
                                          FunctionState* state) {
       std::unique_ptr<RknpuFuncState> p =
-          onnxruntime::make_unique<RknpuFuncState>();
+          std::make_unique<RknpuFuncState>();
       rk::nn::Graph* graph = new rk::nn::Graph();
       *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)),
             model_proto_[context->node_name], input_info_[context->node_name],

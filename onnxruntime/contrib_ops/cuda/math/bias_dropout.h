@@ -33,7 +33,7 @@ class BiasDropout final : public CudaKernel {
   BiasDropout(const OpKernelInfo& info) : CudaKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
+      generator_ = std::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
     }
   }
 

@@ -90,7 +90,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            onnxruntime::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
 }
 
@@ -111,7 +111,7 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   feeds.insert(std::make_pair("Input3", ml_value));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
-                            onnxruntime::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
 }
 

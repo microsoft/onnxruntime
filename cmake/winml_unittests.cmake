@@ -173,7 +173,7 @@ endfunction()
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
-add_library(winml_test_common STATIC ${winml_test_common_src})
+onnxruntime_add_static_library(winml_test_common ${winml_test_common_src})
 target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_test_common PRIVATE "BUILD_INBOX=1")
@@ -184,7 +184,7 @@ add_dependencies(winml_test_common
   winml_dll
 )
 onnxruntime_add_include_to_target(winml_test_common onnx_proto)
-add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
@@ -201,7 +201,7 @@ add_winml_test(
 )
 target_delayload(winml_test_api dxgi.dll d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_delayload(winml_test_api directml.dll)
+  target_delayload(winml_test_api DirectML.dll)
 endif()
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_api ext-ms-win-dxcore-l1-*.dll)
@@ -215,7 +215,7 @@ add_winml_test(
 )
 target_delayload(winml_test_scenario d2d1.dll d3d11.dll dxgi.dll d3d12.dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_delayload(winml_test_scenario directml.dll)
+  target_delayload(winml_test_scenario DirectML.dll)
 endif()
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_scenario ext-ms-win-dxcore-l1-*.dll)

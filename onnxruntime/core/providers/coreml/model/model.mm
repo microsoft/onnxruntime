@@ -311,7 +311,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
 }
 
 Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
-    : execution_(onnxruntime::make_unique<Execution>(path, logger, coreml_flags)) {
+    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)) {
 }
 
 Model::~Model() {}
