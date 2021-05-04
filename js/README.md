@@ -116,15 +116,34 @@ Node.js v12+ (recommended v14+)
 
 1. Install NPM packages
 
-   1. in `/js/`, run `npm ci`.
-   2. in `/js/common/`, run `npm ci`.
-   3. in `/js/web/`, run `npm ci`.
+   1. in `<ORT_ROOT>/js/`, run `npm ci`.
+   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
+   3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-2. Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly.
+2. ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it.)~~
 
-3. Copy files `onnxruntime_wasm.*` from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`.
+   in `<ORT_ROOT>/`, run either of the following commands to build WebAssembly:
+   ```sh
+   # In windows, use 'build' to replace './build.sh'
 
-4. Use following command in folder `<ORT_ROOT>/js/web` to build:
+   # The following command build debug.
+   ./build.sh --build_wasm
+
+   # The following command build release.
+   ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
+   ```
+   To build with multi-thread support, append flag ` --enable_wasm_threads` to the command.
+
+3. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
+   - ort-wasm.wasm
+   - ort-wasm-threaded.wasm (if appliable)
+   - ort-wasm-threaded.worker.js (if appliable)
+
+4. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+   - ort-wasm.js
+   - ort-wasm-threaded.js (if appliable)
+
+5. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
