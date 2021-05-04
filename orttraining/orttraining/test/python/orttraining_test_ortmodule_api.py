@@ -54,8 +54,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         out1 = self.softmax1(out1)
         out2 = self.softmax2(out2)
         # TODO: Using relu here will cause the forward prediction error
-        # Relu's output is sharing the same buffer as input, 
-        # and this is returned as ORTModule's output to Pytorch
+        # ORT's Relu output is sharing the same buffer as input,
+        # and this buffer is returned as ORTModule's output to Pytorch
         # out1 = self.relu1(out1)
         # out2 = self.relu2(out2)
         return out1, out2
@@ -73,8 +73,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Mo
         out1 = self.fc1(model_input)
         out1 = self.softmax(out1)
         # TODO: Using relu here will cause the forward prediction error
-        # Relu's output is sharing the same buffer as input, 
-        # and this is returned as ORTModule's output to Pytorch
+        # ORT's Relu output is sharing the same buffer as input,
+        # and this buffer is returned as ORTModule's output to Pytorch
         out2 = self.fc2(out1)
         return out1, out2
 
@@ -856,7 +856,7 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
 
 @pytest.mark.parametrize("device", ['cuda'])
 def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
-    N, D_in, H, D_out = 1, 10, 10, 10
+    N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)

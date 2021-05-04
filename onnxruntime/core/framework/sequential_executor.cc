@@ -68,10 +68,10 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                << " size=" << tensor_size
-                << " shape=" << tensor_shape.ToString()
-                << " element_size=" << tensor.DataType()->Size()
-                << "\n";
+                         << " size=" << tensor_size
+                         << " shape=" << tensor_shape.ToString()
+                         << " element_size=" << tensor.DataType()->Size()
+                         << "\n";
 #endif
       total_output_sizes += tensor_size;
     }
@@ -163,7 +163,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
-  LOGS(logger, INFO) << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 
