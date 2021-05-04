@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 file(GLOB onnxruntime_pyop_srcs "${ONNXRUNTIME_ROOT}/core/language_interop_ops/pyop/pyop.cc")
-add_library(onnxruntime_pyop ${onnxruntime_pyop_srcs})
+onnxruntime_add_static_library(onnxruntime_pyop ${onnxruntime_pyop_srcs})
 add_dependencies(onnxruntime_pyop onnxruntime_graph)
 onnxruntime_add_include_to_target(onnxruntime_pyop onnxruntime_common onnxruntime_graph onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(onnxruntime_pyop PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})

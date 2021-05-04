@@ -171,7 +171,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     LOGS_DEFAULT(WARNING) << "Checkpointing is not currently supported for graphs requiring partitioning of weight with stride > 1";
   }
 
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
   std::string new_initializer_name = original_name + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
@@ -231,7 +231,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           // as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read
           auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
-          p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+          p_tensor = std::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       alloc);
           float* out_buffer = p_tensor->MutableData<float>();
@@ -247,7 +247,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           // allocate a new buffer as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read on original buffer
           auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
-          p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+          p_tensor = std::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       alloc);
           MLFloat16* out_buffer = p_tensor->MutableData<MLFloat16>();
@@ -307,7 +307,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
                           << horizontal_parallel_size_ << ", not supported currently.";
     return false;
   }
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
   std::string new_initializer_name = original_name + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
@@ -351,14 +351,14 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
         if (utils::IsPrimitiveDataType<float>(element_type)) {
           float* data_buffer = init_tensor->MutableData<float>();
 
-          p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+          p_tensor = std::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       data_buffer + row_index_offset * column_count,
                                                       info);
         } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
           MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
 
-          p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+          p_tensor = std::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       data_buffer + row_index_offset * column_count,
                                                       info);
@@ -788,7 +788,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
 
     // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     if (init_const->size() != 3 && init_const->size() != 4) {
       is_reshape_valid = false;
       break;
@@ -837,7 +837,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     const int64_t* val = init_const->data<int64_t>();
     int64_t size = init_const->size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
@@ -1069,7 +1069,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     }
     // The number of the values should be more than idx, and the idx'th value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     if (init_const->size() <= idx) {
       is_reshape_valid = false;
       break;
@@ -1165,7 +1165,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     const int64_t* val = init_const->data<int64_t>();
     int64_t size = init_const->size();
     ONNX_NAMESPACE::TensorProto tensor_partition;

@@ -190,7 +190,7 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
-  libs.extend(['directml.dll'])
+  libs.extend(['DirectML.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
@@ -232,6 +232,10 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.tools.ort_format_model',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental.fbs',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',

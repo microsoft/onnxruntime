@@ -54,7 +54,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
     if (lm_info.logging_function) {
-      std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
+      std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(lm_info.logging_function,
                                                                                lm_info.logger_param);
       lmgr.reset(new LoggingManager(std::move(logger),
                                     static_cast<Severity>(lm_info.default_warning_level),

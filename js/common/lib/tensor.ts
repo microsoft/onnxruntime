@@ -72,7 +72,13 @@ export declare namespace Tensor {
   export type Type = keyof DataTypeMap;
 }
 
+/**
+ * Represent multi-dimensional arrays to feed to or fetch from model inferencing.
+ */
 export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, TypedTensorUtils<T> {}
+/**
+ * Represent multi-dimensional arrays to feed to or fetch from model inferencing.
+ */
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
 
 export interface TensorConstructor {
@@ -80,9 +86,9 @@ export interface TensorConstructor {
   /**
    * Construct a new string tensor object from the given type, data and dims.
    *
-   * @type Specify the element type.
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param type - Specify the element type.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: 'string', data: Tensor.DataTypeMap['string']|readonly string[],
       dims?: readonly number[]): TypedTensor<'string'>;
@@ -90,18 +96,18 @@ export interface TensorConstructor {
   /**
    * Construct a new bool tensor object from the given type, data and dims.
    *
-   * @type Specify the element type.
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param type - Specify the element type.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: 'bool', data: Tensor.DataTypeMap['bool']|readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
 
   /**
    * Construct a new numeric tensor object from the given type, data and dims.
    *
-   * @type Specify the element type.
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param type - Specify the element type.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new<T extends Exclude<Tensor.Type, 'string'|'bool'>>(
       type: T, data: Tensor.DataTypeMap[T]|readonly number[], dims?: readonly number[]): TypedTensor<T>;
@@ -112,96 +118,96 @@ export interface TensorConstructor {
   /**
    * Construct a new float32 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Float32Array, dims?: readonly number[]): TypedTensor<'float32'>;
 
   /**
    * Construct a new int8 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int8Array, dims?: readonly number[]): TypedTensor<'int8'>;
 
   /**
    * Construct a new uint8 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
 
   /**
    * Construct a new uint16 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint16Array, dims?: readonly number[]): TypedTensor<'uint16'>;
 
   /**
    * Construct a new int16 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int16Array, dims?: readonly number[]): TypedTensor<'int16'>;
 
   /**
    * Construct a new int32 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int32Array, dims?: readonly number[]): TypedTensor<'int32'>;
 
   /**
    * Construct a new int64 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: BigInt64Array, dims?: readonly number[]): TypedTensor<'int64'>;
 
   /**
    * Construct a new string tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: readonly string[], dims?: readonly number[]): TypedTensor<'string'>;
 
   /**
    * Construct a new bool tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
 
   /**
    * Construct a new float64 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Float64Array, dims?: readonly number[]): TypedTensor<'float64'>;
 
   /**
    * Construct a new uint32 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint32Array, dims?: readonly number[]): TypedTensor<'uint32'>;
 
   /**
    * Construct a new uint64 tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: BigUint64Array, dims?: readonly number[]): TypedTensor<'uint64'>;
 
@@ -212,17 +218,17 @@ export interface TensorConstructor {
   /**
    * Construct a new tensor object from the given type, data and dims.
    *
-   * @type Specify the element type.
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param type - Specify the element type.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: Tensor.Type, data: Tensor.DataType|readonly number[]|readonly boolean[], dims?: readonly number[]): Tensor;
 
   /**
    * Construct a new tensor object from the given data and dims.
    *
-   * @data Specify the tensor data
-   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   * @param data - Specify the tensor data
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
   //#endregion

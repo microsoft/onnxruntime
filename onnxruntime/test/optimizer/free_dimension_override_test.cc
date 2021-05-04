@@ -39,7 +39,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
     overrides[1] = FreeDimensionOverride{"Dim2", overrideType, 42};
   };
 
-  auto graph_transformer = onnxruntime::make_unique<FreeDimensionOverrideTransformer>(overrides);
+  auto graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1);
@@ -63,7 +63,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   ASSERT_TRUE(input_shape->dim(1).has_dim_value());
   ASSERT_TRUE(input_shape->dim(1).dim_value() == 42);
 
-  graph_transformer = onnxruntime::make_unique<FreeDimensionOverrideTransformer>(overrides);
+  graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
   bool modified = false;
   ASSERT_TRUE(graph_transformer->Apply(graph, modified,
     DefaultLoggingManager().DefaultLogger()).IsOK());

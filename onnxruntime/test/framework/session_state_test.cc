@@ -53,7 +53,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto& graph = model.MainGraph();
 
   ExecutionProviders execution_providers;
-  auto tmp_cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto tmp_cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   auto* cpu_execution_provider = tmp_cpu_execution_provider.get();
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
 
@@ -128,7 +128,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi{false};
   status =
-      execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+      execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
 
   KernelRegistryManager krm;
@@ -191,7 +191,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     ExecutionProviders execution_providers;
     CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
     ASSERT_TRUE(status.IsOK()) << status;
 
     KernelRegistryManager krm;
@@ -240,7 +240,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     ExecutionProviders execution_providers;
     CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
     ASSERT_TRUE(status.IsOK()) << status;
 
     KernelRegistryManager krm;
@@ -447,7 +447,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
       .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
 
   ExecutionProviders execution_providers;
-  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
 
   DataTransferManager dtm;

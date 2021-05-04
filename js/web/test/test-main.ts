@@ -71,7 +71,7 @@ for (const group of ONNX_JS_TEST_CONFIG.model) {
 
         for (const testCase of test.cases) {
           it(testCase.name, async () => {
-            await runModelTestSet(context, testCase);
+            await runModelTestSet(context, testCase, test.name);
           });
         }
       });
