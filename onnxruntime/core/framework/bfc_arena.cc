@@ -19,7 +19,6 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      next_allocation_region_id_(0),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
       initial_regrowth_chunk_size_bytes_(initial_regrowth_chunk_size_bytes) {
