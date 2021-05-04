@@ -25,13 +25,14 @@ class SimpleTest {
                 session.use {
                     val inputName = session.inputNames.iterator().next()
                     val testdata = Array(3) { Array(4) { FloatArray(5) } }
-                    val expected =  Array(3) { Array(4) { FloatArray(5) } }
+                    val expected = Array(3) { Array(4) { FloatArray(5) } }
                     for (i in 0..2) {
                         for (j in 0..3) {
                             for (k in 0..4) {
-                                testdata[i][j][k] = (i+j+k).toFloat()
+                                testdata[i][j][k] = (i + j + k).toFloat()
                                 //expected sigmoid output is y = 1.0 / (1.0 + exp(-x))
-                                expected[i][j][k] = (1.0 / (1.0 + kotlin.math.exp(-testdata[i][j][k]))).toFloat()
+                                expected[i][j][k] =
+                                    (1.0 / (1.0 + kotlin.math.exp(-testdata[i][j][k]))).toFloat()
                             }
                         }
                     }
@@ -43,8 +44,10 @@ class SimpleTest {
                             for (i in 0..2) {
                                 for (j in 0..3) {
                                     for (k in 0..4) {
-                                        val actual = (kotlin.math.round(rawOutput[i][j][k] * 1000.0) / 1000.0).toFloat()
-                                        val expect = (kotlin.math.round(expected[i][j][k] * 1000.0) / 1000.0).toFloat()
+                                        val actual =
+                                            (kotlin.math.round(rawOutput[i][j][k] * 1000.0) / 1000.0).toFloat()
+                                        val expect =
+                                            (kotlin.math.round(expected[i][j][k] * 1000.0) / 1000.0).toFloat()
                                         Assert.assertEquals(actual, expect, 1e-15.toFloat())
                                     }
                                 }
@@ -59,6 +62,7 @@ class SimpleTest {
 
     @Throws(IOException::class)
     private fun readModel(fileName: String): ByteArray {
-        return InstrumentationRegistry.getInstrumentation().context.assets.open(fileName).readBytes()
+        return InstrumentationRegistry.getInstrumentation().context.assets.open(fileName)
+            .readBytes()
     }
 }
