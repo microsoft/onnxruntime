@@ -1,90 +1,85 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 const path = require('path');
 const webpack = require('webpack');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const minimist = require('minimist');
 
-function buildAllConfig({
-  suffix = '',
-  format = 'umd',
-  target = 'ES2017',
-  mode = 'production',
-  devtool = 'source-map'
-}) {
+// common config for release bundle
+function buildConfig({ filename, format, target, mode, devtool }) {
   return {
     entry: path.resolve(__dirname, 'lib/index.ts'),
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: `ort${suffix}.js`,
+      filename,
       library: {
-        name: 'ort',
         type: format
       }
-    },
-    externals: {
-      'fs': 'fs',
-      'path': 'path',
-      'util': 'util',
     },
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
     module: {
       rules: [{
-        test: /\.tsx?$/,
+        test: /\.ts$/,
         use: [
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
       }]
     },
-    mode: mode,
-    devtool: devtool,
+    mode,
+    devtool
   };
 }
 
-function buildWebConfig({
+// "ort{.min}.js" config
+function buildOrtConfig({
   suffix = '',
-  format = 'umd',
-  target = 'ES2017',
+  target = 'es5',
   mode = 'production',
   devtool = 'source-map'
 }) {
-  return {
-    entry: path.resolve(__dirname, 'lib/index.ts'),
-    output: {
-      path: path.resolve(__dirname, 'dist'),
-      filename: `ort-web${suffix}.js`,
-      library: {
-        type: format
-      }
-    },
-    externals: {
-      'onnxruntime-common': 'ort',
-      'fs': 'fs',
-      'path': 'path',
-      'util': 'util',
-    },
-    resolve: { extensions: ['.ts', '.js'] },
-    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
-    module: {
-      rules: [{
-        test: /\.tsx?$/,
-        use: [
-          {
-            loader: 'ts-loader',
-            options: {
-              compilerOptions: { target: target }
-            }
-          }
-        ]
-      }]
-    },
-    mode: mode,
-    devtool: devtool,
+  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
+  // set global name 'ort'
+  config.output.library.name = 'ort';
+  // do not use those node builtin modules in browser
+  config.resolve.fallback = { path: false, fs: false, util: false };
+  return config;
+}
+
+// "ort-web{.min|.node}.js" config
+function buildOrtWebConfig({
+  suffix = '',
+  format = 'umd',
+  target = 'es5',
+  mode = 'production',
+  devtool = 'source-map'
+}) {
+  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool });
+  // exclude onnxruntime-common from bundle
+  config.externals = {
+    'onnxruntime-common': {
+      commonjs: "onnxruntime-common",
+      commonjs2: "onnxruntime-common",
+      root: 'ort'
+    }
   };
+  // in nodejs, treat as external dependencies
+  if (format === 'commonjs') {
+    config.externals.path = 'path';
+    config.externals.fs = 'fs';
+    config.externals.util = 'util';
+  }
+  // in browser, do not use those node builtin modules
+  if (format === 'umd') {
+    config.resolve.fallback = { path: false, fs: false, util: false };
+  }
+  return config;
 }
 
 function buildTestRunnerConfig({
@@ -108,14 +103,14 @@ function buildTestRunnerConfig({
       'onnxruntime-common': 'ort',
       'fs': 'fs',
     },
-    resolve: { extensions: ['.ts', '.js'] },
+    resolve: { extensions: ['.ts', '.js'], aliasFields: [] },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin()
     ],
     module: {
       rules: [{
-        test: /\.tsx?$/,
+        test: /\.ts$/,
         use: [
           {
             loader: 'ts-loader',
@@ -139,10 +134,26 @@ module.exports = () => {
 
   if (bundleMode === 'prod') {
     builds.push(
-      buildAllConfig({ suffix: '.min', target: 'es5' }),
-      buildWebConfig({ suffix: '.min', target: 'es5' }),
-      buildAllConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
-      buildWebConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
+      // ort.min.js
+      buildOrtConfig({ suffix: '.min' }),
+      // ort.js
+      buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
+      // ort.es6.min.js
+      buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
+      // ort.es6.js
+      buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+
+      // ort-web.min.js
+      buildOrtWebConfig({ suffix: '.min' }),
+      // ort-web.js
+      buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
+      // ort-web.es6.min.js
+      buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
+      // ort-web.es6.js
+      buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+
+      // ort-web.node.js
+      buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
     );
   }
 
