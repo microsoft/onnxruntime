@@ -4,6 +4,7 @@
 #pragma once
 #include "gsl/gsl"
 #include "core/framework/utils.h"
+#include "core/common/safeint.h"
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {
@@ -22,7 +23,7 @@ struct TensorPitches : std::vector<int64_t> {
     auto tensor_rank = dims.size();
     auto pitch_rank = p.size();
     auto padded_rank = pitch_rank - tensor_rank;
-    if (gsl::narrow_cast<ptrdiff_t>(padded_rank) < 0)
+    if (static_cast<ptrdiff_t>(padded_rank) < 0)
       return false;
 
     // Guard against Scalars
@@ -135,17 +136,17 @@ struct SliceSkips : std::vector<int64_t> {
     ORT_ENFORCE(dims.size() == extents.size() &&
                 dims.size() >= steps.size());
 
-    int64_t inner_most_dim = dims.size() - 1;
+    ptrdiff_t inner_most_dim = dims.size() - 1;
     // assume step == 1 if not present
     ptrdiff_t steps_size = steps.size();
     int64_t steps_i = 1;
-    if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps_size)
+    if (inner_most_dim >= 0 && inner_most_dim < steps_size)
       steps_i = steps[inner_most_dim];
 
-    size_t pitch = 1;
+    SafeInt<ptrdiff_t> pitch = 1;
     for (size_t i = size(); i-- > 0;) {
       auto prevPitch = pitch;
-      pitch *= dims[i];
+      pitch *= static_cast<ptrdiff_t>(dims[i]);
 
       // assume step == 1 if not present
       int64_t steps_i_minus_1 = 1;
@@ -192,17 +193,18 @@ struct SliceIteratorBase {
                 dims.size() == extents_.size() &&
                 dims.size() >= steps.size());
 
-    size_t pitch = 1;
+    SafeInt<size_t> pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
       input_ += pitch * starts[i] * element_size_;
-      pitch *= dims[i];
+      pitch *= static_cast<size_t>(dims[i]);
     }
 
-    inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = dims.size() == steps.size()
-                      ? steps[dims.size() - 1]
-                      : 1;
+    inner_extent_ = static_cast<size_t>(extents_[dims.size() - 1]);
+    //It could be -1
+    inner_step_ = static_cast<ptrdiff_t>(dims.size() == steps.size()
+                                             ? steps[dims.size() - 1]
+                                             : 1);
   }
 
   void AdvanceOverInnerExtent() {
@@ -302,7 +304,8 @@ struct SliceIteratorBase {
   const int64_t element_size_ = tensor_.DataType()->Size();
 
   gsl::span<const int64_t> extents_;
-  size_t inner_counter_{}, inner_extent_, inner_step_;
+  size_t inner_counter_{}, inner_extent_;
+  ptrdiff_t inner_step_;
   SliceSkips skips_;
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };
@@ -402,11 +405,11 @@ struct WritableSliceIterator {
     ORT_ENFORCE(dims.size() == steps.size(),
                 "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
 
-    size_t pitch = 1;
+    SafeInt<size_t> pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
       input_ += pitch * starts[i];
-      pitch *= dims[i];
+      pitch *= static_cast<size_t>(dims[i]);
     }
 
     inner_extent_ = extents_[dims.size() - 1];

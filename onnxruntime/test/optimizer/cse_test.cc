@@ -25,7 +25,7 @@ namespace {
 void ApplyCse(Model& model, unsigned num_steps = 1) {
   GraphTransformerManager graph_transformation_mgr(num_steps);
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(model.MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 }
@@ -222,22 +222,29 @@ TEST(CseTests, Subgraph) {
     }
   }
 
+  // Assert that we were able to obtain subgraphs pertaining to the then/else attributes in the 'If' node
   ASSERT_NE(if_true_graph, nullptr);
   ASSERT_NE(if_false_graph, nullptr);
 
-  output_names = GetSortedNames(if_true_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+  // Keep VC++ static analyzer happy
+  if (if_true_graph) {
+    output_names = GetSortedNames(if_true_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
-  auto op_count = CountOpsInGraph(*if_true_graph);
-  ASSERT_EQ(op_count["Mul"], 1);
-  ASSERT_EQ(op_count["Sum"], 3);
+    auto op_count = CountOpsInGraph(*if_true_graph);
+    ASSERT_EQ(op_count["Mul"], 1);
+    ASSERT_EQ(op_count["Sum"], 3);
+  }
 
-  output_names = GetSortedNames(if_false_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+  // Keep VC++ static analyzer happy
+  if (if_false_graph) {
+    output_names = GetSortedNames(if_false_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
-  op_count = CountOpsInGraph(*if_false_graph);
-  ASSERT_EQ(op_count["Mul"], 3);
-  ASSERT_EQ(op_count["Sum"], 1);
+    auto op_count = CountOpsInGraph(*if_false_graph);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Sum"], 1);
+  }
 }
 
 TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {
@@ -272,11 +279,11 @@ TEST(CseTests, MergeConstants) {
   GraphTransformerManager graph_transformation_mgr(1);
   // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
   // with multiple copies of the same constant.
-  std::unique_ptr<CPUExecutionProvider> e = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 

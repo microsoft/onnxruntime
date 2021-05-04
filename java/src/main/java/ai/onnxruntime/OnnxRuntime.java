@@ -28,6 +28,8 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_2 = 2;
   // Post 1.3 builds of the ORT API
   private static final int ORT_API_VERSION_3 = 3;
+  // Post 1.6 builds of the ORT API
+  private static final int ORT_API_VERSION_7 = 7;
 
   /** The short name of the ONNX runtime shared library */
   static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
@@ -93,11 +95,11 @@ final class OnnxRuntime {
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_7);
       providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
-      if (!isAndroid()) {
+      if (tempDirectory != null) {
         cleanUp(tempDirectory.toFile());
       }
     }

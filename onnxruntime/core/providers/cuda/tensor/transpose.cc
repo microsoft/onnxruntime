@@ -54,14 +54,15 @@ static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& pe
 }
 
 template <typename T>
-Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Tensor& output, int M, int N) {
+Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, const Tensor& input, Tensor& output, int M, int N) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
   CUBLAS_RETURN_IF_ERROR(
-      cublasTransposeHelper(cublas_handle,
+      cublasTransposeHelper(stream,
+                            cublas_handle,
                             CUBLAS_OP_T, CUBLAS_OP_T, M, N,
                             &one,
                             input_data,
@@ -76,10 +77,11 @@ Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Te
 
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.CublasHandle(), permutations, input, output);
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
 }
 
 Status Transpose::DoTranspose(const cudaDeviceProp& prop,
+                              cudaStream_t stream,
                               const cublasHandle_t cublas_handle,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
                               const TensorShape* input_shape_override) {
@@ -96,11 +98,11 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(cublas_handle, input, output, M, N);
+        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(cublas_handle, input, output, M, N);
+        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
       } else {
-        return TransposeWithCublas<MLFloat16>(cublas_handle, input, output, M, N);
+        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
       }
     }
   }
@@ -162,15 +164,15 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   size_t element_size = input.DataType()->Size();
   if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
-    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
+    return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
   } else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
-    return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
-                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+    return Transpose4DImpl(stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+                           tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 
   // General cases
@@ -184,8 +186,8 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
   }
 
-  auto status = TransposeImpl(element_size, new_rank, input_strides, input.DataRaw(),
-                              output_strides, output.MutableDataRaw(), output.Shape().Size());
+  auto status = TransposeImpl(stream, element_size, new_rank, input_strides, input.DataRaw(),
+                              output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
 
   return status;
 }
@@ -208,7 +210,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(this->GetDeviceProp(), this->CublasHandle(), *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *Y);
 }
 
 }  // namespace cuda

@@ -16,6 +16,7 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
 )
 
@@ -42,7 +43,7 @@ function(add_winml_test)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif()
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   onnxruntime_add_include_to_target(${_UT_TARGET} onnx_proto)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
@@ -58,6 +59,10 @@ function(add_winml_test)
   # if building inbox
   if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
     target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_INBOX=1")
+  endif()
+
+  if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
+    target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_MS_EXPERIMENTAL_OPS=1")
   endif()
 
   add_test(NAME ${_UT_TARGET}
@@ -162,21 +167,24 @@ function (get_winml_test_model_src
       "${winml_test_src_path}/model/*.cpp")
   set(${output_winml_test_model_src} ${winml_test_model_src} PARENT_SCOPE)
   set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common onnxruntime_mlas
-    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_flatbuffers PARENT_SCOPE)
+    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
 endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
-add_library(winml_test_common STATIC ${winml_test_common_src})
+onnxruntime_add_static_library(winml_test_common ${winml_test_common_src})
 target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(winml_test_common PRIVATE "BUILD_INBOX=1")
+endif()
 add_dependencies(winml_test_common
   onnx
   winml_api
   winml_dll
 )
 onnxruntime_add_include_to_target(winml_test_common onnx_proto)
-add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
@@ -191,9 +199,9 @@ add_winml_test(
   SOURCES ${winml_test_api_src} ${winml_test_api_redist_only_src}
   LIBS winml_test_common
 )
-target_delayload(winml_test_api d3d11.dll dxgi.dll d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
+target_delayload(winml_test_api dxgi.dll d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_delayload(winml_test_api directml.dll)
+  target_delayload(winml_test_api DirectML.dll)
 endif()
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_api ext-ms-win-dxcore-l1-*.dll)
@@ -207,7 +215,7 @@ add_winml_test(
 )
 target_delayload(winml_test_scenario d2d1.dll d3d11.dll dxgi.dll d3d12.dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
-  target_delayload(winml_test_scenario directml.dll)
+  target_delayload(winml_test_scenario DirectML.dll)
 endif()
 if (EXISTS ${dxcore_header})
   target_delayload(winml_test_scenario ext-ms-win-dxcore-l1-*.dll)
@@ -228,9 +236,6 @@ if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
   target_compile_definitions(winml_test_image PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
 endif()
 target_delayload(winml_test_image d3d12.dll api-ms-win-core-file-l1-2-2.dll api-ms-win-core-synch-l1-2-1.dll)
-if (EXISTS ${dxcore_header})
-  target_delayload(winml_test_image ext-ms-win-dxcore-l1-*.dll)
-endif()
 
 get_winml_test_concurrency_src(${WINML_TEST_SRC_DIR} winml_test_concurrency_src)
 add_winml_test(
@@ -278,6 +283,9 @@ if(NOT onnxruntime_ENABLE_MEMLEAK_CHECKER)
     SOURCES ${winml_test_model_src}
     LIBS winml_test_common ${winml_test_model_libs}
   )
+  if (EXISTS ${dxcore_header})
+    target_delayload(winml_test_model ext-ms-win-dxcore-l1-*.dll)
+  endif()
   target_precompiled_header(winml_test_model testPch.h)
 endif()
 

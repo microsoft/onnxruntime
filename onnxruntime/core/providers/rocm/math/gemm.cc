@@ -83,6 +83,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       ROCBLAS_RETURN_IF_ERROR(rocblasCopyHelper(
+          Stream(),
           RocblasHandle(),
           M * N,
           b_data,
@@ -115,7 +116,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N));
     } else {
       // B is (M, N), no broadcast needed.
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice, Stream()));
     }
   }
 

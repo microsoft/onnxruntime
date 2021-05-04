@@ -145,6 +145,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
     BinaryElementwisePreparation prepare;                                                                        \
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
+        Stream(),                                                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
@@ -315,12 +316,13 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace pow12_internal {
 template <class T>
-Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
+Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparation& prepare) {
   namespace on = ONNX_NAMESPACE;
   Status s;
   switch (prepare.rhs_tensor->GetElementType()) {
     case on::TensorProto_DataType_INT32:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<int32_t>::MappedType>(
+          stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
@@ -334,6 +336,7 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
       break;
     case on::TensorProto_DataType_INT64:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<int64_t>::MappedType>(
+          stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
@@ -347,6 +350,7 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
       break;
     case on::TensorProto_DataType_FLOAT:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<float>::MappedType>(
+          stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
@@ -360,6 +364,7 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
       break;
     case on::TensorProto_DataType_DOUBLE:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<double>::MappedType>(
+          stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
@@ -373,6 +378,7 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
       break;
     case on::TensorProto_DataType_FLOAT16:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<MLFloat16>::MappedType>(
+          stream,
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
@@ -402,19 +408,19 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
 
   switch (prepare.lhs_tensor->GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      s = DispatchOnFirstArg<int32_t>(prepare);
+      s = DispatchOnFirstArg<int32_t>(Stream(), prepare);
       break;
     case on::TensorProto_DataType_INT64:
-      s = DispatchOnFirstArg<int64_t>(prepare);
+      s = DispatchOnFirstArg<int64_t>(Stream(), prepare);
       break;
     case on::TensorProto_DataType_FLOAT:
-      s = DispatchOnFirstArg<float>(prepare);
+      s = DispatchOnFirstArg<float>(Stream(), prepare);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      s = DispatchOnFirstArg<double>(prepare);
+      s = DispatchOnFirstArg<double>(Stream(), prepare);
       break;
     case on::TensorProto_DataType_FLOAT16:
-      s = DispatchOnFirstArg<MLFloat16>(prepare);
+      s = DispatchOnFirstArg<MLFloat16>(Stream(), prepare);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
@@ -431,6 +437,7 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
 
   Impl_Compare(
+      Stream(),
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -470,6 +477,24 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+//GreaterOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status GreaterOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &ImplT2_GreaterOrEqual);
+
+  return Status::OK();
+}
+
+//LessOrEqual op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status LessOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &ImplT2_LessOrEqual);
+
+  return Status::OK();
+}
+
 BINARY_LOGICALOP_REGISTER_UZILHFD(Equal, 13)
 BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(Equal, 13, bool)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Equal, 11, 12)
@@ -481,6 +506,9 @@ BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 13)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Less, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
+BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 12)
+BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 12)
+
 
 }  // namespace cuda
 }  // namespace onnxruntime

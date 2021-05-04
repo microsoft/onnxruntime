@@ -36,13 +36,15 @@ REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int64_t)
 
 template <typename T>
 struct GatherNDGradComputeImpl {
-  void operator()(const int64_t num_slices,
+  void operator()(cudaStream_t stream,
+                  const int64_t num_slices,
                   const int64_t slice_size,
                   const void* const kernel_input_data,
                   void* const kernel_output_data,
                   int64_t* const input_slice_offsets_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
-    GatherNDGradImpl<CudaT>(num_slices, kernel_input_data,
+    GatherNDGradImpl<CudaT>(stream,
+                            num_slices, kernel_input_data,
                             kernel_output_data, slice_size,
                             input_slice_offsets_data);
   }
@@ -53,9 +55,9 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto shape_tensor = context->Input<Tensor>(0);
   auto indices_tensor = context->Input<Tensor>(1);
   auto update_tensor = context->Input<Tensor>(2);
-  ORT_RETURN_IF_NOT(shape_tensor != nullptr);
-  ORT_RETURN_IF_NOT(indices_tensor != nullptr);
-  ORT_RETURN_IF_NOT(update_tensor != nullptr);
+  ORT_RETURN_IF(shape_tensor == nullptr, "shape_tensor != nullptr");
+  ORT_RETURN_IF(indices_tensor == nullptr, "indices_tensor != nullptr");
+  ORT_RETURN_IF(update_tensor == nullptr, "update_tensor != nullptr");
 
   auto indices_shape = indices_tensor->Shape();
   auto update_shape = update_tensor->Shape();
@@ -82,20 +84,21 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto output_tensor = context->Output(0, input_shape);
 
   // TODO this memset can be expensive, a sparse tensor representation would help here
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes(), Stream()));
 
   // Compute
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(batch_dims_, input_shape, indices_shape, indices_tensor,
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(Stream(),
+                                             batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
   const void* const kernel_input_data = update_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDGradComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES>
-      t_disp(update_tensor->GetElementType());
-  t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(update_tensor->GetElementType());
+  t_disp.Invoke<GatherNDGradComputeImpl>(
+      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

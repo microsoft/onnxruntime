@@ -19,6 +19,7 @@ class FusionGptAttentionNoPast(Fusion):
     """
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, "Attention", "LayerNormalization", "without past")
+        # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
 
     def create_attention_node(self, gemm, gemm_qkv, input, output):

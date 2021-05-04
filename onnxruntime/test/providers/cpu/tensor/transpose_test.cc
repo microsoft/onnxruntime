@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -137,11 +138,7 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
-#else
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
-#endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -152,9 +149,10 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<MLFloat16> expected_vals = {MLFloat16(1), MLFloat16(4),
-                                                    MLFloat16(2), MLFloat16(5),
-                                                    MLFloat16(3), MLFloat16(6)};
+  std::initializer_list<MLFloat16> expected_vals =
+      {MLFloat16{static_cast<uint16_t>(1)}, MLFloat16{static_cast<uint16_t>(4)},
+       MLFloat16{static_cast<uint16_t>(2)}, MLFloat16{static_cast<uint16_t>(5)},
+       MLFloat16{static_cast<uint16_t>(3)}, MLFloat16{static_cast<uint16_t>(6)}};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
@@ -345,7 +343,7 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -403,7 +401,7 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -559,9 +557,9 @@ TEST(TransposeOpTest, DoTransposeEltWise) {
                                        13.0f, 15.0f, 14.0f, 16.0f,
                                        17.0f, 17.0f};
 
-  DoTransposeEltWise(input_shape.size(), input_shape, 16,
-                     stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
-                     sizeof(float));
+  ASSERT_STATUS_OK(DoTransposeEltWise(input_shape.size(), input_shape, 16,
+                                      stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
+                                      sizeof(float)));
   for (size_t i = 0; i < input_vals_end.size(); ++i) {
     ASSERT_TRUE(target[i] == expected_vals3[i]);
   }

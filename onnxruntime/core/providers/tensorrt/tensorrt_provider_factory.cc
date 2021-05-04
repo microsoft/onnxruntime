@@ -13,30 +13,50 @@ namespace onnxruntime {
 void Shutdown_DeleteRegistry();
 
 struct TensorrtProviderFactory : IExecutionProviderFactory {
-  TensorrtProviderFactory(int device_id) : device_id_(device_id) {}
+  TensorrtProviderFactory(const TensorrtExecutionProviderInfo& info) : info_{info} {}
   ~TensorrtProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  int device_id_;
+  TensorrtExecutionProviderInfo info_;
 };
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
-  TensorrtExecutionProviderInfo info;
-  info.device_id = device_id_;
-  return onnxruntime::make_unique<TensorrtExecutionProvider>(info);
+  return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
-  return std::make_shared<onnxruntime::TensorrtProviderFactory>(device_id);
+  TensorrtExecutionProviderInfo info;
+  info.device_id = device_id;
+  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const TensorrtExecutionProviderInfo& info) {
+  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
 }
 
 struct Tensorrt_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
-    //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
-    // Will be fixed by PR #2850
-    return std::make_shared<TensorrtProviderFactory>(device_id);
+    TensorrtExecutionProviderInfo info;
+    info.device_id = device_id;
+    return std::make_shared<TensorrtProviderFactory>(info);
+  }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
+    TensorrtExecutionProviderInfo info;
+    info.device_id = options.device_id;
+    info.has_user_compute_stream = options.has_user_compute_stream;
+    info.user_compute_stream = options.user_compute_stream;
+    info.has_trt_options = options.has_trt_options;
+    info.max_workspace_size = options.trt_max_workspace_size;
+    info.fp16_enable = options.trt_fp16_enable;
+    info.int8_enable = options.trt_int8_enable;
+    info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
+    info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table;
+    info.force_sequential_engine_build = options.trt_force_sequential_engine_build;
+    return std::make_shared<TensorrtProviderFactory>(info);
   }
 
   void Shutdown() override {

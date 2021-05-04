@@ -9,7 +9,7 @@ import onnxruntime as onnxrt
 from helper import get_name
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from onnxruntime.nuphar.model_tools import validate_with_ort
+from onnxruntime.nuphar.model_tools import validate_with_ort, run_shape_inference
 import shutil
 import sys
 import subprocess
@@ -336,20 +336,16 @@ def make_providers(nuphar_settings):
 class TestNuphar(unittest.TestCase):
 
     def test_bidaf(self):
-        # download BiDAF model
         cwd = os.getcwd()
-        bidaf_url = 'https://onnxzoo.blob.core.windows.net/models/opset_9/bidaf/bidaf.tar.gz'
-        cache_dir = os.path.join(os.path.expanduser("~"), '.cache', 'onnxruntime')
-        os.makedirs(cache_dir, exist_ok=True)
-        bidaf_local = os.path.join(cache_dir, 'bidaf.tar.gz')
-        if not os.path.exists(bidaf_local):
-            urllib.request.urlretrieve(bidaf_url, bidaf_local)
-        with tarfile.open(bidaf_local, 'r') as f:
-            f.extractall(cwd)
 
-        # verify accuracy of quantized model
+        bidaf_dir_src = '/build/models/opset9/test_bidaf'
+
         bidaf_dir = os.path.join(cwd, 'bidaf')
-        bidaf_model = os.path.join(bidaf_dir, 'bidaf.onnx')
+        shutil.copytree(bidaf_dir_src, bidaf_dir)
+
+        bidaf_dir = os.path.join(cwd, 'bidaf')
+        bidaf_model = os.path.join(bidaf_dir, 'model.onnx')
+        run_shape_inference(bidaf_model, bidaf_model)
         bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
         bidaf_opt_scan_model = os.path.join(bidaf_dir, 'bidaf_opt_scan.onnx')
         bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
@@ -421,20 +417,14 @@ class TestNuphar(unittest.TestCase):
             sess.run([], feed)
 
     def test_bert_squad(self):
-        # download BERT_squad model
         cwd = os.getcwd()
-        bert_squad_url = 'https://onnxzoo.blob.core.windows.net/models/opset_10/bert_squad/download_sample_10.tar.gz'
-        cache_dir = os.path.join(os.path.expanduser("~"), '.cache', 'onnxruntime')
-        os.makedirs(cache_dir, exist_ok=True)
-        bert_squad_local = os.path.join(cache_dir, 'bert_squad.tar.gz')
-        if not os.path.exists(bert_squad_local):
-            urllib.request.urlretrieve(bert_squad_url, bert_squad_local)
-        with tarfile.open(bert_squad_local, 'r') as f:
-            f.extractall(cwd)
 
         # run symbolic shape inference on this model
         # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
-        bert_squad_dir = os.path.join(cwd, 'download_sample_10')
+        bert_squad_dir_src = '/build/models/opset10/BERT_Squad'
+        bert_squad_dir = os.path.join(cwd, 'BERT_Squad')
+        shutil.copytree(bert_squad_dir_src, bert_squad_dir)
+
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
             sys.executable, '-m', 'onnxruntime.tools.symbolic_shape_infer', '--input', bert_squad_model, '--output',
@@ -445,7 +435,7 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'BERT_Squad', cwd], check=True, cwd=cwd)
 
         # run onnxruntime_perf_test, note that nuphar currently is not integrated with ORT thread pool, so set -x 1 to avoid thread confliction with OpenMP
         onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
@@ -722,5 +712,6 @@ class TestNuphar(unittest.TestCase):
         ], check=True)
 
         validate_with_ort(loop_model_filename, scan_model_filename)
+
 if __name__ == '__main__':
     unittest.main()

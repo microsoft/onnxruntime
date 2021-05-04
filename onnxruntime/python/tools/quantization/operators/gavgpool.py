@@ -24,7 +24,7 @@ class QGlobalAveragePool(QuantOperatorBase):
         output_scale_name = output_scale_name_from_parameter if data_found else quantized_input_value.scale_name
         output_zp_name = output_zp_name_from_parameter if data_found else quantized_input_value.zp_name
         quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized", output_scale_name,
-                                                output_zp_name, quantized_input_value.qType)
+                                                output_zp_name, QuantizedValueType.Input)
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
         kwargs = {}

@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
@@ -46,7 +47,6 @@ const OpInfo div_info = OpInfo("Div", opset_v7_13);
 const OpInfo mul_info = OpInfo("Mul", opset_v1_6_7_13);
 const OpInfo sub_info = OpInfo("Sub", opset_v7_13);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11_13);
-const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
 const OpInfo dropout_info = OpInfo("Dropout", opset_v12_13);
 const OpInfo where_info = OpInfo("Where", opset_v9);
 
@@ -113,12 +113,32 @@ static uint32_t HashName(const std::string& name) {
   return hash;
 }
 
+template <class T>
+void MegatronTransformer::PartitionBufferByColumn(const T* input,
+                                                  const int64_t row_count,
+                                                  const int64_t column_count,
+                                                  const int64_t column_stride,
+                                                  const int stride,
+                                                  std::vector<T>& result) const {
+  const int64_t column_stride_partition = column_stride / horizontal_parallel_size_;
+
+  const int64_t stride_partition_column_offset = horizontal_parallel_rank_ * column_stride_partition;
+  for (auto row_index = 0; row_index < row_count; row_index++) {
+    const auto row_offset = row_index * column_count;
+    for (auto stride_index = 0; stride_index < stride; stride_index++) {
+      const auto column_offset = row_offset + stride_index * column_stride + stride_partition_column_offset;
+      std::copy(input + column_offset, input + column_offset + column_stride_partition, std::back_inserter(result));
+    }
+  }
+}
+
 bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                                   ONNX_NAMESPACE::TensorProto& initializer_partition,
                                                   int stride) const {
+  const std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    LOGS_DEFAULT(WARNING) << "PartitionWeightByColumn: " << input_arg.Name() << " is not an initializer";
+  if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
+    LOGS_DEFAULT(WARNING) << "PartitionWeightByColumn: " << original_name << " is not an initializer";
     return false;
   }
   auto data_type = tensor_proto->data_type();
@@ -130,11 +150,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = 1;
     column_count = shape->dim(0).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{column_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is " << rank << " (expected to be 1 or 2).";
     return false;
@@ -147,47 +167,118 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     return false;
   }
 
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  if (stride > 1){
+    LOGS_DEFAULT(WARNING) << "Checkpointing is not currently supported for graphs requiring partitioning of weight with stride > 1";
+  }
+
+  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  std::string new_initializer_name = input_arg.Name() + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
+  std::string new_initializer_name = original_name + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
 
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
   int64_t column_partition = column_count / horizontal_parallel_size_;
   int64_t column_stride = column_count / stride;
-  int64_t column_stride_partition = column_stride / horizontal_parallel_size_;
 
+  std::vector<int64_t> new_shape;
   if (rank == 2) {
     initializer_partition.add_dims(row_count);
+    new_shape.push_back(row_count);
   }
 
   initializer_partition.add_dims(column_partition);
+  new_shape.push_back(column_partition);
   const int64_t element_count = row_count * column_partition;
 
   std::vector<float> result;
   result.reserve(element_count);
 
-  const int64_t stride_partition_column_offset = horizontal_parallel_rank_ * column_stride_partition;
-  for (auto row_index = 0; row_index < row_count; row_index++) {
-    auto row_offset = row_index * column_count;
-    for (auto stride_index = 0; stride_index < stride; stride_index++) {
-      auto column_offset = row_offset + stride_index * column_stride + stride_partition_column_offset;
-      std::copy(a_weight + column_offset, a_weight + column_offset + column_stride_partition, std::back_inserter(result));
+  PartitionBufferByColumn(a_weight, row_count, column_count, column_stride, stride, result);
+  initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+
+  // Partition initial optimizer state if available
+  const auto optim_state_it = initial_optimizer_states_.find(original_name);
+  if (optim_state_it != initial_optimizer_states_.end()) {
+    auto& initial_states = optim_state_it->second;
+    // partition moments same way as the weight
+    for (const auto& moments_prefix : training::MOMENTS_PREFIXES) {
+      const auto initial_state_it = initial_states.find(moments_prefix);
+      if (initial_state_it != initial_states.end()) {
+        auto* init_tensor = initial_state_it->second.GetMutable<Tensor>();
+
+        OrtValue partitioned;
+        auto element_type = init_tensor->DataType();
+        TensorShape partition_shape(new_shape);
+        std::unique_ptr<Tensor> p_tensor;
+
+        if (utils::IsPrimitiveDataType<float>(element_type)) {
+          float* data_buffer = init_tensor->MutableData<float>();
+
+          // allocate temporary memory to get the column partitioned state
+          std::vector<float> result_buffer;
+          result_buffer.reserve(element_count);
+          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
+
+          // We need to maintain the initial optimizer states as an OrtValue, 
+          // which is converted eventually to a TensorProto in the optimizer builder
+          // after Megatron and Zero partitioning. This approach saves CPU memory 
+          // as creating a TensorProto involves a copy, and by delaying the copy until 
+          // after the partitioning results in a smaller copy only for the optimizer 
+          // states currently present on the rank.
+          // Allocate a new buffer to hold the partitioned optimizer state 
+          // as column partitioning cannot re-use the original
+          // buffer as it is a non-contiguous read
+          auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
+          p_tensor = std::make_unique<Tensor>(element_type,
+                                                      partition_shape,
+                                                      alloc);
+          float* out_buffer = p_tensor->MutableData<float>();
+          memcpy(out_buffer, result_buffer.data(), sizeof(float) * element_count);
+        } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
+          MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
+
+          // allocate temporary memory to get the column partitioned state
+          std::vector<MLFloat16> result_buffer;
+          result_buffer.reserve(element_count);
+          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
+
+          // allocate a new buffer as column partitioning cannot re-use the original
+          // buffer as it is a non-contiguous read on original buffer
+          auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
+          p_tensor = std::make_unique<Tensor>(element_type,
+                                                      partition_shape,
+                                                      alloc);
+          MLFloat16* out_buffer = p_tensor->MutableData<MLFloat16>();
+          memcpy(out_buffer, result_buffer.data(), sizeof(MLFloat16) * element_count);
+        } else {
+          ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
+        }
+        partitioned.Init(p_tensor.release(),
+                         DataTypeImpl::GetType<Tensor>(),
+                         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        initial_states[moments_prefix] = std::move(partitioned);
+      } else {
+        LOGS_DEFAULT(WARNING) << "Initial value for optimizer state: " << moments_prefix 
+                              << " not found for weight: " << original_name;
+      }
     }
   }
 
-  initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  weight_partition_info_[new_initializer_name].megatron_row_partition = 0;
+  weight_partition_info_[original_name].megatron_row_partition = 0;
+  weight_partition_info_[original_name].partition_name = new_initializer_name;
+  weight_partition_info_[original_name].weight_partitioned = true;
+
   return true;
 }
 
 bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg& input_arg,
                                                ONNX_NAMESPACE::TensorProto& initializer_partition) const {
+  const std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    LOGS_DEFAULT(WARNING) << "PartitionWeightByRow: " << input_arg.Name() << " is not an initializer";
+  if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
+    LOGS_DEFAULT(WARNING) << "PartitionWeightByRow: " << original_name << " is not an initializer";
     return false;
   }
 
@@ -200,11 +291,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = shape->dim(0).dim_value();
     column_count = 1;
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is more than " << rank
                           << " (expected to be 1 or 2).";
@@ -216,19 +307,22 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
                           << horizontal_parallel_size_ << ", not supported currently.";
     return false;
   }
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  std::string new_initializer_name = input_arg.Name() + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
+  std::string new_initializer_name = original_name + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
 
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
 
   int64_t row_partition = row_count / horizontal_parallel_size_;
 
+  std::vector<int64_t> new_shape;
   initializer_partition.add_dims(row_partition);
+  new_shape.push_back(row_partition);
   if (rank == 2) {
     initializer_partition.add_dims(column_count);
+    new_shape.push_back(column_count);
   }
   const int64_t element_count = row_partition * column_count;
 
@@ -238,7 +332,54 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  weight_partition_info_[new_initializer_name].megatron_row_partition = 1;
+
+  // Partition initial optimizer state if available
+  const auto optim_state_it = initial_optimizer_states_.find(original_name);
+  if (optim_state_it != initial_optimizer_states_.end()) {
+    auto& initial_states = optim_state_it->second;
+    for (const auto& moments_prefix : training::MOMENTS_PREFIXES) {
+      const auto initial_state_it = initial_states.find(moments_prefix);
+      if (initial_state_it != initial_states.end()) {
+        auto* init_tensor = initial_state_it->second.GetMutable<Tensor>();
+
+        OrtValue partitioned;
+        auto element_type = init_tensor->DataType();
+        TensorShape partition_shape(new_shape);
+        const OrtMemoryInfo& info = init_tensor->Location();
+        std::unique_ptr<Tensor> p_tensor;
+
+        if (utils::IsPrimitiveDataType<float>(element_type)) {
+          float* data_buffer = init_tensor->MutableData<float>();
+
+          p_tensor = std::make_unique<Tensor>(element_type,
+                                                      partition_shape,
+                                                      data_buffer + row_index_offset * column_count,
+                                                      info);
+        } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
+          MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
+
+          p_tensor = std::make_unique<Tensor>(element_type,
+                                                      partition_shape,
+                                                      data_buffer + row_index_offset * column_count,
+                                                      info);
+
+        } else {
+          ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
+        }
+        partitioned.Init(p_tensor.release(),
+                         DataTypeImpl::GetType<Tensor>(),
+                         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        initial_states[moments_prefix] = std::move(partitioned);
+      } else {
+        LOGS_DEFAULT(WARNING) << "Initial value for optimizer state: " << moments_prefix 
+                              << " not found for weight: " << original_name;
+      }
+    }
+  }
+
+  weight_partition_info_[original_name].megatron_row_partition = 1;
+  weight_partition_info_[original_name].partition_name = new_initializer_name;
+  weight_partition_info_[original_name].weight_partitioned = true;
   return true;
 }
 
@@ -409,14 +550,19 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
       biasgelu_node.GetOutputEdgesCount() != 1) {
     return skip_status;
   }
-  Node& dropout_node = *graph.GetNode(biasgelu_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(dropout_node, dropout_info, provider_type)) {
+
+  // Either Dropout->Matmul or just Matmul
+  Node* dropout_node = nullptr;
+  Node* next_node = graph.GetNode(biasgelu_node.OutputNodesBegin()->Index());
+  if (IsExpectedOpAndProvider(*next_node, dropout_info, provider_type)) {
+    dropout_node = next_node;
+    next_node = graph.GetNode(dropout_node->OutputNodesBegin()->Index());
+  }
+  if (!IsExpectedOpAndProvider(*next_node, matmul_info, provider_type)) {
     return skip_status;
   }
-  Node& matmul2_node = *graph.GetNode(dropout_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(matmul2_node, matmul_info, provider_type)) {
-    return skip_status;
-  }
+  Node& matmul2_node = *next_node;
+
   Node& add_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
   if (!IsExpectedOpAndProvider(add_node, add_info, provider_type)) {
     return skip_status;
@@ -430,8 +576,11 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node, &dropout_node,
+  nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node,
                                                            &matmul2_node, transpose_op_ptr});
+  if (dropout_node != nullptr) {
+    nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {dropout_node});
+  }                                                         
 
   auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
   ONNX_NAMESPACE::TensorProto dense_wi_weight_initializer_partition;
@@ -439,7 +588,7 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  //since the bias doesnt get transposed, partitioning by col
+  //since the bias doesn't get transposed, partitioning by col
   auto dense_wi_bias_arg = biasgelu_node.MutableInputDefs()[1];
   ONNX_NAMESPACE::TensorProto dense_wi_bias_initializer_partition;
   if (!PartitionWeightByColumn(graph, *dense_wi_bias_arg, dense_wi_bias_initializer_partition)) {
@@ -468,7 +617,9 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
   graph.RemoveInitializedTensor(dense_wi_bias_arg->Name());
   graph.RemoveInitializedTensor(dense_wo_weight_arg->Name());
 
-  dropout_nodes_to_transform.insert(&dropout_node);
+  if (dropout_node) {
+    dropout_nodes_to_transform.insert(dropout_node);
+  }
 
   const std::vector<NodeArg*> mlp_f_input_defs{node.MutableInputDefs()[0]};
   auto mlp_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
@@ -541,7 +692,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
       NodeInfo({mul_info}),
       NodeInfo({sub_info}),
       NodeInfo({softmax_info}),
-      NodeInfo({trainable_dropout_info, dropout_info}, false),  // -6
+      NodeInfo({dropout_info}, false),  // -6
       NodeInfo({matmul_info}),
       NodeInfo({transpose_info}),
       NodeInfo({reshape_info}),
@@ -637,7 +788,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
 
     // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     if (init_const->size() != 3 && init_const->size() != 4) {
       is_reshape_valid = false;
       break;
@@ -686,7 +837,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     const int64_t* val = init_const->data<int64_t>();
     int64_t size = init_const->size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
@@ -918,7 +1069,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     }
     // The number of the values should be more than idx, and the idx'th value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     if (init_const->size() <= idx) {
       is_reshape_valid = false;
       break;
@@ -1014,7 +1165,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
+    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
     const int64_t* val = init_const->data<int64_t>();
     int64_t size = init_const->size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
@@ -1176,8 +1327,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       continue;
     }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12_13) &&
-        !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TrainableDropout", opset_v9, kOnnxDomain)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12_13)) {
       continue;
     }
 
@@ -1217,15 +1367,17 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
                   .IsOK());
 
   auto& graph_inputs = graph.GetInputs();
-  for (auto& node : nodes_to_clear_shape) {
-    auto& inputs = node->MutableInputDefs();
-    for (auto* input : inputs)
-      if (std::find(graph_inputs.begin(), graph_inputs.end(), input) == graph_inputs.end())
-        input->ClearShape();
+  for (auto node : nodes_to_clear_shape) {
+    if (node != nullptr) {
+      auto& inputs = node->MutableInputDefs();
+      for (auto* input : inputs)
+        if (std::find(graph_inputs.begin(), graph_inputs.end(), input) == graph_inputs.end())
+          input->ClearShape();
 
-    for (auto* output : node->MutableOutputDefs())
-      if (std::find(graph_inputs.begin(), graph_inputs.end(), output) == graph_inputs.end())
-        output->ClearShape();
+      for (auto* output : node->MutableOutputDefs())
+        if (std::find(graph_inputs.begin(), graph_inputs.end(), output) == graph_inputs.end())
+          output->ClearShape();
+    }
   }
 
   for (auto x : updated_weight_names_) {

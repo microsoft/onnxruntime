@@ -22,6 +22,7 @@ __global__ void _SoftMaxCrossEntropy(
 
 template <typename T>
 void SoftMaxCrossEntropyImpl(
+    cudaStream_t stream,
     const T* log_prob,
     const T* label,
     size_t normalize_factor,
@@ -30,7 +31,7 @@ void SoftMaxCrossEntropyImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG NORMALIZE_FACTOR = static_cast<CUDA_LONG>(normalize_factor);
-  _SoftMaxCrossEntropy<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _SoftMaxCrossEntropy<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       log_prob,
       label,
       NORMALIZE_FACTOR,
@@ -40,6 +41,7 @@ void SoftMaxCrossEntropyImpl(
 
 #define SPECIALIZED_IMPL_SoftMaxEntropyImpl(T) \
   template void SoftMaxCrossEntropyImpl(       \
+      cudaStream_t stream,               \
       const T* log_prob,                       \
       const T* label,                          \
       size_t normalize_factor,                 \
@@ -62,6 +64,7 @@ __global__ void _SoftMaxCrossEntropyGrad(
 
 template <typename T>
 void SoftMaxCrossEntropyGradImpl(
+    cudaStream_t stream,
     const T* dY,
     const T* log_prob,
     const T* label,
@@ -71,7 +74,7 @@ void SoftMaxCrossEntropyGradImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG NORMALIZE_FACTOR = static_cast<CUDA_LONG>(normalize_factor);
-  _SoftMaxCrossEntropyGrad<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _SoftMaxCrossEntropyGrad<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       dY,
       log_prob,
       label,
@@ -82,6 +85,7 @@ void SoftMaxCrossEntropyGradImpl(
 
 #define SPECIALIZED_IMPL_SoftMaxEntropyGradImpl(T) \
   template void SoftMaxCrossEntropyGradImpl(       \
+      cudaStream_t stream,                   \
       const T* dY,                                 \
       const T* log_prob,                           \
       const T* label,                              \
@@ -128,6 +132,7 @@ __global__ void _WeightedSparseSoftmaxCrossEntropy(
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyImpl(
+    cudaStream_t stream,
     const T* log_prob,
     const Tin* label,
     const T* weight,
@@ -139,7 +144,7 @@ void SparseSoftmaxCrossEntropyImpl(
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
   if (weight) {
-    _WeightedSparseSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _WeightedSparseSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       log_prob,
       label,
       weight,
@@ -148,7 +153,7 @@ void SparseSoftmaxCrossEntropyImpl(
       N,
       D);
   } else {
-    _SparseSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _SparseSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         log_prob,
         label,
         normalize_factor,
@@ -160,6 +165,7 @@ void SparseSoftmaxCrossEntropyImpl(
 
 #define SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(T, Tin) \
   template void SparseSoftmaxCrossEntropyImpl(            \
+      cudaStream_t stream,                          \
       const T* log_prob,                                  \
       const Tin* label,                                   \
       const T* weight,                                    \
@@ -212,6 +218,7 @@ __global__ void _WeightedSparseSoftmaxCrossEntropyGrad(
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(
+    cudaStream_t stream,
     const T* dY,
     const T* log_prob,
     const Tin* label,
@@ -224,7 +231,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N * D) / GridDim::maxThreadsPerBlock));
   if (weight) {
-    _WeightedSparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _WeightedSparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       dY,
       log_prob,
       label,
@@ -234,7 +241,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
       N,
       D);
   } else {
-    _SparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _SparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         dY,
         log_prob,
         label,
@@ -247,6 +254,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
 
 #define SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(T, Tin) \
   template void SparseSoftmaxCrossEntropyGradImpl(            \
+      cudaStream_t stream,                              \
       const T* dY,                                            \
       const T* log_prob,                                      \
       const Tin* label,                                       \

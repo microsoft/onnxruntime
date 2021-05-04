@@ -1,5 +1,4 @@
 steps:
-- template: set-test-data-variables-step.yml
 
 - task: CmdLine@2
   displayName: 'Clean untagged docker images'

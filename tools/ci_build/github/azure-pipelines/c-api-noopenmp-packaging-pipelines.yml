@@ -1,0 +1,243 @@
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: DoCompliance
+  displayName: Run Compliance Tasks?
+  type: boolean
+  default: true
+
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+variables:
+  PackageName: 'Microsoft.ML.OnnxRuntime'
+
+jobs:
+- template: templates/c-api-cpu.yml
+  parameters:
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    AdditionalBuildFlags: ''
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    BuildVariant: 'default'
+
+- job: Linux_C_API_Packaging_GPU_x64
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Onnxruntime-Linux-GPU'
+  variables:
+    CUDA_VERSION: '11.0'
+  steps:
+    - template: templates/set-version-number-variables-step.yml
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda11build
+    - task: CmdLine@2
+      inputs:
+        script: |
+          mkdir -p $HOME/.onnx
+          docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda11build \
+          /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
+          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc
+        workingDirectory: $(Build.SourcesDirectory)
+
+    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: 'linux-x64'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-linux-gpu-x64'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString:  'onnxruntime-linux-x64-gpu'
+          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+          commitId: $(OnnxRuntimeGitCommitHash)
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- template: templates/win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
+    job_name_suffix: gpu
+    EnvSetupScript: setup_env_cuda_11.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: gpu-x64
+    buildparameter: --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --enable_onnx_tests --enable_wcos --build_java
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+    buildJava: true
+    java_artifact_id: onnxruntime_gpu
+
+- template: templates/android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
+
+- job: Jar_Packaging_GPU
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  dependsOn:
+  - Linux_C_API_Packaging_GPU_x64
+  - Windows_Packaging_CPU_gpu
+  condition: succeeded()
+  steps:
+  - checkout: self
+    submodules: false
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Win x64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-win-gpu-x64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Linux x64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-linux-gpu-x64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+
+  - task: PowerShell@2
+    displayName: 'PowerShell Script'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_gpu_packaging.ps1
+      failOnStderr: true
+      showWarnings: true
+      workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+
+
+
+  - task: CopyFiles@2
+    displayName: 'Copy Java Files to Artifact Staging Directory'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+      artifact: 'onnxruntime-java-gpu'
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+
+- job: Final_Jar_Testing_Windows_GPU
+  workspace:
+    clean: all
+  pool: 'onnxruntime-gpu-winbuild'
+  timeoutInMinutes: 60
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  dependsOn:
+    Jar_Packaging_GPU
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+        buildType: 'current'
+        artifactName: 'onnxruntime-java-gpu'
+        targetPath: '$(Build.BinariesDirectory)\final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir test
+        pushd test
+        jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
+        popd
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)\final-jar'
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- job: Final_Jar_Testing_Linux_GPU
+  workspace:
+    clean: all
+  pool: 'Onnxruntime-Linux-GPU'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging_GPU
+  steps:
+  - checkout: self
+    submodules: false
+  - template: templates/set-version-number-variables-step.yml
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-java-gpu'
+      targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: Bash@3
+    displayName: 'Test'
+    inputs:
+      targetType: filePath
+      filePath: 'tools/ci_build/github/linux/java_linux_final_test.sh'
+      arguments: '-r $(Build.BinariesDirectory) -v $(OnnxRuntimeVersion)'
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

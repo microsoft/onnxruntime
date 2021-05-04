@@ -49,11 +49,20 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
+#ifdef ENABLE_TRAINING
+  // Override the index-th output with ort_value
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
+  void UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds);
+  void UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers);
+  Status GetOutputs(const std::vector<int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+#endif
+
   // TO DO: make it thread safe
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
+  Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape, 
+                                      OrtValue*& p_ort_value, const Node& node, size_t nnz = 0);
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrival is sucessful, this function returns true and false otherwise.
@@ -88,12 +97,21 @@ class IExecutionFrame {
     return all_values_[ort_value_index];
   }
 
+  void VerifyOutputSizes(int output_index, const onnxruntime::Node& node,
+                         const onnxruntime::TensorShape* output_shape);
+
+  virtual const logging::Logger* GetLogger() = 0;
+
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
   virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
                                              size_t nnz) = 0;
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
+
+  virtual bool IsAllocatedExternally(int /*ort_value_idx*/) {
+    return false;
+  }
 
   const NodeIndexInfo& node_index_info_;
 
@@ -104,7 +122,7 @@ class IExecutionFrame {
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
 
-  const std::vector<int> fetch_mlvalue_idxs_;
+  std::vector<int> fetch_mlvalue_idxs_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {
@@ -162,6 +180,7 @@ class ExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
+  const logging::Logger* GetLogger() override;
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
@@ -181,6 +200,8 @@ class ExecutionFrame final : public IExecutionFrame {
   void TraceFree(int ort_value_idx);
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
+
+  bool IsAllocatedExternally(int ort_value_idx) override;
 
   const SessionState& session_state_;
 

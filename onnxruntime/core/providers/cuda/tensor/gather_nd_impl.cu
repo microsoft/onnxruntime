@@ -52,6 +52,7 @@ __global__ void _GatherNDKernel(
 
 template <typename TIndex>
 void ComputeSliceOffsetsImpl(
+    cudaStream_t stream,
     const int64_t batch_dims,
     const TArray<int64_t> input_dims,
     const size_t num_slices,
@@ -61,8 +62,8 @@ void ComputeSliceOffsetsImpl(
     const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
     const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
     int64_t* const input_slice_offsets_data) {        // num_slices elements
-  const auto blocks_per_grid = CeilDiv(num_slices, GridDim::maxThreadsPerBlock);
-  _ComputeSliceOffsetsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
+  const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices, GridDim::maxThreadsPerBlock));
+  _ComputeSliceOffsetsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       batch_dims,
       input_dims,
       num_slices,
@@ -76,18 +77,20 @@ void ComputeSliceOffsetsImpl(
 
 template <typename T>
 void GatherNDImpl(
+    cudaStream_t stream,
     const size_t num_slices,
     const void* input_data,
     void* output_data,
     const size_t slice_size,
     const int64_t* input_slice_offsets_data) {
-  const auto blocks_per_grid = CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock);
-  _GatherNDKernel<T><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0>>>(
+  const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock));
+  _GatherNDKernel<T><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       num_slices, static_cast<const T*>(input_data), static_cast<T*>(output_data), slice_size, input_slice_offsets_data);
 }
 
 #define SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(TIndex) \
   template void ComputeSliceOffsetsImpl<TIndex>(       \
+      cudaStream_t stream,                             \
       const int64_t batch_dims,                        \
       const TArray<int64_t> input_dims,                \
       const size_t num_slices,                         \
@@ -99,7 +102,7 @@ void GatherNDImpl(
       int64_t* const input_slice_offsets_data);
 
 #define SPECIALIZED_IMPL(T) \
-  template void GatherNDImpl<T>(const size_t num_slices, const void* input_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data);
+  template void GatherNDImpl<T>(cudaStream_t stream, const size_t num_slices, const void* input_data, void* output_data, const size_t slice_size, const int64_t* input_slice_offsets_data);
 
 SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int32_t)
 SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int64_t)

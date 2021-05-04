@@ -1,8 +1,8 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'macOS-10.15'
-  timeoutInMinutes: 120
+    vmImage: 'macOS-10.14'
+  timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings
@@ -15,6 +15,9 @@ jobs:
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -23,7 +26,26 @@ jobs:
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
 
-  - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      python3 tools/ci_build/build.py \
+        --android \
+        --build_dir build \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=x86_64 \
+        --android_api=29 \
+        --skip_submodule_sync \
+        --parallel \
+        --cmake_generator=Ninja \
+        --build_java
     displayName: CPU EP, Build and Test on Android Emulator
 
   - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)

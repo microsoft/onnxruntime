@@ -770,7 +770,7 @@ void SetDataDependency(
     Graph& graph,
     Node& postponed_node,                             // node should happen after computing dependent_args.
     const std::vector<NodeArg*>& dependent_node_args  // extra data-dependency to add to "postponed_node"
-    ) {
+) {
   // "postponed_node"'s original inputs + "dependent_args"
   std::vector<NodeArg*> pass_through_inputs;
   // the mirror of "postponed_node"'s original inputs + "dependent_args"
@@ -1667,7 +1667,7 @@ Status VerifyAssignment(const std::vector<int>& stages,
       auto cs = graph.GetConsumerNodes(arg->Name());
       for (const Node* c : cs) {
         const int outgoing_stage = stages.at(c->Index());
-        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage);
+        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage, "node_stage > outgoing_stage");
       }
     }
   }

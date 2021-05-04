@@ -50,7 +50,6 @@ DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER(GetGemmGradient)
 DECLARE_GRADIENT_BUILDER(GetDropoutGradient)
-DECLARE_GRADIENT_BUILDER(GetTrainableDropoutGradient)
 DECLARE_GRADIENT_BUILDER(GetGatherNDGradient)
 DECLARE_GRADIENT_BUILDER(GetGatherElementsGradient)
 DECLARE_GRADIENT_BUILDER(GetGeluGradient)
@@ -71,6 +70,8 @@ DECLARE_GRADIENT_BUILDER(GetFlattenGradient)
 DECLARE_GRADIENT_BUILDER(GetTopKGradient)
 DECLARE_GRADIENT_BUILDER(GetClipGradient)
 DECLARE_GRADIENT_BUILDER(GetAbsGradient)
+DECLARE_GRADIENT_BUILDER(GetMinMaxGradient)
+DECLARE_GRADIENT_BUILDER(GetTileGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

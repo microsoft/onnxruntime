@@ -12,6 +12,7 @@ namespace onnxruntime {
 namespace cuda {
 
 Status ExpandImpl(
+    cudaStream_t stream,
     const size_t element_size,
     const int N_output,
     const int N_input,

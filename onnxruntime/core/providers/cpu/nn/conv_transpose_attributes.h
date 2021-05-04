@@ -43,16 +43,18 @@ struct ConvTransposeAttributes : public ConvAttributes {
     std::vector<int64_t> strides;
   };
 
-  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p, bool dynamic_padding = false) const {
+  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
+                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr) const {
     const Tensor* X = context->Input<Tensor>(0);
-    const Tensor* F = context->Input<Tensor>(1);
+    const Tensor* F = (filter_shape != nullptr) ? nullptr : context->Input<Tensor>(1);
+    const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
     const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
     const TensorShape& input_shape = X->Shape().Slice(2);
 
     const int64_t num_input_channels = X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = F->Shape()[1];
+    const int64_t num_output_channels_multiplier = F_Shape[1];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -61,15 +63,15 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " group: ", group);
     }
 
-    if (X->Shape().NumDimensions() != F->Shape().NumDimensions()) {
+    if (X->Shape().NumDimensions() != F_Shape.NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
                              " X: ", X->Shape().ToString().c_str(),
-                             " W: ", F->Shape().ToString().c_str());
+                             " W: ", F_Shape.ToString().c_str());
     }
 
-    if (F->Shape()[0] != num_input_channels) {
+    if (F_Shape[0] != num_input_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
-                             " filter_number: ", F->Shape()[0],
+                             " filter_number: ", F_Shape[0],
                              " num_input_channels: ", num_input_channels);
     }
 
@@ -83,7 +85,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     std::vector<int64_t> kernel_shape;
-    ORT_RETURN_IF_ERROR(ComputeKernelShape(F->Shape(), kernel_shape));
+    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape));
 
     std::vector<int64_t> local_output_padding(output_padding);
     if (local_output_padding.empty()) {
@@ -210,9 +212,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
     // Compute padding if the auto_pad attribute is SAME_UPPER/SAME_LOWER
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
-      // total pad
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
+      // is `in_size * stride`
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, in_size);
+                                       kernel, dilation, /*out_size = */ in_size * stride);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 

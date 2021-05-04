@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename SrcT, typename DstT>
 void Impl_MixedPrecisionScale(
+    cudaStream_t stream,
     const SrcT* input_data,
     const float* scale_data,
     DstT* output_data,

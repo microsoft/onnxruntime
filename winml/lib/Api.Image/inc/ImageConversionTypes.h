@@ -25,17 +25,10 @@ enum ImageTensorChannelType {
   ImageTensorChannelType_COUNT
 };
 
-enum ImageNominalPixelRange {
-  kNominalRange_0_255,
-  kNormalized_0_1,
-  kNormalized_1_1,
-  ImageNominalPixelRange_COUNT
-};
-
 struct ImageTensorDescription {
   ImageTensorDataType dataType;
   ImageTensorChannelType channelType;
-  ImageNominalPixelRange pixelRange;
+  winml::LearningModelPixelRange pixelRange;
   int64_t sizes[kImageTensorDimensionCountMax];
 };
 }  // namespace _winml

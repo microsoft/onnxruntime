@@ -18,6 +18,7 @@ struct GetScaleValueImpl {
 
 template <typename T>
 void Impl_Scale(
+    cudaStream_t stream,
     const T* input_data,
     const float scale_value,
     T* output_data,

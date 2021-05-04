@@ -10,19 +10,14 @@ using namespace rnn::detail;
 class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
  public:
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
-
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
 
   Status Compute(OpKernelContext* context) const override;
 
   ~DynamicQuantizeLSTM() override = default;
 
  private:
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
   Status TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed);
-#endif
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
@@ -33,7 +28,6 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   bool is_R_signed_;
 };
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, bool& is_weight_signed) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
@@ -83,7 +77,6 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& i
 
   return Status::OK();
 }
-#endif
 
 #define WeightCheck(weight_shape, weight_name)                                                                                              \
   if (weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2 ||                                                             \

@@ -30,10 +30,6 @@ set (CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convenient
-# On the other hand it does not allow some others.
-# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -59,7 +55,7 @@ option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak chec
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
-option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
+option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -69,6 +65,7 @@ option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
+option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
@@ -82,6 +79,7 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
+option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_USE_OPENENCLAVE "Build with Open Enclave support" OFF)
 option(onnxruntime_OPENENCLAVE_PHASE "Whether the build is a 'host' or 'enclave' Open Enclave build. A host build depends on an enclave build for testing.")
 option(onnxruntime_OPENENCLAVE_ENCLAVE_BUILD_DIR "Build directory of 'enclave' Open Enclave build, needed for testing")
@@ -126,6 +124,7 @@ option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
+option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
@@ -142,12 +141,47 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
+option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
+# build WebAssembly
+option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
+
+# Enable bitcode for iOS
+option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
+
+# build eager mode
+option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
+
+# Single output director for all binaries
+set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+
+function(set_msvc_c_cpp_compiler_warning_level warning_level)
+  if (NOT "${warning_level}" MATCHES "^[0-4]$")
+    message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
+  endif()
+
+  if(MSVC)
+    set(warning_flag "/W${warning_level}")
+    get_property(opts DIRECTORY PROPERTY COMPILE_OPTIONS)
+    # only match the generator expression added by this function
+    list(FILTER opts
+         EXCLUDE REGEX "^\\$<\\$<OR:\\$<COMPILE_LANGUAGE:C>,\\$<COMPILE_LANGUAGE:CXX>>:/W[0-4]>$")
+    list(APPEND opts "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:${warning_flag}>")
+    set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
+  endif()
+endfunction()
+
+# set default MSVC warning level to 3 for external dependencies
+set_msvc_c_cpp_compiler_warning_level(3)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -210,6 +244,18 @@ if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
   list(INSERT CMAKE_MODULE_PATH 0 ${PROJECT_SOURCE_DIR}/patches/openenclave/cmake)
 endif()
 
+if (onnxruntime_ENABLE_BITCODE)
+  if (NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+    message(FATAL_ERROR "iOS platform required for onnxruntime_ENABLE_BITCODE")
+  endif()
+  set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE YES)
+  set(CMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE "bitcode")
+endif()
+
+if (onnxruntime_ENABLE_MEMORY_PROFILE)
+  add_definitions(-DORT_MEMORY_PROFILE=1)
+endif()
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -264,6 +310,36 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
+# Enable space optimization for gcc/clang
+# Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
+if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  # Enable LTO for release build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    # currently, wasm-ld does not work correctly with "-flto=thin"
+    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+    string(APPEND CMAKE_CXX_FLAGS " -flto")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
+    # Build with sourcemap support
+    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  else()
+    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
+    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+  endif()
+
+  # Build WebAssembly with multi-threads support.
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    string(APPEND CMAKE_CXX_FLAGS " -pthread")
+  endif()
+endif()
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
@@ -272,6 +348,10 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
+  endif()
+
+  if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
+    add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
 
   set(onnxruntime_REDUCED_OPS_BUILD ON)
@@ -294,7 +374,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
     endif()
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
       add_link_options(-Wl, -dead_strip)
     else()
@@ -347,6 +426,7 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
 
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
+  add_compile_definitions("ONNX_NO_EXCEPTIONS")
 
   if(MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -364,7 +444,8 @@ endif()
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
 set(onnxruntime_LINK_LIBATOMIC false)
-if (NOT MSVC)
+# We don't need to link libatomic on iOS
+if (NOT MSVC AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   include(CheckCXXSourceCompiles)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
   set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
@@ -404,8 +485,25 @@ if(onnxruntime_CROSS_COMPILING)
   endif()
 endif()
 
+# Mark symbols to be invisible, for macOS/iOS target only
+# Due to many dependencies have different symbol visibility settings, set global compile flags here.
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+  string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
+endif()
+
 #must after OpenMP settings
 find_package(Threads)
+
+macro(check_nvcc_compiler_flag _FLAG _RESULT)
+    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    message("NVCC_ERROR = ${NVCC_ERROR}")
+    message("NVCC_OUT = ${NVCC_OUT}")
+    if("${NVCC_OUT}" MATCHES "0")
+        set(${_RESULT} 1)
+    else()
+        set(${_RESULT} 0)
+    endif()
+endmacro()
 
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
@@ -553,8 +651,17 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
   if(NOT TARGET GTest::gtest)
     message("Use gtest from submodule")
+
+    # WebAssembly threading support in Node.js is still an experimental feature and
+    # not working properly with googletest suite.
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+      set(gtest_disable_pthreads ON)
+    endif()
+
     # gtest and gmock
+    set_msvc_c_cpp_compiler_warning_level(4)
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
+    set_msvc_c_cpp_compiler_warning_level(3)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
@@ -697,18 +804,6 @@ if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
-if (onnxruntime_USE_EIGEN_FOR_BLAS)
-  add_definitions(-DUSE_EIGEN_FOR_BLAS)
-endif()
-
-if (onnxruntime_USE_OPENBLAS AND "${onnxruntime_OPENBLAS_HOME}" STREQUAL "" AND WIN32)
-  # On linux we assume blas is installed via 'apt-get install libopenblas-dev'
-  message(FATAL_ERROR "onnxruntime_OPENBLAS_HOME required for onnxruntime_USE_OPENBLAS")
-endif()
-
-if (onnxruntime_USE_OPENBLAS AND onnxruntime_USE_EIGEN_FOR_BLAS)
-  message(FATAL_ERROR "use one of onnxruntime_USE_OPENBLAS, onnxruntime_USE_EIGEN_FOR_BLAS")
-endif()
 
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
@@ -739,6 +834,12 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
+add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
+
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
@@ -756,13 +857,296 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_O
 
 include(eigen)
 
-#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
-# dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
+# dnnl/mklml, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB})
 if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES re2::re2)
 endif()
+
+
+set(onnxruntime_LINK_DIRS )
+if(onnxruntime_USE_CUDA)
+      #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
+      if (WIN32)
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64 ${onnxruntime_CUDA_HOME}/x64/lib64)
+      else()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
+      endif()
+endif()
+
+FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
+FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
+
+
+
+set(ORT_WARNING_FLAGS)
+if (WIN32)
+    add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
+    if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
+      add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+    endif()
+    # parallel build
+    # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
+    string(APPEND CMAKE_CXX_FLAGS " /MP")
+    #Compiler bug, we should get such warnings. It will be fixed in a new VC release
+    list(APPEND ORT_WARNING_FLAGS "/wd4127")
+    # class needs to have dll-interface to be used by clients
+    list(APPEND ORT_WARNING_FLAGS "/wd4251")
+    # issued by thrust nonstandard extension used: nameless struct/union
+    list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant
+    if(onnxruntime_USE_OPENMP)
+      list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
+    endif()
+
+    # Treat warning as error if onnxruntime_DEV_MODE is ON
+    # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
+    if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
+      # treat warnings as errors
+      list(APPEND ORT_WARNING_FLAGS "/WX")
+      foreach(type EXE STATIC SHARED)
+        set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
+      endforeach()
+    endif()
+
+    # set linker flags to minimize the binary size.
+    if (MSVC)
+      foreach(type EXE STATIC SHARED)
+        if (NOT type MATCHES STATIC)
+          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
+          # flags (/OPT#); these are already specified using msbuild properties.
+          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
+            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
+          endif()
+        endif()
+        if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
+          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
+          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
+        endif()
+      endforeach()
+    endif()
+
+else()
+  add_definitions(-DPLATFORM_POSIX)
+  check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
+  check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
+  check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
+  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
+  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
+  check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
+  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
+  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
+  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
+  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
+  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
+  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
+  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
+  check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
+
+  if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
+    #we may have extra null pointer checkings in debug build, it's not an issue
+    list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
+  endif()
+  if(HAS_NONNULL_COMPARE)
+    #we may have extra null pointer checkings in debug build, it's not an issue
+    list(APPEND ORT_WARNING_FLAGS -Wno-nonnull-compare)
+  endif()
+  if(HAS_PARENTHESES)
+    list(APPEND ORT_WARNING_FLAGS -Wno-parentheses)
+  endif()
+endif()
+
+#names in this var must match the directory names under onnxruntime/core/providers
+#The list of legacy providers that have not been converted to dynamic loading
+#But DNNL is an exception, it still needs be here.
+set(ONNXRUNTIME_PROVIDER_NAMES cpu)
+
+set(ORT_PROVIDER_FLAGS)
+set(ORT_PROVIDER_CMAKE_FLAGS)
+
+if (onnxruntime_USE_CUDA)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
+endif()
+if (onnxruntime_USE_VITISAI)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_VITISAI=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
+endif()
+if (onnxruntime_USE_DNNL)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_DNNL=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DNNL=1)
+endif()
+if (onnxruntime_USE_OPENVINO)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENVINO=1)
+endif()
+if (onnxruntime_USE_TENSORRT)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT=1)
+    #TODO: remove the following line and change the test code in onnxruntime_shared_lib_test to use the new EP API.
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TENSORRT=1)
+endif()
+if (onnxruntime_USE_RKNPU)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_RKNPU=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_RKNPU=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES rknpu)
+endif()
+if (onnxruntime_USE_NNAPI_BUILTIN)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NNAPI=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
+if (onnxruntime_USE_NUPHAR)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
+endif()
+if(onnxruntime_USE_WINML)
+  list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
+  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WINML=1)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES winml)
+endif()
+if (onnxruntime_USE_ACL)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ACL=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ACL=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
+if (onnxruntime_USE_DML)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_DML=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DML=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
+endif()
+if(onnxruntime_USE_MIGRAPHX)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_MIGRAPHX=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MIGRAPHX=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
+endif()
+
+if (onnxruntime_USE_ARMNN)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ARMNN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
+endif()
+if (onnxruntime_USE_ROCM)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ROCM=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ROCM=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES rocm)
+endif()
+if (onnxruntime_USE_COREML)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_COREML=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
+endif()
+function(onnxruntime_set_compile_flags target_name)
+    if (MSVC)
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+      set_target_properties(${target_name}
+                      PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
+      if (onnxruntime_ENABLE_STATIC_ANALYSIS)
+        target_compile_options(${target_name} PRIVATE  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:stacksize 131072>")
+      endif()
+    else()
+      # Enable warning
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
+      target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
+
+      if(onnxruntime_DEV_MODE)
+          target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Werror>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Werror>")
+      endif()
+
+      target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
+      target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+    endif()
+    foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
+      target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
+    endforeach()
+    if(HAS_DEPRECATED_COPY)
+      #too many such errors in eigen
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
+    endif()
+    if(onnxruntime_USE_CUDA)
+      if((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda")  OR (HAS_STRIC_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
+      endif()
+    endif()
+    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
+    endforeach()
+endfunction()
+
+function(onnxruntime_add_shared_library target_name)
+  add_library(${target_name} SHARED ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
+
+function(onnxruntime_add_static_library target_name)
+  add_library(${target_name} ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
+
+#For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
+function(onnxruntime_add_shared_library_module target_name)
+  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
+    add_library(${target_name} SHARED ${ARGN})
+  else()
+    #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
+    add_library(${target_name} MODULE ${ARGN})
+  endif()
+
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
+
+#almost the same as the above function, except the first line of the body
+function(onnxruntime_add_executable target_name)
+  if(${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
+    message(FATAL_ERROR "iOS doesn't support commmand line tool")
+  endif()
+  add_executable(${target_name} ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -791,7 +1175,6 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -806,11 +1189,9 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
 
 endif()
 
@@ -824,7 +1205,6 @@ if (onnxruntime_USE_ARMNN)
   endif()
 
   if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -839,20 +1219,16 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
   if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-
-    find_library(ARMNN_LIBRARY NAMES armnn
-                     PATHS ${onnxruntime_ARMNN_LIBS}
-                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-    link_libraries(armnn)
+    add_library(armnn SHARED IMPORTED)
+    set_target_properties(armnn PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -940,14 +1316,16 @@ endif()
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+set_msvc_c_cpp_compiler_warning_level(4)
 add_subdirectory(external/flatbuffers EXCLUDE_FROM_ALL)
+set_msvc_c_cpp_compiler_warning_level(3)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES flatbuffers)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES flatbuffers)
 
@@ -957,125 +1335,18 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
 endif()
 
 #Adjust warning flags
-if (WIN32)
-    add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
-    if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
-      add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
-    endif()
-    # parallel build
-    # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
-    string(APPEND CMAKE_CXX_FLAGS " /MP /W4")
-    string(APPEND CMAKE_C_FLAGS " /MP /W4")
-    #Compiler bug, we should get such warnings. It will be fixed in a new VC release
-    string(APPEND CMAKE_CXX_FLAGS " /wd4127")
-    # class needs to have dll-interface to be used by clients
-    string(APPEND CMAKE_CXX_FLAGS " /wd4251")
-    # issued by thrust nonstandard extension used: nameless struct/union
-    string(APPEND CMAKE_CXX_FLAGS " /wd4201")
-    if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        string(APPEND CMAKE_CXX_FLAGS
-            " /analyze:stacksize 131072"
-            # disable warning because there are many occurrences from test macros
-            " /wd6326 " # potential comparison of a constant with another constant
-        )
-    endif()
-
-    # Treat warning as error if onnxruntime_DEV_MODE is ON
-    # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
-    if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
-      # treat warnings as errors
-      string(APPEND CMAKE_CXX_FLAGS " /WX")
-      foreach(type EXE STATIC SHARED)
-        set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
-      endforeach()
-    endif()
-
-    # set linker flags to minimize the binary size.
-    if (MSVC)
-      foreach(type EXE STATIC SHARED)
-        if (NOT type MATCHES STATIC)
-          # The WinML internal toolchain does not allow link's "additional options" to contain optimization
-          # flags (/OPT#); these are already specified using msbuild properties.
-          if (NOT DEFINED onnxruntime_DISABLE_LINKER_OPT_FLAGS)
-            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /OPT:REF,ICF,LBR")
-            set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO")
-            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-            set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /OPT:REF,ICF,LBR")
-            set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
-          endif()
-        endif()
-        if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
-          set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
-          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
-          set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
-        endif()
-      endforeach()
-    endif()
+if(onnxruntime_USE_CUDA)
+  set_msvc_c_cpp_compiler_warning_level(3)
 else()
-  add_definitions(-DPLATFORM_POSIX)
-  # Enable warning and enable space optimization in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-
-  if(onnxruntime_DEV_MODE)
-    string(APPEND CMAKE_CXX_FLAGS " -Werror")
-    string(APPEND CMAKE_C_FLAGS " -Werror")
-  endif()
-  check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
-  check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
-  check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
-  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
-  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
-  check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
-  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
-  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
-  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
-  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
-  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
-  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
-  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
-  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
-  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
-
-  if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
-    #we may have extra null pointer checkings in debug build, it's not an issue
-    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-tautological-pointer-compare")
-    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-tautological-pointer-compare")
-  endif()
-  if(HAS_NONNULL_COMPARE)
-    #we may have extra null pointer checkings in debug build, it's not an issue
-    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-nonnull-compare")
-    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-nonnull-compare")
-  endif()
-  if(HAS_DEPRECATED_COPY)
-    #too many such errors in eigen
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-copy")
-  endif()
-  if(HAS_PARENTHESES)
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
-  endif()
+  set_msvc_c_cpp_compiler_warning_level(4)
 endif()
+
 set(onnxruntime_DELAYLOAD_FLAGS "")
-if (onnxruntime_USE_JEMALLOC)
-  if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
-    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
-  endif()
-
-  if (Win32)
-    message( FATAL_ERROR "Jemalloc is not supported on Windows." )
-  endif()
-  include(jemalloc)
-  add_definitions(-DUSE_JEMALLOC=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${JEMALLOC_STATIC_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
-endif()
 
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
-
 
 if(onnxruntime_USE_OPENVINO)
 
@@ -1090,10 +1361,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
-    set(OPENVINO_VERSION "2020.2")
-    add_definitions(-DOPENVINO_2020_2=1)
-  elseif (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
   elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
@@ -1105,6 +1373,16 @@ if(onnxruntime_USE_OPENVINO)
   elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
+  elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)
+  elseif (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
+    set(OPENVINO_VERSION "2021.4")
+    add_definitions(-DOPENVINO_2021_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)
+    add_definitions(-DOPENVINO_2021_4=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1149,28 +1427,15 @@ if (onnxruntime_USE_VITISAI)
   if(WIN32)
     message(FATAL_ERROR "Vitis-AI execution provider is not supported on Windows.")
   else()
-    add_definitions(-DUSE_VITISAI=1)
     include(pyxir)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES pyxir)
     list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES pyxir)
   endif()
 endif()
 
-if (onnxruntime_USE_OPENBLAS)
-  add_definitions(-DUSE_OPENBLAS=1)
-  if (WIN32)
-    include_directories(${onnxruntime_OPENBLAS_HOME})
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_OPENBLAS_HOME}/lib/libopenblas.lib)
-  else()
-    # on linux we assume blas is installed via 'apt-get install libopenblas-dev'
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES openblas)
-  endif()
-endif()
-
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 
 if (onnxruntime_USE_CUDA)
-  add_definitions(-DUSE_CUDA=1)
   #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
   set( CMAKE_CUDA_FLAGS "" CACHE STRING "" )
   if ( CMAKE_CUDA_FLAGS )
@@ -1184,11 +1449,8 @@ if (onnxruntime_USE_CUDA)
   endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-    set(CMAKE_CUDA_STANDARD 14)
-  else()
-    set(CMAKE_CUDA_STANDARD 11)
-  endif()
+
+  set(CMAKE_CUDA_STANDARD 14)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -1198,21 +1460,6 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  if (WIN32)
-    link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-
-    # delayload causes crash on exit, so disable for now
-    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
-    #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
-    #foreach(cuda_dll_path ${cuda_dll_paths})
-    #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
-    #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
-    #endforeach(cuda_dll_path)
-
-  else()
-    link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-  endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
@@ -1237,9 +1484,12 @@ if (onnxruntime_USE_CUDA)
       endif()
     endif()
   endif()
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
+  endif()
   if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
@@ -1256,7 +1506,6 @@ if (onnxruntime_USE_MIGRAPHX)
     message(FATAL_ERROR "MIGraphX does not support build in Windows!")
   endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
-  add_definitions(-DUSE_MIGRAPHX=1)
 endif()
 
 if (onnxruntime_USE_ROCM)
@@ -1300,12 +1549,16 @@ if (onnxruntime_USE_DML)
     message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
   endif()
 
-  add_definitions(-DUSE_DML=1)
   include(dml)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_OPS)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
     # Find MPI
@@ -1422,32 +1675,13 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if(onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
+endif()
+foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
-  if (MSVC)
-    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
-  else()
-    target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-    target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-  endif()
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 endforeach()
-
-foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
-  if(NOT provider_name STREQUAL "cpu" AND NOT provider_name STREQUAL "winml")
-    if (MSVC)
-      target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-      target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
-    else()
-      target_compile_definitions(onnxruntime_providers_${provider_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-    endif()
-  endif()
-endforeach()
-
-
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
@@ -1510,7 +1744,10 @@ endif() # if(onnxruntime_USE_WINML)
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
-if (onnxruntime_BUILD_SHARED_LIB)
+if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
+  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS.")
+  endif()
   include(onnxruntime.cmake)
 endif()
 
@@ -1528,12 +1765,16 @@ if (onnxruntime_BUILD_NODEJS)
   include(onnxruntime_nodejs.cmake)
 endif()
 
-# some of the tests rely on the shared libs to be
-# built; hence the ordering
+if (onnxruntime_ENABLE_PYTHON)
+  include(onnxruntime_python.cmake)
+endif()
+
+if (onnxruntime_BUILD_OBJC)
+  message(STATUS "Objective-C Build is enabled")
+  include(onnxruntime_objectivec.cmake)
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
-  if (onnxruntime_ENABLE_PYTHON)
-    include(onnxruntime_python.cmake)
-  endif()
   if (onnxruntime_USE_OPENENCLAVE)
     include(onnxruntime_unittests_openenclave.cmake)
   endif()
@@ -1553,6 +1794,19 @@ if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
+    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    string(APPEND CMAKE_CXX_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
+  endif()
+
+  message(STATUS "WebAssembly Build is enabled")
+  include(onnxruntime_webassembly.cmake)
 endif()
 
 if (WINDOWS_STORE)
@@ -1591,4 +1845,16 @@ if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
 
   target_link_libraries(libprotobuf openenclave-enclave)
   target_link_libraries(libprotobuf-lite openenclave-enclave)
+endif()
+
+if(UNIX)
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
+else()
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" OFF)
+endif()
+if(BUILD_PKGCONFIG_FILES)
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libonnxruntime.pc.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
+  install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
+    ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
 endif()

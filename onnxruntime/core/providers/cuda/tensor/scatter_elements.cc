@@ -49,7 +49,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 template <typename T>
 struct ScatterElements::ComputeImpl {
-  Status operator()(const Tensor* data_tensor,
+  Status operator()(cudaStream_t stream,
+                    const Tensor* data_tensor,
                     const Tensor* updates_tensor,
                     const Tensor* indices_tensor,
                     Tensor* output_tensor,
@@ -69,6 +70,7 @@ struct ScatterElements::ComputeImpl {
     if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {
       const int32_t* indices_data = indices_tensor->template Data<int32_t>();
       return ScatterElementsImpl(
+          stream,
           rank,
           reinterpret_cast<const CudaT*>(input_data),
           input_data_size,
@@ -84,6 +86,7 @@ struct ScatterElements::ComputeImpl {
     } else if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {
       const int64_t* indices_data = indices_tensor->template Data<int64_t>();
       return ScatterElementsImpl(
+          stream,
           rank,
           reinterpret_cast<const CudaT*>(input_data),
           input_data_size,
@@ -160,12 +163,13 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
-  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, MLFloat16, int16_t, int8_t, int32_t,
-                                 int64_t, uint8_t, uint16_t, uint32_t, uint64_t, double, bool>
+  utils::MLTypeCallDispatcher<float, MLFloat16, int16_t, int8_t, int32_t,
+                              int64_t, uint8_t, uint16_t, uint32_t, uint64_t, double, bool>
       t_disp(data_tensor->GetElementType());
-  return t_disp.Invoke(data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
-                       input_data_size, buffer_input_dims, buffer_input_strides, indices_size,
-                       buffer_indices_dims, fdm_indices_strides, axis);
+  return t_disp.InvokeRet<Status, ComputeImpl>(
+      Stream(), data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
+      input_data_size, buffer_input_dims, buffer_input_strides, indices_size,
+      buffer_indices_dims, fdm_indices_strides, axis);
 }
 
 }  // namespace cuda

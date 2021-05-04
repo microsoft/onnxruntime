@@ -128,6 +128,7 @@ __global__ void BiasSoftmaxWarpForward(
 
 template <typename T>
 void DispatchBiasSoftmaxForwardImpl(
+    hipStream_t stream,
     Tensor* output_tensor,
     const Tensor* input_tensor,
     const Tensor* input_bias_tensor,
@@ -168,47 +169,47 @@ void DispatchBiasSoftmaxForwardImpl(
   // Launch code would be more elegant if C++ supported FOR CONSTEXPR
   switch (log2_elements) {
     case 0:  // 1
-       hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>), dim3(blocks), dim3(threads), 0, 0,
+       hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>), dim3(blocks), dim3(threads), 0, stream,
           output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 1:  // 2
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 2:  // 4
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 3:  // 8
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 4:  // 16
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 5:  // 32
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 6:  // 64
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 7:  // 128
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 8:  // 256
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 9:  // 512
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 10:  // 1024
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>), dim3(blocks), dim3(threads), 0, 0,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>), dim3(blocks), dim3(threads), 0, stream,
         output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     default:
@@ -218,6 +219,7 @@ void DispatchBiasSoftmaxForwardImpl(
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL(T)           \
   template void DispatchBiasSoftmaxForwardImpl<T>( \
+      hipStream_t stream,                          \
       Tensor * output_tensor,                      \
       const Tensor* input_tensor,                  \
       const Tensor* input_bias_tensor,             \
@@ -234,6 +236,7 @@ SPECIALIZED_BIAS_SOFTMAX_IMPL(MLFloat16)
 // note: This is an unhappy path! There is no performance benefit for the fusion.
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    hipStream_t stream,
     miopenHandle_t miopenHandle,
     int element_count,
     int batch_count,
@@ -278,6 +281,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
 
   // invoke elementwise add with broadcast kernel
   ::onnxruntime::rocm::BinaryElementWiseImpl(
+      stream,
       (int32_t)X_shape.NumDimensions(),
       &lhs_padded_strides,
       X_data,
@@ -311,6 +315,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                \
   template void DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
+      hipStream_t stream,                                       \
       miopenHandle_t miopenHandle,                              \
       int element_count,                                        \
       int batch_count,                                          \

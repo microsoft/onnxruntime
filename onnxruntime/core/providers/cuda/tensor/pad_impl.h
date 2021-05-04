@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 void PadImpl(
+    cudaStream_t stream,
     const size_t shape_rank,
     const TArray<int64_t>& input_dims,
     const TArray<int64_t>& input_strides,

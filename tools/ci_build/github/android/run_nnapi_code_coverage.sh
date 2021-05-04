@@ -15,7 +15,7 @@ python3 ${ORT_ROOT}/tools/ci_build/build.py \
 	--android \
 	--build_dir build_nnapi \
 	--android_sdk_path $ANDROID_HOME \
-	--android_ndk_path $ANDROID_HOME/ndk-bundle \
+	--android_ndk_path $ANDROID_NDK_HOME \
 	--android_abi=x86_64 \
 	--android_api=29 \
 	--skip_submodule_sync \

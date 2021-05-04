@@ -24,7 +24,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 template <typename T>
 struct GatherElementsGrad::ComputeImpl {
-  Status operator()(const Tensor* dY,
+  Status operator()(cudaStream_t stream,
+                    const Tensor* dY,
                     const Tensor* indices_tensor,
                     Tensor* dX,
                     const int rank,
@@ -42,6 +43,7 @@ struct GatherElementsGrad::ComputeImpl {
     if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {
       const int32_t* indices_data = indices_tensor->template Data<int32_t>();
       return GatherElementsGradImpl(
+          stream,
           rank,
           buffer_output_dims,
           buffer_input_strides,
@@ -55,6 +57,7 @@ struct GatherElementsGrad::ComputeImpl {
     } else if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {
       const int64_t* indices_data = indices_tensor->template Data<int64_t>();
       return GatherElementsGradImpl(
+          stream,
           rank,
           buffer_output_dims,
           buffer_input_strides,
@@ -113,7 +116,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 
   int rank = static_cast<int>(output_dims.size());
   Tensor* dX = context->Output(0, data_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
 
   TArray<int64_t> buffer_output_dims(output_dims);
   TensorPitches input_strides(output_dims);
@@ -126,11 +129,11 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
     fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
-  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, MLFloat16, float, double>
-      t_disp(dY->GetElementType());
-  return t_disp.Invoke(dY, indices_tensor, dX, rank,
-                       buffer_output_dims, buffer_input_strides, indices_size,
-                       buffer_indices_dims, fdm_indices_strides, axis);
+  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dY->GetElementType());
+  return t_disp.InvokeRet<Status, ComputeImpl>(
+      Stream(), dY, indices_tensor, dX, rank,
+      buffer_output_dims, buffer_input_strides, indices_size,
+      buffer_indices_dims, fdm_indices_strides, axis);
 }
 
 }  // namespace cuda

@@ -42,7 +42,7 @@ namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
 Status RegisterDNNLKernels(KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
 
@@ -129,14 +129,43 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
   if (!fused) {
     ort_dnnl::DnnlNode dnnl_node;
     dnnl_node.name = node->OpType();
+// When running training mode the backward pass will need to access the
+// forwardpass operations. Store the index of the node and the the list of
+// input nodes. The input nodes can be used to find the forward pass node.
+// The onnx node index is being used instead of the subgraph index because
+// forwardpass and backward pass nodes are likely to span beyond the subgraph.
+#ifdef ENABLE_TRAINING
+    dnnl_node.onnx_index = node->Index();
+    for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
+      ort_dnnl::InputNode input_node;
+      input_node.index = (*iter).Index();
+      input_node.op_type = (*iter).OpType();
+      dnnl_node.input_nodes.push_back(input_node);
+    }
+#endif  //ENABLE_TRAINING
+
     dnnl_node.num_inputs = static_cast<int>(node->InputDefs().size());
     dnnl_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
     dnnl_node.node_index = static_cast<int>(subgraph_ptr->dnnl_nodes.size()) + 1;
     const auto& node_outputs = node->OutputDefs();
     dnnl_node.output_name = node_outputs[0]->Name();
-    if (node->OpType() == "Conv") {
+#ifdef ENABLE_TRAINING
+    dnnl_node.num_outputs = static_cast<int>(node->OutputDefs().size());
+    if (dnnl_node.num_outputs > 1) {
+      for (auto n : node_outputs) {
+        dnnl_node.output_names.push_back(n->Name());
+      }
+    }
+#endif  //ENABLE_TRAINING
+
+    if (node->OpType() == "Conv" || node->OpType() == "MatMul") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
+#ifdef ENABLE_TRAINING
+    if (node->OpType() == "ConvGrad") {
+      dnnl_node.weight_name = node->InputDefs()[2]->Name();
+    }
+#endif  //ENABLE_TRAINING
     for (size_t i = 0; i < node_inputs.size(); i++) {
       auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
       if (iter != output_to_source_node_map.end())
@@ -203,7 +232,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   // There are several identical graphs in Model zoo and only differ in
   // few attribute values. GetGraphName return graph-name + first-node-output name
   std::string graph_name = GetGraphName(graph_viewer);
-  subgraph_ptr = onnxruntime::make_unique<ort_dnnl::Subgraph>(
+  subgraph_ptr = std::make_unique<ort_dnnl::Subgraph>(
       ort_dnnl::Subgraph(graph_name));
 
   // output name to node index map. Using it to find sub-graph end nodes
@@ -236,18 +265,22 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       // can we fuse (at Dnnl level) nodes?
       bool fused = false;
+// Operation fusion currently not supported for TRAINING
+#ifndef ENABLE_TRAINING
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "BatchNormalization") {
         if (subgraph_ptr->dnnl_nodes.back().name == "Conv") {
           subgraph_ptr->dnnl_nodes.back().name += "-BatchNormalization";
           fused = true;
         }
       }
+
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
         if (subgraph_ptr->dnnl_nodes.back().name == "Conv-BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "BatchNormalization" || subgraph_ptr->dnnl_nodes.back().name == "Conv") {
           subgraph_ptr->dnnl_nodes.back().name += "-Relu";
           fused = true;
         }
       }
+#endif  // !ENABLE_TRAINING
 
       // Create Dnnl node:
       //   Update inputs, outputs and parent nodes
@@ -365,7 +398,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
   std::unordered_set<std::string> input_initializers;
 
   // Create ng_required_initializers attribute of NGraphCustomOp
-  auto initializers = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto initializers = ONNX_NAMESPACE::AttributeProto::Create();
   initializers->set_name("initializers");
   initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
 
@@ -390,12 +423,22 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
     auto itr = std::find(sub_var.outputs_as_input_other_node.begin(),
                          sub_var.outputs_as_input_other_node.end(), mklnode.output_name);
     if (itr == sub_var.outputs_as_input_other_node.end()) {
+#ifndef ENABLE_TRAINING
       meta_def->outputs().push_back(mklnode.output_name);
+#else
+      if (mklnode.num_outputs == 1) {
+        meta_def->outputs().push_back(mklnode.output_name);
+      } else {
+        for (auto output : mklnode.output_names) {
+          meta_def->outputs().push_back(output);
+        }
+      }
+#endif  // ENABLE_TRAINING
       mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
     }
   }
 
-  auto ap = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  auto ap = ONNX_NAMESPACE::AttributeProto::Create();
   ap->set_s(subgraph_id);
   ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes()["subgraph_id"] = *ap;

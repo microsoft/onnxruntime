@@ -125,7 +125,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([3], ndmin=2, dtype=np.int64)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        x = np.array(['4'], ndmin=2, dtype=np.object)
+        x = np.array(['4'], ndmin=2, dtype=object)
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([3], ndmin=2, dtype=np.int64)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
@@ -134,11 +134,12 @@ class TestInferenceSession(unittest.TestCase):
         available_providers = onnxrt.get_available_providers()
 
         # The Windows GPU CI pipeline builds the wheel with both CUDA and DML enabled and ORT does not support cases
-        # where one node is asigned to CUDA and one node to DML as it doesn't have the data transfer capabilities to deal with
-        # potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA) for this test as it breaks
-        # with both CUDA and DML registered.
+        # where one node is assigned to CUDA and one node to DML, as it doesn't have the data transfer capabilities to
+        # deal with potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA)
+        # for this test as it breaks with both CUDA and DML registered.
         if ('CUDAExecutionProvider' in available_providers and 'DmlExecutionProvider' in available_providers):
-            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), None, ['DmlExecutionProvider', 'CPUExecutionProvider'])
+            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), None,
+                                           ['DmlExecutionProvider', 'CPUExecutionProvider'])
         else:
             sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"))
 
@@ -160,11 +161,12 @@ class TestInferenceSession(unittest.TestCase):
         # (to save space). It does not have this behaviour for void
         # but as a result, numpy does not know anymore the size
         # of each element, they all have the same size.
-        c1 = np.array([b'A\0A\0\0', b"B\0B\0", b"C\0C\0"], np.void).reshape(1, 3)
+        c1 = np.array([b'A\0A\0\0', b"B\0B\0\0", b"C\0C\0\0"], np.void).reshape(1, 3)
         res = sess.run(None, {'C0': c0, 'C1': c1})
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
+
 
 if __name__ == '__main__':
     unittest.main()

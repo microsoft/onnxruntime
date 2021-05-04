@@ -13,6 +13,7 @@ constexpr const char* kOnnxDomain = "";
 constexpr const char* kOnnxDomainAlias = "ai.onnx";
 constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMSExperimentalDomain = "com.microsoft.experimental";
 constexpr const char* kMSNchwcDomain = "com.microsoft.nchwc";
 constexpr const char* kMSFeaturizersDomain = "com.microsoft.mlfeaturizers";
 constexpr const char* kMSDmlDomain = "com.microsoft.dml";
@@ -34,5 +35,6 @@ constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
+constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 
 }  // namespace onnxruntime

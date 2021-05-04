@@ -46,21 +46,21 @@ __global__ void CopyVectorHalf(const half* x, int incx, half* y, int incy, int n
 
 }  // namespace
 
-rocblas_status rocblasTransposeHelper(rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
+rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
   if (C != A) {
     dim3 dimGrid((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
 
-    hipLaunchKernelGGL(transposeNoOverlap, dim3(dimGrid), dim3(dimBlock), 0, 0, C, A, n, m);
+    hipLaunchKernelGGL(transposeNoOverlap, dim3(dimGrid), dim3(dimBlock), 0, stream, C, A, n, m);
   } else {
     return rocblas_status_not_implemented;
   }
   return rocblas_status_success;
 }
 
-rocblas_status rocblasCopyHelper(rocblas_handle, int n, const half* x, int incx, half* y, int incy) {
+rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, const half* x, int incx, half* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
-  hipLaunchKernelGGL(CopyVectorHalf, dim3(dimGrid), dim3(dimBlock), 0, 0, x, incx, y, incy, n);
+  hipLaunchKernelGGL(CopyVectorHalf, dim3(dimGrid), dim3(dimBlock), 0, stream, x, incx, y, incy, n);
   return rocblas_status_success;
 }

@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
@@ -21,10 +20,12 @@ namespace onnxruntime {
 namespace optimizer_utils {
 
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+         tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 }
 
-inline bool IsScalar(const NodeArg& input_arg) {
+bool IsScalar(const NodeArg& input_arg) {
   auto shape = input_arg.Shape();
   if (shape == nullptr) {
     // shape inferencing wasn't able to populate shape information for this NodeArg
@@ -173,11 +174,11 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     const int64_t* val = init_const.data<int64_t>();
-    data.reserve(data.size() + init_const.size());
+    data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
     data.insert(data.end(), val, val + init_const.size());
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const.data<int32_t>();
-    data.reserve(data.size() + init_const.size());
+    data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
     for (int64_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }

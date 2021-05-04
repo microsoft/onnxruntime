@@ -137,7 +137,7 @@ static int CompactInputIndicesDims(
       }
     }
   }
-  new_axis = eff_input_dims.size() - new_axis;
+  new_axis = static_cast<int>(eff_input_dims.size()) - new_axis;
   std::reverse(eff_input_dims.begin(), eff_input_dims.end());
   std::reverse(eff_indices_dims.begin(), eff_indices_dims.end());
   return new_axis;
@@ -145,6 +145,7 @@ static int CompactInputIndicesDims(
 
 template <typename T, typename Tin, typename FuncT>
 Status ScatterElementsImpl2D(
+    cudaStream_t stream,
     const T* input_data,
     const std::vector<int64_t>& input_dims,
     const Tin* indices_data,
@@ -155,14 +156,14 @@ Status ScatterElementsImpl2D(
     T* output_data,
     const FuncT& func) {
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
-  fast_divmod indices_stride_row(indices_dims[1]);
+  fast_divmod indices_stride_row(static_cast<int>(indices_dims[1]));
   if (axis == 0) {
-    _ScatterElementsKernel2D<T, Tin, true, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, true, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         gsl::narrow_cast<int>(input_dims[0]), input_data,
         indices_data, indices_size, indices_stride_row,
         updates, input_dims[1], output_data, func);
   } else {
-    _ScatterElementsKernel2D<T, Tin, false, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, false, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         gsl::narrow_cast<int>(input_dims[1]), input_data,
         indices_data, indices_size, indices_stride_row,
         updates, input_dims[1], output_data, func);
@@ -172,6 +173,7 @@ Status ScatterElementsImpl2D(
 
 template <typename T, typename Tin, typename FuncT>
 Status ScatterElementsImplInternal(
+    cudaStream_t stream,
     const int rank,
     const T* input_data,
     const int64_t input_size,
@@ -186,7 +188,7 @@ Status ScatterElementsImplInternal(
     T* output_data,
     const FuncT& func) {
   if (input_data != output_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, 0));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, stream));
   }
 
   if (indices_size > 0) {
@@ -196,12 +198,12 @@ Status ScatterElementsImplInternal(
         rank, axis, buffer_input_dims.Data(), buffer_indices_dims.Data(), eff_input_dims, eff_indices_dims);
     if (eff_input_dims.size() == 2) {
       return ScatterElementsImpl2D(
-          input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data,
+          stream, input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data,
           func);
     }
 
     int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
-    _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         rank, input_data, buffer_input_dims, buffer_input_strides,
         indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
         updates, axis, output_data, func);
@@ -218,6 +220,7 @@ struct Func_Assignment {
 
 template <typename T, typename Tin>
 Status ScatterElementsImpl(
+    cudaStream_t stream,
     const int rank,
     const T* input_data,
     const int64_t input_size,
@@ -230,13 +233,14 @@ Status ScatterElementsImpl(
     const T* updates,
     const int axis,
     T* output_data) {
-  return ScatterElementsImplInternal(rank, input_data, input_size, buffer_input_dims,
+  return ScatterElementsImplInternal(stream, rank, input_data, input_size, buffer_input_dims,
                                      buffer_input_strides, indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
                                      updates, axis, output_data, Func_Assignment<T>());
 }
 
 #define SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
   template Status ScatterElementsImpl<T, TIndex>(           \
+      cudaStream_t stream,                                  \
       const int rank,                                       \
       const T* input_data,                                  \
       const int64_t input_size,                             \
@@ -278,6 +282,7 @@ struct Func_AtomicAdd {
 
 template <typename T, typename Tin>
 Status GatherElementsGradImpl(
+    cudaStream_t stream,
     const int rank,
     TArray<int64_t>& buffer_input_dims,
     TArray<int64_t>& buffer_input_strides,
@@ -290,7 +295,7 @@ Status GatherElementsGradImpl(
     T* output_data) {
   // Give output_data as the input_data parameter by intention,
   // to skip input_data copy, which is not applicable for GatherElementsGrad.
-  return ScatterElementsImplInternal(rank, output_data, 0,
+  return ScatterElementsImplInternal(stream, rank, output_data, 0,
                                      buffer_input_dims, buffer_input_strides, indices_data,
                                      indices_size, buffer_indices_dims, fdm_indices_strides,
                                      updates, axis, output_data, Func_AtomicAdd<T>());
@@ -298,6 +303,7 @@ Status GatherElementsGradImpl(
 
 #define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
   template Status GatherElementsGradImpl<T, TIndex>(            \
+      cudaStream_t stream,                                      \
       const int rank,                                           \
       TArray<int64_t>& buffer_input_dims,                       \
       TArray<int64_t>& buffer_input_strides,                    \

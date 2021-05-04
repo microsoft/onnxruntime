@@ -20,15 +20,16 @@ struct ConvTransposeOpAttributes {
   string auto_pad;
 };
 
-void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
-                         const vector<vector<float>>& inputs,
-                         const vector<vector<int64_t>>& input_shapes,
-                         const std::initializer_list<float>& expected_output,
-                         const vector<int64_t>& expected_output_shape,
-                         OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                         const std::string& err_str = "",
-                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
-  OpTester test("ConvTranspose");
+void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
+                                    const vector<vector<float>>& inputs,
+                                    const vector<vector<int64_t>>& input_shapes,
+                                    const std::initializer_list<float>& expected_output,
+                                    const vector<int64_t>& expected_output_shape,
+                                    bool is_filter_initializer = false,
+                                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                                    const std::string& err_str = "",
+                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+  OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
 
@@ -56,13 +57,31 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
+  bool isInitializers[] = {false, is_filter_initializer, false};
   for (size_t i = 0; i < inputs.size(); i++) {
-    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
+    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i], isInitializers[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
   test.Run(expect_result, err_str, excluded_provider_types);  // Disable TensorRT because weight as input is not supported
 }
+
+void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
+                         const vector<vector<float>>& inputs,
+                         const vector<vector<int64_t>>& input_shapes,
+                         const std::initializer_list<float>& expected_output,
+                         const vector<int64_t>& expected_output_shape,
+                         OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                         const std::string& err_str = "",
+                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+  std::unordered_set<std::string> extra_exclude_openvino_for_initializer_filter = excluded_provider_types;
+  extra_exclude_openvino_for_initializer_filter.insert(kOpenVINOExecutionProvider);
+  TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 true, expect_result, err_str, extra_exclude_openvino_for_initializer_filter);
+  TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 false, expect_result, err_str, excluded_provider_types);
+}
+
 }  // namespace
 
 TEST(ConvTransposeTest, ConvTranspose_1D) {
@@ -234,6 +253,59 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
                         18.0f, 27.0f, 27.0f, 18.0f,
                         18.0f, 27.0f, 27.0f, 18.0f,
                         12.0f, 18.0f, 18.0f, 12.0f};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3, 3},        // kernel_shape
+      {},                           // output_padding
+      vector<int64_t>{1, 6, 4, 4},  // output_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      "NOTSET"                      // auto_pad
+  };
+  int image_size = 4 * 4;
+  int input_channels = 3 * 2;
+  int output_channels = 3;
+  std::vector<float> X;
+  for (int i = 0; i < input_channels * image_size; i++)
+    X.push_back(1.0f);
+  std::vector<float> W;
+  int kernel_size = output_channels * input_channels * 3 * 3;
+  for (int i = 0; i < kernel_size; i++)
+    W.push_back(1.0f);
+
+  vector<int64_t> X_shape = {1, 6, 4, 4};
+  vector<int64_t> W_shape = {6, 3, 3, 3};
+
+  vector<int64_t> Y_shape = {1, 6, 4, 4};
+  auto expected_vals = {12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f, // duplicate below
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,};
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
@@ -798,6 +870,51 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
   vector<int64_t> W_shape = {1, 2, 2};
   vector<int64_t> Y_shape = {1, 2, 4};
   auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3, 3},  // kernel_shape
+      {},                     // output_padding
+      {},                     // output_shape
+      {},                     // pads
+      vector<int64_t>{2, 2},  // strides
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      "SAME_LOWER"            // auto_pad
+  };
+
+  vector<float> X = {0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+
+  vector<float> W = {1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 2, 3, 3};
+
+  auto expected_vals = {0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        3.0f, 3.0f, 8.0f, 5.0f, 12.0f, 7.0f,
+                        3.0f, 3.0f, 7.0f, 4.0f, 9.0f, 5.0f,
+                        9.0f, 9.0f, 20.0f, 11.0f, 24.0f, 13.0f,
+                        6.0f, 6.0f, 13.0f, 7.0f, 15.0f, 8.0f,
+
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        0.0f, 0.0f, 1.0f, 1.0f, 3.0f, 2.0f,
+                        3.0f, 3.0f, 8.0f, 5.0f, 12.0f, 7.0f,
+                        3.0f, 3.0f, 7.0f, 4.0f, 9.0f, 5.0f,
+                        9.0f, 9.0f, 20.0f, 11.0f, 24.0f, 13.0f,
+                        6.0f, 6.0f, 13.0f, 7.0f, 15.0f, 8.0f};
+  vector<int64_t> Y_shape = {1, 2, 6, 6};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

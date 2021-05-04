@@ -59,13 +59,13 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = simplified ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  auto n1 = x_shape.SizeToDimension(axis);
-  auto n2 = x_shape.SizeFromDimension(axis);
+  int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
+  int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 
@@ -91,14 +91,14 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
       mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
     }
   }
-  
+
   Tensor* var = ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 

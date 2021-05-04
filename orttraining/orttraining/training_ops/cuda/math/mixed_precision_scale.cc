@@ -102,6 +102,7 @@ Status MixedPrecisionScale<SrcT>::ComputeInternal(OpKernelContext* context) cons
 #define CASE(TP_TYPE, DstT)                                                    \
   case TP_TYPE:                                                                \
     Impl_MixedPrecisionScale<CudaSrcT, typename ToCudaType<DstT>::MappedType>( \
+        Stream(),                                                              \
         x_data,                                                                \
         scale_data,                                                            \
         reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(y_data),      \

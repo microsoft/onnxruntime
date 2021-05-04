@@ -20,8 +20,9 @@ ONNX_OPERATOR_KERNEL_EX(
     ReverseSequenceOp);
 
 #define ReverseSequenceCallCudaImplTypeAs(T, TEqual)                                                 \
-  if (X.IsDataType<T>()) {                                                    \
+  if (X.IsDataType<T>()) {                                                                           \
     CUDA_RETURN_IF_ERROR(ReverseSequenceCudaImpl(                                                    \
+        Stream(),                                                                                    \
         reinterpret_cast<const typename ToCudaType<TEqual>::MappedType*>(X.template Data<T>()),      \
         seq_lengths.Data<int64_t>(),                                                                 \
         reinterpret_cast<typename ToCudaType<TEqual>::MappedType*>(Y.template MutableData<T>()),     \

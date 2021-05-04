@@ -38,7 +38,8 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
   output_data[id] = reinterpret_cast<const T*>(input_ptr[input_index])[input_pos];
 }
 
-Status ConcatImpl(const size_t element_bytes,
+Status ConcatImpl(cudaStream_t stream,
+                  const size_t element_bytes,
                   const int block_size_including_axis_dim,
                   const int block_size_inside_axis_dim,
                   const int64_t* concat_sizes,
@@ -54,7 +55,7 @@ Status ConcatImpl(const size_t element_bytes,
 
   switch (element_bytes) {
     case sizeof(int8_t):
-      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
           reinterpret_cast<int8_t*>(output_data),
@@ -62,7 +63,7 @@ Status ConcatImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
           reinterpret_cast<int16_t*>(output_data),
@@ -70,7 +71,7 @@ Status ConcatImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
           reinterpret_cast<int32_t*>(output_data),
@@ -78,7 +79,7 @@ Status ConcatImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
           reinterpret_cast<int64_t*>(output_data),

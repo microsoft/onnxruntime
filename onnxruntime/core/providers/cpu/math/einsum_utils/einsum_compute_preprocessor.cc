@@ -440,7 +440,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
         preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[input_iter],
                                              subscript_indices_to_input_index[subscript_index],
                                              dim_index_in_preprocessed_input,
-                                             allocator_);
+                                             allocator_, einsum_ep_assets_);
       }
       ++dim_index_in_original_input;
     }

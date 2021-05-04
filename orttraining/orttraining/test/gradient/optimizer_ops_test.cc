@@ -9,6 +9,8 @@
 namespace onnxruntime {
 namespace test {
 
+namespace {
+
 TEST(OptimizerTest, SGDOptimizerTest) {
   OpTester test("SGDOptimizer", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
@@ -131,7 +133,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -153,7 +155,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -163,7 +165,6 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-3.6210f, -2.8075f, -3.3723f});
   test.AddOutput<float>("G_Out", {3}, {-3.1576f, -3.1658f, -3.1601f});
-
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -178,7 +179,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -202,7 +203,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -225,7 +226,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -243,6 +244,16 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
+
+float GetGradientL2Norm(const std::vector<float>& gradient_vector) {
+  float gradient_norm = 0.0f;
+  for (const auto g_value : gradient_vector) {
+    gradient_norm += g_value * g_value;
+  }
+  gradient_norm = std::sqrt(gradient_norm);
+  return gradient_norm;
+}
+
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
@@ -289,6 +300,76 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_NoClipNorm_Test) {
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<float>("loss_scale", {1}, {1.0f});
+  // grad clipping should not take effect because default max_norm is 1.0f
+  test.AddInput<float>("grad_norm", {1}, {0.01f});
+  // Verify AdamOptimizer outputs
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_ClipNorm_Test) {
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
+  AdamOptimizerInputOutput data;
+
+  // Expected FP32 Outputs
+  std::vector<float> m1_new = {0.13f, 0.23f, 0.33f};
+  std::vector<float> m2_new = {0.3997f, 0.4998f, 0.6001f};
+  std::vector<float> w_new = {0.8972168f, 1.8369141f, 2.7871094f};
+  // FP16 Outputs
+  std::vector<MLFloat16> m1_new_half;
+  std::vector<MLFloat16> m2_new_half;
+  std::vector<MLFloat16> w_new_half;
+
+  m1_new_half.resize(m1_new.size());
+  m2_new_half.resize(m2_new.size());
+  w_new_half.resize(w_new.size());
+  ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
+  ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
+  ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<float>("loss_scale", {1}, {1.0f});
+  test.AddInput<float>("grad_norm", {1}, {0.01f});
+  // Verify AdamOptimizer outputs
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, w_new);
+  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, w_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+  test.AddAttribute("max_norm_clip", 0.001f);
   test.Run();
 }
 
@@ -377,17 +458,18 @@ void compute_lamb(
     /* momentum */ const std::vector<float>& m,
     /* 2nd-order momentum */ const std::vector<float>& v,
     const float eta,
-    const float loss_scale,
-    const float g_norm,
     const float lambda,
     const float alpha,
     const float beta,
     const float epsilon,
+    const float max_norm_clip,
     /* updated weights */ std::vector<float>& w_new,
     /* updated gradients */ std::vector<float>& g_new,
     /* updated momentum */ std::vector<float>& m_new,
     /* updated 2nd-order momentum */ std::vector<float>& v_new,
     const int64_t step = 0,
+    const float loss_scale = 1.0f,
+    const float* p_scaled_g_norm = nullptr,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
   // Element counts of all vector-typed arguments.
@@ -400,9 +482,12 @@ void compute_lamb(
   // Buffer to store update direction.
   std::vector<float> r(size, 0.0f);
 
-  float g_scale = loss_scale;
-  if (g_norm > loss_scale) {
-    g_scale *= g_norm / loss_scale;
+  float scaled_g_scaling_factor = loss_scale;
+  if (p_scaled_g_norm != nullptr) {
+    const float scaled_g_max_norm = loss_scale * max_norm_clip;
+    if (*p_scaled_g_norm > scaled_g_max_norm) {
+      scaled_g_scaling_factor = *p_scaled_g_norm / max_norm_clip;
+    }
   }
 
   const float alpha_correction = step > 0 ? 1.f - std::pow(alpha, static_cast<float>(step)) : 1.f;
@@ -410,7 +495,7 @@ void compute_lamb(
 
   // Compute new 1st-, 2nd-order momentums, and the update direction.
   for (int i = 0; i < size; ++i) {
-    const float g_scaled = g[i] / g_scale;
+    const float g_scaled = g[i] / scaled_g_scaling_factor;
     m_new[i] = alpha * m[i] + (1.0f - alpha) * g_scaled;
     v_new[i] = beta * v[i] + (1.0f - beta) * g_scaled * g_scaled;
     const float m_new_tmp = m_new[i] / alpha_correction;
@@ -462,6 +547,7 @@ void run_lamb_test_with_baseline(
     const float beta,
     const float lambda,
     const float epsilon,
+    const float max_norm,
     const std::vector<T2>& w_new,
     const std::vector<T3>& g_new,
     const std::vector<T4>& m_new,
@@ -470,13 +556,19 @@ void run_lamb_test_with_baseline(
     const std::vector<MLFloat16>& w_new_half = {},
     const bool do_update = true,
     const int64_t step = 0,
+    const float loss_scale = 1.0f,
+    const float* p_g_norm = nullptr,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
   OpTester test("LambOptimizer", 1, onnxruntime::kMSDomain, true);
 
   test.AddInput<bool>("update_signal", {1}, {do_update});
-  test.AddMissingOptionalInput<T2>();
-  test.AddMissingOptionalInput<T2>();
+  test.AddInput<T2>("loss_scale", {}, {loss_scale});
+  if (p_g_norm == nullptr) {
+    test.AddMissingOptionalInput<T2>();
+  } else {
+    test.AddInput<T2>("gradient_norm", {}, {T2(*p_g_norm)});
+  }
   test.AddInput<T1>("ETA", {1}, eta);
   if (step > 0) {
     test.AddInput<int64_t>("Step", {}, {step});
@@ -497,6 +589,7 @@ void run_lamb_test_with_baseline(
   test.AddAttribute("beta", std::vector<float>(1, beta));
   test.AddAttribute("lambda", std::vector<float>(1, lambda));
   test.AddAttribute("epsilon", std::vector<float>(1, epsilon));
+  test.AddAttribute("max_norm_clip", std::vector<float>(1, max_norm));
   test.AddAttribute("ratio_min", ratio_min);
   test.AddAttribute("ratio_max", ratio_max);
 
@@ -530,8 +623,6 @@ template <typename T1, typename T2, typename T3, typename T4>
 void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<std::vector<int64_t>>& shapes,
     const T1 eta,
-    const T1 loss_scale,
-    const T1 g_norm,
     const std::vector<std::vector<T2>>& ws,
     const std::vector<std::vector<T3>>& gs,
     const std::vector<std::vector<T4>>& ms,
@@ -540,6 +631,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
+    const std::vector<float>& max_norms,
     const std::vector<std::vector<T2>>& w_news,
     const std::vector<std::vector<T3>>& g_news,
     const std::vector<std::vector<T4>>& m_news,
@@ -548,6 +640,8 @@ void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<std::vector<MLFloat16>>& w_new_halfs = {},
     const bool do_update = true,
     const int64_t step = 0,
+    const float loss_scale = 1.0f,
+    const float* p_g_norm = nullptr,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
   OpTester test("LambOptimizer", 1, onnxruntime::kMSDomain, true);
@@ -560,6 +654,7 @@ void run_multi_tensor_lamb_test_with_baseline(
   ORT_ENFORCE(shapes.size() == betas.size());
   ORT_ENFORCE(shapes.size() == lambdas.size());
   ORT_ENFORCE(shapes.size() == epsilons.size());
+  ORT_ENFORCE(shapes.size() == max_norms.size());
   if (!w_news.empty()) {
     ORT_ENFORCE(shapes.size() == w_news.size());
   }
@@ -578,8 +673,12 @@ void run_multi_tensor_lamb_test_with_baseline(
   const int group_count = static_cast<int>(ws.size());
 
   test.AddInput<bool>("update_signal", {}, {do_update});
-  test.AddInput<T1>("loss_scale", {}, {loss_scale});
-  test.AddInput<T1>("gradient_norm", {}, {g_norm});
+  test.AddInput<T2>("loss_scale", {}, {loss_scale});
+  if (p_g_norm == nullptr) {
+    test.AddMissingOptionalInput<T2>();
+  } else {
+    test.AddInput<float>("gradient_norm", {}, {T2(*p_g_norm)});
+  }
   test.AddInput<T1>("ETA", {}, {eta});
   if (step > 0) {
     test.AddInput<int64_t>("Step", {}, {step});
@@ -633,6 +732,7 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddAttribute("beta", betas);
   test.AddAttribute("lambda", lambdas);
   test.AddAttribute("epsilon", epsilons);
+  test.AddAttribute("max_norm_clip", max_norms);
   test.AddAttribute("ratio_min", ratio_min);
   test.AddAttribute("ratio_max", ratio_max);
 
@@ -645,8 +745,6 @@ void run_multi_tensor_lamb_test_with_baseline(
 void run_multi_tensor_lamb_test(
     const std::vector<std::vector<int64_t>> shapes,
     const float eta,
-    const float loss_scale,
-    const float g_norm,
     const std::vector<std::vector<float>> ws,
     const std::vector<std::vector<float>> gs,
     const std::vector<std::vector<float>> ms,
@@ -655,7 +753,10 @@ void run_multi_tensor_lamb_test(
     const std::vector<float> alphas,
     const std::vector<float> betas,
     const std::vector<float> epsilons,
+    const std::vector<float> max_norms,
     const int64_t step = 0,
+    const float loss_scale = 1.0f,
+    const float* p_scaled_g_norm = nullptr,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
   // Check if parallel vectors have the same length.
@@ -667,6 +768,7 @@ void run_multi_tensor_lamb_test(
   ORT_ENFORCE(shapes.size() == betas.size());
   ORT_ENFORCE(shapes.size() == lambdas.size());
   ORT_ENFORCE(shapes.size() == epsilons.size());
+  ORT_ENFORCE(shapes.size() == max_norms.size());
 
   const int group_count = static_cast<int>(ws.size());
 
@@ -685,9 +787,8 @@ void run_multi_tensor_lamb_test(
     // Invoke LAMB's reference implementation to compute baseline output.
     compute_lamb(
         shapes[i], ws[i], gs[i], ms[i], vs[i],
-        eta, loss_scale, g_norm,
-        lambdas[i], alphas[i], betas[i], epsilons[i],
-        w_news[i], g_news[i], m_news[i], v_news[i], step,
+        eta, lambdas[i], alphas[i], betas[i], epsilons[i], max_norms[i],
+        w_news[i], g_news[i], m_news[i], v_news[i], step, loss_scale, p_scaled_g_norm,
         ratio_min, ratio_max);
   }
 
@@ -695,18 +796,18 @@ void run_multi_tensor_lamb_test(
 
   // Output new weights.
   run_multi_tensor_lamb_test_with_baseline(
-      shapes, eta, loss_scale, g_norm,
+      shapes, eta,
       ws, gs, ms, vs,
-      alphas, betas, lambdas, epsilons,
-      w_news, {}, m_news, v_news, {}, {}, true, step,
+      alphas, betas, lambdas, epsilons, max_norms,
+      w_news, {}, m_news, v_news, {}, {}, true, step, loss_scale, p_scaled_g_norm,
       ratio_min, ratio_max);
 
   // Output new gradients.
   run_multi_tensor_lamb_test_with_baseline(
-      shapes, eta, loss_scale, g_norm,
+      shapes, eta,
       ws, gs, ms, vs,
-      alphas, betas, lambdas, epsilons,
-      {}, g_news, m_news, v_news, {}, {}, true, step,
+      alphas, betas, lambdas, epsilons, max_norms,
+      {}, g_news, m_news, v_news, {}, {}, true, step, loss_scale, p_scaled_g_norm,
       ratio_min, ratio_max);
 }
 
@@ -721,7 +822,10 @@ void run_lamb_mix_precision_test(
     const float alpha,
     const float beta,
     const float epsilon,
-    const int64_t step = 0) {
+    const float max_norm,
+    const int64_t step = 0,
+    const float loss_scale = 1.0f,
+    const float* p_g_norm = nullptr) {
   std::vector<float> w_new(w.size(), 0);
   std::vector<float> g_new(g.size(), 0);
   std::vector<float> m_new(m.size(), 0);
@@ -730,8 +834,8 @@ void run_lamb_mix_precision_test(
   // Invoke LAMB's reference implementation to compute output.
   compute_lamb(
       shape, w, g, m, v,
-      eta[0], 1.f, 1.f, lambda, alpha, beta, epsilon,
-      w_new, g_new, m_new, v_new, step);
+      eta[0], lambda, alpha, beta, epsilon, max_norm,
+      w_new, g_new, m_new, v_new, step, loss_scale, p_g_norm);
 
   std::vector<MLFloat16> eta_half(eta.size());
   std::vector<MLFloat16> g_half(w.size());
@@ -755,47 +859,58 @@ void run_lamb_mix_precision_test(
 
   // Half momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, {}, {}, true, step);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, max_norm,
+      w_new, {}, m_new_half, v_new_half, {}, {}, true, step, loss_scale, p_g_norm);
 
   // Float momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, {}, {}, true, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      w_new, {}, m_new, v_new, {}, {}, true, step, loss_scale, p_g_norm);
 
   // Half momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, {}, {}, true, step);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, max_norm,
+      w_new, {}, m_new_half, v_new_half, {}, {}, true, step, loss_scale, p_g_norm);
 
   // Float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half, true, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      w_new, {}, m_new, v_new, w_half, w_new_half, true, step, loss_scale, p_g_norm);
 
   // Half momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, {}, m_half, v_half, w_half, w_half, false, step);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, max_norm,
+      w, {}, m_half, v_half, w_half, w_half, false, step, loss_scale, p_g_norm);
 
   // Float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      w, {}, m, v, w_half, w_half, false, step, loss_scale, p_g_norm);
 
   // Float eta, float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half, true, step);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      w_new, {}, m_new, v_new, w_half, w_new_half, true, step, loss_scale, p_g_norm);
 
   // Float eta, float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false, step);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      w, {}, m, v, w_half, w_half, false, step, loss_scale, p_g_norm);
 
   // Float momentums, without fp16 weight, output gradients only
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, {}, {}, true, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      {}, g_new_half, m_new, v_new, {}, {}, true, step, loss_scale, p_g_norm);
 
   // Float momentums, with fp16 weight, output gradients only
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, w_half, {}, true, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      {}, g_new_half, m_new, v_new, w_half, {}, true, step, loss_scale, p_g_norm);
 
   // Float momentums, with fp16 weight, output gradients only, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_half, m, v, w_half, {}, false, step);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, max_norm,
+      {}, g_half, m, v, w_half, {}, false, step, loss_scale, p_g_norm);
 }
 
 // A optimizer test with an 2-element vector.
@@ -811,12 +926,14 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
 
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -824,7 +941,11 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
@@ -839,12 +960,13 @@ TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
-
+  const float max_norm = 1.0f;
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -852,7 +974,11 @@ TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerRatioMin) {
@@ -867,14 +993,16 @@ TEST(OptimizerTest, LambOptimizerRatioMin) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   const float ratio_min = -std::numeric_limits<float>::infinity();
   const float ratio_max = 0.1f;
 
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -883,7 +1011,10 @@ TEST(OptimizerTest, LambOptimizerRatioMin) {
       {alpha},
       {beta},
       {epsilon},
-      0,
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm,
       ratio_min,
       ratio_max);
 }
@@ -900,14 +1031,16 @@ TEST(OptimizerTest, LambOptimizerRatioMax) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   const float ratio_min = 1.0f;
   const float ratio_max = std::numeric_limits<float>::infinity();
 
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -916,7 +1049,10 @@ TEST(OptimizerTest, LambOptimizerRatioMax) {
       {alpha},
       {beta},
       {epsilon},
-      0,
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm,
       ratio_min,
       ratio_max);
 }
@@ -933,12 +1069,14 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
 
+  const int64_t step = 1;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -947,7 +1085,10 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
       {alpha},
       {beta},
       {epsilon},
-      1);
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
@@ -962,12 +1103,14 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
 
+  const int64_t step = 3;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -976,7 +1119,10 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
       {alpha},
       {beta},
       {epsilon},
-      3);
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
@@ -992,12 +1138,14 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
 
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -1005,7 +1153,11 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 // A optimizer test with an 2-by-3 tensor.
@@ -1021,12 +1173,14 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
 
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -1034,7 +1188,11 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 // A optimizer test with an 1-element tensor.
@@ -1050,6 +1208,10 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
+  const int64_t step = 0;
+  const float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
 
   // Intermediate and output buffers of the optimizer.
   std::vector<float> m_new = {0.0f};
@@ -1059,8 +1221,6 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      1.f,
-      1.f,
       {w},
       {g},
       {m},
@@ -1068,7 +1228,51 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
+}
+
+// A optimizer test with an 1-element tensor.
+TEST(OptimizerTest, LambOptimizerTestScalar_NonDefaultMaxNormClipping) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {(int64_t)1};
+  const float eta = 0.5f;
+  const std::vector<float> w = {1.0f};
+  const std::vector<float> g = {3.0f};
+  const std::vector<float> m = {-10.0f};
+  const std::vector<float> v = {1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+  const float max_norm = 0.1f;
+
+  // Intermediate and output buffers of the optimizer.
+  std::vector<float> m_new = {0.0f};
+  std::vector<float> v_new = {0.0f};
+  std::vector<float> w_new = {0.0f};
+
+  const int64_t step = 0;
+  const float loss_scale = 1.0f;
+  const float scaled_g_norm = g[0];
+  run_multi_tensor_lamb_test(
+      {shape},
+      eta,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
@@ -1083,6 +1287,10 @@ TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
+  const float max_norm = 1.0f;
+  const int64_t step = 0;
+  const float loss_scale = 8.f;
+  const float scaled_g_norm = 4.f;
 
   // Intermediate and output buffers of the optimizer.
   std::vector<float> m_new = {0.0f};
@@ -1092,8 +1300,6 @@ TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
   run_multi_tensor_lamb_test(
       {shape},
       eta,
-      8.f,
-      4.f,
       {w},
       {g},
       {m},
@@ -1101,7 +1307,11 @@ TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
       {lambda},
       {alpha},
       {beta},
-      {epsilon});
+      {epsilon},
+      {max_norm},
+      step,
+      loss_scale,
+      &scaled_g_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
@@ -1125,6 +1335,7 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
   const float alpha = 0.1f;
   const float beta = 0.01f;
   const float epsilon = 0.1f;
+  const float max_norm = 1.0f;
 
   std::vector<float> w_new = {
       0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
@@ -1141,11 +1352,11 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
 
   // Output new weights
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, w_new, {}, m_new, v_new);
 
   // Output new gradients
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, {}, g_new, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, {}, g_new, m_new, v_new);
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
@@ -1169,6 +1380,7 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
   const float alpha = 0.1f;
   const float beta = 0.01f;
   const float epsilon = 0.1f;
+  const float max_norm = 1.0f;
 
   std::vector<double> w_new = {
       0.02979828, 0.13677707, -0.22708717, -0.20361158, -0.15338624, 0.1081504,
@@ -1185,11 +1397,11 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
 
   // Output new weights
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, w_new, {}, m_new, v_new);
 
   // Output new gradients
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, {}, g_new, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, {}, g_new, m_new, v_new);
 }
 
 TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {
@@ -1204,10 +1416,16 @@ TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {
   const float alpha = 1.5f;
   const float beta = 1.5f;
   const float epsilon = 1.0f;
+  const float max_norm = 1.0f;
+  const float loss_scale = 1.0f;
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v, lambda, alpha, beta, epsilon, max_norm);
 
+  float gradient_norm = GetGradientL2Norm(g);
+  // gradient clipping
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
-      lambda, alpha, beta, epsilon);
+      lambda, alpha, beta, epsilon, max_norm, 0, loss_scale, &gradient_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestSimpleBaselineMixPrecision32_16) {
@@ -1222,10 +1440,17 @@ TEST(OptimizerTest, LambOptimizerTestSimpleBaselineMixPrecision32_16) {
   const float alpha = 1.0f;
   const float beta = 1.0f;
   const float epsilon = 1.0f;
-
+  const float max_norm = 1.0f;
+  const float loss_scale = 1.0f;
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
-      lambda, alpha, beta, epsilon);
+      lambda, alpha, beta, epsilon, max_norm);
+
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon, max_norm, 0, loss_scale, &gradient_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestBaselineMixPrecision32_16) {
@@ -1240,10 +1465,18 @@ TEST(OptimizerTest, LambOptimizerTestBaselineMixPrecision32_16) {
   const float alpha = 0.9f;
   const float beta = 0.95f;
   const float epsilon = 0.33f;
+  const float max_norm = 1.0f;
+  const float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
-      lambda, alpha, beta, epsilon);
+      lambda, alpha, beta, epsilon, max_norm);
+
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon, max_norm, 0, loss_scale, &gradient_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
@@ -1258,14 +1491,44 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
   const float alpha = 0.9f;
   const float beta = 0.95f;
   const float epsilon = 0.33f;
+  const float max_norm = 1.0f;
+  const float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
-      lambda, alpha, beta, epsilon);
+      lambda, alpha, beta, epsilon, max_norm);
+
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon, max_norm, 2, loss_scale, &gradient_norm);
+}
+
+TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16_NoDefaultMaxNormClipping) {
+  const std::vector<int64_t> shape = {1};
+  const std::vector<float> eta = {0.1f};
+  const std::vector<float> w = {-1.5f};
+  const std::vector<float> g = {-0.75f};
+  const std::vector<float> m = {0.87f};
+  const std::vector<float> v = {0.12f};
+
+  const float lambda = 0.25f;
+  const float alpha = 0.9f;
+  const float beta = 0.95f;
+  const float epsilon = 0.33f;
+  const float max_norm = 0.1f;
+  const float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
-      lambda, alpha, beta, epsilon, 2);
+      lambda, alpha, beta, epsilon, max_norm, 2);
+
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon, max_norm, 2, loss_scale, &gradient_norm);
 }
 
 TEST(OptimizerTest, LambOptimizerTestLarge) {
@@ -1292,12 +1555,14 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
     const float alpha = 0.2f;
     const float beta = 0.8f;
     const float epsilon = 1e-6f;
+    const float max_norm = 1.0f;
+    const int64_t step = 0;
+    const float loss_scale = 1.f;
+    const float scaled_g_norm = 1.f;
 
     run_multi_tensor_lamb_test(
         {shape},
         eta,
-        1.f,
-        1.f,
         {w},
         {g},
         {m},
@@ -1305,7 +1570,11 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
         {lambda},
         {alpha},
         {beta},
-        {epsilon});
+        {epsilon},
+        {max_norm},
+        step,
+        loss_scale,
+        &scaled_g_norm);
   }
 }
 
@@ -1327,6 +1596,7 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
   std::vector<float> betas(group_count);
   std::vector<float> lambdas(group_count);
   std::vector<float> epsilons(group_count);
+  std::vector<float> max_norms(group_count);
 
   const float eta = dist(random_engine);
 
@@ -1351,20 +1621,26 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
     betas[i] = dist(random_engine);
     lambdas[i] = dist(random_engine);
     epsilons[i] = dist(random_engine);
+    max_norms[i] = dist(random_engine);
   }
 
-  run_multi_tensor_lamb_test(
-      shapes, eta, 1.f, 1.f,
-      ws, gs, ms, vs,
-      lambdas, alphas, betas, epsilons,
-      0, 0.3f, 0.7f);
+  const int64_t step = 0;
+  float loss_scale = 1.f;
+  const float scaled_g_norm = 1.f;
 
   run_multi_tensor_lamb_test(
-      shapes, eta, 1.f, 1.f,
+      shapes, eta,
       ws, gs, ms, vs,
-      lambdas, alphas, betas, epsilons);
+      lambdas, alphas, betas, epsilons, max_norms,
+      step, loss_scale, &scaled_g_norm, 0.3f, 0.7f);
+
+  run_multi_tensor_lamb_test(
+      shapes, eta,
+      ws, gs, ms, vs,
+      lambdas, alphas, betas, epsilons, max_norms,
+      step, loss_scale, &scaled_g_norm);
 }
 #endif
-
+}
 }  // namespace test
 }  // namespace onnxruntime

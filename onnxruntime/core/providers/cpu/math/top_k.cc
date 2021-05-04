@@ -492,6 +492,11 @@ TopK<11, double>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_
 }
 
 template <>
+TopK<11, int32_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
+}
+
+template <>
 TopK<11, int64_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
 }
@@ -505,6 +510,11 @@ Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
 template <>
 Status TopK<11, double>::Compute(OpKernelContext* p_op_kernel_context) const {
   return ComputeImplOpset1011<double>(p_op_kernel_context, axis_, largest_, sorted_);
+}
+
+template <>
+Status TopK<11, int32_t>::Compute(OpKernelContext* p_op_kernel_context) const {
+  return ComputeImplOpset1011<int32_t>(p_op_kernel_context, axis_, largest_, sorted_);
 }
 
 template <>
@@ -539,5 +549,6 @@ REGISTER_TOPK_VERSIONED_TYPED_KERNEL(10, 10, double);
 REGISTER_TOPK_TYPED_KERNEL(11, float);
 REGISTER_TOPK_TYPED_KERNEL(11, double);
 REGISTER_TOPK_TYPED_KERNEL(11, int64_t);
+REGISTER_TOPK_TYPED_KERNEL(11, int32_t);
 
 }  // namespace onnxruntime

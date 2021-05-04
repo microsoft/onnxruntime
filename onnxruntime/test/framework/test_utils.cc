@@ -20,6 +20,14 @@ IExecutionProvider* TestCudaExecutionProvider() {
 }
 #endif
 
+#ifdef USE_ROCM
+IExecutionProvider* TestRocmExecutionProvider() {
+  static ROCMExecutionProviderInfo info;
+  static ROCMExecutionProvider rocm_provider(info);
+  return &rocm_provider;
+}
+#endif
+
 #ifdef USE_TENSORRT
 #if 0  // TODO: TensorRT is shared, can't access these directly anymore
 IExecutionProvider* TestTensorrtExecutionProvider() {
@@ -51,6 +59,13 @@ IExecutionProvider* TestNnapiExecutionProvider() {
 IExecutionProvider* TestRknpuExecutionProvider() {
   static RknpuExecutionProvider rknpu_provider;
   return &rknpu_provider;
+}
+#endif
+
+#ifdef USE_COREML
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
+  static CoreMLExecutionProvider coreml_provider(coreml_flags);
+  return &coreml_provider;
 }
 #endif
 

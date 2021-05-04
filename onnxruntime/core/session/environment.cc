@@ -113,13 +113,13 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
@@ -154,6 +154,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
 #ifdef USE_DML

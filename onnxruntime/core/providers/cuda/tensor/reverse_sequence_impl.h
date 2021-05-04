@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T>
 cudaError_t ReverseSequenceCudaImpl(
+    cudaStream_t stream,
     const T* x_data,
     const int64_t* seq_len_data,
     T* y_data,

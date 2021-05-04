@@ -3,7 +3,7 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-CPU-2019
   steps:
   - checkout: self
     clean: true

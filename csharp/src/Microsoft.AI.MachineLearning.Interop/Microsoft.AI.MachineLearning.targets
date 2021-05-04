@@ -9,10 +9,11 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <RuntimesDirectory Condition="'$(OutputType)' == 'AppContainerExe'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\uap</RuntimesDirectory>
-    <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
-    <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-    <OnnxRuntimeBinary>$(RuntimesDirectory)\onnxruntime.dll</OnnxRuntimeBinary>
+    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' == 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\lib\uap10.0</RuntimesDirectory>
+    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' != 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
+    <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
+    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
   <Target Name="CopyMLBinaries" BeforeTargets="CoreBuild">
@@ -22,4 +23,8 @@
     <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
     <Copy SkipUnchangedFiles="True" SourceFiles="$(WindowsAIBinary);$(OnnxRuntimeBinary)" DestinationFolder="$(OutDir)" />
   </Target>
+
+  <ItemGroup>
+    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
+  </ItemGroup>
 </Project>

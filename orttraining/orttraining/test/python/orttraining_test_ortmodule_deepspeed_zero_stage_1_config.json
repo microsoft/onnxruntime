@@ -1,0 +1,32 @@
+{
+    "train_batch_size": 32,
+    "steps_per_print": 2000,
+    "optimizer": {
+      "type": "SGD",
+      "params": {
+        "lr": 0.001
+      }
+    },
+    "scheduler": {
+      "type": "WarmupLR",
+      "params": {
+        "warmup_min_lr": 0,
+        "warmup_max_lr": 0.001,
+        "warmup_num_steps": 1000
+      }
+    },
+    "wall_clock_breakdown": true,
+    "fp16": {
+        "enabled": true,
+        "loss_scale": 0,
+        "initial_scale_power": 32,
+        "loss_scale_window": 1000,
+        "hysteresis": 2,
+        "min_loss_scale": 1
+    },
+    "zero_optimization": {
+        "stage":1,
+        "reduce_bucket_size": 500000000
+    },
+    "zero_allow_untested_optimizer": true
+}

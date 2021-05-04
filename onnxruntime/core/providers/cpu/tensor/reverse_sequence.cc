@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "reverse_sequence.h"
+#include "core/providers/cpu/tensor/reverse_sequence.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
@@ -17,22 +17,40 @@
 #pragma warning(pop)
 #endif
 
+#include "core/framework/data_types_internal.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0,
+    element_type_lists::All);
+}
+
+using ReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0);
+using EnabledReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0);
 
 ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                         kOnnxDomain,
                         10,
                         kCpuExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+                        KernelDefBuilder()
+                            .TypeConstraint("T",
+                                            BuildKernelDefConstraintsFromTypeList<ReverseSequenceDataTypes>(),
+                                            BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
                         ReverseSequenceOp);
 
 template <typename T>
-static void ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
-                                int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
+static Status ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
+                                  int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
@@ -55,8 +73,8 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, dims);
 
-  DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
-                       max_seq_len, batch_size, input_size, time_major_);
+  DispatchOnTensorTypeWithReturn(data_type, status, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
+                                 max_seq_len, batch_size, input_size, time_major_);
 
   return status;
 }
@@ -100,13 +118,17 @@ static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
 }
 
 template <typename T>
-static void ReverseSequenceImpl(const Tensor& X,
-                                Tensor& Y,
-                                gsl::span<const int64_t> sequence_lengths,
-                                const int64_t max_seq_len,
-                                const int64_t batch_size,
-                                const int64_t input_size,
-                                bool time_major) {
+static Status ReverseSequenceImpl(const Tensor& X,
+                                  Tensor& Y,
+                                  gsl::span<const int64_t> sequence_lengths,
+                                  const int64_t max_seq_len,
+                                  const int64_t batch_size,
+                                  const int64_t input_size,
+                                  bool time_major) {
+  if (!utils::HasType<EnabledReverseSequenceDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   gsl::span<const T> inputs = X.DataAsSpan<T>();
   gsl::span<T> inputs_reverse = Y.MutableDataAsSpan<T>();
 
@@ -117,8 +139,14 @@ static void ReverseSequenceImpl(const Tensor& X,
   for (int i = 0; i < batch_size; i++) {
     int64_t seq_len = sequence_lengths[i];
 
-    if (seq_len == 0)
+    if (seq_len == 0) {
       continue;
+    }
+
+    if (seq_len > max_seq_len || seq_len < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len,
+                             ". Value must be in range [0,", max_seq_len, "]");
+    }
 
     for (int64_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
@@ -138,6 +166,8 @@ static void ReverseSequenceImpl(const Tensor& X,
       gsl::copy(src, dest);
     }
   }
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

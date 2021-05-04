@@ -12,14 +12,15 @@ namespace DeviceHelpers {
 namespace CudaDeviceHelpers {
 
 // CUDA EP specific Data copy helper
-Status DataCopy(const Tensor& input, Tensor& output) {
+Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
   // TODO: Currently, triggers copy on stream 0, investigate if we can still do that
   // *if* the kernel is launched in a different stream
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
-                                       cudaMemcpyDeviceToDevice));
+                                       cudaMemcpyDeviceToDevice,
+                                       static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream())));
 
   return Status::OK();
 }
@@ -28,6 +29,7 @@ Status DataCopy(const Tensor& input, Tensor& output) {
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
   return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+                                      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                       permutation, input, output, input_shape_override);
 }
@@ -79,7 +81,7 @@ Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
 }
 
 // CUDA EP specific Diagonal helper
-std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_cuda_assets) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = static_cast<int64_t>(input_dims.size());
@@ -104,7 +106,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   // The diagonal values are stored along `first_dim`
   output_dims.erase(output_dims.begin() + second_dim);
 
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
   TensorPitches input_strides(input.Shape().GetDims());
   cuda::TArray<int64_t> gpu_input_strides(input_strides);
@@ -117,6 +119,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   DiagonalImpl(
+      static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
       input.DataRaw(),
       input.Shape().GetDims().size(),
       first_dim,
@@ -157,6 +160,19 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     void* einsum_cuda_assets);
 
 template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
+    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+// MLFloat16
+template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
+    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,

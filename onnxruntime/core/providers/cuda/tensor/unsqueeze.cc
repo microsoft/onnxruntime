@@ -50,7 +50,7 @@ Status Unsqueeze::ComputeInternal(OpKernelContext* ctx) const {
 
   auto count = p.input_tensor->Shape().Size();
   auto element_bytes = p.input_tensor->DataType()->Size();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice, Stream()));
 
   return Status::OK();
 }

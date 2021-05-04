@@ -71,7 +71,7 @@ AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
 }
 
 void SessionState::CreateGraphInfo() {
-  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph_);
+  graph_viewer_ = std::make_unique<onnxruntime::GraphViewer>(graph_);
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger_, VERBOSE) << "SaveMLValueNameIndexMapping";
   int idx = 0;
@@ -188,7 +188,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
-  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
 }
 
@@ -233,14 +233,14 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
+    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
       result.emplace(weight_name, initialized_tensors_.at(idx));
     } else {
       ORT_RETURN_IF_NOT(
           allow_missing_weights,
           "Failed to get initializer with name: ", weight_name, " and index:", idx);
       continue;
-    }    
+    }
   }
   retrieved_weights = std::move(result);
   return Status::OK();
@@ -389,6 +389,7 @@ void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int,
 
 }  // namespace
 
+// If this function fails NO memory planning will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
@@ -425,12 +426,17 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       auto* arg = node->OutputDefs()[i];
       size_t is_resolved = 0;
       std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, is_resolved, resolved_shape));
 
-      // Store all valid resolved shapes. They will be queried in, for example,
-      // Recv operator to bypass the dependency of output shapes on inputs.
-      if (is_resolved != 0) {
-        resolved_shapes[ml_value_idx] = resolved_shape;
+      // Tensors whose shape cannot be resolved statically will be allocated at runtime.
+      if (TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
+        // Store all valid resolved shapes. They will be queried in, for example,
+        // Recv operator to bypass the dependency of output shapes on inputs.
+        if (is_resolved != 0) {
+          resolved_shapes[ml_value_idx] = resolved_shape;
+        }
+      } else {
+        LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
+                            << ml_value_idx << ", will allocate dynamically.";
       }
     }
   }
@@ -529,7 +535,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
-    auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+    auto mem_patterns = std::make_unique<MemoryPatternGroup>();
     if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();
@@ -573,6 +579,8 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::refere
 }
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
+
+bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
@@ -800,7 +808,7 @@ Status SessionState::CreateSubgraphSessionState() {
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          onnxruntime::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
+          std::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
                                                  thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                                  logger_, profiler_);
 
@@ -922,6 +930,12 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
       }
     }
   }
+  // Initializers can be used as graph outputs
+  for (const auto* arg : graph.GetOutputs()) {
+    if (arg->Exists() && graph.GetConstantInitializer(arg->Name(), true /*check_outer_scope*/)) {
+      constant_initializers_use_count[arg->Name()]++;
+    }
+  }
 }
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -986,16 +1000,39 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
+  //Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
+#endif
 
+  // Memory pattern tracer allocates all initializers on a single continous
+  // buffer. This has the effect of reducing memory fragementation.
+  // Further more, NCCL kernels require initializers to be allocated
+  // continously.
+  //
+  // In inferencing scenarios, however, we often want to pre-process and then
+  // release some initializers. See OpKernel::PrePack(). Letting all initializers
+  // sharing a single buffer makes it hard to release individual ones, leading
+  // to memory waste.
+  //
+  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  //  out of memory error in some training tests. Need to create kernel first,
+  //  and let the kernel tells us whether the initalizer needs to be traced.
+  //
+#if defined(ENABLE_TRAINING)
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+#else
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
+      ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_));
+#endif
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
@@ -1003,12 +1040,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
-          execution_providers_.GetDefaultCpuMemoryInfo(),
+          execution_providers_.GetDefaultCpuAllocator(),
           ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
             return AddInitializedTensor(idx, value, &d, constant);
           },
           logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  //Record Weight allocation info on device
+  MemoryInfo::RecordInitializerAllocInfo(GetInitializedTensors());
+#endif
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
@@ -1019,12 +1060,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
+#ifndef ENABLE_TRAINING
   const auto disable_prepacking =
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));
   }
+#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));

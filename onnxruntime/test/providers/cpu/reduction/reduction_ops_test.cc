@@ -14,6 +14,7 @@ namespace test {
 
 const float FLOAT_INF = std::numeric_limits<float>::infinity();
 const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+const double DOUBLE_INF = std::numeric_limits<double>::infinity();
 const double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
 
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
@@ -389,14 +390,14 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims_double) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {1, 1, 1}, {60.00671387});
   test.Run();
 }
@@ -421,14 +422,14 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_do_not_keep_dims_double) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {}, {60.00671387});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
@@ -455,14 +456,14 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_double) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {3, 2}, {20.0, 2.31326175, 40.00004578, 2.31326175, 60.00671387, 2.31326175});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
@@ -482,7 +483,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<double>("data", {3},
-                       {1.0, 2.0, 3.0});
+                        {1.0, 2.0, 3.0});
   test.AddOutput<double>("reduced", {}, {3.40760596});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
@@ -509,14 +510,14 @@ TEST(ReductionOpTest, ReduceLogSumExp_keepdims_double) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {3, 1, 2}, {20.0, 2.31326175, 40.00004578, 2.31326175, 60.00671387, 2.31326175});
   test.Run();
 }
@@ -543,14 +544,14 @@ TEST(ReductionOpTest, ReduceLogSumExp_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0, 2.0,
-                        3.0, 4.0,
+                        {1.0, 2.0,
+                         3.0, 4.0,
 
-                        5.0, 6.0,
-                        7.0, 8.0,
+                         5.0, 6.0,
+                         7.0, 8.0,
 
-                        9.0, 10.0,
-                        11.0, 12.0});
+                         9.0, 10.0,
+                         11.0, 12.0});
   test.AddOutput<double>("reduced", {1, 2, 1}, {10.33174133, 12.33174133});
   test.Run();
 }
@@ -681,6 +682,23 @@ TEST(ReductionOpTest, ReduceMax) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMax_double) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMax_int32) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
@@ -795,14 +813,14 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_double) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {1, 1, 1}, {18.25});
   test.Run();
 }
@@ -827,14 +845,14 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_double) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {}, {18.25});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
@@ -869,14 +887,14 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_double) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0f,
-                        40.0, 2.0f,
+                         30.0, 1.0f,
+                         40.0, 2.0f,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {3, 2}, {12.5, 1.5, 35.0, 1.5, 57.5, 1.5});
 
 #if defined(__arm__)
@@ -904,7 +922,7 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<double>("data", {3},
-                       {1.0, 2.0, 3.0});
+                        {1.0, 2.0, 3.0});
   test.AddOutput<double>("reduced", {}, {2.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
@@ -939,14 +957,14 @@ TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {5.0, 1.0,
-                        20.0, 2.0,
+                        {5.0, 1.0,
+                         20.0, 2.0,
 
-                        30.0, 1.0,
-                        40.0, 2.0,
+                         30.0, 1.0,
+                         40.0, 2.0,
 
-                        55.0, 1.0,
-                        60.0, 2.0});
+                         55.0, 1.0,
+                         60.0, 2.0});
   test.AddOutput<double>("reduced", {3, 1, 2}, {12.5, 1.5, 35.0, 1.5, 57.5, 1.5});
 
 #if defined(__arm__)
@@ -982,14 +1000,14 @@ TEST(ReductionOpTest, ReduceMean_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0, 2.0,
-                        3.0, 4.0,
+                        {1.0, 2.0,
+                         3.0, 4.0,
 
-                        5.0, 6.0,
-                        7.0, 8.0,
+                         5.0, 6.0,
+                         7.0, 8.0,
 
-                        9.0, 10.0,
-                        11.0, 12.0});
+                         9.0, 10.0,
+                         11.0, 12.0});
   test.AddOutput<double>("reduced", {1, 2, 1}, {5.5, 7.5});
 
   test.Run();
@@ -1128,6 +1146,23 @@ TEST(ReductionOpTest, ReduceMin) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {1.0f, 3.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_double) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {1, 2, 1}, {1.0f, 3.0f});
   test.Run();
 }
 
@@ -1276,7 +1311,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -1430,7 +1465,7 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
   }
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
@@ -2060,6 +2095,18 @@ TEST(ReductionOpTest, ArgMax2D_select_last) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ArgMax2D_dim1) {
+  OpTester test("ArgMax", 11);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddInput<float>("data", {3, 1},
+                       {1.0f,
+                        6.0f,
+                        9.0f});
+  test.AddOutput<int64_t>("reduced", {3, 1},
+                          {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ArgMin) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
@@ -2275,6 +2322,24 @@ TEST(ReductionOpTest, ReduceInfMax) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceInfMax_double) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<double>("data", {6, 2},
+                        {1.0f, DOUBLE_NINF,
+                         DOUBLE_NINF, 4.0f,
+                         DOUBLE_INF, DOUBLE_NINF,
+                         DOUBLE_NINF, DOUBLE_INF,
+                         1.0f, DOUBLE_INF,
+                         DOUBLE_INF, 4.0f});
+  test.AddOutput<double>("reduced", {6},
+                         {1.0f, 4.0f,
+                          DOUBLE_INF, DOUBLE_INF,
+                          DOUBLE_INF, DOUBLE_INF});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceInfMin) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -2290,6 +2355,24 @@ TEST(ReductionOpTest, ReduceInfMin) {
                         {1.0f, 4.0f,
                          FLOAT_NINF, FLOAT_NINF,
                          FLOAT_NINF, FLOAT_NINF});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceInfMin_double) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<double>("data", {6, 2},
+                        {1.0f, DOUBLE_INF,
+                         DOUBLE_INF, 4.0f,
+                         DOUBLE_INF, DOUBLE_NINF,
+                         DOUBLE_NINF, DOUBLE_INF,
+                         1.0f, DOUBLE_NINF,
+                         DOUBLE_NINF, 4.0f});
+  test.AddOutput<double>("reduced", {6},
+                         {1.0f, 4.0f,
+                          DOUBLE_NINF, DOUBLE_NINF,
+                          DOUBLE_NINF, DOUBLE_NINF});
   test.Run();
 }
 

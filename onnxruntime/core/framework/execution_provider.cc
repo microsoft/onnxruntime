@@ -34,9 +34,9 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
         break;
       }
     }
@@ -74,22 +74,39 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  const OrtMemoryInfo& info = allocator->Info();
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
+    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
+    return;
+  }
+  InsertAllocator(allocator);
+}
+
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {
+  return;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node is not implemented by " + type_);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node and dll path is not implemented by " + type_);
 }
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
 #endif
 

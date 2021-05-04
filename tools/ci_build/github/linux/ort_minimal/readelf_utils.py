@@ -65,7 +65,7 @@ def diff_sections_total_size(base_binary_path, binary_path, readelf_path='readel
     total = 0
     results = collections.OrderedDict()
 
-    for section in merged_keys:
+    for section in sorted(merged_keys):
         base_size = base_section_sizes[section] if section in base_section_sizes else 0
         size = section_sizes[section] if section in section_sizes else 0
 

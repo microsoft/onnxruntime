@@ -38,6 +38,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         // Delay-loaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
         private static string[] cudaDelayLoadedLibs = { };
+        private static string[] trtDelayLoadedLibs = { };
 
         #region Constructor and Factory methods
 
@@ -76,6 +77,30 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0)
+        {
+            CheckTensorrtExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(options.Handle, deviceId));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
+                return options;
+            }
+            catch (Exception e)
+            {
+                options.Dispose();
+                throw e;
+            }
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for Nuphar execution.
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -84,7 +109,37 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings));
+
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, pinnedSettingsName.Pointer));
+            }
+
+            return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider()
+        {
+            return MakeSessionOptionWithRocmProvider(0);
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
+        {
+            SessionOptions options = new SessionOptions();
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(options.Handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
             return options;
         }
 
@@ -134,7 +189,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="deviceId">device identification, default empty string</param>
         public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, deviceId));
+            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
+            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
+            }
         }
 
         /// <summary>
@@ -146,6 +205,15 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
         }
 
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_ROCM(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
+        }
+       
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -170,7 +238,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="settings">string with Nuphar specific settings</param>
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, settings));
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
+            }
         }
         #endregion //ExecutionProviderAppends
 
@@ -241,13 +313,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="configValue">config key value</param>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            var utf8NameConfigKeyPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned);
-            var utf8NameConfigValuePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned);
-
-            using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
-            using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
+            using (var pinnedConfigKeyName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned)))
+            using (var pinnedConfigValueName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned)))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
                                               pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
             }
         }
@@ -423,7 +492,12 @@ namespace Microsoft.ML.OnnxRuntime
 
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, value));
+                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
+                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, pinnedlogIdName.Pointer));
+                }
+
                 _logId = value;
             }
         }
@@ -568,6 +642,27 @@ namespace Microsoft.ML.OnnxRuntime
                     throw new OnnxRuntimeException(
                         ErrorCode.NoSuchFile,
                         $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                        );
+                }
+            }
+            return true;
+        }
+
+        private static bool CheckTensorrtExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in trtDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle != IntPtr.Zero)
+                        continue;
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile,
+                        $"kernel32.LoadLibrary():'{dll}' not found. TensorRT/CUDA are required for GPU execution. " +
                         $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
                         );
                 }

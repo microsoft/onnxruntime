@@ -77,6 +77,30 @@ __device__ __inline__ half _Round(half a) {
 }
 
 template <typename T>
+__device__ __inline__ T _Cos(T a);
+
+template <>
+__device__ __inline__ float _Cos(float a) { return cosf(a); }
+
+template <>
+__device__ __inline__ double _Cos(double a) { return cos(a); }
+
+template <>
+__device__ __inline__ half _Cos(half a) { return hcos(a); }
+
+template <typename T>
+__device__ __inline__ T _Sin(T a);
+
+template <>
+__device__ __inline__ float _Sin(float a) { return sinf(a); }
+
+template <>
+__device__ __inline__ double _Sin(double a) { return sin(a); }
+
+template <>
+__device__ __inline__ half _Sin(half a) { return hsin(a); }
+
+template <typename T>
 __device__ __inline__ T _Exp(T a);
 
 template <>
@@ -120,18 +144,10 @@ __device__ __inline__ half2 _Tanh(half2 a) {
   return __float22half2_rn(tmp);
 }
 
-// TODO: temporary workaround for casting half-to-double, until ROCM/hipcc adds support.
-namespace {
-template <typename T>
-__device__ __inline__ double __cast_to_double(T x) { return static_cast<double>(x); }
-template <>
-__device__ __inline__ double __cast_to_double(half x) { return static_cast<double>(static_cast<float>(x)); }
-}  // namespace
-
 // Capture permutations of int32/64/float/double
 template <typename T, typename T1>
 __device__ __inline__ T _Pow(T a, T1 b) {
-  return static_cast<T>(pow(__cast_to_double(a), __cast_to_double(b)));
+  return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
 }
 
 template <>

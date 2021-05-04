@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,24 @@ class OnnxModel:
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
+        self.shape_infer_helper = None
+
+    def infer_runtime_shape(self, dynamic_axis_mapping, update = False):
+        shape_infer_helper = None
+        if update:
+            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            self.shape_infer_helper = shape_infer_helper
+        else:
+            if self.shape_infer_helper is None:
+                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            shape_infer_helper = self.shape_infer_helper
+        try:
+            if shape_infer_helper.infer(dynamic_axis_mapping):
+                return shape_infer_helper
+        except:
+             print("failed in shape inference", sys.exc_info()[0])
+    
+        return None
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
@@ -405,12 +424,15 @@ class OnnxModel:
         self.model.opset_import[0].version = original_opset_version
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        """ Convert a graph to FLOAT16
+        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
+           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        Args:
+            cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
         """
         from packaging.version import Version
-        import onnxconverter_common.float16 as oc
+        import onnxconverter_common as oc
         if Version(oc.__version__) > Version("1.7.0"):
-            self.model = oc.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
             return
 
         graph = self.model.graph
@@ -566,6 +588,14 @@ class OnnxModel:
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
+
+        for node in self.model.graph.node:
+            # Some operators with inner graph in attributes like 'body' 'else_branch' or 'then_branch'
+            if node.op_type in ['Loop', 'Scan', 'If']:
+                # TODO: handle inner graph
+                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
+                return
+
         if outputs is None:
             outputs = [output.name for output in self.model.graph.output]
 

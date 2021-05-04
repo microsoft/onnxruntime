@@ -1,0 +1,19 @@
+jobs:
+- job: CoreML_CI
+  pool:
+    vmImage: 'macOS-10.15'
+  timeoutInMinutes: 120
+  steps:
+  - script: brew install coreutils ninja
+    displayName: Install coreutils and ninja
+
+  - script: |
+      python3 tools/ci_build/build.py \
+      --build_dir build \
+      --skip_submodule_sync \
+      --cmake_generator=Ninja \
+      --parallel \
+      --build_shared_lib \
+      --config Debug \
+      --use_coreml
+    displayName: CoreML EP, Build and Test on macOS

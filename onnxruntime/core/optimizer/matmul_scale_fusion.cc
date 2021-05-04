@@ -44,11 +44,11 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
   }
 
   float scalar{};
-  utils::MLTypeCallDispatcherRet<
-      Status, ExtractScalarAsFloatDispatchTarget,
+  utils::MLTypeCallDispatcher<
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
-  ORT_THROW_IF_ERROR(dispatcher.Invoke(*initializer, graph.ModelPath(), scalar));
+  ORT_THROW_IF_ERROR(
+      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(*initializer, graph.ModelPath(), scalar)));
 
   return {scalar};
 }
@@ -187,8 +187,7 @@ Status ProcessNode(
   }
 
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }
 
@@ -206,7 +205,7 @@ Status ProcessNode(
   }
 
   NodeAttributes fused_node_attrs =
-      (node.OpType() == "TransposeMatMul") || (node.OpType() == "FusedMatMul") ? node.GetAttributes() : NodeAttributes{};
+      node.OpType() == "FusedMatMul" ? node.GetAttributes() : NodeAttributes{};
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];

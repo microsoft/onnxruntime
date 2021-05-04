@@ -1,15 +1,35 @@
 # sets up common build tools for the windows build machines before build
 
 parameters:
-  buildConfig: 'RelWithDebInfo'
-  artifactName: 'onnxruntime-linux-x64'
-  libraryName: 'libonnxruntime.so'
-  commitId: ''
+- name: buildConfig  
+  type: string
+  default: 'RelWithDebInfo'
+
+- name: artifactName  
+  type: string
+  default: 'onnxruntime-linux-x64'
+
+- name: artifactNameNoVersionString
+  type: string
+  default: 'onnxruntime-linux-x64'
+
+- name: libraryName  
+  type: string
+  default: 'libonnxruntime.so'
+  
+- name: commitId  
+  type: string
+  default: ''
+
+- name: artifactCopyScript
+  type: string
+  default: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+  
 steps:
     - task: ShellScript@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
-        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+        scriptPath: '${{parameters.artifactCopyScript}}'
         args: '-r $(Build.BinariesDirectory) -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -c ${{parameters.buildConfig}} -s $(Build.SourcesDirectory) -t ${{parameters.commitId}}'
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
@@ -22,7 +42,7 @@ steps:
         archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
         replaceExistingArchive: true
 
-    - task: PublishBuildArtifacts@1
+    - task: PublishPipelineArtifact@1
       inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
-        artifactName: 'drop-${{parameters.artifactName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
+        artifactName: '${{parameters.artifactNameNoVersionString}}'

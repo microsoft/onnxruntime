@@ -82,7 +82,8 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
     axis_dimension_input_output_mapping_gpu.CopyToGpu();
 
     size_t element_size = input_tensor->DataType()->Size();
-    ORT_RETURN_IF_ERROR(SplitImpl(element_size,
+    ORT_RETURN_IF_ERROR(SplitImpl(Stream(),
+                                  element_size,
                                   block_size_including_axis_dim,
                                   block_size_inside_axis_dim,
                                   split_sizes_gpu.GpuPtr(),

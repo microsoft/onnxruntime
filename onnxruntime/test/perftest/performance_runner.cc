@@ -204,7 +204,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
   const auto& run_config = performance_test_config_.run_config;
 
   // create a threadpool with one thread per concurrent request
-  auto tpool = onnxruntime::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
+  auto tpool = std::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter{0}, requests{0};
   OrtMutex m;
   OrtCondVar cv;
