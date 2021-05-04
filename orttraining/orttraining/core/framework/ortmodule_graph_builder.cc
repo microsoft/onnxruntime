@@ -147,7 +147,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
 
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
                  config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),

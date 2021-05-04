@@ -26,4 +26,4 @@ To use on platforms without pre-built binaries, you can build Node.js binding fr
 
 ## License
 
-License information can be found [here](../../README.md#license).
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).

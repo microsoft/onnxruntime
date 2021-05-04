@@ -36,9 +36,9 @@ class SubgraphPrimitive : public PrimitiveBase {
     dnnl_engine_instance_ = DnnlEngineInstance::getInstance();
     std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine_instance_->getEngineMap().find(dnnl::engine::kind::gpu);
     if (iter != dnnl_engine_instance_->getEngineMap().end()) {
-      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::gpu)));
+      context_.stream = std::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::gpu)));
     } else {
-      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu)));
+      context_.stream = std::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu)));
     }
 
     if (context_.net.size() == 0) {
@@ -318,7 +318,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
         SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
-      auto subgraph_primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params);
+      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params);
       primitive = subgraph_primitive.get();
       SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }
@@ -348,7 +348,7 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     // training. (If the training running is updated to use a thread pool instead of a new thread each run we may be able to
     // revert back to the SubgraphPrimitivePool.)
 #ifdef ENABLE_TRAINING
-    std::unique_ptr<SubgraphPrimitive<T>> primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params_);
+    std::unique_ptr<SubgraphPrimitive<T>> primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params_);
 #else
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
 #endif  // ENABLE_TRAINING

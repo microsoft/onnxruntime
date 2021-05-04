@@ -92,7 +92,7 @@ void NhwcTransformerImpl::CreateNhwcArgument(Node& node, Node& nhwc_node, int ra
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nhwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nhwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses, rank);
+      std::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses, rank);
   output_defs[output_index] = output_nhwc_arg;
 }
 
