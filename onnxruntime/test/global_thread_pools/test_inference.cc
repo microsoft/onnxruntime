@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/constants.h"
 #include "providers.h"
@@ -101,7 +100,7 @@ static void TestInference(Ort::Session& session,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y) {
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
   RunSession<OutT>(*default_allocator,

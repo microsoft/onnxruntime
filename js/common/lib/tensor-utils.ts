@@ -14,7 +14,7 @@ export interface TypedShapeUtils<T extends Tensor.Type> {
   /**
    * Create a new tensor with the same data buffer and specified dims.
    *
-   * @param dims New dimensions. Size should match the old one.
+   * @param dims - New dimensions. Size should match the old one.
    */
   reshape(dims: readonly number[]): TypedTensor<T>;
 }

@@ -18,6 +18,7 @@ class _InputInfo(object):
                  dynamic_axes=None,
                  schema=None,
                  num_positionals=0,
+                 num_positionals_non_none=0,
                  keyword_names=None):
         self.names = names
         self.shape = shape
@@ -25,31 +26,33 @@ class _InputInfo(object):
         self.dynamic_axes = dynamic_axes if dynamic_axes else {}
         self.schema = schema if schema else []
         self.num_positionals = num_positionals
+        self.num_positionals_non_none = num_positionals_non_none
         self.keyword_names = keyword_names
 
     def __repr__(self) -> str:
         return f'''_InputInfo class:
-            \tNames:            {self.names}
-            \tShape:            {self.shape}
-            \tRequire gradient: {self.require_grad_names}
-            \tDynamic axes:     {self.dynamic_axes}
-            \tSchema:           {self.schema}
-            \t#Positionals:     {self.num_positionals}
-            \tKeyword names:    {self.keyword_names}'''
+            \tNames:                   {self.names}
+            \tShape:                   {self.shape}
+            \tRequire gradient:        {self.require_grad_names}
+            \tDynamic axes:            {self.dynamic_axes}
+            \tSchema:                  {self.schema}
+            \t#Positionals (total):    {self.num_positionals}
+            \t#Positionals (non-None): {self.num_positionals_non_none}
+            \tKeyword names:           {self.keyword_names}'''
 
     def flatten(self, args, kwargs):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
 
         ret = list(args)
-        for _, kwarg in kwargs.items():
-            ret.append(kwarg)
-        return tuple(ret)
+        ret += [kwargs[name] for name in self.names if name in kwargs]
+        return ret
 
     def unflatten(self, flat_args):
         '''Unflatten tuple of tensors into args and kwargs'''
 
         args = tuple(flat_args[:self.num_positionals])
-        kwargs = {kwarg_name: arg for kwarg_name, arg in zip(self.keyword_names, flat_args[self.num_positionals:])}
+        kwargs = {name: arg for name, arg in zip(self.names[self.num_positionals_non_none:], flat_args[self.num_positionals:]) \
+            if name in self.keyword_names}
         return args, kwargs
 
 def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):
@@ -62,7 +65,7 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
 
     # User inputs
     non_none_inputs = [inp for inp in inputs if inp is not None]
-    named_buffers_iter = iter(buffer_names)
+    buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
     for input_idx, name in enumerate(onnx_input_names):
@@ -79,16 +82,17 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
 
         elif input_idx >= len(non_none_inputs):
             # Registered buffers are translated to user_input+initializer in ONNX
-            buffer_name, inp = next(named_buffers_iter)
-            assert buffer_name == name, f'Input name {name} expected, but {buffer_name} found!'
+            try:
+                inp = buffer_names_dict[name]
+            except KeyError:
+                raise KeyError(f'Registered buffer name {name} not found.')
 
         if inp is not None:
             result.append(inp)
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
     # Initializers
-    for param in param_names:
-        result.append(param[1])
+    result.extend([param[1] for param in param_names])
     return result
 
 
@@ -135,10 +139,10 @@ class _TensorStub(object):
         return result
 
     def __eq__(self, other):
-        if not isinstance(other, _TensorStub):
-            raise NotImplemented('_TensorStub must only be compared to another _TensorStub instance!')
-        elif not other:
+        if not other:
             return False
+        elif not isinstance(other, _TensorStub):
+            raise NotImplemented('_TensorStub must only be compared to another _TensorStub instance!')
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:
@@ -356,6 +360,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       dynamic_axes=dynamic_axes,
                       schema=schema,
                       num_positionals=len(inputs),
+                      num_positionals_non_none=len([i for i in inputs if i is not None]),
                       keyword_names=kwargs.keys())
 
 

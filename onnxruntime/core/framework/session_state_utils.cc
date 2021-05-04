@@ -71,7 +71,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
   if (m != nullptr) {
-    p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
+    p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
                              p_tensor->SizeInBytes(), ", Got ", m->GetLen());
@@ -80,12 +80,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     if (use_device_allocator_for_initializers) {
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
-      p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
+      p_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
     } else {
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
       // (may expand it if there isn't a chunk that can be allotted to the memory request).
       // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, alloc);
+      p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
     }
   }
 
@@ -102,12 +102,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     if (use_device_allocator_for_initializers) {
       void* tensor_buffer = nullptr;
       ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
-      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
+      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
     } else {
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
       // (may expand it if there isn't a chunk that can be allotted to the memory request).
       // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_deserialize_tensor = onnxruntime::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));

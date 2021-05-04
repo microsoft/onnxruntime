@@ -28,6 +28,7 @@ if(had_error)
     message(FATAL_ERROR "Failed to find NPM: " ${had_error})
 endif()
 
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
 add_custom_target(js_npm_ci ALL
     COMMAND ${NPM_CLI} ci
@@ -47,3 +48,4 @@ add_custom_target(nodejs_binding_wrapper ALL
 add_dependencies(nodejs_binding_wrapper js_npm_ci)
 add_dependencies(nodejs_binding_wrapper js_common_npm_ci)
 add_dependencies(nodejs_binding_wrapper onnxruntime)
+endif()

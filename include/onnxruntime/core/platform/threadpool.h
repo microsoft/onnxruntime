@@ -314,7 +314,7 @@ class ThreadPool {
     }
 
     if (num_batches <= 0) {
-      num_batches = std::min<ptrdiff_t>(total, DegreeOfParallelism(tp));
+      num_batches = std::min<std::ptrdiff_t>(total, DegreeOfParallelism(tp));
     }
 
     if (num_batches <= 1) {

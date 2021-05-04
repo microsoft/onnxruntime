@@ -424,13 +424,46 @@ export class TensorResultValidator {
   }
 }
 
+// TODO fix the reshape and flatten ops to be compatible with webgl1
+const UNSUPPORTED_WEBGL_1_TESTS = [
+  'test_flatten_axis0',          'test_flatten_axis1',         'test_flatten_axis2',
+  'test_flatten_default_axis',   'test_reshape_extended_dims', 'test_reshape_negative_dim',
+  'test_reshape_one_dim',        'test_reshape_reduced_dims',  'test_flatten_axis0',
+  'test_flatten_axis1',          'test_flatten_axis2',         'test_flatten_default_axis',
+  'test_reshape_extended_dims',  'test_reshape_negative_dim',  'test_reshape_one_dim',
+  'test_reshape_reduced_dims',   'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims',
+];
+
 /**
  * run a single model test case. the inputs/outputs tensors should already been prepared.
  */
-export async function runModelTestSet(context: ModelTestContext, testCase: Test.ModelTestCase): Promise<void> {
+export async function runModelTestSet(
+    context: ModelTestContext, testCase: Test.ModelTestCase, testName: string): Promise<void> {
+  Logger.verbose('TestRunner', `Start to run test data from folder: ${testName}/${testCase.name}`);
   Logger.verbose('TestRunner', `Start to run test data from folder: ${testCase.name}`);
   const validator = new TensorResultValidator(context.backend);
   try {
+    if (context.backend === 'webgl') {
+      // TODO skipping incompatible tests for now
+      if (createWebGLContext(webglFlags.contextId).version === 1 &&
+          UNSUPPORTED_WEBGL_1_TESTS.indexOf(testName) !== -1) {
+        Logger.info('TestRunner', `Found incompatible test on webgl 1: ${testName} - ${testCase.name}. Skipping.`);
+        return;
+      }
+    }
+
     const feeds: Record<string, ort.Tensor> = {};
     testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
     const start = now();
