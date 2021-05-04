@@ -5,7 +5,9 @@
 
 #include "core/graph/graph.h"
 #include "core/optimizer/qdq_transformer/qdq_op_transformer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/registry.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 class QDQSimpleTransformer : public QDQOperatorTransformer {
@@ -25,24 +27,20 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
   bool KeepNode() const override {
     return true;
   }
-};
 
-class QDQReshapeTransformer : public QDQSimpleTransformer {
- public:
-  QDQReshapeTransformer(Node& node, Graph& graph) : QDQSimpleTransformer(node, graph) {}
-
- protected:
   bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
     if (1 != dq_nodes.size() ||  // check that input *data* is output of DequantizeLinear
-        node_.MutableOutputDefs().size() != q_nodes.size() ||
-        graph_.GetNodeOutputsInGraphOutputs(node_).size() > 0) {
+        1 != q_nodes.size() ||
+        !optimizer_utils::CheckOutputEdges(graph_, node_, 1)) {
       return false;
     }
 
-    return true;
+    return QDQ::IsQDQPairSupported(graph_, *q_nodes[0], *dq_nodes[0]);
   }
 };
 
 DEFINE_QDQ_CREATOR(MaxPool, QDQSimpleTransformer)
-DEFINE_QDQ_CREATOR(Reshape, QDQReshapeTransformer)
+DEFINE_QDQ_CREATOR(Reshape, QDQSimpleTransformer)
+DEFINE_QDQ_CREATOR(Gather, QDQSimpleTransformer)
+DEFINE_QDQ_CREATOR(Transpose, QDQSimpleTransformer)
 }  // namespace onnxruntime

@@ -64,7 +64,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Relu",
       };
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<ActivationOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());
   for (const auto& op_type : op_types) {
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }

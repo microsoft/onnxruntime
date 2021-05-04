@@ -42,6 +42,8 @@ export interface TextureLayout {
    * the original shape(dims) of the corresponding tensor
    */
   unpackedShape: readonly number[];
+
+  reversedWH?: boolean;
 }
 export interface TextureData extends TextureLayout {
   tensor: Tensor;
@@ -79,7 +81,7 @@ export interface ProgramInfo {
   params?: {[name: string]: number|number[]|string};
 
   expectPackedInputs?: boolean;
-  expectPackedoutputs?: boolean;
+  expectPackedOutputs?: boolean;
 }
 
 export interface VariableInfo {

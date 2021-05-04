@@ -26,7 +26,7 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
   VitisAIExecutionProviderInfo info;
   info.backend_type = backend_type_;
   info.device_id = device_id_;
-  return onnxruntime::make_unique<VitisAIExecutionProvider>(info);
+  return std::make_unique<VitisAIExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id) {

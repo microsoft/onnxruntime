@@ -273,7 +273,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
         const auto& cur_capability = *capabilities_to_compile[j];
-        viewers.push_back(onnxruntime::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
+        viewers.push_back(std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
       }
 
@@ -446,7 +446,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     //
     // TODO: Could avoid the topological sort in the GraphViewer ctor by constructing from an existing
     // GraphViewer instance instead of the Graph (copying the topological order instead of recalculating).
-    viewers.push_back(onnxruntime::make_unique<GraphViewer>(graph, indexed_sub_graph));
+    viewers.push_back(std::make_unique<GraphViewer>(graph, indexed_sub_graph));
     nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{fused_node, *viewers.back()});
   }
 

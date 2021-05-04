@@ -47,10 +47,10 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
 
 #ifdef USE_MIMALLOC
     return std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<MiMallocArena>(std::move(device_allocator), max_mem));
+        std::make_unique<MiMallocArena>(std::move(device_allocator), max_mem));
 #else
     return std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<BFCArena>(std::move(device_allocator),
+        std::make_unique<BFCArena>(std::move(device_allocator),
                                            max_mem,
                                            arena_extend_str,
                                            initial_chunk_size_bytes,

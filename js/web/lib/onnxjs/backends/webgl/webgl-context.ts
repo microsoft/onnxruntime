@@ -5,6 +5,7 @@ import {env} from 'onnxruntime-common';
 
 import * as DataEncoders from './texture-data-encoder';
 import {DataEncoder, Encoder} from './texture-data-encoder';
+import {repeatedTry} from './utils';
 
 /**
  * Abstraction and wrapper around WebGLRenderingContext and its operations
@@ -36,12 +37,15 @@ export class WebGLContext {
   // private maxDrawBuffers: number;
 
   // WebGL extensions
-  textureFloatExtension: unknown|null;
+  // eslint-disable-next-line camelcase
+  textureFloatExtension: OES_texture_float|null;
   // eslint-disable-next-line camelcase
   textureHalfFloatExtension: OES_texture_half_float|null;
 
   // WebGL2 extensions
   colorBufferFloatExtension: unknown|null;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  disjointTimerQueryWebgl2Extension: {TIME_ELAPSED_EXT: GLenum; GPU_DISJOINT_EXT: GLenum}|null;
 
   private disposed: boolean;
   private frameBufferBound = false;
@@ -60,9 +64,6 @@ export class WebGLContext {
     const gl = this.gl;
     // create the texture
     const texture = gl.createTexture();
-    if (!texture) {
-      throw new Error('failed to create texture');
-    }
     // bind the texture so the following methods effect this texture.
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -77,7 +78,7 @@ export class WebGLContext {
         0,  // Always 0 in OpenGL ES.
         encoder.format, encoder.textureType, buffer);
     this.checkError();
-    return texture;
+    return texture as WebGLTexture;
   }
   updateTexture(
       texture: WebGLTexture, width: number, height: number, encoder: DataEncoder, data: Encoder.DataArrayType): void {
@@ -335,6 +336,7 @@ export class WebGLContext {
   private getExtensions(): void {
     if (this.version === 2) {
       this.colorBufferFloatExtension = this.gl.getExtension('EXT_color_buffer_float');
+      this.disjointTimerQueryWebgl2Extension = this.gl.getExtension('EXT_disjoint_timer_query_webgl2');
     } else {
       this.textureFloatExtension = this.gl.getExtension('OES_texture_float');
       this.textureHalfFloatExtension = this.gl.getExtension('OES_texture_half_float');
@@ -469,5 +471,65 @@ export class WebGLContext {
         gl.deleteTexture(texture);
       }
     }
+  }
+
+  beginTimer(): WebGLQuery {
+    if (this.version === 2 && this.disjointTimerQueryWebgl2Extension) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      const ext = this.disjointTimerQueryWebgl2Extension;
+
+      const query = gl2.createQuery() as WebGLQuery;
+      gl2.beginQuery(ext.TIME_ELAPSED_EXT, query);
+      return query;
+    } else {
+      // TODO: add webgl 1 handling.
+      throw new Error('WebGL1 profiling currently not supported.');
+    }
+  }
+
+  endTimer() {
+    if (this.version === 2 && this.disjointTimerQueryWebgl2Extension) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      const ext = this.disjointTimerQueryWebgl2Extension;
+      gl2.endQuery(ext.TIME_ELAPSED_EXT);
+      return;
+    } else {
+      // TODO: add webgl 1 handling.
+      throw new Error('WebGL1 profiling currently not supported');
+    }
+  }
+
+  isTimerResultAvailable(query: WebGLQuery): boolean {
+    let available = false, disjoint = false;
+    if (this.version === 2 && this.disjointTimerQueryWebgl2Extension) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      const ext = this.disjointTimerQueryWebgl2Extension;
+
+      available = gl2.getQueryParameter(query, gl2.QUERY_RESULT_AVAILABLE);
+      disjoint = gl2.getParameter(ext.GPU_DISJOINT_EXT);
+    } else {
+      // TODO: add webgl 1 handling.
+      throw new Error('WebGL1 profiling currently not supported');
+    }
+
+    return available && !disjoint;
+  }
+
+  getTimerResult(query: WebGLQuery): number {
+    let timeElapsed = 0;
+    if (this.version === 2) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      timeElapsed = gl2.getQueryParameter(query, gl2.QUERY_RESULT);
+    } else {
+      // TODO: add webgl 1 handling.
+      throw new Error('WebGL1 profiling currently not supported');
+    }
+    // return miliseconds
+    return timeElapsed / 1000000;
+  }
+
+  async waitForQueryAndGetTime(query: WebGLQuery): Promise<number> {
+    await repeatedTry(() => this.isTimerResultAvailable(query));
+    return this.getTimerResult(query);
   }
 }

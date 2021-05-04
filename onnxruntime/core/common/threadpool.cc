@@ -379,7 +379,7 @@ ThreadPool::ThreadPool(Env* env,
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
     extended_eigen_threadpool_ =
-        onnxruntime::make_unique<ThreadPoolTempl<Env> >(name,
+        std::make_unique<ThreadPoolTempl<Env> >(name,
                                                         threads_to_create,
                                                         low_latency_hint,
                                                         *env,
