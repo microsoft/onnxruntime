@@ -22,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
  * The tensor data is allocated by the caller.
  *
  * @param tensorData The tensor data.
- * @param type The tensor data element type.
+ * @param elementType The tensor element data type.
  * @param shape The tensor shape.
  * @param[out] error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
