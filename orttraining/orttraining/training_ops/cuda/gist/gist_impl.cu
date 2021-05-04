@@ -352,7 +352,7 @@ __global__ void _GistPackMsfp15DecoderKernel(
       output_data[in_i] = 0.0;
     } else {
       // Find leading 1
-      uint8_t leading_bit_pos = floor(log2f(mantissa));
+      uint8_t leading_bit_pos = floorf(log2f(mantissa));
       // Difference from shared exponent of this value
       int exp_diff = 5 - leading_bit_pos;
       // Adjust exponent
