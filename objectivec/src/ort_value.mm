@@ -40,10 +40,8 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
   result.type = CAPIToPublicValueType(valueType);
 
   if (valueType == ONNX_TYPE_TENSOR) {
-    const auto tensorTypeAndShapeInfo =
-        CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
-    result.tensorTypeAndShapeInfo =
-        CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
+    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
+    result.tensorTypeAndShapeInfo = CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   }
 
   return result;
