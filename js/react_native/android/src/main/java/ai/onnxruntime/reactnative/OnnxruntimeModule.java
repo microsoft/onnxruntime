@@ -80,7 +80,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * React native binding API to load a model using given uri.
+   * React native binding API to run a model using given uri.
    *
    * @param key a model file location given at loadModel()
    * @param input an input tensor
@@ -99,7 +99,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * This is a function for unit testing loadModel() to load a model from raw resource directory.
+   * Load a model from raw resource directory.
    *
    * @param uri uri parameter from react native loadModel()
    * @param options onnxruntime session options
@@ -113,7 +113,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * This is a function for unit testing loadModel() to load a model from raw resource directory.
+   * Load a model from raw resource directory.
    *
    * @param uri uri parameter from react native loadModel() or dummy string for unit testing purpose
    * @param modelStream a input stream to read a model
@@ -162,7 +162,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
 
   /**
-   * React native binding API to load a model using given uri.
+   * Run a model using given uri.
    *
    * @param key a model file location given at loadModel()
    * @param input an input tensor

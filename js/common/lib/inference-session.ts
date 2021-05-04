@@ -121,7 +121,7 @@ export declare namespace InferenceSession {
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
-    reactnative: ReactNativeExecutionProviderOption;
+    react-native: ReactNativeExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;

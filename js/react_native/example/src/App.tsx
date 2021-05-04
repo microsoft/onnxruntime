@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import * as React from 'react';
 import { Button, Image, Text, View } from 'react-native';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';

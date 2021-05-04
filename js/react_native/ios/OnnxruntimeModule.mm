@@ -22,6 +22,15 @@ static Ort::AllocatorWithDefaultOptions ortAllocator;
 
 RCT_EXPORT_MODULE(Onnxruntime)
 
+/**
+ * React native binding API to load a model using given uri.
+ *
+ * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are loaded.
+ * @param options onnxruntime session options
+ * @param resolve callback for returning output back to react native js
+ * @param reject callback for returning an error back to react native js
+ * @note when run() is called, the same modelPath must be passed into the first parameter.
+ */
 RCT_EXPORT_METHOD(loadModel:(NSString*)modelPath
                   options:(NSDictionary*)options
                   resolver:(RCTPromiseResolveBlock)resolve
@@ -36,6 +45,16 @@ RCT_EXPORT_METHOD(loadModel:(NSString*)modelPath
   }
 }
 
+/**
+ * React native binding API to run a model using given uri.
+ *
+ * @param url a model path location given at loadModel()
+ * @param input an input tensor
+ * @param output an output names to be returned
+ * @param options onnxruntime run options
+ * @param resolve callback for returning an inference result back to react native js
+ * @param reject callback for returning an error back to react native js
+ */
 RCT_EXPORT_METHOD(run:(NSString*)url
                   input:(NSDictionary*)input
                   output:(NSArray*)output
@@ -52,6 +71,13 @@ RCT_EXPORT_METHOD(run:(NSString*)url
   }
 }
 
+/**
+ * Load a model using given model path.
+ *
+ * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are loaded.
+ * @param options onnxruntime session options
+ * @note when run() is called, the same modelPath must be passed into the first parameter.
+ */
 -(NSDictionary*)loadModel:(NSString*)modelPath options:(NSDictionary*)options {
   NSValue* value = [sessionMap objectForKey:modelPath];
   SessionInfo* sessionInfo = nullptr;
@@ -99,6 +125,14 @@ RCT_EXPORT_METHOD(run:(NSString*)url
   return resultMap;
 }
 
+/**
+ * Run a model using given uri.
+ *
+ * @param url a model path location given at loadModel()
+ * @param input an input tensor
+ * @param output an output names to be returned
+ * @param options onnxruntime run options
+ */
 -(NSDictionary*)run:(NSString*)url
               input:(NSDictionary*)input
              output:(NSArray*)output

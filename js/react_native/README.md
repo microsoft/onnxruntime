@@ -19,7 +19,7 @@ const session: InferenceSession = await InferenceSession.create(modelPath);
 const result = session.run(input, ['num_detection:0', 'detection_classes:0'])
 ```
 
-Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/js) for samples and tutorials. Different from other JavaScript frameworks like node.js and web, React Native library doesn't support these features yet.
+Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/js) for samples and tutorials. Different from other JavaScript frameworks like node.js and web, React Native library doesn't support these features
 
 - Unsigned data type at Tensor
 - Model loading using ArrayBuffer

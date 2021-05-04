@@ -6,6 +6,9 @@
 
 @implementation TensorHelper
 
+/**
+ * Supported tensor data type
+ */
 NSString* const JsTensorTypeBool = @"bool";
 NSString* const JsTensorTypeByte = @"int8";
 NSString* const JsTensorTypeShort = @"int16";
@@ -15,6 +18,10 @@ NSString* const JsTensorTypeFloat = @"float32";
 NSString* const JsTensorTypeDouble = @"float64";
 NSString* const JsTensorTypeString = @"string";
 
+/**
+ * It creates an input tensor from a map passed by react native js.
+ * 'data' must be a string type as data is encoded as base64. It first decodes it and creates a tensor.
+ */
 +(Ort::Value)createInputTensor:(NSDictionary*)input ortAllocator:(OrtAllocator*)ortAllocator
     allocations:(std::vector<Ort::MemoryAllocation> &)allocatons {
   // shape
@@ -45,6 +52,10 @@ NSString* const JsTensorTypeString = @"string";
   }
 }
 
+/**
+ * It creates an output map from an output tensor.
+ * a data array is encoded as base64 string.
+ */
 +(NSDictionary*)createOutputTensor:(const std::vector<const char*>&)outputNames values:(const std::vector<Ort::Value>&)values {
   if (outputNames.size() != values.size()) {
     NSException* exception = [NSException exceptionWithName:@"create output tensor" reason:@"output name and tensor count mismatched" userInfo:nil];
