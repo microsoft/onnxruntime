@@ -469,9 +469,6 @@ class BFCArena : public IArenaAllocator {
   // newly-created chunk.
   int64_t next_allocation_id_;
 
-  // Counter tracking total number of allocation regions
-  int64_t next_allocation_region_id_;
-
   AllocatorStats stats_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
