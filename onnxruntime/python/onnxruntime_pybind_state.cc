@@ -484,10 +484,11 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
   return true;
 }
 
+static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
     id_to_allocator_map.insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
@@ -2098,6 +2099,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   }
 
   atexit([] {
+    id_to_allocator_map.clear();
     UnloadSharedProviders();
   });
 #endif
