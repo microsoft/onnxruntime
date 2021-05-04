@@ -190,14 +190,14 @@ static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri,
   ExecutionProviders execution_providers;
 #if defined(USE_CUDA)
   CUDAExecutionProviderInfo cuda_epi;
-  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, onnxruntime::make_unique<CUDAExecutionProvider>(cuda_epi)));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, std::make_unique<CUDAExecutionProvider>(cuda_epi)));
 #elif defined(USE_ROCM)
   ROCMExecutionProviderInfo rocm_epi;
-  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kRocmExecutionProvider, onnxruntime::make_unique<ROCMExecutionProvider>(rocm_epi)));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kRocmExecutionProvider, std::make_unique<ROCMExecutionProvider>(rocm_epi)));
 #endif
   // add CPU EP
   CPUExecutionProviderInfo epi;
-  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi)));
 
   KernelRegistryManager krm;
   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));

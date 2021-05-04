@@ -66,7 +66,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   KernelRegistryManager mgr;
   ExecutionProviders cpu_ep;
   CPUExecutionProviderInfo epi{false};
-  ORT_ENFORCE(cpu_ep.Add(kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ORT_ENFORCE(cpu_ep.Add(kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi)).IsOK());
   ORT_ENFORCE(mgr.RegisterKernels(cpu_ep).IsOK());
   std::vector<const KernelRegistry*> cpu_kernel_registries = mgr.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
 
