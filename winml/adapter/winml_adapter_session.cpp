@@ -259,8 +259,8 @@ ORT_API_STATUS_IMPL(winmla::SessionGetIntraOpThreadSpinning, _In_ OrtSession* se
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_options = inference_session->GetSessionOptions();
-  auto iter = session_options.find("session.intra_op.allow_spinning");
-  *allow_spinning = iter == session_options.cend() || iter->second != "0";
+  auto iter = session_options.configurations.find("session.intra_op.allow_spinning");
+  *allow_spinning = iter == session_options.configurations.cend() || iter->second != "0";
   return nullptr;
   API_IMPL_END
 }
