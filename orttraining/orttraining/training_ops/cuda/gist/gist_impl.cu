@@ -466,9 +466,9 @@ void GistPackMsfp15EncoderImpl(
     const size_t tile_size) {
 
   assert(axis_size % tile_size == 0);
-  const int num_tiles = axis_size / tile_size;
+  const int num_tiles = static_cast<int>(axis_size / tile_size);
 
-  const int threads = pre_axis_size * num_tiles;
+  const int threads = static_cast<int>(pre_axis_size * num_tiles);
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
   _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -492,9 +492,9 @@ void GistPackMsfp15DecoderImpl(
   const size_t tile_size) {
 
   assert(axis_size % tile_size == 0);
-  const int num_tiles = axis_size / tile_size;
+  const int num_tiles = static_cast<int>(axis_size / tile_size);
 
-  const int threads = pre_axis_size * num_tiles;
+  const int threads = static_cast<int>(pre_axis_size * num_tiles);
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
   _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
