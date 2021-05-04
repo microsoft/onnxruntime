@@ -37,9 +37,10 @@ set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 # explicitly list them here so it is easy to see what is included
 set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/onnxruntime.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_env.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_session.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_value.h")
+    "${OBJC_ROOT}/include/ort_enums.h"
+    "${OBJC_ROOT}/include/ort_env.h"
+    "${OBJC_ROOT}/include/ort_session.h"
+    "${OBJC_ROOT}/include/ort_value.h")
 
 file(GLOB onnxruntime_objc_srcs
     "${OBJC_ROOT}/src/*.h"
@@ -61,17 +62,17 @@ add_library(onnxruntime_objc SHARED
     ${onnxruntime_objc_common_srcs})
 
 target_include_directories(onnxruntime_objc
-    PRIVATE
+    PUBLIC
         "${OBJC_ROOT}/include"
+    PRIVATE
         "${ONNXRUNTIME_ROOT}"
         "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
 target_link_libraries(onnxruntime_objc
-    PUBLIC
-        onnxruntime
     PRIVATE
+        onnxruntime
         safeint_interface
         ${FOUNDATION_LIB})
 

@@ -3,9 +3,9 @@
 
 #import <XCTest/XCTest.h>
 
-#import "onnxruntime/ort_env.h"
-#import "onnxruntime/ort_session.h"
-#import "onnxruntime/ort_value.h"
+#import "ort_env.h"
+#import "ort_session.h"
+#import "ort_value.h"
 
 #include <vector>
 
@@ -24,7 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   self.continueAfterFailure = NO;
 
-  _ortEnv = [[ORTEnv alloc] initWithError:nil];
+  _ortEnv = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                           error:nil];
   XCTAssertNotNil(_ortEnv);
 }
 
