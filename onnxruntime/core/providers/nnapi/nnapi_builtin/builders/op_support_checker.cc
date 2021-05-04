@@ -49,7 +49,7 @@ void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
   if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
     return;
 
-  op_registrations.support_checkers.push_back(onnxruntime::make_unique<T>());
+  op_registrations.support_checkers.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
   }
@@ -1636,7 +1636,7 @@ bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 // This is for ops with dedicated OpSupportChecker
 #define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
   {                                                                                                           \
-    op_registrations.support_checkers.push_back(onnxruntime::make_unique<SUPPORT_CHECKER_NAME>());            \
+    op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());            \
     op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
   }
 

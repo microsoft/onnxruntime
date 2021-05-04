@@ -107,7 +107,7 @@ class FuseExecutionProvider : public IExecutionProvider {
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     AllocatorCreationInfo device_info{
         [](int) {
-          return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
         }};
     InsertAllocator(device_info.device_alloc_factory(0));
   }
@@ -117,11 +117,11 @@ class FuseExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
     }
-    auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
+    auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
     meta_def->name = "FuseAdd";
     meta_def->domain = "FuseTest";
     meta_def->inputs = {"X", "Y", "Z"};
@@ -129,7 +129,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(std::move(meta_def));
-    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
@@ -153,9 +153,9 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  p_model = onnxruntime::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                            model_specific_functions, DefaultLoggingManager().DefaultLogger());
+  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
+                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -336,9 +336,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                                          shape,
-                                                                          cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
+                                                                  shape,
+                                                                  cpu_allocator);
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
 #elif USE_ROCM
@@ -570,7 +570,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -610,7 +610,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -762,7 +762,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
       false,
@@ -824,7 +824,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
 
   InferenceSession session_object{so, GetEnvironment()};
   CPUExecutionProviderInfo epi;
-  ASSERT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
@@ -853,11 +853,11 @@ static void TestBindHelper(const std::string& log_str,
 #ifdef USE_CUDA
     CUDAExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
     ROCMExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1184,7 +1184,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1216,7 +1216,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   InferenceSession session_object_2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider)));
   ASSERT_STATUS_OK(
-      session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>()));
+      session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
@@ -1414,11 +1414,11 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1554,11 +1554,11 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1763,7 +1763,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
 
-  auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(dummy_provider)));
 
@@ -1825,7 +1825,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     InferenceSession session_object{so, GetEnvironment()};
 
     // Create and register dummy graph transformer
-    auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
     ASSERT_STATUS_OK(session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr)));
 
@@ -1922,7 +1922,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 
   ASSERT_STATUS_OK(session_object.Load(model_uri));
 
@@ -1948,7 +1948,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   epi.device_id = 0;
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
@@ -2307,7 +2307,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   so.use_per_session_threads = true;
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2346,7 +2346,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   so.use_per_session_threads = false;
 
   so.session_logid = "CheckIfGlobalThreadPoolsAreBeingUsed";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2384,7 +2384,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   so.use_per_session_threads = true;
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed2";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2431,7 +2431,7 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
   so.use_per_session_threads = false;
 
   so.session_logid = "InvalidSessionEnvCombination";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2464,7 +2464,7 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2478,7 +2478,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2509,7 +2509,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2523,7 +2523,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2561,7 +2561,7 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
 };
 
 TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2698,7 +2698,7 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
     return;
   }
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2754,7 +2754,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
     return;
   }
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 

@@ -557,11 +557,14 @@ class InferenceSession {
   /*
    * Shrink default memory arenas based on user provided list
    * List format: "device_0:device_id_0;device_1:device_id_1"
-   * We refrain from returning a failure status if we encounter some issue
-   * while we are shrinking the user provided list because we may encounter as issue 
-   * in the middle of shrinking and rather than stop - we log the error and continue.
+   * If we encounter invalid arena to be shrunk, we return an error
+   * back to the user.
    */
-  void ShrinkDefaultMemoryArenas(const std::string& ort_device_list);
+
+  common::Status ValidateShrinkArenaString(const std::string& ort_device_list,
+                                           /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+
+  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,

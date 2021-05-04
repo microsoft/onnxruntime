@@ -16,20 +16,20 @@ struct OrtArenaCfg {
                   arena_extend_strategy(-1),
                   initial_chunk_size_bytes(-1),
                   max_dead_bytes_per_chunk(-1),
-                  initial_regrowth_chunk_size_bytes_after_shrink(-1) {}
+                  initial_regrowth_chunk_size_bytes(-1) {}
   OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-              int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes_after_shrink)
+              int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes)
       : max_mem(max_mem),
         arena_extend_strategy(arena_extend_strategy),
         initial_chunk_size_bytes(initial_chunk_size_bytes),
         max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
-        initial_regrowth_chunk_size_bytes_after_shrink(initial_regrowth_chunk_size_bytes_after_shrink) {}
+        initial_regrowth_chunk_size_bytes(initial_regrowth_chunk_size_bytes) {}
 
-  size_t max_mem;                                      // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;                           // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;                        // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;                        // use -1 to allow ORT to choose the default
-  int initial_regrowth_chunk_size_bytes_after_shrink;  // use -1 to allow ORT to choose the default
+  size_t max_mem;                         // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;              // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;           // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
+  int initial_regrowth_chunk_size_bytes;  // use -1 to allow ORT to choose the default
 };
 
 namespace onnxruntime {

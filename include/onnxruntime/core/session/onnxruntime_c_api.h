@@ -1293,12 +1293,15 @@ struct OrtApi {
      Use 0 for ORT to pick the best value. Default is 0.
   * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested. 
      Use -1 to allow ORT to choose the default.
-  * "initial_chunk_size_bytes": Size of the first allocation in the arena. 
+  * "initial_chunk_size_bytes": (Possible) Size of the first allocation in the arena. 
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the first allocation size is determined by the allocation memory request. 
   * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
      crossing which the current chunk is chunked into 2.
-  * "initial_regrowth_chunk_size_bytes_after_shrink": Size of first allocation post-shrink. Only relevant 
-    if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+     Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the allocation size is determined by the allocation memory request.
+     Further allocation sizes are governed by the arena extend strategy.
   */
   ORT_API2_STATUS(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys,
                   _In_reads_(num_keys) const size_t* arena_config_values, _In_ size_t num_keys,

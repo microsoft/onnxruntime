@@ -15,6 +15,9 @@ namespace optimizer_utils {
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+// Check if NodeArg takes in a scalar tensor.
+bool IsScalar(const NodeArg& input_arg);
+
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.

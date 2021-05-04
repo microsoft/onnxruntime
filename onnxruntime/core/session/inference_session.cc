@@ -300,7 +300,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // Add log to allow serving platforms to quantify ORT usage.
   // To avoid flooding the test logs, this is done for non-debug mode only
   // TODO: plug-in a platform specific telemetry provider to send the telemetry to
-#ifdef NDEBUG
+#if defined(NDEBUG) && !defined(__wasm__)
 #ifdef _WIN32
   std::wostringstream ostr;
 #else
@@ -1172,7 +1172,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
@@ -1204,7 +1204,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = onnxruntime::make_unique<SessionState>(
+    session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
         session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
@@ -1293,11 +1293,13 @@ common::Status InferenceSession::Initialize() {
                             "Please disable any execution providers which generate compiled nodes."));
       }
 
-      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
+      // add a warning if the NchwcTransformer was enabled, as it contains the hardware specific logic
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3 &&
+          optimizers_to_disable_.find("NchwcTransformer") == optimizers_to_disable_.cend()) {
         LOGS(*session_logger_, WARNING)
-            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
-               "The generated model may contain hardware and execution provider specific optimizations, "
-               "and should only be used in the same environment the model was optimized for.";
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED and the "
+               "NchwcTransformer enabled. The generated model may contain hardware specific optimizations, and "
+               "should only be used in the same environment the model was optimized in.";
       }
 
       if (saving_ort_format) {
@@ -1620,6 +1622,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
+  std::vector<AllocatorPtr> arenas_to_shrink;
+
   ORT_TRY {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -1631,6 +1635,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+
+    // shrink certain default memory arenas if the user has requested for it
+    const std::string& shrink_memory_arenas = run_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
+    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
 
     FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
@@ -1697,10 +1705,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
-  // shrink certain memory arenas if the user has requested for it
-  const std::string& shrink_memory_arenas = run_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
-  if (!shrink_memory_arenas.empty()) {
-    ShrinkDefaultMemoryArenas(shrink_memory_arenas);
+  if (arenas_to_shrink.size() > 0) {
+    ShrinkMemoryArenas(arenas_to_shrink);
   }
 
   --current_num_runs_;
@@ -1873,10 +1879,13 @@ AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const
   return session_state_->GetAllocator(mem_info);
 }
 
-void InferenceSession::ShrinkDefaultMemoryArenas(const std::string& ort_device_list) {
+common::Status InferenceSession::ValidateShrinkArenaString(const std::string& ort_device_list,
+                                                           /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const {
   if (ort_device_list.empty()) {
-    return;
+    return Status::OK();
   }
+
+  arenas_to_shrink.reserve(5);  // Allocate some memory for the container (we are unlikely to see more than 5 memory arena shrink requests)
 
   std::stringstream ss_1(ort_device_list);
   std::string device_id_pair;
@@ -1900,15 +1909,13 @@ void InferenceSession::ShrinkDefaultMemoryArenas(const std::string& ort_device_l
         } else if (device_id_component == "gpu") {
           device_type = OrtDevice::GPU;
         } else {
-          LOGS(*session_logger_, ERROR) << "Unsupported device specified in the memory arena shrink list: " << device_id_component
-                                        << " and shrinking is skipped for this";
-          break;
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported device specified in the memory arena shrink list: ",
+                                 device_id_component);
         }
       } else if (iter == 1) {  // This component corresponds to device id
         if (!TryParseStringWithClassicLocale<OrtDevice::DeviceId>(device_id_component, device_id)) {
-          LOGS(*session_logger_, ERROR) << "Unsupported device id in the memory arena shrink list: " << device_id_component
-                                        << " and shrinking is skipped for this";
-          break;
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported device id in the memory arena shrink list: ",
+                                 device_id_component);
         }
       }
 
@@ -1919,26 +1926,29 @@ void InferenceSession::ShrinkDefaultMemoryArenas(const std::string& ort_device_l
     auto alloc = session_state_->GetAllocator(OrtDevice(device_type, memory_type, device_id));
 
     if (alloc == nullptr) {
-      LOGS(*session_logger_, ERROR) << "Did not find an arena based allocator registered for device-id "
-                                    << " combination in the memory arena shrink list: " << device_id_pair
-                                    << " and shrinking is skipped for this";
-      continue;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Did not find an arena based allocator registered for device-id ",
+                             " combination in the memory arena shrink list: ", device_id_pair);
     }
 
     if (alloc->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
-      LOGS(*session_logger_, ERROR) << "The registered allocator for device-id "
-                                    << " combination is not an arena based allocator: " << device_id_pair
-                                    << " and shrinking is skipped for this";
-      continue;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The registered allocator for device-id ",
+                             " combination is not an arena based allocator: ", device_id_pair);
     }
 
+    arenas_to_shrink.push_back(alloc);
+  }
+
+  return Status::OK();
+}
+
+void InferenceSession::ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink) {
+  for (auto& alloc : arenas_to_shrink) {
     auto status = static_cast<IArenaAllocator*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+      LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()
+                                      << " error message: " << status.ErrorMessage();
     }
-
-    return;
   }
 }
 
