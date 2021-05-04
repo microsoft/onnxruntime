@@ -1,0 +1,73 @@
+The required operators config file was generated from a number of models (details below), with optimizations run using 'all', 'extended' and 'basic'.
+Following that, some additional operators were added, as per the comments in the config file.
+
+The global types to support were selected to support quantized and float32 models
+Additionally there is internal 'required' type support for int32 and int64_t in selected operators that work with the dimensions in a shape or indices so that we don't need to enable those types at a global level.
+
+Models used as input (Converted using tf2onnx in early March 2021):
+  Models from TF Lite Examples https://www.tensorflow.org/lite/examples
+    - lite-model_deeplabv3_1_metadata_2.tflite.onnx
+    - lite-model_esrgan-tf2_1.tflite.onnx
+    - lite-model_mobilebert_1_metadata_1.tflite.onnx
+    - mnist.tflite.onnx
+    - mobilenet_v1_1.0_224_quant.tflite.onnx
+    - model_history10_top100.tflite.onnx
+    - posenet_mobilenet_float_075_1_default_1.tflite.onnx
+    - posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite.onnx
+    - ssd_mobilenet_v1_1_metadata_1.tflite.onnx
+    - text_classification_v2.tflite.onnx
+
+Assorted models from TF Hub that were able to be converted with tf2onnx
+  TFLite v1 https://tfhub.dev/s?deployment-format=lite&tf-version=tf1
+  - efficientnet_lite1_fp32_2.tflite.onnx
+  - efficientnet_lite1_int8_2.tflite.onnx
+  - efficientnet_lite4_fp32_2.tflite.onnx
+  - efficientnet_lite4_int8_2.tflite.onnx
+  - lite-model_aiy_vision_classifier_birds_V1_3.tflite.onnx
+  - lite-model_aiy_vision_classifier_food_V1_1.tflite.onnx
+  - lite-model_aiy_vision_classifier_plants_V1_3.tflite.onnx
+  - lite-model_midas_v2_1_small_1_lite_1.tflite.onnx
+  - lite-model_object_detection_mobile_object_labeler_v1_1.tflite.onnx
+  - magenta_arbitrary-image-stylization-v1-256_int8_prediction_1.tflite.onnx
+  - magenta_arbitrary-image-stylization-v1-256_int8_transfer_1.tflite.onnx
+  - object_detection_mobile_object_localizer_v1_1_default_1.tflite.onnx
+
+  TFLite v2 https://tfhub.dev/s?deployment-format=lite&tf-version=tf2
+  - tf2\albert_lite_base_squadv1_1.tflite.onnx
+  - tf2\lite-model_disease-classification_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite0_detection_default_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite0_int8_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite1_detection_default_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite2_detection_default_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite3_detection_default_1.tflite.onnx
+  - tf2\lite-model_efficientdet_lite4_detection_default_1.tflite.onnx
+  - tf2\lite-model_esrgan-tf2_1.tflite.onnx
+  - tf2\lite-model_german-mbmelgan_lite_1.tflite.onnx
+  - tf2\lite-model_nonsemantic-speech-benchmark_trill-distilled_1.tflite.onnx
+  - tf2\lite-model_yamnet_tflite_1.tflite.onnx
+
+Models from MLPerf Mobile 
+  (mainly models converted from TFLite and quantized in different ways, but some from TF for completeness as those also have batch handling)
+  - deeplabv3_mnv2_ade20k_float-int8.onnx
+  - deeplabv3_mnv2_ade20k_float.onnx
+  - deeplabv3_mnv2_ade20k-qdq.onnx
+  - mobilebert-int8.onnx
+  - mobilebert-qdq.onnx
+  - mobilebert.onnx
+  - mobiledet-int8.onnx
+  - mobiledet-qdq.onnx
+  - mobiledet.onnx
+  - mobilenet_edgetpu_224_1.0_float-int8.onnx
+  - mobilenet_edgetpu_224_1.0_float.onnx
+  - mobilenet_edgetpu_224_1.0-qdq.onnx
+  - mobilenet_v1_1.0_224.opset12.onnx
+  - resnet50_v1-int8.onnx
+  - resnet50_v1.onnx
+  - ssd_mobilenet_v2_300_float-int8.onnx
+  - ssd_mobilenet_v2_300_float.onnx
+  - ssd_mobilenet_v2_300-qdq.onnx
+
+Other
+  Mobilenet v2 from pytortch
+  - pytorch.mobilenet_v2_float.onnx
+  - pytorch.mobilenet_v2_uint8.onnx

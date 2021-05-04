@@ -210,7 +210,7 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
         for (size_t n = 0; n < N; n++, f++) {
           ASSERT_EQ(C[f], CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
                                          << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K
-                                         << ", offa=" << int(offa) << ", offb=" << offb;
+                                         << ", offa=" << int(offa) << ", offb=" << int(offb);
         }
       }
     }
@@ -240,7 +240,7 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
         for (size_t n = 0; n < N; n++, f++) {
           ASSERT_EQ(C[f], CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
                                          << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K
-                                         << ", offa=" << int(offa) << ", offb=" << offb;
+                                         << ", offa=" << int(offa) << ", offb=--";
         }
       }
     }
@@ -444,7 +444,7 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
       MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
                AFloat + K * M * b, lda,
                BFloat + N * K * b, ldb, 0.0f,
-               CReference + N * M * b, ldc, 
+               CReference + N * M * b, ldc,
           MlasQgemmU8X8U8X8TestBase<Packed, Threaded>::threadpool_);
     }
 

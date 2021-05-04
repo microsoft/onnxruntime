@@ -182,7 +182,7 @@ void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nchwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
@@ -194,7 +194,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {

@@ -48,7 +48,8 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
 
 template <typename T>

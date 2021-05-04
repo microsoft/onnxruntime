@@ -106,7 +106,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   // The diagonal values are stored along `first_dim`
   output_dims.erase(output_dims.begin() + second_dim);
 
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
   TensorPitches input_strides(input.Shape().GetDims());
   cuda::TArray<int64_t> gpu_input_strides(input_strides);

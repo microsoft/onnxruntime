@@ -32,6 +32,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);
+  helper.SetGraphOutputs();
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
 
   // Serialize the model to a string.

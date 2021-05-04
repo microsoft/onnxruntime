@@ -1,12 +1,55 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Attribute} from '../../../attribute';
 import {Concat} from '../../../ops/concat';
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 
+import {WebGLPackedConcat} from './concat-packed';
+
+// We provide a wrapper class so that the kernel can switch between packed and unpacked depending on the inputs on the
+// fly.
 export class WebGLConcat extends Concat implements WebGLOperator {
+  unpackedImpl: WebGLUnpackedConcat;
+  packedImpl: WebGLPackedConcat;
+  constructor() {
+    super();
+    this.unpackedImpl = new WebGLUnpackedConcat();
+    this.packedImpl = new WebGLPackedConcat();
+  }
+
+  // No need to call super since this class only serves as a wrapper.
+  initialize(attributes: Attribute): void {
+    this.unpackedImpl.initialize(attributes);
+    this.packedImpl.initialize(attributes);
+  }
+
+  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
+    if (inferenceHandler.session.pack && inputs[0].dims.length > 1) {
+      return inferenceHandler.run(this.packedImpl, inputs);
+    } else {
+      return inferenceHandler.run(this.unpackedImpl, inputs);
+    }
+  }
+
+  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
+    if (handler.session.pack && inputs[0].dims.length > 1) {
+      return this.packedImpl.createProgramInfo(handler, inputs);
+    } else {
+      return this.unpackedImpl.createProgramInfo(handler, inputs);
+    }
+  }
+  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
+    if (handler.session.pack && inputs[0].dims.length > 1) {
+      return this.packedImpl.createRunData(handler, programInfo, inputs);
+    } else {
+      return this.unpackedImpl.createRunData(handler, programInfo, inputs);
+    }
+  }
+}
+export class WebGLUnpackedConcat extends Concat implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
     return inferenceHandler.run(this, inputs);
   }
