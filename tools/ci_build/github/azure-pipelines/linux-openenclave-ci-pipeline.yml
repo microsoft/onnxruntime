@@ -3,6 +3,6 @@ jobs:
   parameters:
     AgentPool : 'Security-DC4S'
     JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d openenclave -r $(Build.BinariesDirectory) -x "--use_openenclave"'
+    RunDockerBuildArgs: '-o ubuntu18.04 -d openenclave -r $(Build.BinariesDirectory) -x "--use_openenclave"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'

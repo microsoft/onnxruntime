@@ -1847,12 +1847,6 @@ def _main(args, oe_phase=None, oe_enclave_build_dir=None):
                            if args.cmake_extra_defines else [])
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
-    if args.include_ops_by_model or args.include_ops_by_config:
-        from exclude_unused_ops import exclude_unused_ops
-        models_path = args.include_ops_by_model if args.include_ops_by_model else ''
-        config_path = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
-
     if is_reduced_ops_build(args) and args.update:
         from reduce_op_kernels import reduce_ops
         reduce_ops(

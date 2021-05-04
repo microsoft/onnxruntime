@@ -48,7 +48,7 @@ else()
         ${CMAKE_CURRENT_BINARY_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}/onnx)
     add_dependencies(onnxruntime_session_test_enclave_host onnx_proto)
-    onnxruntime_add_include_to_target(onnxruntime_session_test_enclave_host onnx safeint_interface)
+    onnxruntime_add_include_to_target(onnxruntime_session_test_enclave_host onnxruntime_common onnx safeint_interface)
     # prevent symbol clash between libsgx's libprotobuf.so and ONNX RT's libprotobuf.a
     target_link_options(onnxruntime_session_test_enclave_host INTERFACE
         LINKER:--version-script=${OPENENCLAVE_TEST_SRC_DIR}/no_symbols.txt

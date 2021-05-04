@@ -124,3 +124,9 @@ int pthread_setcancelstate(int state, int *oldstate)
   (void)oldstate;
   return 0;
 }
+
+ int sched_getcpu(void)
+ {
+   return 0;
+ }
+ 

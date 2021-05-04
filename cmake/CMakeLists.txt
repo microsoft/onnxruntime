@@ -1828,7 +1828,6 @@ if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
     onnx
     onnx_proto
     nsync_cpp
-    onnxruntime_common
     onnxruntime_framework
     onnxruntime_graph
     onnxruntime_optimizer
@@ -1843,6 +1842,7 @@ if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
     target_link_libraries(${openenclave_lib} PRIVATE openenclave-enclave)
   endforeach()
 
+  target_link_libraries(onnxruntime_common openenclave-enclave)
   target_link_libraries(libprotobuf openenclave-enclave)
   target_link_libraries(libprotobuf-lite openenclave-enclave)
 endif()

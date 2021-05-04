@@ -5,13 +5,14 @@ ARG PYTHON_VERSION=3.6
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
-    /tmp/scripts/install_deps.sh -p ${PYTHON_VERSION} && \
+    /tmp/scripts/install_os_deps.sh && \
     /tmp/scripts/install_deps_openenclave.sh && \
     rm -rf /tmp/scripts
 
 WORKDIR /root
 
 ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
