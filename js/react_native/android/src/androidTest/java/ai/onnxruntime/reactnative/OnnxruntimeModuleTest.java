@@ -30,7 +30,6 @@ import java.nio.FloatBuffer;
 import ai.onnxruntime.TensorInfo;
 
 public class OnnxruntimeModuleTest {
-
   private ReactApplicationContext reactContext = new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
 
   @Before
@@ -71,8 +70,8 @@ public class OnnxruntimeModuleTest {
         }
       }
 
-      int[] dims = new int[]{1, 5};
-      float[] inputData = new float[]{1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
+      int[] dims = new int[] {1, 5};
+      float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
 
       // test run()
       {

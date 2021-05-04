@@ -13,7 +13,6 @@ import java.util.Collections;
 import java.util.List;
 
 public class DataHandlerPackage implements ReactPackage {
-
   @Override
   public List<ViewManager> createViewManagers(ReactApplicationContext reactContext) {
     return Collections.emptyList();
@@ -21,7 +20,7 @@ public class DataHandlerPackage implements ReactPackage {
 
   @Override
   public List<NativeModule> createNativeModules(
-    ReactApplicationContext reactContext) {
+      ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
 
     try {

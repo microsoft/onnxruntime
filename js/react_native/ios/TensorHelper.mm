@@ -22,8 +22,8 @@ NSString* const JsTensorTypeString = @"string";
  * It creates an input tensor from a map passed by react native js.
  * 'data' must be a string type as data is encoded as base64. It first decodes it and creates a tensor.
  */
-+(Ort::Value)createInputTensor:(NSDictionary*)input ortAllocator:(OrtAllocator*)ortAllocator
-    allocations:(std::vector<Ort::MemoryAllocation> &)allocatons {
++ (Ort::Value)createInputTensor:(NSDictionary*)input ortAllocator:(OrtAllocator*)ortAllocator
+                    allocations:(std::vector<Ort::MemoryAllocation>&)allocatons {
   // shape
   NSArray* dimsArray = [input objectForKey:@"dims"];
   std::vector<int64_t> dims;
@@ -31,7 +31,7 @@ NSString* const JsTensorTypeString = @"string";
   for (NSNumber* dim in dimsArray) {
     dims.emplace_back([dim longLongValue]);
   }
-  
+
   // type
   ONNXTensorElementDataType tensorType = [self getOnnxTensorType:[input objectForKey:@"type"]];
 
@@ -56,36 +56,36 @@ NSString* const JsTensorTypeString = @"string";
  * It creates an output map from an output tensor.
  * a data array is encoded as base64 string.
  */
-+(NSDictionary*)createOutputTensor:(const std::vector<const char*>&)outputNames values:(const std::vector<Ort::Value>&)values {
++ (NSDictionary*)createOutputTensor:(const std::vector<const char*>&)outputNames values:(const std::vector<Ort::Value>&)values {
   if (outputNames.size() != values.size()) {
     NSException* exception = [NSException exceptionWithName:@"create output tensor" reason:@"output name and tensor count mismatched" userInfo:nil];
     @throw exception;
   }
-  
+
   NSMutableDictionary* outputTensorMap = [NSMutableDictionary dictionary];
-  
+
   for (size_t i = 0; i < outputNames.size(); ++i) {
     const auto outputName = outputNames[i];
     const Ort::Value& value = values[i];
-    
+
     if (!value.IsTensor()) {
       NSException* exception = [NSException exceptionWithName:@"create output tensor" reason:@"only tensor type is supported" userInfo:nil];
       @throw exception;
     }
-    
+
     NSMutableDictionary* outputTensor = [NSMutableDictionary dictionary];
-    
+
     // dims
     NSMutableArray* outputDims = [NSMutableArray array];
     auto dims = value.GetTensorTypeAndShapeInfo().GetShape();
-    for (auto dim: dims) {
+    for (auto dim : dims) {
       [outputDims addObject:[NSNumber numberWithLongLong:dim]];
     }
     outputTensor[@"dims"] = outputDims;
-    
+
     // type
     outputTensor[@"type"] = [self getJsTensorType:value.GetTensorTypeAndShapeInfo().GetElementType()];
-    
+
     // data
     if (value.GetTensorTypeAndShapeInfo().GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       NSMutableArray* buffer = [NSMutableArray array];
@@ -100,10 +100,10 @@ NSString* const JsTensorTypeString = @"string";
       NSString* data = [self createOutputTensor:value];
       outputTensor[@"data"] = data;
     }
-    
+
     outputTensorMap[[NSString stringWithUTF8String:outputName]] = outputTensor;
   }
-  
+
   return outputTensorMap;
 }
 
@@ -115,11 +115,11 @@ static Ort::Value createInputTensorT(OrtAllocator* ortAllocator,
   T* dataBuffer = static_cast<T*>(ortAllocator->Alloc(ortAllocator, [buffer length]));
   allocations.emplace_back(ortAllocator, dataBuffer, [buffer length]);
   memcpy(static_cast<void*>(dataBuffer), [buffer bytes], [buffer length]);
-  
+
   return Ort::Value::CreateTensor<T>(ortAllocator->Info(ortAllocator), dataBuffer, buffer.length / sizeof(T), dims.data(), dims.size());
 }
 
-+(Ort::Value)createInputTensor:(ONNXTensorElementDataType)tensorType dims:(const std::vector<int64_t>&)dims buffer:(NSData*)buffer ortAllocator:(OrtAllocator*)ortAllocator allocations:(std::vector<Ort::MemoryAllocation>&)allocations {
++ (Ort::Value)createInputTensor:(ONNXTensorElementDataType)tensorType dims:(const std::vector<int64_t>&)dims buffer:(NSData*)buffer ortAllocator:(OrtAllocator*)ortAllocator allocations:(std::vector<Ort::MemoryAllocation>&)allocations {
   switch (tensorType) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       return createInputTensorT<float_t>(ortAllocator, dims, buffer, allocations);
@@ -145,8 +145,7 @@ static Ort::Value createInputTensorT(OrtAllocator* ortAllocator,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-    default:
-    {
+    default: {
       NSException* exception = [NSException exceptionWithName:@"create input tensor" reason:@"unsupported tensor type" userInfo:nil];
       @throw exception;
     }
@@ -160,9 +159,9 @@ static NSString* createOutputTensorT(const Ort::Value& tensor) {
   return [buffer base64EncodedStringWithOptions:0];
 }
 
-+(NSString*)createOutputTensor:(const Ort::Value&)tensor {
++ (NSString*)createOutputTensor:(const Ort::Value&)tensor {
   ONNXTensorElementDataType tensorType = tensor.GetTensorTypeAndShapeInfo().GetElementType();
-  
+
   switch (tensorType) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       return createOutputTensorT<float_t>(tensor);
@@ -188,8 +187,7 @@ static NSString* createOutputTensorT(const Ort::Value& tensor) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-    default:
-    {
+    default: {
       NSException* exception = [NSException exceptionWithName:@"create output tensor" reason:@"unsupported tensor type" userInfo:nil];
       @throw exception;
     }
@@ -199,31 +197,31 @@ static NSString* createOutputTensorT(const Ort::Value& tensor) {
 NSDictionary* JsTensorTypeToOnnxTensorTypeMap;
 NSDictionary* OnnxTensorTypeToJsTensorTypeMap;
 
-+(void)initialize {
++ (void)initialize {
   JsTensorTypeToOnnxTensorTypeMap = @{
-    JsTensorTypeFloat: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT),
-    JsTensorTypeByte: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8),
-    JsTensorTypeShort: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16),
-    JsTensorTypeInt: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32),
-    JsTensorTypeLong: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64),
-    JsTensorTypeString: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING),
-    JsTensorTypeBool: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL),
-    JsTensorTypeDouble: @(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE)
+    JsTensorTypeFloat : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT),
+    JsTensorTypeByte : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8),
+    JsTensorTypeShort : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16),
+    JsTensorTypeInt : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32),
+    JsTensorTypeLong : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64),
+    JsTensorTypeString : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING),
+    JsTensorTypeBool : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL),
+    JsTensorTypeDouble : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE)
   };
-  
+
   OnnxTensorTypeToJsTensorTypeMap = @{
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT): JsTensorTypeFloat,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8): JsTensorTypeByte,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16): JsTensorTypeShort,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32): JsTensorTypeInt,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64): JsTensorTypeLong,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING): JsTensorTypeString,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL): JsTensorTypeBool,
-    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE): JsTensorTypeDouble
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) : JsTensorTypeFloat,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) : JsTensorTypeByte,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16) : JsTensorTypeShort,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) : JsTensorTypeInt,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) : JsTensorTypeLong,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) : JsTensorTypeString,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) : JsTensorTypeBool,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) : JsTensorTypeDouble
   };
 }
 
-+(ONNXTensorElementDataType)getOnnxTensorType:(const NSString*)type {
++ (ONNXTensorElementDataType)getOnnxTensorType:(const NSString*)type {
   if ([JsTensorTypeToOnnxTensorTypeMap objectForKey:type]) {
     return (ONNXTensorElementDataType)[JsTensorTypeToOnnxTensorTypeMap[type] intValue];
   } else {
@@ -231,7 +229,7 @@ NSDictionary* OnnxTensorTypeToJsTensorTypeMap;
   }
 }
 
-+(NSString*)getJsTensorType:(ONNXTensorElementDataType)type {
++ (NSString*)getJsTensorType:(ONNXTensorElementDataType)type {
   if ([OnnxTensorTypeToJsTensorTypeMap objectForKey:@(type)]) {
     return OnnxTensorTypeToJsTensorTypeMap[@(type)];
   } else {

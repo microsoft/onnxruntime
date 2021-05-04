@@ -147,19 +147,18 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     WritableMap resultMap = Arguments.createMap();
     resultMap.putString("key", uri);
     WritableArray inputNames = Arguments.createArray();
-    for (String inputName: ortSession.getInputNames()) {
+    for (String inputName : ortSession.getInputNames()) {
       inputNames.pushString(inputName);
     }
     resultMap.putArray("inputNames", inputNames);
     WritableArray outputNames = Arguments.createArray();
-    for (String outputName: ortSession.getOutputNames()) {
+    for (String outputName : ortSession.getOutputNames()) {
       outputNames.pushString(outputName);
     }
     resultMap.putArray("outputNames", outputNames);
 
     return resultMap;
   }
-
 
   /**
    * Run a model using given uri.
@@ -228,17 +227,18 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return resultMap;
   }
 
-  private static final Map<String, SessionOptions.OptLevel> graphOptimizationLevelTable = Stream.of(new Object[][]{
-    {"disabled", SessionOptions.OptLevel.NO_OPT},
-    {"basic", SessionOptions.OptLevel.BASIC_OPT},
-    {"extended", SessionOptions.OptLevel.EXTENDED_OPT},
-    {"all", SessionOptions.OptLevel.ALL_OPT},
-  }).collect(Collectors.toMap(p -> (String)p[0], p -> (SessionOptions.OptLevel)p[1]));
+  private static final Map<String, SessionOptions.OptLevel> graphOptimizationLevelTable = Stream.of(new Object[][] {
+                                                                                                        {"disabled", SessionOptions.OptLevel.NO_OPT},
+                                                                                                        {"basic", SessionOptions.OptLevel.BASIC_OPT},
+                                                                                                        {"extended", SessionOptions.OptLevel.EXTENDED_OPT},
+                                                                                                        {"all", SessionOptions.OptLevel.ALL_OPT},
+                                                                                                    })
+                                                                                              .collect(Collectors.toMap(p -> (String) p[0], p -> (SessionOptions.OptLevel) p[1]));
 
-  private static final Map<String, SessionOptions.ExecutionMode> executionModeTable = Stream.of(new Object[][]{
-    {"sequential", SessionOptions.ExecutionMode.SEQUENTIAL},
-    {"parallel", SessionOptions.ExecutionMode.PARALLEL}
-  }).collect(Collectors.toMap(p -> (String)p[0], p -> (SessionOptions.ExecutionMode)p[1]));
+  private static final Map<String, SessionOptions.ExecutionMode> executionModeTable = Stream.of(new Object[][] {
+                                                                                                    {"sequential", SessionOptions.ExecutionMode.SEQUENTIAL},
+                                                                                                    {"parallel", SessionOptions.ExecutionMode.PARALLEL}})
+                                                                                          .collect(Collectors.toMap(p -> (String) p[0], p -> (SessionOptions.ExecutionMode) p[1]));
 
   private SessionOptions parseSessionOptions(ReadableMap options) throws OrtException {
     SessionOptions sessionOptions = new SessionOptions();

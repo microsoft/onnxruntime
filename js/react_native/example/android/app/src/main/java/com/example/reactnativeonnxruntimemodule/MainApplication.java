@@ -18,7 +18,6 @@ import java.util.List;
 import ai.onnxruntime.reactnative.OnnxruntimePackage;
 
 public class MainApplication extends Application implements ReactApplication {
-
   private static Context appContext;
 
   private final ReactNativeHost mReactNativeHost =

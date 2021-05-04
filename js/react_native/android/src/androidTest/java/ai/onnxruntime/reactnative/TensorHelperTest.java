@@ -43,7 +43,6 @@ import static org.mockito.Mockito.when;
 
 @SmallTest
 public class TensorHelperTest {
-
   private OrtEnvironment ortEnvironment;
 
   @Before
@@ -96,7 +95,7 @@ public class TensorHelperTest {
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
     dataByteBuffer.put(Byte.MIN_VALUE);
-    dataByteBuffer.put((byte)2);
+    dataByteBuffer.put((byte) 2);
     dataByteBuffer.put(Byte.MAX_VALUE);
     String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", dataEncoded);
@@ -127,7 +126,7 @@ public class TensorHelperTest {
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 2).order(ByteOrder.nativeOrder());
     ShortBuffer dataShortBuffer = dataByteBuffer.asShortBuffer();
     dataShortBuffer.put(Short.MIN_VALUE);
-    dataShortBuffer.put((short)2);
+    dataShortBuffer.put((short) 2);
     dataShortBuffer.put(Short.MAX_VALUE);
     String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", dataEncoded);
@@ -177,8 +176,8 @@ public class TensorHelperTest {
   @Test
   public void createInputTensor_int64() throws Exception {
     OnnxTensor outputTensor = OnnxTensor.createTensor(
-      ortEnvironment,
-      new long[] {Long.MIN_VALUE, 15000000001L, Long.MAX_VALUE});
+        ortEnvironment,
+        new long[] {Long.MIN_VALUE, 15000000001L, Long.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -210,9 +209,9 @@ public class TensorHelperTest {
   @Test
   public void createInputTensor_string() throws Exception {
     OnnxTensor outputTensor = OnnxTensor.createTensor(
-      ortEnvironment,
-      new String[] {"a", "b", "c"},
-      new long[] {3});
+        ortEnvironment,
+        new String[] {"a", "b", "c"},
+        new long[] {3});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -233,8 +232,8 @@ public class TensorHelperTest {
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
-    String[] inputData = (String[])inputTensor.getValue();
-    String[] outputData = (String[])outputTensor.getValue();
+    String[] inputData = (String[]) inputTensor.getValue();
+    String[] outputData = (String[]) outputTensor.getValue();
     Assert.assertArrayEquals(inputData, outputData);
 
     inputTensor.close();
@@ -244,8 +243,8 @@ public class TensorHelperTest {
   @Test
   public void createInputTensor_double() throws Exception {
     OnnxTensor outputTensor = OnnxTensor.createTensor(
-      ortEnvironment,
-      new double[] {Double.MIN_VALUE, 1.8e+30, Double.MAX_VALUE});
+        ortEnvironment,
+        new double[] {Double.MIN_VALUE, 1.8e+30, Double.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -325,8 +324,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_double);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      double[] inputData = new double[]{1.0f, 2.0f, -3.0f, Double.MIN_VALUE, Double.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      double[] inputData = new double[] {1.0f, 2.0f, -3.0f, Double.MIN_VALUE, Double.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -365,8 +364,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      float[] inputData = new float[]{1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -405,8 +404,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_int8);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      byte[] inputData = new byte[]{1, 2, -3, Byte.MAX_VALUE, Byte.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      byte[] inputData = new byte[] {1, 2, -3, Byte.MAX_VALUE, Byte.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -445,8 +444,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_int16);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      short[] inputData = new short[]{1, 2, -3, Short.MIN_VALUE, Short.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      short[] inputData = new short[] {1, 2, -3, Short.MIN_VALUE, Short.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -485,8 +484,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_int32);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      int[] inputData = new int[]{1, 2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      int[] inputData = new int[] {1, 2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -525,8 +524,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_int64);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      long[] inputData = new long[]{1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE};
+      long[] dims = new long[] {1, 5};
+      long[] inputData = new long[] {1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -565,8 +564,8 @@ public class TensorHelperTest {
       byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_string);
       OrtSession session = ortEnvironment.createSession(modelData, options);
 
-      long[] dims = new long[]{1, 5};
-      String[] inputData = new String[]{"a", "b", "c", "d", "e"};
+      long[] dims = new long[] {1, 5};
+      String[] inputData = new String[] {"a", "b", "c", "d", "e"};
 
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();

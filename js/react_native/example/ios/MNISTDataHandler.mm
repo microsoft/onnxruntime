@@ -15,9 +15,10 @@ RCT_EXPORT_MODULE(MNISTDataHandler)
 
 // It returns mode path in local device,
 // so that onnxruntime is able to load a model using a given path.
-RCT_EXPORT_METHOD(getLocalModelPath:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
+RCT_EXPORT_METHOD(getLocalModelPath
+                  : (RCTPromiseResolveBlock)resolve
+                      rejecter
+                  : (RCTPromiseRejectBlock)reject) {
   @try {
     NSString* modelPath = [[NSBundle mainBundle] pathForResource:@"mnist" ofType:@"onnx"];
     NSFileManager* fileManager = [NSFileManager defaultManager];
@@ -27,14 +28,16 @@ RCT_EXPORT_METHOD(getLocalModelPath:(RCTPromiseResolveBlock)resolve
       reject(@"mnist", @"no such a model", nil);
     }
   }
-  @catch(NSException* exception) {
+  @catch (NSException* exception) {
     reject(@"mnist", @"no such a model", nil);
   }
 }
 
 // It returns image path.
-RCT_EXPORT_METHOD(getImagePath:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getImagePath
+                  : (RCTPromiseResolveBlock)resolve
+                      reject
+                  : (RCTPromiseRejectBlock)reject) {
   @try {
     NSString* imagePath = [[NSBundle mainBundle] pathForResource:@"3" ofType:@"jpg"];
     NSFileManager* fileManager = [NSFileManager defaultManager];
@@ -44,48 +47,54 @@ RCT_EXPORT_METHOD(getImagePath:(RCTPromiseResolveBlock)resolve
       reject(@"mnist", @"no such an image", nil);
     }
   }
-  @catch(NSException* exception) {
+  @catch (NSException* exception) {
     reject(@"mnist", @"no such an image", nil);
   }
 }
 
 // It gets raw input data, which can be uri or byte array and others,
 // returns cooked data formatted as input of a model.
-RCT_EXPORT_METHOD(preprocess:(NSString*)uri
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(preprocess
+                  : (NSString*)uri
+                      resolve
+                  : (RCTPromiseResolveBlock)resolve
+                      reject
+                  : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* inputDataMap = [self preprocess:uri];
     resolve(inputDataMap);
   }
-  @catch(NSException* exception) {
+  @catch (NSException* exception) {
     reject(@"mnist", @"can't load an image", nil);
   }
 }
 
 // It gets a result from onnxruntime and a duration of session time for input data,
 // returns output data formatted as React Native map.
-RCT_EXPORT_METHOD(postprocess:(NSDictionary*)result
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(postprocess
+                  : (NSDictionary*)result
+                      resolve
+                  : (RCTPromiseResolveBlock)resolve
+                      reject
+                  : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* cookedMap = [self postprocess:result];
     resolve(cookedMap);
   }
-  @catch(NSException* exception) {
+  @catch (NSException* exception) {
     reject(@"mnist", @"can't pose-process an image", nil);
   }
 }
 
--(NSDictionary*)preprocess:(NSString*)uri {
+- (NSDictionary*)preprocess:(NSString*)uri {
   UIImage* image = [UIImage imageNamed:@"3.jpg"];
-  
+
   CGSize scale = CGSizeMake(28, 28);
   UIGraphicsBeginImageContextWithOptions(scale, NO, 1.0);
   [image drawInRect:CGRectMake(0, 0, scale.width, scale.height)];
   UIImage* scaledImage = UIGraphicsGetImageFromCurrentImageContext();
   UIGraphicsEndImageContext();
-  
+
   CGImageRef imageRef = [scaledImage CGImage];
   NSUInteger width = CGImageGetWidth(imageRef);
   NSUInteger height = CGImageGetHeight(imageRef);
@@ -101,12 +110,12 @@ RCT_EXPORT_METHOD(postprocess:(NSDictionary*)result
                                                8,
                                                bytesPerRow,
                                                colorSpace,
-                                               kCGImageAlphaPremultipliedLast|kCGImageByteOrder32Big);
+                                               kCGImageAlphaPremultipliedLast | kCGImageByteOrder32Big);
   CGColorSpaceRelease(colorSpace);
   CGContextSetBlendMode(context, kCGBlendModeCopy);
   CGContextDrawImage(context, CGRectMake(0, 0, width, height), imageRef);
   CGContextRelease(context);
-  
+
   const NSInteger channelSize = 1;
   const NSInteger dimSize = height * width * channelSize;
   const NSInteger byteBufferSize = dimSize * sizeof(float);
@@ -121,16 +130,16 @@ RCT_EXPORT_METHOD(postprocess:(NSDictionary*)result
     }
   }
   floatPtr = (float*)[byteBufferRef bytes];
-  
+
   NSMutableDictionary* inputDataMap = [NSMutableDictionary dictionary];
-  
+
   NSMutableDictionary* inputTensorMap = [NSMutableDictionary dictionary];
 
   // dims
-  NSArray* dims = @[[NSNumber numberWithInt:1],
-                    [NSNumber numberWithInt:channelSize],
-                    [NSNumber numberWithInt:static_cast<int>(height)],
-                    [NSNumber numberWithInt:static_cast<int>(width)]];
+  NSArray* dims = @[ [NSNumber numberWithInt:1],
+                     [NSNumber numberWithInt:channelSize],
+                     [NSNumber numberWithInt:static_cast<int>(height)],
+                     [NSNumber numberWithInt:static_cast<int>(width)] ];
   inputTensorMap[@"dims"] = dims;
 
   // type
@@ -139,13 +148,13 @@ RCT_EXPORT_METHOD(postprocess:(NSDictionary*)result
   // encoded data
   NSString* data = [byteBufferRef base64EncodedStringWithOptions:0];
   inputTensorMap[@"data"] = data;
-  
+
   inputDataMap[@"Input3"] = inputTensorMap;
 
   return inputDataMap;
 }
 
--(NSDictionary*)postprocess:(NSDictionary*)result {
+- (NSDictionary*)postprocess:(NSDictionary*)result {
   NSMutableString* detectionResult = [NSMutableString string];
 
   NSDictionary* outputTensor = [result objectForKey:@"Plus214_Output_0"];
@@ -183,7 +192,7 @@ RCT_EXPORT_METHOD(postprocess:(NSDictionary*)result
     detectionResult = [NSMutableString stringWithFormat:@"I guess, it's %d", argmax];
   }
 
-  NSDictionary* cookedMap = @{@"result": detectionResult};
+  NSDictionary* cookedMap = @{@"result" : detectionResult};
   return cookedMap;
 }
 

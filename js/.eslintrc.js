@@ -154,6 +154,18 @@ module.exports = {
     files: ['web/lib/wasm/binding/**/*.ts'], rules: {
       '@typescript-eslint/naming-convention': 'off'
     }
+  }, {
+    files: ['react_native/example/src/**/*.ts', 'react_native/example/src/**/*.tsx'], rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      'unicorn/filename-case': 'off',
+      'no-invalid-this': 'off',
+      'no-console': 'off'
+    }
+  }, {
+    files: ['react_native/lib/**/*.ts'], rules: {
+      '@typescript-eslint/naming-convention': 'off'
+    }
   }],
   extends: [
     'eslint:recommended',

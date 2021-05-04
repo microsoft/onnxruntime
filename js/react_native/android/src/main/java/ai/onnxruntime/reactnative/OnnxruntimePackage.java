@@ -18,7 +18,6 @@ import java.util.Collections;
 import java.util.List;
 
 public class OnnxruntimePackage implements ReactPackage {
-
   @RequiresApi(api = Build.VERSION_CODES.N)
   @NonNull
   @Override

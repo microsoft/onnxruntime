@@ -50,7 +50,6 @@ import static java.util.stream.Collectors.joining;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class MNISTDataHandler extends ReactContextBaseJavaModule {
-
   private static ReactApplicationContext reactContext;
 
   MNISTDataHandler(ReactApplicationContext context) throws Exception {
@@ -175,17 +174,17 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
 
     String outputData = outputTensor.getString("data");
     FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(outputData, Base64.DEFAULT))
-                                   .order(ByteOrder.nativeOrder())
-                                   .asFloatBuffer();
+                             .order(ByteOrder.nativeOrder())
+                             .asFloatBuffer();
     ArrayList<Double> dataArray = new ArrayList<>();
     while (buffer.hasRemaining()) {
-      dataArray.add((double)buffer.get());
+      dataArray.add((double) buffer.get());
     }
 
     final double max = Collections.max(dataArray);
     double total = 0.0f;
     for (int i = 0; i < dataArray.size(); ++i) {
-      dataArray.set(i, Math.exp((double)dataArray.get(i) - max));
+      dataArray.set(i, Math.exp((double) dataArray.get(i) - max));
       total += dataArray.get(i);
     }
     double[] softmax = new double[dataArray.size()];

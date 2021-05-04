@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import type { InferenceSession } from 'onnxruntime-common';
-import { NativeModules } from 'react-native';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type {InferenceSession} from 'onnxruntime-common';
+import {NativeModules} from 'react-native';
 
 /**
  * model loading information
@@ -40,7 +41,7 @@ interface EncodedTensor {
    * the Base64 encoded string of the buffer data of the tensor.
    * if data is string array, it won't be encoded as Base64 string.
    */
-  readonly data: string | string[];
+  readonly data: string|string[];
 }
 
 /**
@@ -53,32 +54,20 @@ export declare namespace Binding {
   type SessionOptions = InferenceSession.SessionOptions;
   type RunOptions = InferenceSession.RunOptions;
 
-  type FeedsType = {
-    [name: string]: EncodedTensor;
-  };
+  type FeedsType = {[name: string]: EncodedTensor};
 
   // SessionHanlder FetchesType is different from native module's one.
   // It's because Java API doesn't support preallocated output values.
   type FetchesType = string[];
 
-  type ReturnType = {
-    [name: string]: EncodedTensor;
-  };
+  type ReturnType = {[name: string]: EncodedTensor};
 
   interface InferenceSession {
-    loadModel(
-      modelPath: string,
-      options: SessionOptions
-    ): Promise<ModelLoadInfoType>;
-    run(
-      key: string,
-      feeds: FeedsType,
-      fetches: FetchesType,
-      options: RunOptions
-    ): Promise<ReturnType>;
+    loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
+    run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
 }
 
 // export native binding
-const { Onnxruntime } = NativeModules;
+const {Onnxruntime} = NativeModules;
 export const binding = Onnxruntime as Binding.InferenceSession;
