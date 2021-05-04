@@ -159,7 +159,6 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
-  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 

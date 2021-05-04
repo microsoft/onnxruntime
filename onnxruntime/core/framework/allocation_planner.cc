@@ -390,14 +390,8 @@ class PlannerImpl {
   // Find if freelist contains a buffer of the same size as output_arg
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     if(!context_.GetEnableMemoryReuse()) {
-      
-      std::cout<<"FindReusableTensor for "<< output_arg.Name() << ": false\n";
-      
       return false;
     }
-
-    std::cout<<"FindReusableTensor: True\n";
-
     
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
