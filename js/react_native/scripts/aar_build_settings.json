@@ -6,7 +6,7 @@
         "x86_64"
     ],
     "android_min_sdk_version": 24,
-    "android_target_sdk_version": 28,
+    "android_target_sdk_version": 29,
     "build_params": [
         "--android",
         "--parallel",

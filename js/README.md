@@ -185,7 +185,7 @@ This project is a library for running ONNX models on mobile app created using re
 
    2. In `<ORT_ROOT>`, run the following python script. In windows, this requires admin account to build.
    ```python
-   python tools/ci_build/github/android/build_aar_package.py <ORT_ROOT>/js/react_native/scripts/aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
+   python tools/ci_build/github/android/build_aar_package.py js/react_native/scripts/aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
    ```
 
    3. This will create `onnxruntime-mobile-<version>.aar` in `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>`. Copy `aar` file into `<ORT_ROOT>/js/react_native/android/libs` and rename it as `onnxruntime.aar`
@@ -203,26 +203,35 @@ This project is a library for running ONNX models on mobile app created using re
    ```sh
    ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 11
    ```
-   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphoneos` and rename it as `onnxruntime.dylib`
+   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphoneos`
 
    3. Clean up the previous build and build onnxruntime for iphonesimulatir from `<ORT_ROOT>` using this command,
    ```sh
    ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target 11
    ```
-   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphonesimulator/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphonesimulator` and rename it as `onnxruntime.dylib`.
+   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphonesimulator/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphonesimulator` and edit onnxruntime-react-native.iphonesimulator.podsepc to change a version of onnxruntime library.
 
    4. Copy onnxruntime runtime header files
    ```sh
    cp <ORT_ROOT>/include/onnxruntime/core/session/*.h <ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/include
    ```
 
+   5. To verify, iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to indicate the exact description of iOS Simulator.
+       ```sh
+       pod install
+       export ONNXRUNTIME_VERSION=<version>; xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
+       ```
+
 4. Update a version in `package.json` to align with onnxruntime version.
 
-5. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change destination if necessary.
-   ```sh
-   pod install
-   xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
-   ```
+5. Update a version in two podspec files.
+
+6. Test an example for Android and iOS. In Windows, open Android Emulator first. From `<ORT_ROOT>/js/react_native`
+    ```sh
+    yarn bootstrap
+    yarn example ios
+    yarn example android
+    ```
 
 ### Distribution
 

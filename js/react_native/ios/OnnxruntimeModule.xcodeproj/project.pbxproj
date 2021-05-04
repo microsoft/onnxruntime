@@ -10,8 +10,8 @@
 		D1D81F804850BCAF0F66320B /* libPods-OnnxruntimeModuleTest.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED4282B152369F0F6753107 /* libPods-OnnxruntimeModuleTest.a */; };
 		DB8FC9B525C2867800C72F26 /* OnnxruntimeModule.mm in Sources */ = {isa = PBXBuildFile; fileRef = DB8FC9B425C2867800C72F26 /* OnnxruntimeModule.mm */; };
 		DB8FC9B825C2868700C72F26 /* TensorHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = DB8FC9B725C2868700C72F26 /* TensorHelper.mm */; };
-		DBD3F06A263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib */; };
-		DBD3F06B263F803D00CD0373 /* libonnxruntime.1.6.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib */; };
+		DBD3F06A263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */; };
+		DBD3F06B263F803D00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */; };
 		DBDB57DA2603211A004F16BE /* TensorHelperTest.mm in Sources */ = {isa = PBXBuildFile; fileRef = DBDB57D92603211A004F16BE /* TensorHelperTest.mm */; };
 		DBDB57DC2603211A004F16BE /* libOnnxruntimeModule.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 134814201AA4EA6300B7C361 /* libOnnxruntimeModule.a */; };
 		DBDB588B2609B18F004F16BE /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = DBDB588A2609B18F004F16BE /* Resources */; };
@@ -59,7 +59,7 @@
 		DB8FC9AA25C2850300C72F26 /* experimental_onnxruntime_cxx_api.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = experimental_onnxruntime_cxx_api.h; sourceTree = "<group>"; };
 		DB8FC9B425C2867800C72F26 /* OnnxruntimeModule.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = OnnxruntimeModule.mm; sourceTree = SOURCE_ROOT; };
 		DB8FC9B725C2868700C72F26 /* TensorHelper.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = TensorHelper.mm; sourceTree = SOURCE_ROOT; };
-		DBD3F069263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libonnxruntime.1.6.0.dylib; path = Libraries/onnxruntime/lib/iphonesimulator/libonnxruntime.1.6.0.dylib; sourceTree = "<group>"; };
+		DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libonnxruntime.${ONNXRUNTIME_VERSION}.dylib"; path = "Libraries/onnxruntime/lib/iphonesimulator/libonnxruntime.${ONNXRUNTIME_VERSION}.dylib"; sourceTree = "<group>"; };
 		DBDB57D72603211A004F16BE /* OnnxruntimeModuleTest.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnnxruntimeModuleTest.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBDB57D92603211A004F16BE /* TensorHelperTest.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TensorHelperTest.mm; sourceTree = "<group>"; };
 		DBDB57DB2603211A004F16BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -73,7 +73,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F92876D1F6656034AD2EC8D1 /* libPods-OnnxruntimeModule.a in Frameworks */,
-				DBD3F06A263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib in Frameworks */,
+				DBD3F06A263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,7 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DBD3F06B263F803D00CD0373 /* libonnxruntime.1.6.0.dylib in Frameworks */,
+				DBD3F06B263F803D00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */,
 				DBDB57DC2603211A004F16BE /* libOnnxruntimeModule.a in Frameworks */,
 				D1D81F804850BCAF0F66320B /* libPods-OnnxruntimeModuleTest.a in Frameworks */,
 			);
@@ -126,7 +126,7 @@
 		DB8FC99D25C284A200C72F26 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				DBD3F069263F7F9C00CD0373 /* libonnxruntime.1.6.0.dylib */,
+				DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */,
 				6E96BE961E158CBAAD5BA677 /* libPods-OnnxruntimeModule.a */,
 				4ED4282B152369F0F6753107 /* libPods-OnnxruntimeModuleTest.a */,
 			);
@@ -570,7 +570,7 @@
 				);
 				INFOPLIST_FILE = OnnxruntimeModuleTest/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.4;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib $(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
@@ -649,7 +649,7 @@
 				);
 				INFOPLIST_FILE = OnnxruntimeModuleTest/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.4;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib $(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
