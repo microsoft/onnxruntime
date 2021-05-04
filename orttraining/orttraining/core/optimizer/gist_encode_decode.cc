@@ -190,7 +190,7 @@ Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
   if (node.Description() != "Backward pass") {
     if (GistEncodeDecode::AddEncodeDecode(graph, node, compression_type_, logger)) {
       LOGS(logger, INFO) << "Gist applied to node name -  " << node.Name() << ", node type - "
-                         << node.OpType() << ", of compr type - " << compression_type;
+                         << node.OpType() << ", of compr type - " << compression_type_;
       rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
     }
   }
