@@ -1524,7 +1524,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape, repeat_shape;
   bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
   bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
-
+  
   if (orig_has_shape || repeat_has_shape) {
     int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
     limit = 2 * limit;
@@ -1534,13 +1534,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-    NodeDef even_indices_node = ConstantVectorNode(even_indices, Name("even_indices"));
-    result.push_back(even_indices_node);
-    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
-    result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-                             {IA("reshape_tile_grad_op"), even_indices_node.output_args[0]},
-                             {GI(0)},
-                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+   
+    AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
     NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
