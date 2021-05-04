@@ -37,6 +37,10 @@ python3 -m pip install --user /build/Debug/dist/*
 python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
     /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
 
+# Do it again using the conversion script from the python package to validate that also works
+python3 -m onnxruntime.tools.convert_onnx_models_to_ort \
+    /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
+
 # Create configs with just the required ops for ORT format models in testdata
 # These are used by build_minimal_ort_and_run_tests.sh later in the linux-cpu-minimal-build-ci-pipeline CI
 # and will include ops for the E2E models we just converted

@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
@@ -49,14 +49,14 @@ module.exports = function (config) {
       { pattern: 'test/testdata-file-cache-*.json', included: false },
       //{ pattern: 'test/onnx-worker.js', included: false },
       { pattern: 'test/data/**/*', included: false, nocache: true },
-      { pattern: 'dist/onnxruntime_wasm.wasm', included: false },
-      { pattern: 'dist/onnxruntime_wasm_threads.wasm', included: false },
-      { pattern: 'dist/onnxruntime_wasm_threads.worker.js', included: false },
+      { pattern: 'dist/ort-wasm.wasm', included: false },
+      { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
+      { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
     ],
     proxies: {
-      '/base/test/onnxruntime_wasm.wasm': '/base/dist/onnxruntime_wasm.wasm',
-      '/onnxruntime_wasm_threads.wasm': '/base/dist/onnxruntime_wasm_threads.wasm',
-      '/onnxruntime_wasm_threads.worker.js': '/base/dist/onnxruntime_wasm_threads.worker.js',
+      '/base/test/ort-wasm.wasm': '/base/dist/ort-wasm.wasm',
+      '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
+      '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
     client: { captureConsole: true, mocha: { expose: ['body'], timeout: 60000 } },
