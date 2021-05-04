@@ -44,11 +44,11 @@ class SimpleTest {
                             for (i in 0..2) {
                                 for (j in 0..3) {
                                     for (k in 0..4) {
-                                        val actual =
-                                            (kotlin.math.round(rawOutput[i][j][k] * 1000.0) / 1000.0).toFloat()
-                                        val expect =
-                                            (kotlin.math.round(expected[i][j][k] * 1000.0) / 1000.0).toFloat()
-                                        Assert.assertEquals(actual, expect, 1e-15.toFloat())
+                                        Assert.assertEquals(
+                                            rawOutput[i][j][k],
+                                            expected[i][j][k],
+                                            1e-6.toFloat()
+                                        )
                                     }
                                 }
                             }
