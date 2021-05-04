@@ -57,7 +57,6 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
   if (!LaunchSequencePoolingKernel(
           Stream(),
           output_tensor->template MutableData<T>(),
-          //masks_tensor->template MutableData<T>(),
           input_tensor->template Data<T>(),
           sentence_lengthes_tensor->template Data<int64_t>(),
           batch_size,
