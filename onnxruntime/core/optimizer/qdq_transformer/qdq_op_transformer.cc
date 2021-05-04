@@ -26,7 +26,7 @@ bool QDQOperatorTransformer::Transform(const std::vector<const Node*>& dq_nodes,
 bool QDQOperatorTransformer::Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const {
   if (node_.MutableInputDefs().size() != dq_nodes.size() ||
       node_.MutableOutputDefs().size() != q_nodes.size() ||
-      graph_.GetNodeOutputsInGraphOutputs(node_).size() > 0) {
+      !optimizer_utils::CheckOutputEdges(graph_, node_, q_nodes.size())) {
     return false;
   }
 
