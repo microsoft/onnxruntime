@@ -55,7 +55,7 @@ class BFCArena : public IArenaAllocator {
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
-  static const int DEFAULT_initial_regrowth_chunk_size_bytes = 2 * 1024 * 1024;
+  static const int DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
   BFCArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -63,7 +63,7 @@ class BFCArena : public IArenaAllocator {
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
            int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-           int initial_regrowth_chunk_size_bytes = DEFAULT_initial_regrowth_chunk_size_bytes);
+           int initial_regrowth_chunk_size_bytes = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
