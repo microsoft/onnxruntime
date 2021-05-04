@@ -1280,15 +1280,20 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
   ASSERT_TRUE(status.IsOK());
 
   Graph& fused_graph = session.GetMutableGraph();
-  // Re-run shape inferencing using the fused graph
-  fused_graph.Resolve();
   ASSERT_TRUE(fused_graph.NumberOfNodes() == 1);
-  for (const Node& node : fused_graph.Nodes()) {
-    ASSERT_TRUE(node.NodeType() == Node::Type::Fused);
-    ASSERT_TRUE(node.Op()->has_type_and_shape_inference_function());
-    ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*node.OutputDefs()[0]->Shape())
-                == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
-  }
+  auto &fused_node = *fused_graph.Nodes().begin();
+  ASSERT_TRUE(fused_node.NodeType() == Node::Type::Fused);
+  ASSERT_TRUE(fused_node.Op()->has_type_and_shape_inference_function());
+
+  // Clear shape inference data from output node to verify that assigned inference function is called
+  auto &fused_node_output = *fused_node.MutableOutputDefs()[0];
+  fused_node_output.ClearShape();
+  fused_graph.SetGraphResolveNeeded();
+  fused_graph.Resolve();
+
+  ASSERT_TRUE(fused_node_output.Shape() != nullptr);
+  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape())
+              == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
