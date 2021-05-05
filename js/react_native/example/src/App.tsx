@@ -41,6 +41,7 @@ export default class App extends React.PureComponent<{}, State> {
     };
   }
 
+  // Load a model when an app is loading
   async componentDidMount() : Promise<void> {
     if (!this.state.session) {
       try {
@@ -56,7 +57,8 @@ export default class App extends React.PureComponent<{}, State> {
     }
   }
 
-  infer = async() : Promise<void> => {
+  // Run a model with a given image
+  infer = async() : Promise<void> = > {
     try {
       let preprocessTime = 0;
       let inferenceTime = 0;
