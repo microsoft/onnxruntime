@@ -255,8 +255,8 @@ TEST(SessionStateTest, CPUPlacementTest4) {
   std::unordered_set<std::string> expected_cpu_nodes = {"range", "reduce", "const1"};
   std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand"};
 #elif defined(USE_ROCM)
-  std::unordered_set<std::string> expected_cpu_nodes = {"const1"};
-  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand", "range", "reduce"};
+  std::unordered_set<std::string> expected_cpu_nodes = {"const1", "reduce"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand", "range"};
 #endif
   TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
