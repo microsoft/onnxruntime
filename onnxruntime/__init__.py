@@ -26,8 +26,12 @@ try:
 except ImportError:
     pass
 
+onnxruntime_package_name = ''
+cuda = ''
+
 try:
-    # override onnxruntime and cuda version 
+    # override onnxruntime and cuda version
+    from .version import onnxruntime_package_name
     from .version import __version__
     from .version import cuda as cuda_version
 except ImportError:
