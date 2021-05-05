@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace {
+
 struct LoggingLevelInfo {
   ORTLoggingLevel logging_level;
   OrtLoggingLevel capi_logging_level;
