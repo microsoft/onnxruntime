@@ -87,7 +87,7 @@ Status GistPack1EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF(X == nullptr, "X input is unavailable");
 
-  long int n = (X->Shape().Size() + GIST_PACK1_FACTOR - 1) / GIST_PACK1_FACTOR;
+  long n = static_cast<long>((X->Shape().Size() + GIST_PACK1_FACTOR - 1) / GIST_PACK1_FACTOR);
   Tensor* Y = context->Output(0, TensorShape({n}));
   typedef typename ToCudaType<T>::MappedType CudaT;
   GistPack1EncoderImpl<CudaT>(

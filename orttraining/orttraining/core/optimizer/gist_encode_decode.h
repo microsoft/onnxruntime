@@ -13,7 +13,6 @@ namespace onnxruntime {
 class GistEncodeDecode : public RewriteRule {
  public:
   int operator_type;
-  std::string compression_type;
 
   static constexpr const char* GIST_PAIR_NODE_NAME_BASE = "gist";
 
@@ -34,7 +33,7 @@ class GistEncodeDecode : public RewriteRule {
       {"Relu", {"ReluGrad", "Shape", "Reshape"}}};
 
   GistEncodeDecode() noexcept : RewriteRule("GistEncodeDecode") {}
-  GistEncodeDecode(int op_type, std::string compr_type) noexcept : RewriteRule("GistEncodeDecode"), operator_type(op_type), compression_type(std::move(compr_type)) {}
+  GistEncodeDecode(int op_type, std::string compr_type) noexcept : RewriteRule("GistEncodeDecode"), operator_type(op_type), compression_type_(std::move(compr_type)) {}
 
  private:
   int GenerateDecodePriority() const { return priority_generator_--; };
@@ -42,6 +41,8 @@ class GistEncodeDecode : public RewriteRule {
   bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
   bool AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type, const logging::Logger& logger) const;
+
+  const std::string compression_type_;
 };
 
 }  // namespace onnxruntime
