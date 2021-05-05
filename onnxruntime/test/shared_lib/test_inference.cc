@@ -953,7 +953,7 @@ TEST(CApiTest, get_string_tensor_element) {
   tensor.FillStringTensor(s, expected_len);
 
   auto expected_string = s[element_index];
-  size_t expected_string_len = strlen(expected_string);
+  size_t expected_string_len = strnlen(expected_string, 65535);
 
   std::string result(expected_string_len, '\0');
   tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());

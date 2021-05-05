@@ -31,7 +31,7 @@ TEST(Utf8UtilTest, Validate) {
   using namespace utf8_util;
   for (auto& s : samples) {
     size_t utf8_len = 0;
-    if (s.valid != utf8_validate(reinterpret_cast<const unsigned char*>(s.sequence), strlen(s.sequence), utf8_len)) {
+    if (s.valid != utf8_validate(reinterpret_cast<const unsigned char*>(s.sequence), strnlen(s.sequence, 65535), utf8_len)) {
       ASSERT_TRUE(false);
     } else {
       if (s.valid) {
