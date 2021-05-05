@@ -1640,7 +1640,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
     // shrink certain default memory arenas if the user has requested for it
     const std::string& shrink_memory_arenas =
         run_options.run_configurations.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
+
+    if (!shrink_memory_arenas.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
+    }
 
     FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
@@ -1881,12 +1884,8 @@ AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const
   return session_state_->GetAllocator(mem_info);
 }
 
-common::Status InferenceSession::ValidateShrinkArenaString(const std::string& ort_device_list,
-                                                           /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const {
-  if (ort_device_list.empty()) {
-    return Status::OK();
-  }
-
+common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const {
   arenas_to_shrink.reserve(5);  // Allocate some memory for the container (we are unlikely to see more than 5 memory arena shrink requests)
 
   std::stringstream ss_1(ort_device_list);

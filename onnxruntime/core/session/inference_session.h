@@ -555,15 +555,19 @@ class InferenceSession {
   void UpdateProvidersWithSharedAllocators();
 
   /*
-   * Shrink default memory arenas based on user provided list
+   * Validate and parses the shrink arena request string from the user
    * List format: "device_0:device_id_0;device_1:device_id_1"
-   * If we encounter invalid arena to be shrunk, we return an error
+   * If we encounter an invalid request, we return an error
    * back to the user.
    */
 
-  common::Status ValidateShrinkArenaString(const std::string& ort_device_list,
-                                           /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
 
+  /*
+   * Performs the shrinkage of arenas requested to be shrunk by the user
+   * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
+   */
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
