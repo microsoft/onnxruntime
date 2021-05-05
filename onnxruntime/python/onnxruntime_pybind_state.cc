@@ -484,17 +484,17 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
   return true;
 }
 
-static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> cuda_id_to_allocator_map;
-
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
 
-  if (cuda_id_to_allocator_map.find(id) == cuda_id_to_allocator_map.end()) {
-    cuda_id_to_allocator_map.insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
-  return cuda_id_to_allocator_map[id];
+  return (*id_to_allocator_map)[id];
 }
 
 static void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
@@ -2098,9 +2098,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 
-//  atexit([] {
-//    UnloadSharedProviders();
-//  });
+  atexit([] {
+    UnloadSharedProviders();
+  });
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -2148,21 +2148,3 @@ onnxruntime::Environment& GetEnv() {
 
 }  // namespace python
 }  // namespace onnxruntime
-
-#ifdef _WIN32
-BOOL WINAPI DllMain(HINSTANCE hinstance, DWORD reason, void* reserved) {
-  switch (reason) {
-    case DLL_PROCESS_ATTACH:
-      break;
-    case DLL_PROCESS_DETACH:
-      onnxruntime::python::cuda_id_to_allocator_map.clear();
-      onnxruntime::UnloadSharedProviders();
-      break;
-    case DLL_THREAD_ATTACH:
-      break;
-    case DLL_THREAD_DETACH:
-      break;
-  }
-  return TRUE;
-}
-#endif
