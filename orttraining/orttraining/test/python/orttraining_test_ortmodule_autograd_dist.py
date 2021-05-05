@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training import _utils, ORTModule
+from onnxruntime.training.ortmodule import _utils, ORTModule
 import _test_helpers
 
 from torch.nn.parameter import Parameter
@@ -24,7 +24,6 @@ import sys
 import onnx
 import torch
 torch.manual_seed(1)
-from onnxruntime.training import ORTModule
 import onnxruntime as ort
 import os
 from torch.utils.dlpack import from_dlpack, to_dlpack
@@ -76,7 +75,7 @@ def run_with_ort_on_gpu(model, input_list, output_shape, rank, optimizer):
     print('Use ORTModule for CUDA run....')
     device = torch.device('cuda:' + str(rank))
     model.to(device)
-    model = ORTModule(model)
+    model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
     model = DDP(model, device_ids=[rank])
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
@@ -154,70 +153,6 @@ class ReduceWithoutMarkDirtyModel(torch.nn.Module):
         out = x + y1 + y2
         return out
 
-
-class ReduceWithoutMarkDirtyFunctionWrapperModule(torch.nn.Module):
-    def __init__(self):
-        super(ReduceWithoutMarkDirtyFunctionWrapperModule, self).__init__()
-        self.x_t = None
-        self.forward_outputs = []
-        self.y = None
-
-    def compute(self, x):
-        try:
-            init_x = from_dlpack(x)
-            # # reshape won't change the data pointer, but the tensor is changed.
-            # # there might be a problem: as init_x is teared down, the underlying ORTValue desctor will also be called.
-            # self.x_t = init_x.reshape(list(init_x.shape))
-            self.x_t = torch.clone(init_x)
-            self.x_t.requires_grad = True
-            print(self.x_t.is_leaf)
-            with torch.enable_grad():
-                input_torch_tensor = self.x_t.view(list(self.x_t.shape))
-                print(input_torch_tensor.is_leaf)
-                print("==== Entering ReduceWithoutMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                self.y = ReduceWithoutMarkDirtyFunction.apply(input_torch_tensor)
-                # print(self.y)
-                # print("===== ReduceWithoutMarkDirtyFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.y, self.y.device, self.y.grad_fn))
-                forward_outputs = [self.y] #[ret.contiguous()]
-                [print("===== ReduceWithoutMarkDirtyFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                # need hold the forward outputs before PythonOp Compute completed.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                [print("===== ReduceWithoutMarkDirtyFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                ctx_ptr = int(id(self.y.grad_fn))
-                # ctx_ptr = int(id(ret))
-                #print(self.y.grad_fn.saved_tensors)
-                return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                print("==== Exiting ReduceWithoutMarkDirtyFunctionWrapperModule.compute , process id {} ====".format(os.getpid()))
-                return tuple(return_vals)
-        except Exception as e:
-            print(e)
-            return []
-
-    def backward_compute(self, ctx, x):
-            try:
-                #print(ctx, ctx.saved_tensors)
-                self.x_t = from_dlpack(x)
-                self.x_t.requires_grad = False
-                ret = ReduceWithoutMarkDirtyFunction.backward(ctx, self.x_t)
-                forward_outputs = [ret] #[ret.contiguous()]  # for single result, please don't use list() to do conversion.
-
-                [print("ReduceWithoutMarkDirtyFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("ReduceWithoutMarkDirtyFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                return tuple(return_vals)
-            except Exception as e:
-                print("ReduceWithoutMarkDirtyFunctionWrapperModule backward_compute:", e)
-                return []
-
-
 def test_Distributed_ReduceWithoutMarkDirtyModel(rank):
     output_size = 1024
     device = torch.device('cuda:' + str(rank))
@@ -233,10 +168,9 @@ def test_Distributed_ReduceWithoutMarkDirtyModel(rank):
     optimizer.zero_grad()
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size], device, optimizer)
     torch.cuda.synchronize()
-
-
-    ort.register_custom_torch_function_forward("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunctionWrapperModule)
-    ort.register_custom_torch_function_backward("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunctionWrapperModule)
+    
+    ort.register_forward_core("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunction.apply)
+    ort.register_backward_core("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunction.backward)
 
     optimizer = optim.SGD(m.parameters(), lr=0.01, momentum=0.5)
     optimizer.zero_grad()
@@ -397,8 +331,8 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
         # outputs, grads = run_with_pytorch_on_gpu(pytorch_ddp_m, [x], [output_size], device, optimizer)
         # torch.cuda.synchronize()
 
-        ort.register_custom_torch_function_forward("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunctionWrapperModule)
-        ort.register_custom_torch_function_backward("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunctionWrapperModule)
+        ort.register_forward_core("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunction.apply)
+        ort.register_backward_core("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunction.backward)
 
         pt_ort_m = copy.deepcopy(m)
         # optimizer = optim.SGD(pt_ort_m.parameters(), lr=0.01, momentum=0.5)
