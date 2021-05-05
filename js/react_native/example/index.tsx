@@ -6,4 +6,4 @@ import App from './src/App';
 import{name as appName} from './app.json';
 
 // Register React Native example app
-AppRegistry.registerComponent(appName, () = > App);
+AppRegistry.registerComponent(appName, () => App);

@@ -19,7 +19,9 @@
     "!ios/build",
     "!**/__tests__",
     "!**/__fixtures__",
-    "!**/__mocks__"
+    "!**/__mocks__",
+    "!.gitignore",
+    "!.placeholder"
   ],
   "scripts": {
     "test": "jest",
@@ -28,7 +30,8 @@
     "release": "release-it",
     "example": "yarn --cwd example",
     "pods": "cd example && pod-install --quiet",
-    "bootstrap": "yarn example && yarn && yarn pods"
+    "bootstrap": "yarn example && yarn && yarn pods",
+    "prepack": "node ./scripts/prepack"
   },
   "keywords": [
     "react-native",

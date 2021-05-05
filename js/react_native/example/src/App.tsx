@@ -58,7 +58,7 @@ export default class App extends React.PureComponent<{}, State> {
   }
 
   // Run a model with a given image
-  infer = async() : Promise<void> = > {
+  infer = async() : Promise<void> => {
     try {
       let preprocessTime = 0;
       let inferenceTime = 0;
