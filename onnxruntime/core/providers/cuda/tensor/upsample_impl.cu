@@ -11,8 +11,8 @@ template <typename T, int RANK>
 __global__ void _UpampleNearestKernel(const TArray<int64_t> input_pitches,
                                       const TArray<fast_divmod> output_div_pitches,
                                       const TArray<fast_divmod> scales_div,
-                                      const T* input_data,
-                                      T* output_data,
+                                      const T* __restrict__ input_data,
+                                      T* __restrict__ output_data,
                                       const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
@@ -40,8 +40,8 @@ __global__ void _UpampleBilinear4DInputKernel(const int64_t input_dim2,
                                        const TArray<int64_t> input_pitches,
                                        const TArray<fast_divmod> output_div_pitches,
                                        const TArray<fast_divmod> scales_div,
-                                       const T* input_data,
-                                       T* output_data,
+                                       const T* __restrict__ input_data,
+                                       T* __restrict__ output_data,
                                        const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
@@ -100,8 +100,8 @@ __global__ void _UpampleBilinear2DInputKernel(const int64_t input_dim0,
                                               const TArray<int64_t> input_pitches,
                                               const TArray<fast_divmod> output_div_pitches,
                                               const TArray<fast_divmod> scales_div,
-                                              const T* input_data,
-                                              T* output_data,
+                                              const T* __restrict__ input_data,
+                                              T* __restrict__ output_data,
                                               const size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
