@@ -369,6 +369,13 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
+def get_onnxruntime_version(version_number, cuda_version):
+    version_path = path.join('onnxruntime', 'version.py')
+        f.write("__version__ = '{}'\n".format(version_number))
+        f.write("cuda = {}\n".format(cuda_version))
+
+get_onnxruntime_version(version_number, cuda_version)
+
 # Setup
 setup(
     name=package_name,

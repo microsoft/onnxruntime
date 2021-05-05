@@ -26,4 +26,11 @@ try:
 except ImportError:
     pass
 
+try:
+    # override onnxruntime and cuda version 
+    from .version import __version__
+    from .version import cuda as cuda_version
+except ImportError:
+    pass
+
 onnxruntime_validation.check_distro_info()
