@@ -3,7 +3,6 @@
 
 #import "src/ort_value_internal.h"
 
-#include <algorithm>
 #include <optional>
 
 #include "safeint/SafeInt.hpp"
@@ -11,82 +10,49 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #import "src/error_utils.h"
+#import "src/ort_enums_internal.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 namespace {
-struct ValueTypeInfo {
-  ORTValueType type;
-  ONNXType capi_type;
-};
 
-// supported ORT value types
-// define the mapping from ORTValueType to C API ONNXType here
-constexpr ValueTypeInfo kValueTypeInfos[]{
-    {ORTValueTypeUnknown, ONNX_TYPE_UNKNOWN},
-    {ORTValueTypeTensor, ONNX_TYPE_TENSOR},
-};
+ORTTensorTypeAndShapeInfo* CXXAPIToPublicTensorTypeAndShapeInfo(
+    const Ort::TensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
+  auto* result = [[ORTTensorTypeAndShapeInfo alloc] init];
+  const auto elementType = CXXAPITensorTypeAndShapeInfo.GetElementType();
+  const std::vector<int64_t> shape = CXXAPITensorTypeAndShapeInfo.GetShape();
 
-struct TensorElementTypeInfo {
-  ORTTensorElementDataType type;
-  ONNXTensorElementDataType capi_type;
-  size_t element_size;
-};
-
-// supported ORT tensor element data types
-// define the mapping from ORTTensorElementDataType to C API
-// ONNXTensorElementDataType here
-constexpr TensorElementTypeInfo kElementTypeInfos[]{
-    {ORTTensorElementDataTypeUndefined, ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, 0},
-    {ORTTensorElementDataTypeFloat, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
-    {ORTTensorElementDataTypeInt32, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
-};
-
-ORTValueType CAPIToPublicValueType(ONNXType capi_type) {
-  const auto it = std::find_if(
-      std::begin(kValueTypeInfos), std::end(kValueTypeInfos),
-      [capi_type](const auto& type_info) { return type_info.capi_type == capi_type; });
-  if (it == std::end(kValueTypeInfos)) {
-    throw Ort::Exception{"unsupported value type", ORT_NOT_IMPLEMENTED};
+  result.elementType = CAPIToPublicTensorElementType(elementType);
+  auto* shapeArray = [[NSMutableArray alloc] initWithCapacity:shape.size()];
+  for (size_t i = 0; i < shape.size(); ++i) {
+    shapeArray[i] = @(shape[i]);
   }
-  return it->type;
+  result.shape = shapeArray;
+
+  return result;
 }
 
-ONNXTensorElementDataType PublicToCAPITensorElementType(ORTTensorElementDataType type) {
-  const auto it = std::find_if(
-      std::begin(kElementTypeInfos), std::end(kElementTypeInfos),
-      [type](const auto& type_info) { return type_info.type == type; });
-  if (it == std::end(kElementTypeInfos)) {
-    throw Ort::Exception{"unsupported tensor element type", ORT_NOT_IMPLEMENTED};
+ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
+    const Ort::TypeInfo& CXXAPITypeInfo) {
+  auto* result = [[ORTValueTypeInfo alloc] init];
+  const auto valueType = CXXAPITypeInfo.GetONNXType();
+
+  result.type = CAPIToPublicValueType(valueType);
+
+  if (valueType == ONNX_TYPE_TENSOR) {
+    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
+    result.tensorTypeAndShapeInfo = CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   }
-  return it->capi_type;
+
+  return result;
 }
 
-ORTTensorElementDataType CAPIToPublicTensorElementType(ONNXTensorElementDataType capi_type) {
-  const auto it = std::find_if(
-      std::begin(kElementTypeInfos), std::end(kElementTypeInfos),
-      [capi_type](const auto& type_info) { return type_info.capi_type == capi_type; });
-  if (it == std::end(kElementTypeInfos)) {
-    throw Ort::Exception{"unsupported tensor element type", ORT_NOT_IMPLEMENTED};
-  }
-  return it->type;
-}
-
-size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
-  const auto it = std::find_if(
-      std::begin(kElementTypeInfos), std::end(kElementTypeInfos),
-      [capi_type](const auto& type_info) { return type_info.capi_type == capi_type; });
-  if (it == std::end(kElementTypeInfos)) {
-    throw Ort::Exception{"unsupported tensor element type", ORT_NOT_IMPLEMENTED};
-  }
-  return it->element_size;
-}
-}
+}  // namespace
 
 @interface ORTValue ()
 
 // pointer to any external tensor data to keep alive for the lifetime of the ORTValue
-@property(nullable) NSMutableData* externalTensorData;
+@property(nonatomic, nullable) NSMutableData* externalTensorData;
 
 @end
 
@@ -127,40 +93,19 @@ size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
   return self;
 }
 
-- (BOOL)valueType:(ORTValueType*)valueType
-            error:(NSError**)error {
+- (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error {
   try {
-    const auto ortValueType = _typeInfo->GetONNXType();
-    *valueType = CAPIToPublicValueType(ortValueType);
-    return YES;
+    return CXXAPIToPublicValueTypeInfo(*_typeInfo);
   } catch (const Ort::Exception& e) {
     ORTSaveExceptionToError(e, error);
-    return NO;
+    return nil;
   }
 }
 
-- (BOOL)tensorElementType:(ORTTensorElementDataType*)elementType
-                    error:(NSError**)error {
+- (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
-    const auto ortElementType = tensorTypeAndShapeInfo.GetElementType();
-    *elementType = CAPIToPublicTensorElementType(ortElementType);
-    return YES;
-  } catch (const Ort::Exception& e) {
-    ORTSaveExceptionToError(e, error);
-    return NO;
-  }
-}
-
-- (nullable NSArray<NSNumber*>*)tensorShapeWithError:(NSError**)error {
-  try {
-    const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
-    const std::vector<int64_t> shape = tensorTypeAndShapeInfo.GetShape();
-    NSMutableArray<NSNumber*>* shapeArray = [[NSMutableArray alloc] initWithCapacity:shape.size()];
-    for (size_t i = 0; i < shape.size(); ++i) {
-      shapeArray[i] = @(shape[i]);
-    }
-    return shapeArray;
+    return CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   } catch (const Ort::Exception& e) {
     ORTSaveExceptionToError(e, error);
     return nil;
@@ -210,6 +155,12 @@ size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
   return *_value;
 }
 
+@end
+
+@implementation ORTValueTypeInfo
+@end
+
+@implementation ORTTensorTypeAndShapeInfo
 @end
 
 NS_ASSUME_NONNULL_END
