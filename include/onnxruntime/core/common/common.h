@@ -34,7 +34,6 @@
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
-#include "core/common/make_unique.h"
 #include "core/common/status.h"
 
 #ifdef USE_MIMALLOC_ARENA_ALLOCATOR

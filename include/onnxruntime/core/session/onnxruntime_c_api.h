@@ -157,7 +157,7 @@ ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(IoBinding);
-ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+ORT_RUNTIME_CLASS(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
@@ -289,15 +289,16 @@ typedef struct OrtROCMProviderOptions {
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;                                  // cuda device id.
-  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                      // user specified CUDA compute stream.
-  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
-  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
-  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
-  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
-  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int device_id;                                // cuda device id.
+  int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                    // user specified CUDA compute stream.
+  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -344,12 +345,12 @@ struct OrtApi {
   const char*(ORT_API_CALL* GetErrorMessage)(_In_ const OrtStatus* status)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /**
-     * \param out Should be freed by `OrtReleaseEnv` after use
+     * \param out Should be freed by `ReleaseEnv` after use
      */
   ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
-   * \param out Should be freed by `OrtReleaseEnv` after use
+   * \param out Should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
                   OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
@@ -376,7 +377,7 @@ struct OrtApi {
                   _Inout_updates_all_(output_names_len) OrtValue** output);
 
   /**
-    * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
+    * \return A pointer of the newly created object. The pointer should be freed by ReleaseSessionOptions after use
     */
   ORT_API2_STATUS(CreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
@@ -433,7 +434,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
   /*
-  Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
+  Create a custom op domain. After all sessions using it are released, call ReleaseCustomOpDomain
   */
   ORT_API2_STATUS(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 
@@ -475,18 +476,18 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
 
   /**
- * \param out  should be freed by OrtReleaseTypeInfo after use
+ * \param out  should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(SessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
@@ -502,7 +503,7 @@ struct OrtApi {
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
   /**
-   * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
+   * \return A pointer to the newly created object. The pointer should be freed by ReleaseRunOptions after use
    */
   ORT_API2_STATUS(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
@@ -521,8 +522,8 @@ struct OrtApi {
   ORT_API2_STATUS(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 
   /**
-   * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
-   * \param out Should be freed by calling OrtReleaseValue
+   * Create a tensor from an allocator. ReleaseValue will also release the buffer inside the output value
+   * \param out Should be freed by calling ReleaseValue
    * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
    */
   ORT_API2_STATUS(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* shape, size_t shape_len,
@@ -530,8 +531,8 @@ struct OrtApi {
 
   /**
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
-   * p_data is owned by caller. OrtReleaseValue won't release p_data.
-   * \param out Should be freed by calling OrtReleaseValue
+   * p_data is owned by caller. ReleaseValue won't release p_data.
+   * \param out Should be freed by calling ReleaseValue
    */
   ORT_API2_STATUS(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
                   size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -579,7 +580,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 
   /**
-     * The 'out' value should be released by calling OrtReleaseTensorTypeAndShapeInfo
+     * The 'out' value should be released by calling ReleaseTensorTypeAndShapeInfo
      */
   ORT_API2_STATUS(CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
@@ -612,14 +613,14 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
   /**
- * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
+ * \param out Should be freed by ReleaseTensorTypeAndShapeInfo after use
  */
   ORT_API2_STATUS(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
   /**
  * Get the type information of an OrtValue
  * \param value
- * \param out The returned value should be freed by OrtReleaseTypeInfo after use
+ * \param out The returned value should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(GetTypeInfo, _In_ const OrtValue* value, _Outptr_result_maybenull_ OrtTypeInfo** out);
 
@@ -794,7 +795,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Env);
   ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
   ORT_CLASS_RELEASE(MemoryInfo);
-  ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+  ORT_CLASS_RELEASE(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
   ORT_CLASS_RELEASE(Value);
   ORT_CLASS_RELEASE(RunOptions);
   ORT_CLASS_RELEASE(TypeInfo);
@@ -1157,7 +1158,7 @@ struct OrtApi {
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
    *
-   * \param out should be freed by `OrtReleaseEnv` after use
+   * \param out should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);

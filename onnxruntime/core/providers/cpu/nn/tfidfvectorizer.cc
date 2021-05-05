@@ -67,7 +67,7 @@ inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size,
     size_t n = 1;
     Map* m = &c;
     while (true) {
-      auto p = m->emplace(*first, onnxruntime::make_unique<NgramPart<K>>(0));
+      auto p = m->emplace(*first, std::make_unique<NgramPart<K>>(0));
       ++first;
       if (n == ngram_size) {
         ORT_ENFORCE(p.first->second->id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);

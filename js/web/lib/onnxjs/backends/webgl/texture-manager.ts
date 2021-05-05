@@ -126,30 +126,27 @@ export class TextureManager {
     }
   }
   toTensorData(dataType: Tensor.DataType, data: Encoder.DataArrayType): Tensor.NumberType {
-    return (data instanceof Float32Array) ? data : new Float32Array(data);
-    /*
     switch (dataType) {
       case 'int16':
-        return new Int16Array(data);
+        return data instanceof Int16Array ? data : Int16Array.from(data);
       case 'int32':
-        return new Int32Array(data);
+        return data instanceof Int32Array ? data : Int32Array.from(data);
       case 'int8':
-        return new Int8Array(data);
+        return data instanceof Int8Array ? data : Int8Array.from(data);
       case 'uint16':
-        return new Uint16Array(data);
+        return data instanceof Uint16Array ? data : Uint16Array.from(data);
       case 'uint32':
-        return data as Uint32Array;
+        return data instanceof Uint32Array ? data : Uint32Array.from(data);
       case 'uint8':
       case 'bool':
-        return data as Uint8Array;
+        return data instanceof Uint8Array ? data : Uint8Array.from(data);
       case 'float32':
-        return data as Float32Array;
+        return data instanceof Float32Array ? data : Float32Array.from(data);
       case 'float64':
-        return new Float64Array(data);
+        return data instanceof Float64Array ? data : Float64Array.from(data);
       default:
         throw new Error(`TensorData type ${dataType} is not supported`);
     }
-    */
   }
   toTextureData(dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
     if (!data) {
