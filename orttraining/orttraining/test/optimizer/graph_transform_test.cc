@@ -54,23 +54,6 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
-TEST_F(GraphTransformationTests, GistEncodeDecode) {
-  auto model_uri = MODEL_FOLDER "../test_training_model.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-  rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
-}
-
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();

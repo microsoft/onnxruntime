@@ -13,6 +13,32 @@ export function getPackedShape(unpackedShape: readonly number[]): readonly numbe
   return unpackedShape.slice(0, len - 1).concat(unpackedShape[len - 1] / 4);
 }
 
+export async function repeatedTry(
+    checkFn: () => boolean, delayFn = (_counter: number) => 0, maxCounter?: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let tryCount = 0;
+
+    const tryFn = () => {
+      if (checkFn()) {
+        resolve();
+        return;
+      }
+
+      tryCount++;
+
+      const nextBackoff = delayFn(tryCount);
+
+      if (maxCounter != null && tryCount >= maxCounter) {
+        reject();
+        return;
+      }
+      setTimeout(tryFn, nextBackoff);
+    };
+
+    tryFn();
+  });
+}
+
 /**
  * Generates the function name from an input sampler name.
  * @param samplerName Name of the sampler.

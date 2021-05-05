@@ -6,7 +6,8 @@ ARG OPENVINO_VERSION=2021.3
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
-    /tmp/scripts/install_deps.sh -p $PYTHON_VERSION -d EdgeDevice
+    /tmp/scripts/install_os_deps.sh -d EdgeDevice && \
+    /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION -d EdgeDevice
 
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts

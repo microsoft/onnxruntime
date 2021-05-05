@@ -155,6 +155,9 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on s
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
+# build eager mode
+option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -279,7 +282,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     # Build with sourcemap support
     set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load 
+    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
     set(CMAKE_CXX_FLAGS_DEBUG "-g2")
   endif()
 
@@ -442,6 +445,17 @@ endif()
 
 #must after OpenMP settings
 find_package(Threads)
+
+macro(check_nvcc_compiler_flag _FLAG _RESULT)
+    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    message("NVCC_ERROR = ${NVCC_ERROR}")
+    message("NVCC_OUT = ${NVCC_OUT}")
+    if("${NVCC_OUT}" MATCHES "0")
+        set(${_RESULT} 1)
+    else()
+        set(${_RESULT} 0)
+    endif()
+endmacro()
 
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
@@ -819,7 +833,7 @@ if (WIN32)
     if(onnxruntime_USE_OPENMP)
       list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
     endif()
-    
+
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
@@ -871,6 +885,7 @@ else()
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
   check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -973,7 +988,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (MSVC)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
-      set_target_properties(${target_name} 
+      set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         target_compile_options(${target_name} PRIVATE  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:stacksize 131072>")
@@ -982,7 +997,7 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
- 
+
       if(onnxruntime_DEV_MODE)
           target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Werror>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Werror>")
       endif()
@@ -998,31 +1013,31 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
     if(onnxruntime_USE_CUDA)
-      if(HAS_STRICT_ALIASING)
+      if((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda")  OR (HAS_STRIC_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")      
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
     endforeach()
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})  
-  onnxruntime_set_compile_flags(${target_name})  
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
-  endif() 
+  endif()
 endfunction()
 
 function(onnxruntime_add_static_library target_name)
   add_library(${target_name} ${ARGN})
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1039,9 +1054,9 @@ function(onnxruntime_add_shared_library_module target_name)
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
     add_library(${target_name} MODULE ${ARGN})
   endif()
-  
+
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1057,7 +1072,7 @@ function(onnxruntime_add_executable target_name)
   endif()
   add_executable(${target_name} ${ARGN})
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1297,6 +1312,10 @@ if(onnxruntime_USE_OPENVINO)
   elseif (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
     set(OPENVINO_VERSION "2021.4")
     add_definitions(-DOPENVINO_2021_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)
+    add_definitions(-DOPENVINO_2021_4=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1364,11 +1383,7 @@ if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-    set(CMAKE_CUDA_STANDARD 14)
-  else()
-    set(CMAKE_CUDA_STANDARD 11)
-  endif()
+  set(CMAKE_CUDA_STANDARD 14)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -1592,8 +1607,13 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
-  include(${target_name}.cmake)    
+#names in this var must match the directory names under onnxruntime/core/providers
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if(onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
+endif()
+foreach(target_name ${ONNXRUNTIME_TARGETS})
+  include(${target_name}.cmake)
 endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
