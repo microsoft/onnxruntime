@@ -873,7 +873,6 @@ struct ProviderSharedLibrary {
     Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
 
     PProvider_SetHost(&provider_host_);
-    LOGS_DEFAULT(WARNING) << "(RyanHill) Initialized Provider Shared Library";
     return true;
   }
 
@@ -914,7 +913,6 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-    LOGS_DEFAULT(WARNING) << "(RyanHill) Loading provider: " << full_path;
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
@@ -925,13 +923,11 @@ struct ProviderLibrary {
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
     provider_ = PGetProvider();
-    LOGS_DEFAULT(WARNING) << "(RyanHill) Provider Loaded " << full_path;
     return provider_;
   }
 
   void Unload() {
     if (handle_) {
-      LOGS_DEFAULT(WARNING) << "(RyanHill) Shutting down provider " << filename_;
       if (provider_)
         provider_->Shutdown();
 
@@ -940,7 +936,6 @@ struct ProviderLibrary {
 #endif
       handle_ = nullptr;
       provider_ = nullptr;
-      LOGS_DEFAULT(WARNING) << "(RyanHill) Shut down successful for " << filename_;
     }
   }
 
@@ -958,15 +953,11 @@ static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
-  LOGS_DEFAULT(WARNING) << "Unloading shared providers... (RyanHill)";
-
   s_library_dnnl.Unload();
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
   s_library_shared.Unload();
-
-  LOGS_DEFAULT(WARNING) << "Finished Unloading shared providers (RyanHill)";
 }
 
 // Used by test code
@@ -981,7 +972,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
   if (auto provider = s_library_cuda.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
-  LOGS_DEFAULT(WARNING) << "FAILED TO LOAD CUDA PROVIDER (RyanHill)";
   return nullptr;
 }
 
