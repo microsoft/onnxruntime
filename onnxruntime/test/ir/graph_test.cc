@@ -913,6 +913,80 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
   }
 }
 
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompress_Nested) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                                       |
+                                node_0 (Identity)
+                                /               \
+                  node_1 (Identity)             compress_0 (n2, pri = LOCAL_HIGH)
+                    /          \                    |
+          node_4 (Identity)    compress_1 (n5)  decompress_0 (n3, pri = LOCAL_LOW)
+                   |            |                   |
+          node_7 (Identity)    decompress_1 (n6)    |
+                    \           /                   |
+                    node_8 (Merge)                  |
+                           \                        /
+                                 node_9 (Merge)                
+                                      |                   
+  */
+  
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+  auto& output_arg6 = graph.GetOrCreateNodeArg("node_6_out_1", &tensor_int32);
+  auto& output_arg7 = graph.GetOrCreateNodeArg("node_7_out_1", &tensor_int32);
+  auto& output_arg8 = graph.GetOrCreateNodeArg("node_8_out_1", &tensor_int32);
+  auto& output_arg9 = graph.GetOrCreateNodeArg("node_9_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+
+  auto& compress_node0 = graph.AddNode("compress_0", "Identity_Fake", "compress node 0", {&output_arg0}, {&output_arg2});
+  compress_node0.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
+
+  auto& decompress_node0 = graph.AddNode("decompress_0", "Identity_Fake", "decompress node 0", {&output_arg2}, {&output_arg3});
+  decompress_node0.SetPriority(20);
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+
+  auto& compress_node1 = graph.AddNode("compress_1", "Identity_Fake", "compress node 1", {&output_arg1}, {&output_arg5});
+  compress_node1.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
+  
+  auto& decompress_node1 = graph.AddNode("decompress_1", "Identity_Fake", "decompress node 1", {&output_arg5}, {&output_arg6});
+  decompress_node1.SetPriority(10); // lower number means high priority
+  
+  graph.AddNode("node_7", "Identity_Fake", "node 7", {&output_arg4}, {&output_arg7});
+  graph.AddNode("node_8", "Merge_Fake", "node 8", {&output_arg7, &output_arg6}, {&output_arg8});
+  graph.AddNode("node_9", "Merge_Fake", "node 9", {&output_arg8, &output_arg3}, {&output_arg9});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "compress_0", "node_1", "compress_1", "node_4", "node_7", "decompress_1", "node_8", "decompress_0", "node_9"};
+
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+}
+
 TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
   Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();

@@ -140,9 +140,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
           config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
           config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
         }
-
-        //to check preprocessing inside model
-        config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
     #else
         if (subgraph_context_.set_vpu_config) {
           config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
@@ -151,6 +148,10 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
           config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
           config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
         }
+    #endif
+    #if defined(OPENVINO_2021_4)
+      //to check preprocessing inside model
+      config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
     #endif
       }
       try {

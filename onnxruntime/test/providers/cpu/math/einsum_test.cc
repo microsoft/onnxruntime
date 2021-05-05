@@ -96,6 +96,7 @@ TEST(Einsum, ExplicitEinsumAsReduceOp_2D_input_1) {
   test.AddOutput<float>("y", {2}, {4.f, 6.f});
   test.Run();
 }
+
 TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_0) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "...ji->...j");
