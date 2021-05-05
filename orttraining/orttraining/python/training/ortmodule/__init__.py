@@ -11,7 +11,6 @@ MINIMUM_TORCH_VERSION_STR = '1.8.1'
 
 from .ortmodule import ORTModule
 
-
 # Verify proper PyTorch is installed before proceding to ONNX Runtime initializetion
 try:
     import torch
@@ -21,5 +20,11 @@ try:
         raise RuntimeError(
             f'ONNXRuntime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
             f'but version {torch.__version__} was found instead.')
+
+    import onnxruntime
+    from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
+    onnxruntime.register_forward_runner(call_python_forward_function)
+    onnxruntime.register_backward_runner(call_python_backward_function)
+
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNXRuntime ORTModule frontend!')
