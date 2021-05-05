@@ -1996,7 +1996,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   {
     // Second Run - with shrinkage
     RunOptions run_options_2;
-    run_options_2.session_configurations.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+    run_options_2.run_configurations.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
     RunModel(session_object, run_options_2);
 
     static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
