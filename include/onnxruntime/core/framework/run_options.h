@@ -11,7 +11,7 @@
 /**
  * Configuration information for a Run call.
  */
-struct OrtRunOptions : onnxruntime::ConfigOptions {
+struct OrtRunOptions {
   /// Log severity.  See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use the log severity from the InferenceSession that the Run is for).
   int run_log_severity_level = -1;
@@ -32,11 +32,11 @@ struct OrtRunOptions : onnxruntime::ConfigOptions {
   bool training_mode = true;
 #endif
 
-  // NOTE:
-  // The inherited `configurations` from ConfigOptions stores the configurations for a specific run
+  // Stores the configurations for this run
   // To add an configuration to this specific run, call OrtApis::AddRunConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
+  onnxruntime::ConfigOptions run_configurations;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;

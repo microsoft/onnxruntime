@@ -152,7 +152,7 @@ TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
   // tips: to dump the subgraph, can use python tool - dump_subgraphs.py
-  // or click on one of the input to see the drop down graph list and view subgraph 
+  // or click on one of the input to see the drop down graph list and view subgraph
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
@@ -346,9 +346,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(),
-                                                                              false /*skip_dequantize_linear*/,
-                                                                              compatible_eps,
-                                                                              excluded_initializers),
+                                                                      false /*skip_dequantize_linear*/,
+                                                                      compatible_eps,
+                                                                      excluded_initializers),
                                     TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
@@ -374,8 +374,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(),
-                                                                              false /*skip_dequantize_linear*/,
-                                                                              compatible_eps),
+                                                                      false /*skip_dequantize_linear*/,
+                                                                      compatible_eps),
                                     TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
@@ -429,11 +429,11 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
-  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
+  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
+  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
@@ -2547,10 +2547,10 @@ TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
   // GeluApproximation is not enabled by default.
   VerifyGeluApproximation(false, session_options);
 
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
+  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
   VerifyGeluApproximation(true, session_options);
 
-  session_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
+  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
   VerifyGeluApproximation(false, session_options);
 }
 

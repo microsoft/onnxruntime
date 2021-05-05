@@ -240,7 +240,8 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
-      bool use_device_allocator_for_initializers = session_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+      bool use_device_allocator_for_initializers =
+          session_options.session_configurations.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
                                          data_transfer_mgr, use_device_allocator_for_initializers);

@@ -40,7 +40,7 @@ struct FreeDimensionOverride {
 /**
   * Configuration information for a session.
   */
-struct SessionOptions : ConfigOptions {
+struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
   // set the execution order of the graph
@@ -110,16 +110,15 @@ struct SessionOptions : ConfigOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
+  // Stores the configurations for this session
+  // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
+  // The configuration keys and value formats are defined in
+  // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
+  ConfigOptions session_configurations;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
-
-  // NOTE:
-  // The inherited `configurations` from ConfigOptions stores the configurations for this session
-  // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
-  // The configuration keys and value formats are defined in
-  // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
 };
 
 }  // namespace onnxruntime

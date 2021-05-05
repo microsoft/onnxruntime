@@ -212,7 +212,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Finalize the session state
     SessionOptions so;
     // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
-    so.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
+    so.session_configurations.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
@@ -488,7 +488,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   PlaceAllNodesToCPUEP(model.MainGraph());
 
   SessionOptions sess_options;
-  sess_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
+  sess_options.session_configurations.configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
                                                       sess_options));
