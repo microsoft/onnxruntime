@@ -26,7 +26,7 @@ struct DnnlProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return onnxruntime::make_unique<DNNLExecutionProvider>(info);
+  return std::make_unique<DNNLExecutionProvider>(info);
 }
 
 struct Dnnl_Provider : Provider {

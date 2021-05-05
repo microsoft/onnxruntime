@@ -79,7 +79,6 @@ endif()
 
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
-onnxruntime_add_include_to_target(onnxruntime)
 
 target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
@@ -133,18 +132,18 @@ endif()
 target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_NNAPI}
-    ${PROVIDERS_RKNPU}
-    ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_VITISAI}
-    ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_COREML}
+    ${PROVIDERS_DML}
+    ${PROVIDERS_MIGRAPHX}
+    ${PROVIDERS_NNAPI}
+    ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_RKNPU}
+    ${PROVIDERS_ROCM}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
-    ${PROVIDERS_ROCM}
-    ${PROVIDERS_COREML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

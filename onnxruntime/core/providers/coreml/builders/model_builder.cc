@@ -23,7 +23,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
 }
 
 Status ModelBuilder::Initialize() {
-  coreml_model_ = onnxruntime::make_unique<CoreML::Specification::Model>();
+  coreml_model_ = std::make_unique<CoreML::Specification::Model>();
   {  // initialize CoreML model
     // We support CorelML Specification Version 4 (Core ML 3)
     coreml_model_->set_specificationversion(4);

@@ -9,7 +9,6 @@
 
 #include "gsl/gsl"
 
-#include "core/common/make_unique.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -33,7 +32,7 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<CUDAExecutionProvider>(info_);
+  return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(const CUDAExecutionProviderInfo& info) {

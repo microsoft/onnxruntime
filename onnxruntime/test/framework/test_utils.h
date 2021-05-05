@@ -69,7 +69,7 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                                       shape,
                                                                       alloc);
   if (value.size() > 0) {
@@ -87,7 +87,7 @@ void CreateMLValue(const std::vector<int64_t>& dims, T* data_buffer, const OrtMe
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                                       shape,
                                                                       data_buffer,
                                                                       info);
@@ -100,7 +100,7 @@ template <typename T>
 void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                                       shape,
                                                                       alloc);
   p_mlvalue->Init(p_tensor.release(),

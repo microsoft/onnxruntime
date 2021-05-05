@@ -524,7 +524,7 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   )
 
 #without auto initialize onnxruntime
-add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
+onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -538,9 +538,7 @@ if (onnxruntime_USE_NCCL)
 endif()
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
-endif()
+
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
 endif()
@@ -556,7 +554,7 @@ file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
 
 list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -585,7 +583,7 @@ if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 if (onnxruntime_USE_CUDA)
-  add_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
+  onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
 endif()
 
@@ -714,7 +712,7 @@ if(WIN32)
   endif()
 endif()
 
-add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
@@ -739,7 +737,7 @@ onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
-  add_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
+  onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
   target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
@@ -835,6 +833,45 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND android_shared_libs log android)
 endif()
 
+#eager mode test
+if(onnxruntime_ENABLE_EAGER_MODE)
+  file(GLOB onnxruntime_eager_mode_test_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/eager/*.cc"
+    )
+  add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
+  target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
+          ${onnxruntime_graph_header} 
+          ${onnxruntime_exec_src_dir}
+          ${CMAKE_CURRENT_BINARY_DIR}
+          "${TEST_SRC_DIR}/util/include")
+  set(onnxruntime_eager_mode_libs 
+          onnxruntime_eager
+          onnxruntime_session
+          onnxruntime_optimizer
+          onnxruntime_providers
+          onnxruntime_util
+          onnxruntime_framework
+          flatbuffers
+          onnxruntime_graph 
+          onnxruntime_common
+          onnxruntime_mlas
+          onnx 
+          onnx_proto 
+          protobuf::libprotobuf
+          GTest::gtest
+          re2::re2
+          onnxruntime_flatbuffers
+          ${CMAKE_DL_LIBS}
+          )
+  if(onnxruntime_ENABLE_TRAINING)
+    list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+  endif()
+  IF(NOT WIN32)
+    list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
+  endif()
+  target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
+endif()
+
 #perf test runner
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
 set(onnxruntime_perf_test_src_patterns
@@ -913,7 +950,7 @@ endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
-  add_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
+  onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
   target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
   set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -1037,7 +1074,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-add_library(custom_op_library SHARED ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
@@ -1070,6 +1107,7 @@ if (onnxruntime_BUILD_JAVA)
         -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
         -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -DREPO_ROOT=${REPO_ROOT}
+        ${ORT_PROVIDER_CMAKE_FLAGS}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
       add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
@@ -1085,10 +1123,12 @@ if (onnxruntime_BUILD_JAVA)
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
 
+# limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+                                  AND MSVC)
   file(GLOB_RECURSE test_execution_provider_srcs
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
@@ -1096,7 +1136,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
-  add_library(test_execution_provider SHARED ${test_execution_provider_srcs})
+  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
   add_dependencies(test_execution_provider onnxruntime_providers_shared)
   target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)

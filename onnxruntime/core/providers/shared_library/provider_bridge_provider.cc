@@ -37,7 +37,7 @@ void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
   if (!s_run_on_unload_)
-    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::function<void()>>>();
+    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   s_run_on_unload_->push_back(std::move(function));
 }
 
@@ -240,14 +240,14 @@ Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {

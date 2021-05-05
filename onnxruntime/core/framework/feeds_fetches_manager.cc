@@ -46,7 +46,7 @@ Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
   FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};
 
-  feed_fetch_manager = onnxruntime::make_unique<FeedsFetchesManager>(std::move(info));
+  feed_fetch_manager = std::make_unique<FeedsFetchesManager>(std::move(info));
 
   return Status::OK();
 }

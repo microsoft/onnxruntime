@@ -72,7 +72,7 @@ if (onnxruntime_ENABLE_TRAINING)
     list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
 endif()
 
-add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
+onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 

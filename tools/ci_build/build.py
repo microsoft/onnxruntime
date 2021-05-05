@@ -243,6 +243,11 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -335,6 +340,12 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
+    parser.add_argument(
+        "--enable_wasm_sourcemap", action='store_true',
+        help="Build WebAssembly with source map")
+    parser.add_argument(
+        "--wasm_sourcemap_base", default="http://localhost:9876/onnxruntime/",
+        help="Set base URL of the source map")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -508,7 +519,11 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
+
+    parser.add_argument(
+        "--build_eager_mode", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
 
     return parser.parse_args()
 
@@ -656,6 +671,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
@@ -728,6 +744,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -1157,7 +1176,7 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def run_android_tests(args, source_dir, config, cwd):
+def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
@@ -1166,6 +1185,9 @@ def run_android_tests(args, source_dir, config, cwd):
 
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
+
+    def adb_install(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'install', *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1204,6 +1226,20 @@ def run_android_tests(args, source_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.build_java:
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "debug", "app-debug.apk"))
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "androidTest", "debug", "app-debug-androidTest.apk"))
+                adb_shell(
+                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
+                    )
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1345,7 +1381,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         cwd = os.path.abspath(cwd)
 
         if args.android:
-            run_android_tests(args, source_dir, config, cwd)
+            run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
         elif args.ios:
             run_ios_tests(args, source_dir, config, cwd)

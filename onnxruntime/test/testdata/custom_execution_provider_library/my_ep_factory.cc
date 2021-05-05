@@ -26,7 +26,7 @@ struct MyProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> MyProviderFactory::CreateProvider() {
   std::cout << "My EP provider created, with device id: " << info_.device_id << ", some_option: " << info_.some_config << std::endl;
-  return onnxruntime::make_unique<MyExecutionProvider>(info_);
+  return std::make_unique<MyExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MyEP(const MyProviderInfo& info) {

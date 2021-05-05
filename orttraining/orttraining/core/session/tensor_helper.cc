@@ -44,7 +44,7 @@ OrtValue CreateCpuTensorValue(
   AllocatorPtr cpu_allocator = session_state.GetAllocator(cpu_location);
 
   // Given a shape, allocate a tensor using CPU allocator.
-  auto cpu_tensor = onnxruntime::make_unique<Tensor>(elem_type, shape, cpu_allocator);
+  auto cpu_tensor = std::make_unique<Tensor>(elem_type, shape, cpu_allocator);
 
   // Create type definition for the created tensor.
   auto tensor_type = DataTypeImpl::GetType<Tensor>();

@@ -20,7 +20,7 @@ namespace onnxruntime {
 template <typename T>
 OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
                                                                       is_1d ? TensorShape({1}) : TensorShape({}),
                                                                       allocator);
 

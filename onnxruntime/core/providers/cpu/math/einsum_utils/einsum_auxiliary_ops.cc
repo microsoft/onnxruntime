@@ -135,7 +135,7 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
   switch (element_size_in_bytes) {
     case 4:
@@ -288,7 +288,7 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
   TensorShape overriden_shape(input_shape_override);
 
@@ -328,7 +328,7 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
 
   const T* input_1_data = input_1.template Data<T>();
   const T* input_2_data = input_2.template Data<T>();
@@ -469,3 +469,4 @@ template std::unique_ptr<Tensor> ReduceSum<MLFloat16>(
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime
+

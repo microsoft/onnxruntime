@@ -27,7 +27,7 @@ endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
-add_library(onnxruntime_framework ${onnxruntime_framework_srcs})
+onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
