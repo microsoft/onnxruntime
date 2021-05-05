@@ -188,9 +188,9 @@ std::vector<std::string> GistEncodeDecode::TargetOpTypes() const noexcept {
 
 Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   if (node.Description() != "Backward pass") {
-    if (GistEncodeDecode::AddEncodeDecode(graph, node, compression_type, logger)) {
+    if (GistEncodeDecode::AddEncodeDecode(graph, node, compression_type_, logger)) {
       LOGS(logger, INFO) << "Gist applied to node name -  " << node.Name() << ", node type - "
-                         << node.OpType() << ", of compr type - " << compression_type;
+                         << node.OpType() << ", of compr type - " << compression_type_;
       rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
     }
   }
