@@ -674,7 +674,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -785,7 +785,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -793,7 +793,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -1746,7 +1746,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             //config_key and config_value will be copied
-            const Status status = options->AddConfigEntry(config_key, config_value);
+            const Status status = options->session_configurations.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1756,7 +1756,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
-            if (!options->TryGetConfigEntry(key, value))
+            if (!options->session_configurations.TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return value;
@@ -2095,12 +2095,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING
