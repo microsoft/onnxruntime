@@ -179,14 +179,18 @@ void UpampleImpl(cudaStream_t stream,
     } else {
       ORT_THROW("Unsupported rank by the Upsample CUDA kernel");
     }
-  } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode && rank == 4) {
-    _UpampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        input_dim2, input_pitches, output_div_pitches, scales_div,
-        input_data, output_data, N);
-  } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode && rank == 2) {
-    _UpampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        input_dim2, input_pitches, output_div_pitches, scales_div,
-        input_data, output_data, N);
+  } else if (onnxruntime::UpsampleMode::LINEAR) {
+    if (rank == 4) {
+      _UpampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input_dim2, input_pitches, output_div_pitches, scales_div,
+          input_data, output_data, N);
+    } else if (rank == 2) {
+      _UpampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input_dim2, input_pitches, output_div_pitches, scales_div,
+          input_data, output_data, N);
+    } else {
+      ORT_THROW("Unsupported rank by the Upsample CUDA kernel");
+    }
   }
 }
 
