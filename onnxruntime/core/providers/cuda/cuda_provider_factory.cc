@@ -72,15 +72,15 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   }
 
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<CUDAAllocator>(device_id, name);
+    return std::make_unique<CUDAAllocator>(device_id, name);
   }
 
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name);
+    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return onnxruntime::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
+    return std::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
   }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {

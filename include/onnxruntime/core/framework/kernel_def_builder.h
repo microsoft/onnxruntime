@@ -180,7 +180,7 @@ class KernelDef {
 
 class KernelDefBuilder {
  public:
-  static std::unique_ptr<KernelDefBuilder> Create() { return onnxruntime::make_unique<KernelDefBuilder>(); }
+  static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
 
   explicit KernelDefBuilder()
       : kernel_def_(new KernelDef()) {}

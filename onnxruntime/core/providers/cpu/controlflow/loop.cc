@@ -246,7 +246,7 @@ void Loop::Init(const OpKernelInfo& info) {
 }
 
 std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
-  auto result = make_unique<Loop>(info);
+  auto result = std::make_unique<Loop>(info);
   result->SetConcatOutputFunc(concat_output_func);
   result->SetComputeStream(stream);
   return result;

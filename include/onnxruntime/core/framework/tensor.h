@@ -58,7 +58,7 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return onnxruntime::make_unique<Tensor>(p_type, shape, allocator); }
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return std::make_unique<Tensor>(p_type, shape, allocator); }
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
