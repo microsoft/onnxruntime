@@ -18,8 +18,8 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model):
-        super().__init__(model)
+    def __init__(self, model, onnx_export_type):
+        super().__init__(model, onnx_export_type)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod

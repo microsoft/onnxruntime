@@ -62,7 +62,7 @@ def run_with_ort_on_gpu(model, input_list, label_input):
     device = torch.device('cuda:0')
     model = copy.deepcopy(model)
     model.to(device)
-    model = ORTModule(model)
+    model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
     forward_outputs=[output]

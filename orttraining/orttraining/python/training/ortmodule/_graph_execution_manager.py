@@ -31,7 +31,7 @@ class RunStateInfo(object):
         self.output_info = output_info
 
 class GraphExecutionManager(ABC):
-    def __init__(self, module):
+    def __init__(self, module, onnx_export_type):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -83,8 +83,9 @@ class GraphExecutionManager(ABC):
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = False
 
-        # flag to enable PyTorch autograd functions fall back to Python for execution.
-        self._enable_autograd_func_fallback = False
+        # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'.
+        # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX is needed.
+        self._onnx_export_type = onnx_export_type
 
         self._input_info = None
         self._module_output_schema = None
@@ -239,7 +240,7 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
         exported_model = None
         try:
-            if self._enable_autograd_func_fallback is True:
+            if self._onnx_export_type == torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH:
                 cloned_flattened_module = copy.deepcopy(self._flattened_module)
                 with _logger.suppress_os_stream_output(log_level=self._loglevel):
                     torch.onnx.export(cloned_flattened_module,
@@ -251,7 +252,7 @@ class GraphExecutionManager(ABC):
                                     do_constant_folding=False,
                                     training=self._export_mode,
                                     dynamic_axes=self._input_info.dynamic_axes,
-                                    operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
+                                    operator_export_type=self._onnx_export_type,
                                     custom_opsets={"prim": 1},
                                     verbose=self._loglevel < _logger.LogLevel.WARNING)
 

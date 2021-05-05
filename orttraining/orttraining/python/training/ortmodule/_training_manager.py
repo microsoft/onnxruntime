@@ -20,8 +20,8 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model):
-        super().__init__(model)
+    def __init__(self, model, onnx_export_type):
+        super().__init__(model, onnx_export_type)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod

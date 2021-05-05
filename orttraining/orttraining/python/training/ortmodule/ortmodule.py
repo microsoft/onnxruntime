@@ -40,7 +40,7 @@ class ORTModule(torch.nn.Module):
         of nested structures is not supported at the moment)
     """
 
-    def __init__(self, module):
+    def __init__(self, module, onnx_export_type=torch.onnx.OperatorExportTypes.ONNX):
         assert isinstance(
             module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
@@ -74,7 +74,7 @@ class ORTModule(torch.nn.Module):
         # Get the module that flattens both input and output
         self._flattened_module = _io._FlattenedModule(self._original_module)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, onnx_export_type)
 
     def _is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
