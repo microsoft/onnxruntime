@@ -708,10 +708,10 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
     return;
   }
 
-  size_t expected_rank = expected_shape->dim_size();
+  const size_t expected_rank = expected_shape->dim_size();
   bool compatible = expected_rank == output_shape.NumDimensions();
   if (compatible) {
-    for (size_t i = 0, end = expected_rank; i < end; ++i) {
+    for (size_t i = 0; i < expected_rank; ++i) {
       const auto& expected_dim = expected_shape->dim().Get(static_cast<int>(i));
       if (expected_dim.has_dim_value() && expected_dim.dim_value() != output_shape[i]) {
         compatible = false;
@@ -722,7 +722,7 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
 
   if (!compatible) {
     LOGS(session_state_.Logger(), WARNING) << "Expected shape from model of " << *expected_shape
-                                           << " is not compatible with actual output shape of " << output_shape
+                                           << " does not match actual shape of " << output_shape
                                            << " for output " << output_def->Name();
   }
 }
