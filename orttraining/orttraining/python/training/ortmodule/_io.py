@@ -9,6 +9,22 @@ import inspect
 import torch
 import warnings
 
+class _Primitive(object):
+    _primitive_types = {int, bool, float}
+    @staticmethod
+    def is_primitive(value):
+        return type(value) in _Primitive._primitive_types
+
+    @staticmethod
+    def get_tensor(value, device):
+        return torch.tensor(value, device=device)
+
+    @staticmethod
+    def get_primitive_dtype(value):
+        # If the data is a boolean primitive, save the value of the boolean in dtype.
+        # This way, if the value changes from one forward call to the next, the schema will mismatch,
+        # and the model will be re-exported.
+        return f"{str(type(value))}_{value}" if isinstance(value, bool) else str(type(value))
 
 class _InputInfo(object):
     def __init__(self,
@@ -40,11 +56,20 @@ class _InputInfo(object):
             \t#Positionals (non-None): {self.num_positionals_non_none}
             \tKeyword names:           {self.keyword_names}'''
 
-    def flatten(self, args, kwargs):
+    def flatten(self, args, kwargs, device):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
 
-        ret = list(args)
+        ret = [None]*len(args)
+        for idx, arg in enumerate(args):
+            if _Primitive.is_primitive(arg):
+                ret[idx] = _Primitive.get_tensor(arg, device)
+            else:
+                ret[idx] = arg
         ret += [kwargs[name] for name in self.names if name in kwargs]
+        for idx in range(len(args), len(ret)):
+            if _Primitive.is_primitive(ret[idx]):
+                ret[idx] = _Primitive.get_tensor(ret[idx], device)
+
         return ret
 
     def unflatten(self, flat_args):
@@ -55,7 +80,7 @@ class _InputInfo(object):
             if name in self.keyword_names}
         return args, kwargs
 
-def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):
+def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -88,6 +113,8 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
                 raise KeyError(f'Registered buffer name {name} not found.')
 
         if inp is not None:
+            if _Primitive.is_primitive(inp):
+                inp = _Primitive.get_tensor(inp, device)
             result.append(inp)
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
@@ -201,6 +228,8 @@ def _extract_schema(data):
 
     if data is None:
         return None
+    elif _Primitive.is_primitive(data):
+        return _TensorStub(dtype=_Primitive.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
@@ -305,12 +334,17 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
         return dynamic_axes
 
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
-        if input is not None and (onnx_graph is None or name in onnx_graph_input_names):
-            if input.requires_grad:
-                input_names_require_grad.append(name)
+        if input is not None:
+            if (onnx_graph is None or name in onnx_graph_input_names):
+                if isinstance(input, torch.Tensor):
+                    if input.requires_grad:
+                        input_names_require_grad.append(name)
+                    dynamic_axes.update(_add_dynamic_shape(name, input))
+                    input_shape.append(list(input.size()))
+
+            # InputInfo should contain all the names irrespective of whether they are
+            # a part of the onnx graph or not.
             input_names.append(name)
-            dynamic_axes.update(_add_dynamic_shape(name, input))
-            input_shape.append(list(input.size()))
 
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs

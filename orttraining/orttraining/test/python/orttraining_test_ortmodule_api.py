@@ -2252,3 +2252,72 @@ def test_forward_call_lots_None():
                  a, b, c, d, e, f, y, z)
         run_step(a.item() + b.item() + c.item() + d.item() + e.item() + f.item() + y.item() + z.item(),
                  **{'a': a, 'b': b, 'c': c, 'd': d, 'e': e, 'f': f, 'y': y, 'z': z})
+
+@pytest.mark.parametrize("bool_argument", [True, False])
+@pytest.mark.parametrize("int_argument", [100, 100000, 100000000])
+@pytest.mark.parametrize("float_argument", [1.23, 11209123.12452, 12093702935.1249863])
+def test_primitive_inputs(bool_argument, int_argument, float_argument):
+    class PrimitiveTypesInputNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(PrimitiveTypesInputNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, bool_argument, int_argument, float_argument):
+            input1 = input1 + int_argument + float_argument
+            if bool_argument:
+                out = self.fc1(input1)
+                out = self.relu(out)
+                out = self.fc2(out)
+            else:
+                out = self.fc1(input1)
+                out = self.fc2(out)
+                out = self.relu(out)
+            return out
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = PrimitiveTypesInputNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    input1 = torch.randn(N, D_in, device=device)
+    pt_out = pt_model(input1, bool_argument, int_argument, float_argument)
+    ort_out = ort_model(input1, bool_argument, int_argument, float_argument)
+    assert torch.equal(pt_out, ort_out)
+
+@pytest.mark.parametrize("bool_arguments", [(True, False), (False, True)])
+def test_changing_bool_input_re_exports_model(bool_arguments):
+    class PrimitiveTypesInputNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(PrimitiveTypesInputNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, bool_argument):
+            if bool_argument:
+                out = self.fc1(input1)
+                out = self.relu(out)
+                out = self.fc2(out)
+            else:
+                out = self.fc1(input1)
+                out = self.fc2(out)
+                out = self.relu(out)
+            return out
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = PrimitiveTypesInputNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(pt_model)
+
+    input1 = torch.randn(N, D_in, device=device)
+    ort_model(input1, bool_arguments[0])
+    exported_model1 = ort_model._execution_manager(ort_model._is_training())._onnx_model
+
+    ort_model(input1, bool_arguments[1])
+    exported_model2 = ort_model._execution_manager(ort_model._is_training())._onnx_model
+
+    assert exported_model1 != exported_model2
