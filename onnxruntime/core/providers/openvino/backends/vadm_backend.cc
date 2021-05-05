@@ -77,11 +77,10 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
       InferenceEngine::ExecutableNetwork exe_network;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
-    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
-      config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
-#else
+#if defined(OPENVINO_2020_3)
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
+#else
+      config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
 #endif
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);

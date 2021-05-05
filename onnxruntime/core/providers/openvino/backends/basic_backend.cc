@@ -131,22 +131,21 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
     #endif
       if (global_context_.device_type.find("MYRIAD") != std::string::npos) {
-    #if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
-        defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
-        if (subgraph_context_.set_vpu_config) {
-          config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
-        }
-        if (global_context_.enable_vpu_fast_compile) {
-          config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
-          config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
-        }
-    #else
+    #if defined(OPENVINO_2020_3)
         if (subgraph_context_.set_vpu_config) {
           config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
         }
         if (global_context_.enable_vpu_fast_compile) {
           config["VPU_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
           config["VPU_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
+        }
+    #else
+        if (subgraph_context_.set_vpu_config) {
+          config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+        }
+        if (global_context_.enable_vpu_fast_compile) {
+          config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+          config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
         }
     #endif
     #if defined(OPENVINO_2021_4)
