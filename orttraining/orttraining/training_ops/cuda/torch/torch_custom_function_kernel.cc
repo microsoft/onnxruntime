@@ -122,26 +122,31 @@ void PythonOp::CreateArgPositions() {
   }
 }
 
+std::vector<OrtValue*> CreateArgs(OpKernelContext* context) {
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  std::vector<OrtValue*> args;
+  for (size_t i = 0; i < static_cast<size_t>(ctx_internal->InputCount()); ++i) {
+    args.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
+  }
+  return args;
+}
+
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   ORT_ENFORCE(nullptr != context);
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  auto inputs_count = (size_t)ctx_internal->InputCount();
-  auto outputs_count = (size_t)ctx_internal->OutputCount();
+  // This is the output count of ORT op. Not the called Python function.
 
-  std::vector<OrtValue*> inputs;
-  std::vector<void*> outputs;
-  for (size_t i = 0; i < inputs_count; ++i) {
-    inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
-  }
+  std::vector<OrtValue*> args = CreateArgs(context);
+  std::vector<void*> returned_args;
 
   // Invoke python calls.
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
-      callback, input_tensor_requires_grads_, inputs, arg_positions_, const_args_, const_arg_positions_, outputs);
+      callback, input_tensor_requires_grads_, args, arg_positions_, const_args_, const_arg_positions_, returned_args);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?
@@ -150,7 +155,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Handle the outputs;
   // The 1st output is context index of auto grad function.
   // Other outputs are address of OrtValue we got from python script run.
-  PyObject* ctx_addr = reinterpret_cast<PyObject*>(outputs[0]);
+  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_args[0]);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
   int64_t ctx_index = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 
@@ -162,8 +167,8 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   int64_t* step_data_new = first_output_tensor->template MutableData<int64_t>();
   *step_data_new = ctx_index;
 
-  for (size_t index = 1; index < outputs_count; ++index) {
-    void* forward_ret_ortvalue_addr = outputs.at(index);
+  for (size_t index = 1; index < static_cast<size_t>(ctx_internal->OutputCount()); ++index) {
+    void* forward_ret_ortvalue_addr = returned_args.at(index);
     auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
     ORT_ENFORCE(forward_ret_ortvalue_ptr != nullptr, "forward_ret_ortvalue_ptr should not be null");
 
