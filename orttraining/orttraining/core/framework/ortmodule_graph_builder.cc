@@ -31,6 +31,10 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   for (auto& node_arg : graph_inputs) {
     if (initializer_names.find(node_arg->Name()) == initializer_names.end()) {
       graph_info_.user_input_names.emplace_back(node_arg->Name());
+
+      std::cout << "graph_info_.user_input_names: " << node_arg->Name() << "\n";
+
+      
     }
   }
 
@@ -276,7 +280,7 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
     }
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
-      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      yield_output_node_args.emplace_back(&(gradient_graph.GetOrCreateNodeArg(grad_name, nullptr)));
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }

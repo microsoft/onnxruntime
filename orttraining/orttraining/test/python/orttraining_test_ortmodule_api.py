@@ -1038,6 +1038,45 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     assert not x2_requires_grad or torch.allclose(ort_x2.grad, pt_x2.grad)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+
+@pytest.mark.parametrize("device", ['cuda'])
+def test_model_with_bypass_input(device):
+    class NeuralNetWithBypassInput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetWithBypassInput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, bypass_input):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            # out2 = bypass_input
+            return out1, bypass_input
+
+    def run_step(model, x1, x2):
+        y1, y2 = model(x1, x2)
+        loss = y1.sum() + y2.sum()
+        loss.backward()
+        return y1, y2
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = NeuralNetWithBypassInput(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    ort_x1 = pt_x1.clone()
+    ort_x2 = pt_x2.clone()
+
+    # Both y1 and y2's gradients are not None.
+    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
+    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
+
+    _test_helpers.assert_values_are_close(pt_y1, ort_y1, atol=1e-06)
+    _test_helpers.assert_values_are_close(pt_y2, ort_y2, atol=1e-06)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
 def test_gpu_reserved_memory_with_torch_no_grad():
     device = 'cuda'
 
