@@ -97,19 +97,19 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool* fp16_enable_ptr = nullptr;
-  bool* int8_enable_ptr = nullptr;
-  bool* dla_enable_ptr = nullptr;
-  int* dla_core_ptr = nullptr;
+  bool fp16_enable;
+  bool int8_enable;
+  bool dla_enable;
+  int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
-  bool* engine_cache_enable_ptr = nullptr;
+  bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
-  bool* engine_decryption_enable_ptr = nullptr;
+  bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
 };
 

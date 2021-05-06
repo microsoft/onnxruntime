@@ -1292,8 +1292,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_, &int8_enable_, &dla_enable_, 
-            &dla_core_, &max_workspace_size_, trt_node_name_with_precision, &engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, dla_enable_, 
+            dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
             allocator_, dynamic_range_map, &engine_decryption_enable_, engine_decryption_};
       *state = p.release();
       return 0;
@@ -1330,7 +1330,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
-      if (*(trt_state->engine_cache_enable_ptr) && trt_engine == nullptr) {
+      if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
         if (engine_file && profile_file) {
@@ -1358,7 +1358,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
           }
           trt_context = trt_state->context->get();
-        } else if (*(trt_state->engine_decryption_enable_ptr) && !engine_file && profile_file) {
+        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
           shape_ranges = DeserializeProfile(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
           // Decrypt engine
@@ -1535,7 +1535,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_config->addOptimizationProfile(*trt_profile);
 
         // Set INT8 Per Tensor Dynamic range
-        if (*(trt_state->int8_enable_ptr) && trt_builder->platformHasFastInt8()) {
+        if (trt_state->int8_enable && trt_builder->platformHasFastInt8()) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
@@ -1543,20 +1543,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         // Set precision
-        if (*(trt_state->fp16_enable_ptr) && *(trt_state->int8_enable_ptr)) {
+        if (trt_state->fp16_enable && trt_state->int8_enable) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-        } else if (*(trt_state->fp16_enable_ptr)) {
+        } else if (trt_state->fp16_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-        } else if (*(trt_state->int8_enable_ptr)) {
+        } else if (trt_state->int8_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
 
         // Set DLA (DLA can only run with FP16 or INT8)
-        if ((*(trt_state->fp16_enable_ptr) || *(trt_state->int8_enable_ptr)) && *(trt_state->dla_enable_ptr)) {
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << *(trt_state->dla_core_ptr);
+        if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
             trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
             trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
-            trt_config->setDLACore(*(trt_state->dla_core_ptr));
+            trt_config->setDLACore(trt_state->dla_core);
         }
 
         // Build engine
@@ -1569,7 +1569,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
         trt_engine = trt_state->engine->get();
-        if (*(trt_state->engine_cache_enable_ptr)) {
+        if (trt_state->engine_cache_enable) {
           // Serialize engine profile
           SerializeProfile(profile_cache_path, shape_ranges);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
