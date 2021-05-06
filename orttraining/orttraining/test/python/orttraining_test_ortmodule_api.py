@@ -2254,8 +2254,8 @@ def test_forward_call_lots_None():
                  **{'a': a, 'b': b, 'c': c, 'd': d, 'e': e, 'f': f, 'y': y, 'z': z})
 
 @pytest.mark.parametrize("bool_argument", [True, False])
-@pytest.mark.parametrize("int_argument", [100, 100000, 100000000])
-@pytest.mark.parametrize("float_argument", [1.23, 11209123.12452, 12093702935.1249863])
+@pytest.mark.parametrize("int_argument", [100, 100000, 100000000, -100, -100000, -100000000])
+@pytest.mark.parametrize("float_argument", [1.23, 11209123.12452, 12093702935.1249863, -1.23, -11209123.12452, -12093702935.1249863])
 def test_primitive_inputs(bool_argument, int_argument, float_argument):
     class PrimitiveTypesInputNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
@@ -2276,6 +2276,10 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.fc2(out)
                 out = self.relu(out)
             return out
+
+    assert type(bool_argument) is bool
+    assert type(int_argument) is int
+    assert type(float_argument) is float
 
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -2307,6 +2311,9 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
                 out = self.fc2(out)
                 out = self.relu(out)
             return out
+
+    assert type(bool_arguments[0]) is bool
+    assert type(bool_arguments[1]) is bool
 
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
