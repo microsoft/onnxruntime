@@ -127,12 +127,9 @@ bool QkvToContext(
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     const int mask_dimension = static_cast<int>(mask_index_dims->size());
-    int max_sequence_length = 0;
-    if (mask_dimension == 4) {
-      max_sequence_length = mask_index_dims->at(3);
-    }
+    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
-                                      rsqrt_head_size, mask_dimension, max_sequence_length)) {
+                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length))) {
       return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index

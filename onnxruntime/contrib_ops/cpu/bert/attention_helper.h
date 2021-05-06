@@ -74,7 +74,7 @@ void PrepareMask(const int32_t* mask_index,
   T* p_mask = mask_data;
 
   // 4D mask in Megatron GPT2 is currently not support in CPU kernel
-  if (mask_index_dims->size() == 4) {
+  if (nullptr != mask_index_dims && mask_index_dims->size() == 4) {
     ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "4D mask in attention cpu kernel is not supported");
     return;
   }
