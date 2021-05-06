@@ -951,10 +951,9 @@ struct ProviderLibrary {
 };
 
 static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda" LIBRARY_EXTENSION
-#if 0
 #ifndef _WIN32
-                                      ,false /* unload - On Linux if we unload the cuda shared provider we crash */
-#endif
+                                      ,
+                                      false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
