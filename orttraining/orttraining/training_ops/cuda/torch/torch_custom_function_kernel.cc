@@ -31,6 +31,73 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOpGrad);
 
+void PythonOp::add_int_scalar_args() {
+  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+  for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
+    const_arg_positions_.emplace_back(input_int_scalar_positions_.at(i));
+    const_args_.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
+  }
+
+  for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
+    const_arg_positions_.emplace_back(input_float_scalar_positions_.at(i));
+    const_args_.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
+  }
+}
+
+void PythonOp::add_input_tuple_args() {
+  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+  for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_int_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("L", input_int_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions_.emplace_back(input_int_tuple_positions_.at(i));
+    const_args_.emplace_back(tuple);
+  }
+}
+
+void PythonOp::add_float_tuple_args() {
+  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+  for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
+    // Process i-th tuple.
+    // Starting index of i-th tuple in the concatenation buffer.
+    const size_t begin = input_float_tuple_begins_.at(i);
+    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
+    const size_t end = (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
+    PyObject* tuple = PyTuple_New(end - begin);
+    for (size_t j = begin; j < end; ++j) {
+      PyObject* item = Py_BuildValue("f", input_float_tuples_.at(j));
+      PyTuple_SetItem(tuple, j - begin, item);
+    }
+    const_arg_positions_.emplace_back(input_float_tuple_positions_.at(i));
+    const_args_.emplace_back(tuple);
+  }
+}
+
+void PythonOp::add_pointer_scalar_args() {
+  ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
+  for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
+    const_arg_positions_.emplace_back(input_pointer_scalar_positions_.at(i));
+    PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
+    const_args_.emplace_back(ptr);
+  }
+}
+
+void PythonOp::create_const_args() {
+  ORT_ENFORCE(const_args_.size() == 0);
+  ORT_ENFORCE(const_arg_positions_.size() == 0);
+  PythonOp::add_int_scalar_args();
+  PythonOp::add_input_tuple_args();
+  PythonOp::add_float_tuple_args();
+  PythonOp::add_pointer_scalar_args();
+}
+
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -45,65 +112,12 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
 
-  // Prepare those non-tensor inputs for python calls.
-  // todo: if they are not using too much memory, should we created them once? only in the first iteration.
-  std::vector<void*> const_args;
-  std::vector<int64_t> const_arg_positions;
-  for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
-    const_arg_positions.emplace_back(input_int_scalar_positions_.at(i));
-    const_args.emplace_back(Py_BuildValue("L", static_cast<long long>(input_int_scalars_.at(i))));
-  }
-
-  for (size_t i = 0; i < input_float_scalars_.size(); ++i) {
-    const_arg_positions.emplace_back(input_float_scalar_positions_.at(i));
-    const_args.emplace_back(Py_BuildValue("f", input_float_scalars_.at(i)));
-  }
-
-  for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
-    // Process i-th tuple.
-    // Starting index of i-th tuple in the concatenation buffer.
-    const size_t begin = input_int_tuple_begins_.at(i);
-    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
-    const size_t end = (i + 1 == input_int_tuple_begins_.size()) ? input_int_tuples_.size() : input_int_tuple_begins_.at(i + 1);
-    PyObject* tuple = PyTuple_New(end - begin);
-    for (size_t j = begin; j < end; ++j) {
-      PyObject* item = Py_BuildValue("L", input_int_tuples_.at(j));
-      PyTuple_SetItem(tuple, j - begin, item);
-    }
-    const_arg_positions.emplace_back(input_int_tuple_positions_.at(i));
-    const_args.emplace_back(tuple);
-  }
-
-  for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
-    // Process i-th tuple.
-    // Starting index of i-th tuple in the concatenation buffer.
-    const size_t begin = input_float_tuple_begins_.at(i);
-    // Endding (exclusive) index of i-th tuple in the concatenation buffer.
-    const size_t end = (i + 1 == input_float_tuple_begins_.size()) ? input_float_tuples_.size() : input_float_tuple_begins_.at(i + 1);
-    PyObject* tuple = PyTuple_New(end - begin);
-    for (size_t j = begin; j < end; ++j) {
-      PyObject* item = Py_BuildValue("f", input_float_tuples_.at(j));
-      PyTuple_SetItem(tuple, j - begin, item);
-    }
-    const_arg_positions.emplace_back(input_float_tuple_positions_.at(i));
-    const_args.emplace_back(tuple);
-  }
-
-  for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
-    const_arg_positions.emplace_back(input_pointer_scalar_positions_.at(i));
-    PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
-    std::cout << std::this_thread::get_id() << " [torch_custom_function_kernel.cc] const_ptr: " << ptr << std::endl;
-    PyObject_Print(ptr, stdout, 0);
-    std::cout << std::endl;
-    const_args.emplace_back(ptr);
-  }
-
   // occupied[i] being true means the i-th input argument
   // to Python function has been set.
-  std::vector<bool> occupied(inputs.size() + const_args.size(), false);
+  std::vector<bool> occupied(inputs.size() + const_args_.size(), false);
 
   // We know all non-tensors were set above, so let's catch up.
-  for (const auto pos : const_arg_positions) {
+  for (const auto pos : const_arg_positions_) {
     occupied.at(pos) = true;
   }
 
@@ -123,7 +137,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args_, const_arg_positions_, outputs);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?
