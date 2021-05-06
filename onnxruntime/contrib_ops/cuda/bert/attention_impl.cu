@@ -27,7 +27,6 @@ limitations under the License.
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
 #include "attention_softmax.h"
-#include <stdio.h>
 
 using namespace onnxruntime::cuda;
 using namespace cub;
