@@ -131,12 +131,37 @@ std::vector<OrtValue*> CreateArgs(OpKernelContext* context) {
   return args;
 }
 
+void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_args) {
+  // Handle the outputs;
+  // The 1st output is context index of auto grad function.
+  // Other outputs are address of OrtValue we got from python script run.
+  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_args[0]);
+  ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
+
+  // todo(pengwa): optional? re-visit this once we have better understanding on how PyTorch handle the ref cnt.
+  Py_INCREF(ctx_addr);
+
+  Tensor* ctx_id_tensor = context->Output(0, {1});
+  ORT_ENFORCE(ctx_id_tensor != nullptr, "Context tensor should not be null.");
+  int64_t* ctx_id_data = ctx_id_tensor->template MutableData<int64_t>();
+  *ctx_id_data = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+}
+
+void SetOtherOutputs(OpKernelContext* context, std::vector<void*>& returned_args) {
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  for (size_t i = 1; i < static_cast<size_t>(ctx_internal->OutputCount()); ++i) {
+    // The returned pointer points to a OrtValue created on Python side.
+    // Here we just cast it to the right type.
+    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
+    ORT_ENFORCE(ptr, "Returned argument from Python should not be null.");
+    // Set the output directly to Python-generated OrtValue value.
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+  }
+}
+
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-  ORT_ENFORCE(nullptr != context);
-  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  // This is the output count of ORT op. Not the called Python function.
 
   std::vector<OrtValue*> args = CreateArgs(context);
   std::vector<void*> returned_args;
@@ -152,30 +177,8 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  // Handle the outputs;
-  // The 1st output is context index of auto grad function.
-  // Other outputs are address of OrtValue we got from python script run.
-  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_args[0]);
-  ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
-  int64_t ctx_index = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
-
-  // todo(pengwa): optional? re-visit this once we have better understanding on how PyTorch handle the ref cnt.
-  Py_INCREF(ctx_addr);
-
-  Tensor* first_output_tensor = context->Output(0, {1});
-  ORT_ENFORCE(first_output_tensor != nullptr, "first output tensor should not be null.");
-  int64_t* step_data_new = first_output_tensor->template MutableData<int64_t>();
-  *step_data_new = ctx_index;
-
-  for (size_t index = 1; index < static_cast<size_t>(ctx_internal->OutputCount()); ++index) {
-    void* forward_ret_ortvalue_addr = returned_args.at(index);
-    auto* forward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(forward_ret_ortvalue_addr);
-    ORT_ENFORCE(forward_ret_ortvalue_ptr != nullptr, "forward_ret_ortvalue_ptr should not be null");
-
-    // Set the ORTValue directly as outputs.
-    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *forward_ret_ortvalue_ptr));
-  }
-
+  SetContextOutput(context, returned_args);
+  SetOtherOutputs(context, returned_args);
   return Status::OK();
 }
 
