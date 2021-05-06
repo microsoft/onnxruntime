@@ -3,38 +3,26 @@
 
 #import <Foundation/Foundation.h>
 
+#import "ort_enums.h"
+
 NS_ASSUME_NONNULL_BEGIN
 
-/**
- * The supported ORT value types.
- */
-typedef NS_ENUM(int32_t, ORTValueType) {
-  ORTValueTypeUnknown,
-  ORTValueTypeTensor,
-};
-
-/**
- * The supported ORT tensor element data types.
- */
-typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
-  ORTTensorElementDataTypeUndefined,
-  ORTTensorElementDataTypeFloat,
-  ORTTensorElementDataTypeInt32,
-};
+@class ORTValueTypeInfo;
+@class ORTTensorTypeAndShapeInfo;
 
 /**
  * An ORT value encapsulates data used as an input or output to a model at runtime.
  */
 @interface ORTValue : NSObject
 
-- (nullable instancetype)init NS_UNAVAILABLE;
+- (instancetype)init NS_UNAVAILABLE;
 
 /**
  * Creates a value that is a tensor.
  * The tensor data is allocated by the caller.
  *
- * @param data The tensor data.
- * @param type The tensor data element type.
+ * @param tensorData The tensor data.
+ * @param elementType The tensor element data type.
  * @param shape The tensor shape.
  * @param[out] error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
@@ -45,34 +33,21 @@ typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
                                       error:(NSError**)error;
 
 /**
- * Gets the value type.
+ * Gets the type information.
  *
- * @param[out] valueType The type of the value.
  * @param[out] error Optional error information set if an error occurs.
- * @return Whether the value type was retrieved successfully.
+ * @return The type information, or nil if an error occurs.
  */
-- (BOOL)valueType:(ORTValueType*)valueType
-            error:(NSError**)error;
+- (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error;
 
 /**
- * Gets the tensor data element type.
- * This assumes that the value is a tensor.
- *
- * @param[out] elementType The type of the tensor's data elements.
- * @param[out] error Optional error information set if an error occurs.
- * @return Whether the tensor data element type was retrieved successfully.
- */
-- (BOOL)tensorElementType:(ORTTensorElementDataType*)elementType
-                    error:(NSError**)error;
-
-/**
- * Gets the tensor shape.
+ * Gets the tensor type and shape information.
  * This assumes that the value is a tensor.
  *
  * @param[out] error Optional error information set if an error occurs.
- * @return The tensor shape, or nil if an error occurs.
+ * @return The tensor type and shape information, or nil if an error occurs.
  */
-- (nullable NSArray<NSNumber*>*)tensorShapeWithError:(NSError**)error;
+- (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error;
 
 /**
  * Gets the tensor data.
@@ -82,6 +57,32 @@ typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
  * @return The tensor data, or nil if an error occurs.
  */
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error;
+
+@end
+
+/**
+ * A value's type information.
+ */
+@interface ORTValueTypeInfo : NSObject
+
+/** The value type. */
+@property(nonatomic) ORTValueType type;
+
+/** The tensor type and shape information, if the value is a tensor. */
+@property(nonatomic, nullable) ORTTensorTypeAndShapeInfo* tensorTypeAndShapeInfo;
+
+@end
+
+/**
+ * A tensor's type and shape information.
+ */
+@interface ORTTensorTypeAndShapeInfo : NSObject
+
+/** The tensor element data type. */
+@property(nonatomic) ORTTensorElementDataType elementType;
+
+/** The tensor shape. */
+@property(nonatomic) NSArray<NSNumber*>* shape;
 
 @end
 

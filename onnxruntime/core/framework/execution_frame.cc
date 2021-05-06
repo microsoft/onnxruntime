@@ -138,10 +138,10 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value,
-                                                     size_t nnz) {
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index, const TensorShape* shape, OrtValue*& p_ort_value,
+                                                     const Node& node, size_t nnz) {
   auto status = Status::OK();
-  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
 
   // return nullptr if it is optional
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
@@ -158,6 +158,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
+      if (this->IsOutput(ort_value_idx)) {
+        VerifyOutputSizes(output_index, node, shape);
+      }
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);
     }
   }
@@ -165,6 +168,51 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
+void IExecutionFrame::VerifyOutputSizes(int output_index, const Node& node,
+                                       const TensorShape* output_shape) {
+  ProtoHelperNodeContext protoContext(node);
+  OpNodeProtoHelper<ProtoHelperNodeContext> info(&protoContext);
+
+  const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
+
+  if (outputproto == nullptr) {
+    return;
+  }
+
+  if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
+    return;
+  }
+  const auto& tensortype = outputproto->tensor_type();
+  if (tensortype.has_shape()) {
+    const auto& shape = tensortype.shape();
+
+    int actual_num_dims = static_cast<int>(output_shape->NumDimensions());
+    int expected_num_dims = shape.dim_size();
+    if (actual_num_dims != expected_num_dims) {
+      if (GetLogger() != nullptr) {
+        LOGS(*GetLogger(), WARNING) << "Number of dimension(" << actual_num_dims << ") of output shape didn't match "
+                                               << "with model's expected number("<< expected_num_dims <<") of dimension of output shape";
+      }
+      return;
+    }
+
+    for (uint32_t output_dim = 0, end = actual_num_dims; output_dim < end; ++output_dim) {
+      const auto dim = shape.dim(output_dim);
+      
+      if (dim.has_dim_value()) {
+        int64_t expected_size = dim.dim_value();
+        int64_t actual_size = (*output_shape)[output_dim];
+        if (expected_size != actual_size) {
+          if (GetLogger() != NULL) {
+            LOGS(*GetLogger(), WARNING) << "Actual dimension(" << actual_size << ") didn't match with expected dimension ("
+                                                   << expected_size << ") for outputProtoIndex: " << output_index;
+          }
+          return;
+        }
+      }
+    }
+  }
+}
 bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
   // By default, there is not information about inferred shape, so this default
   // implementation always returns false. The derived class of IExecutionFrame
@@ -686,6 +734,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
+}
+
+const logging::Logger* ExecutionFrame::GetLogger() {
+  return &(session_state_.Logger());
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
