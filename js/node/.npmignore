@@ -1,7 +1,6 @@
 /.vscode/
 /bin/
 /build/
-/examples/
 /prebuilds/
 /script/
 /src/
@@ -10,11 +9,8 @@
 /types/**/*.d.ts
 !/types/lib/**/*.d.ts
 
-/lib/**/*.ts
-/lib/**/*.js.map
+CMakeLists.txt
+tsconfig.json
+tsconfig.tsbuildinfo
 
-/.clang-format
-/.eslintrc.js
-/.gitmodules
-/CMakeLists.txt
-/tsconfig.json
+*.tgz

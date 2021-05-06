@@ -88,7 +88,7 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
-add_library(onnxruntime_common ${onnxruntime_common_src})
+onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)

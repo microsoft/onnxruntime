@@ -4,9 +4,10 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
-from onnx import helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
+from fusion_utils import NumpyHelper
 
 logger = getLogger(__name__)
 
@@ -99,7 +100,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             if initializer is None:
                 continue
             bias_index = i
-            bias_weight = numpy_helper.to_array(initializer)
+            bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
             logger.debug(f"Bias weight not found")

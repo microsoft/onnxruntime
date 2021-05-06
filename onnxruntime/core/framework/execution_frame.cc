@@ -52,7 +52,6 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
-
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -66,9 +65,7 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 }
 
 void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
-
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
-
 
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
@@ -90,7 +87,7 @@ void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, 
 
         if (!dest.IsAllocated()) {
           AllocatorPtr allocator = GetAllocator(src.Location());
-          auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+          auto p_tensor = std::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
           auto ml_tensor = DataTypeImpl::GetType<Tensor>();
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
         }
@@ -138,10 +135,11 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value,
-                                                     size_t nnz) {
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index,
+                                                     const TensorShape* shape, OrtValue*& p_ort_value,
+                                                     const Node& node, size_t nnz) {
   auto status = Status::OK();
-  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
 
   // return nullptr if it is optional
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
@@ -158,6 +156,10 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
+      // shape is nullptr for traditional ML output values
+      if (shape != nullptr && IsOutput(ort_value_idx)) {
+        VerifyOutputSizes(output_index, node, *shape);
+      }
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);
     }
   }
@@ -249,7 +251,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
         // If the initializer is providing the output, the shape is known.
         AllocatorPtr allocator = GetAllocator(src.Location());
 
-        auto p_tensor = onnxruntime::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
+        auto p_tensor = std::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
         auto ml_tensor = DataTypeImpl::GetType<Tensor>();
         dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
       }
@@ -340,7 +342,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
-        planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
+        planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       } else {
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
@@ -486,7 +488,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   //no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
 
   {
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -564,7 +566,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pBuffer, location);
+  auto p_tensor = std::make_unique<Tensor>(element_type, shape, pBuffer, location);
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
   return Status::OK();
@@ -578,7 +580,7 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
 
 static Status AllocateTensorSequence(OrtValue& ort_value) {
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
-  auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
+  auto p_tensor_sequence = std::make_unique<TensorSeq>();
   ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
 
   return Status::OK();
@@ -588,7 +590,7 @@ static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
-  auto sparse = onnxruntime::make_unique<SparseTensor>(element_type, shape, nnz, allocator);
+  auto sparse = std::make_unique<SparseTensor>(element_type, shape, nnz, allocator);
   auto deleter = DataTypeImpl::GetType<SparseTensor>()->GetDeleteFunc();
   mlvalue.Init(sparse.release(), DataTypeImpl::GetType<SparseTensor>(), deleter);
 
@@ -696,6 +698,33 @@ AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
 Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx,
                                                    const TensorShape* shape, size_t nnz) {
   return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape, nnz);
+}
+
+void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) {
+  const NodeArg* output_def = node.OutputDefs()[output_index];
+  const auto* expected_shape = output_def->Shape();
+  if (expected_shape == nullptr) {
+    // model didn't specify shape and shape inferencing wasn't able to calculate it so nothing to compare against
+    return;
+  }
+
+  const size_t expected_rank = expected_shape->dim_size();
+  bool compatible = expected_rank == output_shape.NumDimensions();
+  if (compatible) {
+    for (size_t i = 0; i < expected_rank; ++i) {
+      const auto& expected_dim = expected_shape->dim().Get(static_cast<int>(i));
+      if (expected_dim.has_dim_value() && expected_dim.dim_value() != output_shape[i]) {
+        compatible = false;
+        break;
+      }
+    }
+  }
+
+  if (!compatible) {
+    LOGS(session_state_.Logger(), WARNING) << "Expected shape from model of " << *expected_shape
+                                           << " does not match actual shape of " << output_shape
+                                           << " for output " << output_def->Name();
+  }
 }
 
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
