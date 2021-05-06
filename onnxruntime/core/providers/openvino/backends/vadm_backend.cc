@@ -110,11 +110,10 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
-    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
-    config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
-#else
+#if defined(OPENVINO_2020_3)
     config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
+#else
+    config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
 #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
