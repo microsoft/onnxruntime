@@ -187,6 +187,8 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     } else if (mask_dimension == 3) {
       mask_offset = batch_index * sequence_length * all_sequence_length + sequence_index * all_sequence_length + threadIdx.x;
     } else if (mask_dimension == 4){
+      // Megatron code:
+      // ltor_mask = ltor_mask[..., (attention_scores.size(3)-hidden_states.size(1)):attention_scores.size(3), :attention_scores.size(3)]
       mask_offset = batch_index * max_sequence_length * max_sequence_length + (all_sequence_length - sequence_length) * max_sequence_length + sequence_index * max_sequence_length + threadIdx.x;
     }
 
