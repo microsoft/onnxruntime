@@ -1363,6 +1363,10 @@ TEST(AttentionTest, AttentionDummyMask2D) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskDummy);
 }
 
+TEST(AttentionTest, Attention4DMask) {
+    // TODO:
+}
+
 TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
   int batch_size = 2;
   int sequence_length = 2;

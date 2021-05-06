@@ -147,7 +147,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 3D data shall have shape batch_size x sequence_length x (past_sequence_length + sequence_length)");
       }
     } else if (mask_dims.size() == 4) {
-      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != 1) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != 1 || mask_dims[2] != mask_dims[3] || mask_dims[2] < past_sequence_length + sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 4D data shall have shape batch_size x 1 x max_sequence_length x max_sequence_length)");
       }
     } else {
