@@ -185,17 +185,17 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     if (mask_dimension == 2) {
       mask_offset = batch_index * all_sequence_length + threadIdx.x;
     } else if (mask_dimension == 3) {
-      mask_offset = batch_index * sequence_length * all_sequence_length + sequence_index * all_sequence_length + threadIdx.x;
+      mask_offset = (batch_index * sequence_length + sequence_index) * all_sequence_length + threadIdx.x;
     } else if (mask_dimension == 4){
       // Megatron code:
       // ltor_mask = ltor_mask[..., (attention_scores.size(3)-hidden_states.size(1)):attention_scores.size(3), :attention_scores.size(3)]
-      mask_offset = batch_index * max_sequence_length * max_sequence_length + (all_sequence_length - sequence_length) * max_sequence_length + sequence_index * max_sequence_length + threadIdx.x;
+      mask_offset = (batch_index * max_sequence_length + all_sequence_length - sequence_length + sequence_index) * max_sequence_length + threadIdx.x;
     }
 
     const int& mask = attention_mask[mask_offset];
     float mask_value = mask > 0 ? 0.0f : -10000.0f;
 
-    if (is_unidirectional) {
+    if (is_unidirectional && mask_dimension != 4) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset of from token in all sequence length.
       if (threadIdx.x > from_index) {
         mask_value += -10000.0f;
