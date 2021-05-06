@@ -297,7 +297,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // Add log to allow serving platforms to quantify ORT usage.
   // To avoid flooding the test logs, this is done for non-debug mode only
   // TODO: plug-in a platform specific telemetry provider to send the telemetry to
-#if defined(NDEBUG) && !defined(__wasm__)
+#if defined(NDEBUG) && !defined(__wasm__) && !defined(ENABLE_TRAINING)
 #ifdef _WIN32
   std::wostringstream ostr;
 #else
