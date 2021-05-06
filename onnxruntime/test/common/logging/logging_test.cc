@@ -262,5 +262,40 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
 }
 
+TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {
+  constexpr const char* logger_id = "TestStreamMacroFromConditionalWithoutCompoundStatement";
+  constexpr Severity min_log_level = Severity::kVERBOSE;
+  constexpr bool filter_user_data = false;
+  constexpr const char* true_message = "true";
+  constexpr const char* false_message = "false";
+
+  auto sink = std::make_unique<MockSink>();
+  {
+    testing::InSequence s{};
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(true_message))))
+        .WillOnce(PrintArgs());
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(false_message))))
+        .WillOnce(PrintArgs());
+  }
+
+  LoggingManager manager{std::move(sink), min_log_level, filter_user_data, InstanceType::Temporal};
+
+  auto logger = manager.CreateLogger(logger_id, min_log_level, filter_user_data);
+
+  auto log_from_conditional_without_compound_statement = [&logger](bool condition) {
+    if (condition)
+      LOGS(*logger, VERBOSE) << true_message;
+    else
+      LOGS(*logger, VERBOSE) << false_message;
+  };
+
+  log_from_conditional_without_compound_statement(true);
+  log_from_conditional_without_compound_statement(false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
