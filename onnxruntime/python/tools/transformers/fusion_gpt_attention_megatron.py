@@ -81,6 +81,7 @@ class FusionGptAttention(Fusion):
         if not self.model.find_graph_input(past):
             logger.info("expect past to be graph input")
             return
+
         unsqueeze_present_v = self.model.find_first_child_by_type(concat_v,
                                                                   'Unsqueeze',
                                                                   input_name_to_nodes,
@@ -112,7 +113,7 @@ class FusionGptAttention(Fusion):
             logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
             return
 
-        is_unidirectional = True
+        is_unidirectional = False
         slice_mask = None
         input_mask_nodes = None
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Cast', 'Softmax', 'Sub', 'Mul', 'Cast', 'MatMul'], [0, 0, 0, 0, 0, 0])
@@ -120,37 +121,37 @@ class FusionGptAttention(Fusion):
             (cast_qk, softmax_qk, sub_qk, mul_qk, cast_qk2, matmul_qk) = qk_nodes
             mask_nodes = self.model.match_parent_path(
                 sub_qk,
-                ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Slice', 'Gather'],
-                [1,      0,     1,       0,       0,           0])  # yapf: disable
+                ['Mul', 'Sub', 'Cast', 'Slice', 'Slice'],
+                [1,      0,     1,       0,       0])  # yapf: disable
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match unidirectional mask path")
                 return
 
-        gather_mask = mask_nodes[-1]
+        slice_mask = mask_nodes[-1]
 
         self.model.add_node(
             helper.make_node(
                 "Cast",
                 ["attention_mask"],
-                ['added_cast_output' + gather_mask.name],
-                'added_cast' + gather_mask.name,
+                ['added_cast_output_' + slice_mask.name],
+                'added_cast_' + slice_mask.name,
                 to=6
             )
         )
-        init_axes = helper.make_tensor('added_squeeze_axes', TensorProto.INT64, [1], [1])
-        self.model.add_initializer(init_axes)
-        self.model.add_node(
-            helper.make_node(
-                "Squeeze",
-                #inputs = ['added_cast_output' + gather_mask.name, 'added_squeeze_axes'],
-                inputs = ['added_cast_output' + gather_mask.name],
-                outputs = ['added_squeeze_output' + gather_mask.name],
-                axes=[1],
-                name = 'added_squeeze' + gather_mask.name)
-        )
-        gather_mask.input[0] = 'added_squeeze_output' + gather_mask.name
+        #init_axes = helper.make_tensor('added_squeeze_axes', TensorProto.INT64, [1], [1])
+        #self.model.add_initializer(init_axes)
+        #self.model.add_node(
+        #    helper.make_node(
+        #        "Squeeze",
+        #        #inputs = ['added_cast_output' + gather_mask.name, 'added_squeeze_axes'],
+        #        inputs = ['added_cast_output' + gather_mask.name],
+        #        outputs = ['added_squeeze_output' + gather_mask.name],
+        #        axes=[1],
+        #        name = 'added_squeeze' + gather_mask.name)
+        #)
+        slice_mask.input[0] = 'added_cast_output_' + slice_mask.name
 
-        attention_mask = gather_mask.input[0]
+        attention_mask = slice_mask.input[0]
 
         q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Split'], [0, 0, 0, 0])
         if q_nodes is None:
@@ -188,7 +189,7 @@ class FusionGptAttention(Fusion):
         attention_mask_input_name = attention_mask
 
         self.create_attention_node(matmul_together, add_together, matmul_all, add_all,  past, present, layernorm_before_attention.output[0],
-                                   reshape_qkv.output[0], attention_mask_input_name, is_unidirectional)
+                                   add_all_2.input[1], attention_mask_input_name, is_unidirectional)
 
         # we rely on prune_graph() to clean old subgraph nodes:
         # qk_nodes + q_nodes + k_nodes + v_nodes + mask_nodes + [reshape_qkv, transpose_qkv, matmul_qkv]

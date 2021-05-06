@@ -1,9 +1,9 @@
 from onnx import load_model, helper, external_data_helper, save_model, TensorProto
 #onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_split_op14/ChitChat_fp16_op14.onnx"
-onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_split_op14_optimized/ChitChat_fp16_op14.onnx"
+onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge_op14_optimized/ChitChat_fp16_op14.onnx"
 #onnx_model_path = "/bert_ort/wy/Megatron/ChitChatONNX/megatron_onnx_partial_6_layer/fp16_split.onnx"
 #fixed_onnx_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_optimized_fixed/fp16_merge_optimized.onnx"
-fixed_onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_split_op14_optimized_fixed/ChitChat_fp16_op14.onnx"
+fixed_onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge_op14_optimized_fixed/ChitChat_fp16_op14.onnx"
 
 model = load_model(onnx_model_path, format = None, load_external_data = True)
 model.opset_import[0].version = 14
@@ -15,6 +15,7 @@ init_split_1 = helper.make_tensor('split_v_1', TensorProto.INT64, [3], split_v_1
 split_v_2 = [1, 1]
 init_split_2 = helper.make_tensor('split_v_2', TensorProto.INT64, [2], split_v_2)
 model.graph.initializer.extend([init_split_1, init_split_2])
+
 for node in model.graph.node:
     if 'Squeeze' in node.name:
         init_axes = helper.make_tensor('axes' + node.name, TensorProto.INT64, [1], node.attribute[0].ints)

@@ -31,23 +31,14 @@ def create_dummy_inputs(batch_size, sequence_length, past_sequence_length,
 
     return input_ids, position_ids, attention_mask, past_key_values
 
-
-
 # optimize
 
-onnx_model_path = "/bert_ort/wy/Megatron/scripts/scripts_after_change/fp16_merge.onnx"
-#onnx_model_path = "/bert_ort/wy/Megatron/ChitChatONNX/megatron_onnx_partial/fp16_merge.onnx"
 #onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge/ChitChat_fp16_merge.onnx"
-#optimized_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_split_op14_optimized/ChitChat_fp16_op14.onnx"
-optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_gpt2/optimized.onnx"
+#optimized_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge_op14_optimized/ChitChat_fp16_op14.onnx"
+#fixed_onnx_model_path = "/bert_ort/wy/Megatron/10B_ChitChat_eot_onnx_merge_op14_optimized_fixed/ChitChat_fp16_op14.onnx"
 
-# Try create session
-# print("try create inference session")
-# import os
-# os.environ["ALLOW_RELEASED_ONNX_OPSET_ONLY"] = 0
-# import onnxruntime as ort
-# sess_options = ort.SessionOptions()
-# ort_session = ort.InferenceSession(onnx_model_path, sess_options)
+onnx_model_path = "/bert_ort/wy/Megatron/scripts/scripts_after_change/onnx_models/fp16_merge.onnx"
+optimized_model_path = "/bert_ort/wy/Transformers/megatron/onnxruntime/python/tools/transformers/megatron_gpt2/optimized.onnx"
 
 print("optimizing")
 from optimizer import optimize_model
@@ -66,27 +57,12 @@ opt_model = optimize_model(onnx_model_path,
                            use_gpu=False,
                            only_onnxruntime=False)
 
+opt_model.convert_model_float32_to_float16(cast_input_output=False)
 opt_model.save_model_to_file(optimized_model_path, use_external_data_format = True)
 print(opt_model.get_fused_operator_statistics())
 
 #test parity
-print("test parity")
-num_layers = 6
-input_ids, position_ids, attention_mask, past_key_values = create_dummy_inputs(1, 1, 0, 1024, 16, 6, 1024, "cuda", 50304, True)
-past_key_values_fp32 = [v.clone().to(torch.float32) for v in past_key_values]
 
-ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
-ort_inputs['attention_mask'] = numpy.ascontiguousarray(attention_mask.cpu().numpy())
-ort_inputs['position_ids'] = numpy.ascontiguousarray(position_ids.cpu().numpy())
-for i in range(num_layers):
-    if not MERGE_PAST_KEY_VALUE:
-        ort_inputs[f'past_key_{i}'] = numpy.ascontiguousarray(
-            past_key_values[2 * i].cpu().numpy())
-        ort_inputs[f'past_value_{i}'] = numpy.ascontiguousarray(
-            past_key_values[2 * i + 1].cpu().numpy())
-    else:
-        ort_inputs[f'past_{i}'] = numpy.ascontiguousarray(
-            past_key_values[i].cpu().numpy())
 
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 sess_options = SessionOptions()
@@ -95,17 +71,38 @@ execution_providers = ['CUDAExecutionProvider']
 ort_session_origin = InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 ort_session_optimized = InferenceSession(optimized_model_path, sess_options, providers=execution_providers)
 
-ort_outputs_origin = ort_session_origin.run(None, ort_inputs)
-ort_outputs_optimized = ort_session_optimized.run(None, ort_inputs)
 
-total_outputs = 1 + 2 * num_layers if not MERGE_PAST_KEY_VALUE else 1 + num_layers
-assert len(ort_outputs_origin) == total_outputs
+print("test parity")
+for batch_size in [1, 2, 4, 8, 16, 32]:
+    for past_sequence_length in [0, 1, 2, 4, 8, 16, 32, 64, 128]:
+        num_layers = 6
+        print("----------", batch_size, 512, past_sequence_length, "----------")
+        input_ids, position_ids, attention_mask, past_key_values = create_dummy_inputs(batch_size, 512, past_sequence_length, 1024, 16, 6, 1024, "cuda", 50304, True)
+        past_key_values_fp32 = [v.clone().to(torch.float32) for v in past_key_values]
 
-for i in range(total_outputs):
-    is_close = numpy.allclose(ort_outputs_origin[i], ort_outputs_optimized[i],
-                              rtol=0.00001,
-                              atol=0.00001)
-    diff = numpy.abs(ort_outputs_optimized[i] - ort_outputs_origin[i])
-    max_diff = numpy.amax(diff)
-    print(f'Original onnx and Optimized onnx results {i}: max_abs_diff={max_diff:.8f}')
+        ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
+        ort_inputs['attention_mask'] = numpy.ascontiguousarray(attention_mask.cpu().numpy())
+        ort_inputs['position_ids'] = numpy.ascontiguousarray(position_ids.cpu().numpy())
+        for i in range(num_layers):
+           if not MERGE_PAST_KEY_VALUE:
+               ort_inputs[f'past_key_{i}'] = numpy.ascontiguousarray(
+                   past_key_values[2 * i].cpu().numpy())
+               ort_inputs[f'past_value_{i}'] = numpy.ascontiguousarray(
+                   past_key_values[2 * i + 1].cpu().numpy())
+           else:
+               ort_inputs[f'past_{i}'] = numpy.ascontiguousarray(
+                   past_key_values[i].cpu().numpy())
 
+        ort_outputs_origin = ort_session_origin.run(None, ort_inputs)
+        ort_outputs_optimized = ort_session_optimized.run(None, ort_inputs)
+
+        total_outputs = 1 + 2 * num_layers if not MERGE_PAST_KEY_VALUE else 1 + num_layers
+        assert len(ort_outputs_origin) == total_outputs
+
+        for i in range(total_outputs):
+           is_close = numpy.allclose(ort_outputs_origin[i], ort_outputs_optimized[i],
+                                     rtol=0.00001,
+                                     atol=0.00001)
+           diff = numpy.abs(ort_outputs_optimized[i] - ort_outputs_origin[i])
+           max_diff = numpy.amax(diff)
+           print(f'Original onnx and Optimized onnx results {i}: max_abs_diff={max_diff:.8f}')
