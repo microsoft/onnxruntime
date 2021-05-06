@@ -9,7 +9,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 /*********************************************************************************************************************************
-* PropagateCastOps transformation tries to exapand float16 computation regions in the graph by converting float operations to float16.
+* PropagateCastOps transformation tries to expand float16 computation regions in the graph by converting float operations to float16.
 * In order to perform the the transformation, certain operations are considered FP16 safe, i.e. the computation may be performed
 * without effecting the numerical result, ex. transpose, shape, etc. The transformation supports three levels of optimization, 0, 1
 * and 2. Level 2 being the most agressive, may consider moving float operations to float16 which may result in different numerical results 
@@ -27,8 +27,8 @@ using namespace onnxruntime::common;
 *   2. Remove redundant casts
 *   3. Fuse sibling subgraphs with same cast operation
 * FloodFill:
-*   Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast perations down the
-*   graph. Using this strategy, for eatch pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
+*   Operations are converted from float to float16 by propagating float16 cast operations up the graph or float cast operations down the
+*   graph. Using this strategy, for each pre-existing float/float16 cast operations the transformation first finds the possible expansion of 
 *   float16 region up/down the graph using DFS/ReverseDFS and (TODO) identifies loss/gain by performing such expansion, considering 
 *   the gain by reducing float operations lower precision and loss due to newly inserted cast operations (/TODO).
 *   In addition to propagating cast operations up/down the graph, in this strategy, the above mentioned cast op reduction functions
@@ -70,7 +70,7 @@ static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
 
 /*
-*  The following two maps pecify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
+*  The following two maps specify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
 *  cast operations. All other inputs/outputs not listed in this table are not relevant for deciding whether an operation
 *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the inputs and outputs to validate 
 *  transformation.
@@ -106,7 +106,7 @@ static bool IsRelevantInput(const Node* node, const NodeArg* input) {
 }
 
 /*
-*  Check if the outnput is relevant to consider for cast propagation for the given node.
+*  Check if the output is relevant to consider for cast propagation for the given node.
 *  Return true if the opcode is not found in the opcode_to_output map.
 */
 static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
@@ -169,7 +169,7 @@ static Status InsertCastNodes(Graph& graph,
                               const NodeArgToConsumerMap& require_cast,
                               bool is_fp16,
                               std::deque<NodeIndex>& removed_nodes) {
-  //Create requirred new Cast nodes.
+  //Create required new Cast nodes.
   for (std::pair<NodeArg*, std::vector<Node*>> element : require_cast) {
     NodeArg* node_arg = element.first;
     std::vector<Node*> nodes = element.second;
@@ -368,15 +368,15 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 * RemoveBackToBackCasts
 * Remove FLOAT and FLOAT16 casts back-to-back, only if the parent cast is from FLOAT16 to FLOAT
 * and the child cast is from FLOAT to FLOAT16 or from FLOAT to FLOAT.
-* The tirivial case is parent cast has only one output. A non-trivial case handled by this function
+* The trivial case is parent cast has only one output. A non-trivial case handled by this function
 * is, parent has multiple children and one or more child node output is also a graph output.
-* In the non-trivial case, when a child-cast nullfies the parent cast, the consumer nodes are moved
-* from the child-cast to the producer of the parent-cast input. The code handles cornercases suchas
+* In the non-trivial case, when a child-cast nullifies the parent cast, the consumer nodes are moved
+* from the child-cast to the producer of the parent-cast input. The code handles cornercases such as
 * the child-cast output is also a graph output, in addition to possibly other nodes, and the
 * parent-cast has other output nodes. The first check CanRemoveNode rules-out the possibility of
 * parent-cast output also being the graph output.
 * The inputs is Cast to FLOAT16
-* With the possiblility of child/parent cast feeding other nodes/graph-output, the transformation is either
+* With the possibility of child/parent cast feeding other nodes/graph-output, the transformation is either
 *                         _____|______
 *                         | Opcode1  |
 *                         |__________|
@@ -506,7 +506,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
 /*
 *  SearchUpstream:
 *  ReverseDFS, traverse bottom-up, the graph upstream collecting all the NodeArgs that require a cast
-*  inorder to move an FP16 Cast operation up the graph.
+*  in order to move an FP16 Cast operation up the graph.
 *  Visited float NodeArgs are either in require_cast or require_type_change so that the same
 *  nodearg is traversed not more than once.
 *  If the level is 2, the functions traverses up the graph identifying required FP32 casts even if
@@ -589,7 +589,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
 /*
 *  SearchDownstream:
 *  Recursively DFS traverse the graph downstream collecting all the NodeArgs that require a cast
-*  inorder to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
+*  in order to remove an FP32 Cast operation up the graph. Also collect the NodeArgs that need to
 *  be converted from float to float16 along the way.
 */
 static void SearchDownstream(Graph& graph, NodeArg* node_arg,
@@ -733,7 +733,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
   if (require_cast_fp32.empty()) {
     require_type_change.insert(cast_input);
   }
-  // TODO need a huristic when to insert FP32 Cast
+  // TODO need a heuristic when to insert FP32 Cast
   if (require_cast.size() > 0 && require_cast.find(cast_input) == require_cast.end() /* && require_cast.size() >= require_cast_fp32.size() */) {
     if (require_cast_fp32.size() > 0) {
       InsertCastNodes(graph, require_cast_fp32, false, removed_nodes);
@@ -1089,7 +1089,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
 
 /*
 *  CreateCast
-*  Create a cast node based on the node_arg for the given data tpye. If the node_arg is a graph output is_graph_outut is set.
+*  Create a cast node based on the node_arg for the given data type. If the node_arg is a graph output is_graph_outut is set.
 *  If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
 *  of the new cast node. This function is used by InsertFP16Cast or InsertFP32Casts.
 */
@@ -1275,7 +1275,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
       if (strategy_ == GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce) {
         // Using InsertFP16Cast and InsertFP32Casts insert float16 casts on all inputs and float casts on all outputs.
-        // Each consumer of each output gets a seperate float cast inserted. Doing so will convert the computation of
+        // Each consumer of each output gets a separate float cast inserted. Doing so will convert the computation of
         // curren node from 32 bit float to 16 bit float operation. These cast operations will be eventually reduced.
         if (IsFP16Allow(node.OpType(), level_)) {
           // Insert FP16 Cast on all float inputs
