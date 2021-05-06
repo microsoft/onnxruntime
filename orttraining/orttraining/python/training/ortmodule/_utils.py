@@ -7,6 +7,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
 import torch
+import onnxruntime
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
@@ -104,3 +105,109 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+def _load_aten_op_executor_cpp_extension(verbosity, is_rocm_pytorch):
+    aten_op_executor_cpp_source = """
+#include <torch/torch.h>
+#include <ATen/DLConvertor.h>
+#include <unordered_map>
+#include <tuple>
+#include <vector>
+
+class ATenOperatorCache {
+ public:
+  static ATenOperatorCache& Instance() {
+    static ATenOperatorCache instance;
+    return instance;
+  }
+
+  std::shared_ptr<torch::jit::Operator> GetOperator(const std::string& op_name) {
+    if (ops_.find(op_name) == ops_.end()) {
+      auto& ops = torch::jit::getAllOperatorsFor(torch::jit::Symbol::fromQualString(op_name));
+      TORCH_INTERNAL_ASSERT(ops.size() == 1);
+      ops_[op_name] = ops.front();
+    }
+
+    return ops_.at(op_name);
+  }
+
+ private:
+  ATenOperatorCache() = default;
+  std::unordered_map<std::string, std::shared_ptr<torch::jit::Operator>> ops_;
+};
+
+// Some arguments of backward operator are not from forward operator's input or output,
+// but need some processing. Need to put such processing code here.
+
+using TensorTransformFunc = std::function<c10::IValue(const at::Tensor&)>;
+
+static const TensorTransformFunc embedding_num_weights = [](const at::Tensor& tensor) {
+  return c10::IValue(tensor.size(0));
+};
+
+static const std::unordered_map<std::string, std::unordered_map<size_t, TensorTransformFunc>> TENSOR_TRANSFORM_FUNCS = {
+    {"aten::embedding_backward", {{2, embedding_num_weights}}},
+};
+
+template <typename T>
+void SetIValueArguments(std::vector<c10::IValue>& ivalue_arguments,
+                        const std::vector<std::tuple<size_t, T>>& raw_arguments) {
+  for (size_t i = 0; i < raw_arguments.size(); i++) {
+    ivalue_arguments[std::get<0>(raw_arguments[i])] = c10::IValue(std::get<1>(raw_arguments[i]));
+  }
+}
+
+// TODO: Add more argument types, such as list type.
+std::vector<DLManagedTensor*> ExecuteATenOperator(
+    const char* op_name, const std::vector<std::tuple<size_t, DLManagedTensor*>>& tensor_arguments,
+    const std::vector<std::tuple<size_t, int64_t>>& int_arguments,
+    const std::vector<std::tuple<size_t, float>>& float_arguments,
+    const std::vector<std::tuple<size_t, bool>>& bool_arguments) {
+  std::string op_name_str(op_name);
+  std::shared_ptr<torch::jit::Operator> op = ATenOperatorCache::Instance().GetOperator(op_name_str);
+  std::vector<c10::IValue> arguments;
+  arguments.resize(op->schema().arguments().size());
+  for (size_t i = 0; i < tensor_arguments.size(); i++) {
+    size_t index = std::get<0>(tensor_arguments[i]);
+    at::Tensor tensor = at::fromDLPack(std::get<1>(tensor_arguments[i]));
+    bool has_transform_func = false;
+    if (TENSOR_TRANSFORM_FUNCS.find(op_name_str) != TENSOR_TRANSFORM_FUNCS.end()) {
+      const auto& transform_funcs = TENSOR_TRANSFORM_FUNCS.at(op_name_str);
+      if (transform_funcs.find(index) != transform_funcs.end()) {
+        arguments[index] = transform_funcs.at(index)(tensor);
+        has_transform_func = true;
+      }
+    }
+
+    if (!has_transform_func) {
+      arguments[index] = c10::IValue(tensor);
+    }
+  }
+
+  SetIValueArguments<int64_t>(arguments, int_arguments);
+  SetIValueArguments<float>(arguments, float_arguments);
+  SetIValueArguments<bool>(arguments, bool_arguments);
+
+  torch::jit::Stack stack;
+  for (size_t i = 0; i < arguments.size(); i++) {
+    torch::jit::push(stack, arguments[i]);
+  }
+
+  op->getOperation()(&stack);
+  // TODO: support single tensor as return value for now.
+  at::Tensor output;
+  torch::jit::pop(stack, output);
+  std::vector<DLManagedTensor*> result;
+  result.emplace_back(at::toDLPack(output));
+  return result;
+}
+
+size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
+    """
+
+    aten_op_executor_cpp_extension = load_inline(name='inline_extension_aten_op_executor', cpp_sources=[aten_op_executor_cpp_source],
+                                                 extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
+                                                 functions=['execute_aten_operator_address'],
+                                                 verbose=verbosity, with_cuda=True)
+
+    onnxruntime.register_aten_op_executor(str(aten_op_executor_cpp_extension.execute_aten_operator_address()))

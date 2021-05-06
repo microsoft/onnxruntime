@@ -79,13 +79,6 @@ if (onnxruntime_ENABLE_TRAINING)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
-
-  # Build provider with Pytorch's C++ APIs.
-  if (onnxruntime_USE_TORCH)
-    target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${TORCH_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
-  endif()
 endif()
 
 if(APPLE)

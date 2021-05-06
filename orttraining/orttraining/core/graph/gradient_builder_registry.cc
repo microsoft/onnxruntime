@@ -104,9 +104,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Min", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Max", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Tile", GetTileGradient);
-#ifdef USE_TORCH
-  REGISTER_GRADIENT_BUILDER("ATenFunctionOp", GetATenFunctionOpGradient);
-#endif
+  REGISTER_GRADIENT_BUILDER("ATenOp", GetATenOpGradient);
 };
 
 }  // namespace training

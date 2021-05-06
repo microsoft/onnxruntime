@@ -29,6 +29,7 @@
 
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 // execution provider factory creator headers
@@ -940,6 +941,15 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+#ifdef ENABLE_TRAINING
+   m.def(
+      "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
+        size_t aten_op_executor_address_int;
+        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+        void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+        contrib::aten_ops::ATenOperatorExecutor::Instance().SetExecutorFunc(p_aten_op_executor);
+      });
+#endif
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config

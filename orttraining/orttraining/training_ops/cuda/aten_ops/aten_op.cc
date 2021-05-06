@@ -1,21 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cpu/aten_functions/aten_function_op.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "core/providers/cuda/cuda_fwd.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    ATenFunctionOp, kMSDomain, 1, kCudaExecutionProvider,
+    ATenOp, kMSDomain, 1, kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    onnxruntime::contrib::ATenFunctionOpBase<false>);
+    onnxruntime::contrib::ATenOpBase<false>);
 
 ONNX_OPERATOR_KERNEL_EX(
-    ATenFunctionOpGrad, kMSDomain, 1, kCudaExecutionProvider,
+    ATenOpGrad, kMSDomain, 1, kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    onnxruntime::contrib::ATenFunctionOpBase<true>);
+    onnxruntime::contrib::ATenOpBase<true>);
 
 }  // namespace cuda
 }  // namespace onnxruntime

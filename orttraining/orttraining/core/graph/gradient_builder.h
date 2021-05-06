@@ -72,9 +72,7 @@ DECLARE_GRADIENT_BUILDER(GetClipGradient)
 DECLARE_GRADIENT_BUILDER(GetAbsGradient)
 DECLARE_GRADIENT_BUILDER(GetMinMaxGradient)
 DECLARE_GRADIENT_BUILDER(GetTileGradient)
-#ifdef USE_TORCH
-DECLARE_GRADIENT_BUILDER(GetATenFunctionOpGradient)
-#endif
+DECLARE_GRADIENT_BUILDER(GetATenOpGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

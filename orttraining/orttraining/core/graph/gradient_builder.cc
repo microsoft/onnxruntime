@@ -15,10 +15,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-
-#ifdef USE_TORCH
-#include "orttraining/training_ops/cpu/aten_functions/aten_function_config.h"
-#endif
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1609,8 +1606,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   return result;
 }
 
-#ifdef USE_TORCH
-IMPLEMENT_GRADIENT_BUILDER(GetATenFunctionOpGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   const auto& src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
   ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
@@ -1620,32 +1616,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenFunctionOpGradient) {
     attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
   }
 
-  ORT_ENFORCE(contrib::aten_functions::ATEN_FUNCTIONS.find(name) !=
-              contrib::aten_functions::ATEN_FUNCTIONS.end());
-  contrib::aten_functions::ATenFunctionConfig func_config = contrib::aten_functions::ATEN_FUNCTIONS.at(name);
+  ORT_ENFORCE(contrib::aten_ops::ATEN_OPERATORS.find(name) != contrib::aten_ops::ATEN_OPERATORS.end());
+  contrib::aten_ops::ATenOperatorConfig op_config = contrib::aten_ops::ATEN_OPERATORS.at(name);
 
   std::vector<int64_t> grad_output_types;
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
 
-  for (size_t i = 0; i < func_config.backward_tensor_input_configs.size(); i++) {
-    size_t index = static_cast<size_t>(std::get<1>(func_config.backward_tensor_input_configs[i]));
-    switch (std::get<0>(func_config.backward_tensor_input_configs[i]))
-    {
-    case contrib::aten_functions::GRAD_OUTPUT:
-      input_args.emplace_back(GO(index));
-      break;
-    case contrib::aten_functions::FORWARD_INPUT:
-      input_args.emplace_back(I(index));
-      break;
-    case contrib::aten_functions::FORWARD_OUTPUT:
-      input_args.emplace_back(O(index));
-      break;
+  for (size_t i = 0; i < op_config.backward_tensor_input_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_tensor_input_configs[i]));
+    switch (std::get<0>(op_config.backward_tensor_input_configs[i])) {
+      case contrib::aten_ops::GRAD_OUTPUT:
+        input_args.emplace_back(GO(index));
+        break;
+      case contrib::aten_ops::FORWARD_INPUT:
+        input_args.emplace_back(I(index));
+        break;
+      case contrib::aten_ops::FORWARD_OUTPUT:
+        input_args.emplace_back(O(index));
+        break;
     }
   }
 
-  for (size_t i = 0; i < func_config.backward_output_configs.size(); i++) {
-    size_t index = static_cast<size_t>(func_config.backward_output_configs[i]);
+  for (size_t i = 0; i < op_config.backward_output_configs.size(); i++) {
+    size_t index = static_cast<size_t>(op_config.backward_output_configs[i]);
     if (IsGradientRequiredForSrcNodeInput(index)) {
       output_args.emplace_back(GI(index));
     } else {
@@ -1656,9 +1650,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenFunctionOpGradient) {
   }
 
   attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
-  return std::vector<NodeDef>{NodeDef(OpDef{"ATenFunctionOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
-#endif
 
 }  // namespace training
 }  // namespace onnxruntime

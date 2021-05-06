@@ -133,8 +133,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_functions/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_functions/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -153,17 +151,6 @@ if (onnxruntime_ENABLE_TRAINING)
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
-  if (NOT onnxruntime_USE_TORCH)
-    file(GLOB_RECURSE onnxruntime_cpu_aten_functions_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_functions/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_functions/*.h"
-    )
-
-    list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_aten_functions_srcs})
-  endif()
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/dlpack/*.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/*.h"
@@ -220,20 +207,12 @@ if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
-endif()
 
-if (onnxruntime_ENABLE_TRAINING)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
 
-  # Build provider with Pytorch's C++ APIs.
-  if (onnxruntime_USE_TORCH)
-    target_compile_options(onnxruntime_providers PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
-    target_include_directories(onnxruntime_providers PRIVATE ${TORCH_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
-    target_link_libraries(onnxruntime_providers PRIVATE nlohmann_json::nlohmann_json)
-  endif()
+  target_link_libraries(onnxruntime_providers PRIVATE nlohmann_json::nlohmann_json)
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -290,12 +269,6 @@ if (onnxruntime_USE_CUDA)
       )
     endif()
 
-    if (NOT onnxruntime_USE_TORCH)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/aten_functions/aten_function_op.cc"
-      )
-    endif()
-
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()
@@ -342,14 +315,6 @@ if (onnxruntime_USE_CUDA)
 
     if (onnxruntime_USE_NCCL)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-    endif()
-
-    # Build provider with Pytorch's C++ APIs.
-    if (onnxruntime_USE_TORCH)
-      target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>")
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${TORCH_INCLUDE_DIRS})
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training ${TORCH_LIBRARIES})
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE nlohmann_json::nlohmann_json)
     endif()
   endif()
 

@@ -111,6 +111,8 @@ class GraphExecutionManager(ABC):
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
+        _utils._load_aten_op_executor_cpp_extension(self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
+
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
         """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
