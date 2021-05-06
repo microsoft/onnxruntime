@@ -56,17 +56,31 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     }
 
     const Node* node = graph_->GetProducerNode(name);
-    if (!node) {
-      ORT_THROW(name, " couldn't find the producer node.");
-    }
-
-    if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
-      non_differentiable_y_node_arg_names_.insert(name);
-      LOGS(logger_, INFO) << "The model weights and inputs are non-differentiable from " << name << ". "
-                          << "ORT will assume no gradient will be provided for " << name << ".";
+    if (node) {
+      if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
+        non_differentiable_y_node_arg_names_.insert(name);
+        LOGS(logger_, INFO) << "The model weights and inputs are non-differentiable from " << name << ". "
+                            << "ORT will assume no gradient will be provided for " << name << ".";
+      } else {
+        y_node_args_.insert(node_arg);
+        y_nodes_.insert(node);
+      }
     } else {
-      y_node_args_.insert(node_arg);
-      y_nodes_.insert(node);
+      const std::vector<const NodeArg*>& graph_inputs = graph_->GetInputs();
+      bool is_graph_input = false;
+      for (const auto input : graph_inputs) {
+        if (input->Name() == name) {
+          is_graph_input = true;
+          break;
+        }
+      }
+
+      if (is_graph_input) {
+        LOGS(logger_, INFO) << "NodeArg " << name << " cannot find a producer node, "
+                                                     "but it's a graph input.";
+      } else {
+        ORT_THROW(name, ": couldn't find the producer node, and it's not a graph input.");
+      }
     }
   }
 

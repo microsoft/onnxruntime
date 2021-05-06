@@ -57,8 +57,8 @@ class GraphExecutionManager(ABC):
         self._execution_agent = None
 
         # Debug flags
-        self._save_onnx = False
-        self._save_onnx_prefix = ''
+        self._save_onnx = True
+        self._save_onnx_prefix = 'bypass'
 
         # Graph transformer config
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
@@ -87,7 +87,7 @@ class GraphExecutionManager(ABC):
         self._module_output_schema = None
 
         # Log level
-        self._loglevel = _logger.LogLevel.WARNING
+        self._loglevel = _logger.LogLevel.INFO
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
