@@ -17,7 +17,7 @@
 template <typename T>
 struct DeleteOnUnloadPtr {
   DeleteOnUnloadPtr(T* p) : p_(p) { }
-  ~DeleteOnUnloadPtr() { delete p; }
+  ~DeleteOnUnloadPtr() { delete p_; }
 
   T& operator*() { return *p_; }
   const T& operator*() const { return *p_; }
