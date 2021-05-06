@@ -507,6 +507,13 @@ void RunGemmGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
+
+  // Single Batch no third input
+  {
+    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}}, {{1, 3}}, &max_error, attributes, true, true);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
   // Single Batch with Scalar Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error, attributes, true, true);
@@ -796,13 +803,17 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
 
   //globalaveragepool
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error, {},
+                                          /*check_not_have_gradient*/ true,
+                                          /*check_not_have_shape_inferencing*/ true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   //globalaveragepool_precomputed
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error, {},
+                                          /*check_not_have_gradient*/ true,
+                                          /*check_not_have_shape_inferencing*/ true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }

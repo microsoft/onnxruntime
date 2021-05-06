@@ -57,7 +57,9 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
-      ("use_gist", "Use GIST encoding/decoding.")
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("use_dnnl", "Use DNNL execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
@@ -86,6 +88,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     params.lr_params.initial_lr = flags["learning_rate"].as<float>();
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -201,10 +205,9 @@ void setup_training_params(MnistParameters& params) {
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
   params.output_dir = ORT_TSTR(".");
 
-  //Gist encode
-  params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
                                            "loss",
                                            {"predictions", "labels"});

@@ -16,9 +16,9 @@ if (['prod', 'dev', 'test'].indexOf(MODE) === -1) {
 
 // Path variables
 const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding');
-const WASM_JS_PATH = path.join(WASM_BINDING_FOLDER, 'onnxruntime_wasm.js');
+const WASM_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
 const WASM_DIST_FOLDER = path.join(__dirname, '..', 'dist');
-const WASM_DIST_PATH = path.join(WASM_DIST_FOLDER, 'onnxruntime_wasm.wasm');
+const WASM_DIST_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 
 try {
   npmlog.info('Build', `Ensure file: ${WASM_JS_PATH}`);
