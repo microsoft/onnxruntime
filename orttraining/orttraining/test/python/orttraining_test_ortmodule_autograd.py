@@ -616,4 +616,4 @@ test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
 # input is in-place updated, but does require gradient.
 test_InplaceUpdateInputAsOutputRequireGrad()
 test_InplaceUpdateInputNotAsOutputRequireGrad()
-# test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
+test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()

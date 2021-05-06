@@ -30,12 +30,15 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
         unwrapped_values = []
         ctx = None
         with torch.enable_grad():
-            result = forward_function(*wrapped_args)
+            new_wrapped_args = []
+            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args):
+                if tensor_flag and grad_flag:
+                    new_wrapped_args.append(arg.view(arg.shape))
+                else:
+                    new_wrapped_args.append(arg)
+            onnxruntime.register_python_object(new_wrapped_args)
+            result = forward_function(*new_wrapped_args)
             if isinstance(result, torch.Tensor):
-                # TODO: We need to confirm
-                #   1. The ownership of result is transferred to DLPack tensor from Pytorch.
-                #   2. The ownership of result is transferred to ORTValue from DLPack.
-                # If they are all true, we can remove the object register code below.
                 ort_value = _ortvalue_from_dlpack(to_dlpack(result))
                 unwrapped_values = [ort_value]
                 ctx = result.grad_fn

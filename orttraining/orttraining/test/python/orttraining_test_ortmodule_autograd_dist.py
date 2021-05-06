@@ -224,85 +224,6 @@ class ReduceWithMarkDirtyModel(torch.nn.Module):
         return out
 
 
-class ReduceWithMarkDirtyFunctionWrapperModule(torch.nn.Module):
-    def __init__(self):
-        super(ReduceWithMarkDirtyFunctionWrapperModule, self).__init__()
-        self.x_t = None
-        self.forward_outputs = []
-        self.y = None
-        self.ctx_ref = None
-
-    def compute(self, x):
-        try:
-            # import faulthandler
-            # faulthandler.enable()
-            # import gc 
-            # gc.set_debug(gc.DEBUG_COLLECTABLE)
-            init_x = from_dlpack(x)
-            # # reshape won't change the data pointer, but the tensor is changed.
-            # # there might be a problem: as init_x is teared down, the underlying ORTValue desctor will also be called.
-            # self.x_t = init_x.reshape(list(init_x.shape))
-            self.x_t = torch.clone(init_x)
-            self.x_t.requires_grad = True
-            print(self.x_t.is_leaf)
-            with torch.enable_grad():
-                input_torch_tensor = self.x_t.view(list(self.x_t.shape))
-                print(input_torch_tensor.is_leaf)
-                print("==== Entering ReduceWithMarkDirtyFunctionWrapperModule.compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
-                self.y = ReduceWithMarkDirtyFunction.apply(input_torch_tensor)
-                torch.cuda.synchronize()
-                # print(self.y)
-                # print("===== ReduceWithMarkDirtyFunctionWrapperModule.compute forward output: {} on device {}, grad_fn: {}".format(self.y, self.y.device, self.y.grad_fn))
-                forward_outputs = [self.y] #[ret.contiguous()]
-                [print("===== ReduceWithMarkDirtyFunctionWrapperModule.compute: shape: ", a.shape) for a in forward_outputs]
-
-                # need hold the forward outputs before PythonOp Compute completed.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs]
-                [print("===== ReduceWithMarkDirtyFunctionWrapperModule.compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                ctx_ptr = int(id(self.y.grad_fn))
-                # ctx_ptr = int(id(ret))
-                #print(self.y.grad_fn.saved_tensors)
-                return_vals = [ctx_ptr] + [int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                self.ctx_ref = self.y.grad_fn
-                # torch.cuda.synchronize()
-                print("==== Exiting ReduceWithMarkDirtyFunctionWrapperModule.compute , process id {}, thread id {}, ctx ref count: {} ====".format(os.getpid(), threading.current_thread().ident, sys.getrefcount(self.y.grad_fn)))
-                return tuple(return_vals)
-        except Exception as e:
-            print(e)
-            return []
-
-    def backward_compute(self, ctx, x):
-            try:
-                # import faulthandler
-                # faulthandler.enable()
-                #print(ctx, ctx.saved_tensors)
-                print("==== Enterting ReduceWithMarkDirtyFunctionWrapperModule.backward_compute , process id {}, thread id {} , ctx ref count: {} ====".format(os.getpid(), threading.current_thread().ident, sys.getrefcount(ctx)))
-                # self.x_t = from_dlpack(x)
-                # self.x_t.requires_grad = False
-                init_x = from_dlpack(x)
-                self.x_t = torch.clone(init_x)
-                self.x_t.requires_grad = False
-                ret = ReduceWithMarkDirtyFunction.backward(ctx, self.x_t)
-                torch.cuda.synchronize()
-                forward_outputs = [ret] #[ret.contiguous()]  # for single result, please don't use list() to do conversion.
-
-                [print("ReduceWithMarkDirtyFunctionWrapperModule.backward_compute: shape: ", a.shape if a is not None else None) for a in forward_outputs]
-                # need hold the forward outputs before PythonOp Compute completed.
-                # todo: we should use a python dict here to pass outputs.
-                self.forward_outputs = [_ortvalue_from_dlpack(to_dlpack(r)) for r in forward_outputs if r is not None]
-                [print("ReduceWithMarkDirtyFunctionWrapperModule.backward_compute: tensor->MutableDataRaw addr", int(r.data_ptr())) for r in self.forward_outputs]
-
-                return_vals =[int(r.ortvalue_ptr()) for r in self.forward_outputs]
-                print(return_vals)
-                print("==== Exiting ReduceWithMarkDirtyFunctionWrapperModule.backward_compute , process id {}, thread id {} ====".format(os.getpid(), threading.current_thread().ident))
-                return tuple(return_vals)
-            except Exception as e:
-                print("ReduceWithMarkDirtyFunctionWrapperModule backward_compute:", e)
-                return []
-
-
 def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
     try:
         # import faulthandler
@@ -367,5 +288,9 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
 
 if __name__ == "__main__":
     size = 2
-
-    mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
+    try:
+        mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
+    except:
+        import sys
+        sys.stdout.flush()
+        sys.stderr.flush()
