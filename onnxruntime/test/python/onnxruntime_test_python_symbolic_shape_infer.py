@@ -96,7 +96,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
     def test_embed_layer_norm(self):
         hidden_size = 32
-        initializers = [  # initializers
+        initializers = [
             helper.make_tensor('word_embedding', TensorProto.FLOAT, [100, hidden_size], [1.0] * (100 * hidden_size)),
             helper.make_tensor('position_embedding', TensorProto.FLOAT, [20, hidden_size], [1.0] * (20 * hidden_size)),
             helper.make_tensor('segment_embedding', TensorProto.FLOAT, [2, hidden_size], [1.0] * (2 * hidden_size)),
@@ -104,7 +104,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor('beta', TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size)
         ]
 
-        graph = helper.make_graph([
+        nodes = [
             helper.make_node("EmbedLayerNormalization",
                              inputs=[
                                  "input_ids", "segment_ids", "word_embedding", "position_embedding",
@@ -112,14 +112,20 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                              ],
                              outputs=["output", "mask_index"],
                              domain="com.microsoft"),
-        ], "Unsqueeze_Test", [
+        ]
+
+        inputs = [
             helper.make_tensor_value_info('input_ids', TensorProto.FLOAT, ['b', 's']),
             helper.make_tensor_value_info('segment_ids', TensorProto.FLOAT, ['b', 's']),
-        ], [
+        ]
+
+        outputs = [
             helper.make_tensor_value_info('output', TensorProto.FLOAT, None),
             helper.make_tensor_value_info('mask_index', TensorProto.INT32, None),
-        ], initializers)
-        model = helper.make_model(graph, producer_name='Test_Model')
+        ]
+
+        graph = helper.make_graph(nodes, "Unsqueeze_Test", inputs, outputs, initializers)
+        model = helper.make_model(graph)
 
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
         expected_shapes = [
