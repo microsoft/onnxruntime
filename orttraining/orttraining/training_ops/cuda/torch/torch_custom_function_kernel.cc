@@ -31,6 +31,56 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOpGrad);
 
+PythonOp::PythonOp(const OpKernelInfo& info) : CudaKernel(info) {
+  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
+  ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
+
+  // Input tensors.
+  input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
+  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_tensor_types_.size() == Node().InputDefs().size());
+
+  // Input int scalars.
+  input_int_scalars_ = info.GetAttrsOrDefault("input_int_scalars", std::vector<int64_t>());
+  input_int_scalar_positions_ = info.GetAttrsOrDefault("input_int_scalar_positions", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_int_scalars_.size() == input_int_scalar_positions_.size());
+
+  // Input float scalars.
+  input_float_scalars_ = info.GetAttrsOrDefault("input_float_scalars", std::vector<float>());
+  input_float_scalar_positions_ = info.GetAttrsOrDefault("input_float_scalar_positions", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_float_scalars_.size() == input_float_scalar_positions_.size());
+
+  // Input int tuples.
+  input_int_tuples_ = info.GetAttrsOrDefault("input_int_tuples", std::vector<int64_t>());
+  input_int_tuple_positions_ = info.GetAttrsOrDefault("input_int_tuple_positions", std::vector<int64_t>());
+  input_int_tuple_begins_ = info.GetAttrsOrDefault("input_int_tuple_begins", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_int_tuple_positions_.size() == input_int_tuple_begins_.size());
+
+  // Input float tuples.
+  input_float_tuples_ = info.GetAttrsOrDefault("input_float_tuples", std::vector<float>());
+  input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
+  input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_float_tuple_positions_.size() == input_float_tuple_begins_.size());
+
+  input_pointer_scalars_ = info.GetAttrsOrDefault("input_pointer_scalars", std::vector<int64_t>());
+  input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
+
+  ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
+
+  // Output tensors.
+  output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
+  output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+
+  CreateConstArgs();
+  CreateArgPositions();
+}
+
 void PythonOp::AddIntScalarArgs() {
   ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
@@ -92,10 +142,10 @@ void PythonOp::AddPointerScalarArgs() {
 void PythonOp::CreateConstArgs() {
   ORT_ENFORCE(const_args_.size() == 0);
   ORT_ENFORCE(const_arg_positions_.size() == 0);
-  PythonOp::AddIntScalarArgs();
-  PythonOp::AddInputTupleArgs();
-  PythonOp::AddFloatTupleArgs();
-  PythonOp::AddPointerScalarArgs();
+  AddIntScalarArgs();
+  AddInputTupleArgs();
+  AddFloatTupleArgs();
+  AddPointerScalarArgs();
 }
 
 void PythonOp::CreateArgPositions() {
@@ -163,7 +213,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
+  // Create non-constant arguments for calling Python function.
+  // Constant arguments are created in ctor.
   std::vector<OrtValue*> args = CreateArgs(context);
+  // Place holder for Python returned values.
   std::vector<void*> returned_args;
 
   // Invoke python calls.
@@ -177,7 +230,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
+  // First output of this op is Pytorch autograd's context.
   SetContextOutput(context, returned_args);
+  // Other outputs are wrappers of Pytorch tensors.
   SetOtherOutputs(context, returned_args);
   return Status::OK();
 }

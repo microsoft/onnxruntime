@@ -14,56 +14,7 @@ namespace cuda {
 // Pytorch's torch.autograd.Function.apply(...) wrapper.
 class PythonOp final : public CudaKernel {
  public:
-  PythonOp(const OpKernelInfo& info) : CudaKernel(info) {
-    ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
-    ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
-
-    // Input tensors.
-    input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
-    input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_tensor_types_.size() == Node().InputDefs().size());
-
-    // Input int scalars.
-    input_int_scalars_ = info.GetAttrsOrDefault("input_int_scalars", std::vector<int64_t>());
-    input_int_scalar_positions_ = info.GetAttrsOrDefault("input_int_scalar_positions", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_int_scalars_.size() == input_int_scalar_positions_.size());
-
-    // Input float scalars.
-    input_float_scalars_ = info.GetAttrsOrDefault("input_float_scalars", std::vector<float>());
-    input_float_scalar_positions_ = info.GetAttrsOrDefault("input_float_scalar_positions", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_float_scalars_.size() == input_float_scalar_positions_.size());
-
-    // Input int tuples.
-    input_int_tuples_ = info.GetAttrsOrDefault("input_int_tuples", std::vector<int64_t>());
-    input_int_tuple_positions_ = info.GetAttrsOrDefault("input_int_tuple_positions", std::vector<int64_t>());
-    input_int_tuple_begins_ = info.GetAttrsOrDefault("input_int_tuple_begins", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_int_tuple_positions_.size() == input_int_tuple_begins_.size());
-
-    // Input float tuples.
-    input_float_tuples_ = info.GetAttrsOrDefault("input_float_tuples", std::vector<float>());
-    input_float_tuple_positions_ = info.GetAttrsOrDefault("input_float_tuple_positions", std::vector<int64_t>());
-    input_float_tuple_begins_ = info.GetAttrsOrDefault("input_float_tuple_begins", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_float_tuple_positions_.size() == input_float_tuple_begins_.size());
-
-    input_pointer_scalars_ = info.GetAttrsOrDefault("input_pointer_scalars", std::vector<int64_t>());
-    input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
-
-    ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
-
-    // Output tensors.
-    output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
-    output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
-
-    CreateConstArgs();
-    CreateArgPositions();
-  };
-
+  PythonOp(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
