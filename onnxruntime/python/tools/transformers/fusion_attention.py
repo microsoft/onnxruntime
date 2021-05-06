@@ -150,9 +150,9 @@ class FusionAttention(Fusion):
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
-        q_bias = self.model.get_initializer(q_add.input[1])
-        k_bias = self.model.get_initializer(k_add.input[1])
-        v_bias = self.model.get_initializer(v_add.input[1])
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+        v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
 
         if q_weight is None:
             print(f"{q_matmul.input[1]} is not initializer. Please set do_constant_folding=True in torch.onnx.export")
@@ -166,14 +166,14 @@ class FusionAttention(Fusion):
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
 
-        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size]. 
+        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         in_size = qw.shape[0]
         out_size = np.prod(qw.shape[1:])
 
         qkv_weight = np.stack((qw, kw, vw), axis=1)
 
-        qb = NumpyHelper.to_array(q_bias)        
+        qb = NumpyHelper.to_array(q_bias)
         kb = NumpyHelper.to_array(k_bias)
         vb = NumpyHelper.to_array(v_bias)
 
@@ -233,13 +233,14 @@ class FusionAttention(Fusion):
 
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
         qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
-                                                 [None, 0, 0, 0, 0])
+                                                 [None, None, 0, 0, 0])
         einsum_node = None
         if qkv_nodes is not None:
             (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
-            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'], [1, 0, 0, 0])
+            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
+                                                     [1, None, 0, 0])
             if qkv_nodes is not None:
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
@@ -284,16 +285,16 @@ class FusionAttention(Fusion):
         if children_types.count('MatMul') != 3:
             return
 
-        v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+        v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, _, add_v, matmul_v) = v_nodes
 
         is_distill = False
-        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
         if qk_nodes is None:
-            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
+            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0])
             if qk_nodes is None:
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0])
                 is_distill = True
@@ -309,10 +310,10 @@ class FusionAttention(Fusion):
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
-        q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+        q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, None])
         if q_nodes is None:
             q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Add', 'MatMul'],
-                                                   [0, 0, 0, 0, 0])
+                                                   [0, 0, 0, 0, None])
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
@@ -320,10 +321,10 @@ class FusionAttention(Fusion):
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
-        k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+        k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
-                                                   [1, 0, 0, 0, 0])
+                                                   [1, 0, 0, 0, None])
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
@@ -339,8 +340,8 @@ class FusionAttention(Fusion):
                                                              output_name_to_node)
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
-                add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
-                         (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])], output_name_to_node)
+                add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
+                         (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0])], output_name_to_node)
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
