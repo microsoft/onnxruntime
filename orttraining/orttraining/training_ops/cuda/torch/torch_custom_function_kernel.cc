@@ -98,6 +98,30 @@ void PythonOp::create_const_args() {
   PythonOp::add_pointer_scalar_args();
 }
 
+void PythonOp::create_arg_positions() {
+  ORT_ENFORCE(arg_positions_.size() == 0);
+
+  // occupied[i] being true means the i-th input argument
+  // to Python function has been set.
+  std::vector<bool> occupied(input_tensor_types_.size() + const_args_.size(), false);
+
+  // We know all non-tensors were set above, so let's catch up.
+  for (const auto pos : const_arg_positions_) {
+    occupied.at(pos) = true;
+  }
+
+  // Search for empty slots for tensors.
+  // The i-th empty slot is assigned the i-th input tensor.
+  for (size_t i = 0; i < occupied.size(); ++i) {
+    if (occupied.at(i)) {
+      continue;
+    }
+    // arg_positions[i] is the position index for the i-th tensor input.
+    // Find an empty slot whose position index is i.
+    arg_positions_.push_back(i);
+  }
+}
+
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -112,32 +136,12 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
     inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
 
-  // occupied[i] being true means the i-th input argument
-  // to Python function has been set.
-  std::vector<bool> occupied(inputs.size() + const_args_.size(), false);
-
-  // We know all non-tensors were set above, so let's catch up.
-  for (const auto pos : const_arg_positions_) {
-    occupied.at(pos) = true;
-  }
-
-  // arg_positions[i] is the position index for the i-th tensor input.
-  std::vector<int64_t> arg_positions;
-  // Search for empty slots for tensors.
-  // The i-th empty slot is assigned the i-th input tensor.
-  for (size_t i = 0; i < occupied.size(); ++i) {
-    if (occupied.at(i)) {
-      continue;
-    }
-    // Find an empty slot whose position index is i.
-    arg_positions.push_back(i);
-  }
-
   // Invoke python calls.
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args_, const_arg_positions_, outputs);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
+      allback, input_tensor_requires_grads_, inputs, arg_positions_, const_args_, const_arg_positions_, outputs);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?

@@ -61,6 +61,7 @@ class PythonOp final : public CudaKernel {
     output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
 
     create_const_args();
+    create_arg_positions();
   };
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -71,9 +72,11 @@ class PythonOp final : public CudaKernel {
   void add_float_tuple_args();
   void add_pointer_scalar_args();
   void create_const_args();
+  void create_arg_positions();
 
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;
+  std::vector<int64_t> arg_positions_;
 
   // Name of containing class. For example, MyReLU.
   std::string name_;
