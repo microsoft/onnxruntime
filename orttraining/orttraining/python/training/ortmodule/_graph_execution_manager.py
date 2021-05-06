@@ -65,8 +65,12 @@ class GraphExecutionManager(ABC):
         # the default is insert-and-reduce
         self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.INSERT_AND_REDUCE
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
-        # In addition to propagate_cast_ops_allow use predetermined list of opcodes considered safe to move before/after cast operation
-        # if propagate_cast_ops_level is positive and use only propagate_cast_ops_allow otherwise.
+        # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
+        #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision. 
+        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow use onnxruntime
+        #   predetermined list of opcodes considered safe to move before/after cast operation.
+        # - Onnxruntime Level1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc. 
+        #   whereas Level 2 perdetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, GeLU, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = -1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
