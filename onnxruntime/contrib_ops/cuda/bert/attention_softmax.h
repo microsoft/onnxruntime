@@ -180,7 +180,15 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   if (threadIdx.x < all_sequence_length) {
     const int batch_index = blockIdx.y;
     const int sequence_index = blockIdx.x % sequence_length;
-    const int mask_offset = (mask_dimension == 2) ? batch_index * all_sequence_length + threadIdx.x : batch_index * sequence_length * all_sequence_length + sequence_index * all_sequence_length + threadIdx.x;
+    int mask_offset = 0;
+    if (mask_dimension == 2) {
+      mask_offset = batch_index * all_sequence_length + threadIdx.x;
+    } else if (mask_dimension == 3) {
+      mask_offset = batch_index * sequence_length * all_sequence_length + sequence_index * all_sequence_length + threadIdx.x;
+    } else if (mask_dimension == 4){
+      mask_offset = batch_index * 1024 * 1024 + (all_sequence_length - sequence_length) * 1024 + sequence_index * 1024 + threadIdx.x;
+    }
+    //const int mask_offset = (mask_dimension == 2) ? batch_index * all_sequence_length + threadIdx.x : batch_index * sequence_length * all_sequence_length + sequence_index * all_sequence_length + threadIdx.x;
 
     const int& mask = attention_mask[mask_offset];
     float mask_value = mask > 0 ? 0.0f : -10000.0f;
