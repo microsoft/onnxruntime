@@ -375,9 +375,10 @@ class ORTTrainerOptions(object):
         graph_transformer.number_recompute_layers(bool, default False)
         graph_transformer.propagate_cast_ops_config (dict):
             graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default INSERT_AND_REDUCE)
-                Specify the choice of the cast propagation optimization strategy. The available options are
-                0. Insert-and-reduce cast operations around the nodes with allowed opcodes
-                1. Flood-fill algorithms to expand float16 regions in the graph using the allowed opcodes.
+                Specify the choice of the cast propagation optimization strategy, either, INSERT_AND_REDUCE or FLOOD_FILL.
+                INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
+                FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
+                INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
             graph_transformer.propagate_cast_ops_config.level(integer, default -1)
                 Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
                 Use predetermined list of opcodes considered safe to move before/after cast operation
