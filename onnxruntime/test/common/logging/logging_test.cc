@@ -286,7 +286,7 @@ TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStateme
 
   auto logger = manager.CreateLogger(logger_id, min_log_level, filter_user_data);
 
-  auto log_from_conditional_without_compound_statement = [&logger](bool condition) {
+  auto log_from_conditional_without_compound_statement = [&logger, true_message, false_message](bool condition) {
     if (condition)
       LOGS(*logger, VERBOSE) << true_message;
     else
