@@ -11,7 +11,7 @@ yarn add onnxruntime-react-native
 ## Usage
 
 ```js
-import { InferenceSesion } from "onnxruntime-react-native";
+import { InferenceSession } from "onnxruntime-react-native";
 
 // load a model
 const session: InferenceSession = await InferenceSession.create(modelPath);

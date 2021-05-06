@@ -233,6 +233,18 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
     yarn example android
     ```
 
+### NPM Packaging
+
+1. Update a version using `npm verison <version>`. If it's for a dev, use `npm version <version>-dev.<subversion>`
+
+2. Run pre-pack to change `onnxruntime-common` package to point to a published one
+
+3. Run `npm pack` and verify NPM package contents
+
+4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
+
+5. Run `npm publish <tgz>` to publish to npmjs
+
 ### Distribution
 
 It should be able to consumed by React Native projects that uses Yarn packages through `yarn add onnxruntime-react-native`.
