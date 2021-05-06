@@ -75,6 +75,7 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
   // Make sure that BN was updated to add outputs
   ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
+  ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
 }
 
 TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
