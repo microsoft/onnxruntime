@@ -156,6 +156,8 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 
+// wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
+// direct = Same implementation is used for shared providers & core code, but some of the methods need to be routed through here to make the linker happy
 struct ProviderHostImpl : ProviderHost {
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
@@ -593,8 +595,8 @@ struct ProviderHostImpl : ProviderHost {
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
-                                           IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
-                                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
+                                   IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+                                   std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
@@ -900,7 +902,7 @@ bool InitProvidersSharedLibrary() {
 }
 
 struct ProviderLibrary {
-  ProviderLibrary(const char* filename) : filename_{filename} {}
+  ProviderLibrary(const char* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
   ~ProviderLibrary() {
     assert(!handle_);  // We should already be unloaded at this point
   }
@@ -931,9 +933,9 @@ struct ProviderLibrary {
       if (provider_)
         provider_->Shutdown();
 
-#ifdef _WIN32
-      Env::Default().UnloadDynamicLibrary(handle_);
-#endif
+      if (unload_)
+        Env::Default().UnloadDynamicLibrary(handle_);
+
       handle_ = nullptr;
       provider_ = nullptr;
     }
@@ -941,13 +943,20 @@ struct ProviderLibrary {
 
  private:
   const char* filename_;
+  bool unload_;
   Provider* provider_{};
   void* handle_{};
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
 
-static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda" LIBRARY_EXTENSION
+#if 0
+#ifndef _WIN32
+                                      ,false /* unload - On Linux if we unload the cuda shared provider we crash */
+#endif
+#endif
+);
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
@@ -1109,4 +1118,3 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   options->provider_factories.push_back(factory);
   return nullptr;
 }
-

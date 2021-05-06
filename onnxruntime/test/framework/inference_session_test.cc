@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#undef USE_CUDA
+#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -166,8 +166,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                            model_specific_functions, DefaultLoggingManager().DefaultLogger());
+                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -349,8 +349,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                          shape,
-                                                                          cpu_allocator);
+                                                                  shape,
+                                                                  cpu_allocator);
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
 #elif USE_ROCM
@@ -646,7 +646,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(size > 1);
   ASSERT_TRUE(lines[0].find("[") != string::npos);
   ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size-1].find("]") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   bool has_kernel_info = false;
@@ -867,9 +867,9 @@ static void TestBindHelper(const std::string& log_str,
     epi.device_id = 0;
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+    ROCMExecutionProviderInfo epi;
+    epi.device_id = 0;
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1283,19 +1283,18 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
 
   Graph& fused_graph = session.GetMutableGraph();
   ASSERT_TRUE(fused_graph.NumberOfNodes() == 1);
-  auto &fused_node = *fused_graph.Nodes().begin();
+  auto& fused_node = *fused_graph.Nodes().begin();
   ASSERT_TRUE(fused_node.NodeType() == Node::Type::Fused);
   ASSERT_TRUE(fused_node.Op()->has_type_and_shape_inference_function());
 
   // Clear shape inference data from output node to verify that assigned inference function is called
-  auto &fused_node_output = *fused_node.MutableOutputDefs()[0];
+  auto& fused_node_output = *fused_node.MutableOutputDefs()[0];
   fused_node_output.ClearShape();
   fused_graph.SetGraphResolveNeeded();
   fused_graph.Resolve();
 
   ASSERT_TRUE(fused_node_output.Shape() != nullptr);
-  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape())
-              == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
+  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape()) == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {

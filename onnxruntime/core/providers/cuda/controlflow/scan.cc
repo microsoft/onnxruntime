@@ -7,6 +7,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/framework/ml_value.h"
+
+// TODO: It's ugly to include a .cc file but this .cc file defines the implementation of some templates which we need.
 #include "core/framework/ort_value_tensor_slicer.cc"
 
 using namespace ONNX_NAMESPACE;

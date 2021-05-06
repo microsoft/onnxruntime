@@ -7,6 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+// ROCM uses the CUDA provider's files, which are shared provider files. This 'fakes them out' and makes them be non shared provider files if they're being built as part of ROCM.
 #ifdef USE_ROCM
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/onehot.h"

@@ -262,8 +262,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
   // Add cuda execution provider for gist encode/decode nodes
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
   ORT_THROW_IF_ERROR(training_session.Initialize());
 

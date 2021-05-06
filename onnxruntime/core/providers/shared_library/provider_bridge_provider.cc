@@ -16,12 +16,6 @@
 #define _Post_writable_byte_size_(n)
 #endif
 
-#if 0
-namespace onnxruntime {
-ProviderHost* g_host = Provider_GetHost();
-}
-#endif
-
 #ifdef _WIN32
 // Override default new/delete so that we match the host's allocator
 _Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
@@ -30,6 +24,8 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 #endif
 
 namespace onnxruntime {
+
+ProviderHost* g_host = Provider_GetHost();
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -71,31 +67,31 @@ AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
 }
 
 template <>
-MLDataType DataTypeImpl::GetType<Tensor>() { return g_host->DataTypeImpl__GetType_Tensor(); }
+MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 template <>
-MLDataType DataTypeImpl::GetType<float>() { return g_host->DataTypeImpl__GetType_float(); }
+MLDataType DataTypeImpl::GetType<float>() { return Provider_GetHost()->DataTypeImpl__GetType_float(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<bool>() { return g_host->DataTypeImpl__GetTensorType_bool(); }
+MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<int8_t>() { return g_host->DataTypeImpl__GetTensorType_int8(); }
+MLDataType DataTypeImpl::GetTensorType<int8_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_int8(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<uint8_t>() { return g_host->DataTypeImpl__GetTensorType_uint8(); }
+MLDataType DataTypeImpl::GetTensorType<uint8_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_uint8(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<int16_t>() { return g_host->DataTypeImpl__GetTensorType_int16(); }
+MLDataType DataTypeImpl::GetTensorType<int16_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_int16(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<uint16_t>() { return g_host->DataTypeImpl__GetTensorType_uint16(); }
+MLDataType DataTypeImpl::GetTensorType<uint16_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_uint16(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<int32_t>() { return g_host->DataTypeImpl__GetTensorType_int32(); }
+MLDataType DataTypeImpl::GetTensorType<int32_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_int32(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<uint32_t>() { return g_host->DataTypeImpl__GetTensorType_uint32(); }
+MLDataType DataTypeImpl::GetTensorType<uint32_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_uint32(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<int64_t>() { return g_host->DataTypeImpl__GetTensorType_int64(); }
+MLDataType DataTypeImpl::GetTensorType<int64_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_int64(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<uint64_t>() { return g_host->DataTypeImpl__GetTensorType_uint64(); }
+MLDataType DataTypeImpl::GetTensorType<uint64_t>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_uint64(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<float>() { return g_host->DataTypeImpl__GetTensorType_float(); }
+MLDataType DataTypeImpl::GetTensorType<float>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_float(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<double>() { return g_host->DataTypeImpl__GetTensorType_double(); }
+MLDataType DataTypeImpl::GetTensorType<double>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_double(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_BFloat16(); }
 template <>

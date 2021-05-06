@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 // Public wrappers around internal ort interfaces (currently)
-// In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 #include "core/providers/shared_library/provider_host_api.h"
 
 #include "core/providers/shared/common.h"
@@ -768,10 +767,9 @@ struct ProviderHost {
 #endif
 };
 
-#define g_host Provider_GetHost()
-//extern ProviderHost* g_host;
-
 #ifdef SHARED_PROVIDER
+
+extern ProviderHost* g_host;
 
 struct CPUIDInfo final {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
