@@ -279,7 +279,9 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
-    if (input_dims[i] < indices_dims[i]) {
+    // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
+    // value if within bounds of the corresponding 'data' shape.
+    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }
