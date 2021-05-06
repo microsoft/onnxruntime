@@ -13,10 +13,22 @@
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
 
-namespace onnxruntime {
+// The ROCM version of this just deletes on destruction, but is drop in compatible with the regular DeleteOnUnloadPtr
 template <typename T>
-using DeleteOnUnloadPtr = std::unique_ptr<T>;
-}
+struct DeleteOnUnloadPtr {
+  DeleteOnUnloadPtr(T* p) : p_(p) { }
+  ~DeleteOnUnloadPtr() { delete p; }
+
+  T& operator*() { return *p_; }
+  const T& operator*() const { return *p_; }
+
+  operator T*() {
+    return p_;
+  }
+
+ private:
+  T* p_;
+};
 #else
 #define SHARED_PROVIDER 1
 
