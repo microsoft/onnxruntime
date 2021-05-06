@@ -335,14 +335,14 @@ class SymbolicShapeInference:
             # Some operators need initializers for shape inference. For example, Unsqueeze in opset 13 has axes in the second input.
             need_initializers = node.op_type in ['Unsqueeze']
 
-            # Only pass initializers that has impact on shape inference result for performance.
-            initializers = [self.initializers_[name] for name in node.input if name in self.initializers_] if need_initializers else []
+            # Only pass initializers with impact on shape inference result for performance.
+            initializers = [self.initializers_[name] for name in node.input
+                            if name in self.initializers_] if need_initializers else []
 
             # run single node inference with self.known_vi_ shapes
             tmp_graph = helper.make_graph(
                 [node], 'tmp', [self.known_vi_[i] for i in node.input if i],
-                [helper.make_tensor_value_info(i, onnx.TensorProto.UNDEFINED, None) for i in node.output],
-                initializers)
+                [helper.make_tensor_value_info(i, onnx.TensorProto.UNDEFINED, None) for i in node.output], initializers)
 
             self.tmp_mp_.graph.CopyFrom(tmp_graph)
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
@@ -1321,7 +1321,7 @@ class SymbolicShapeInference:
         word_embedding_shape = self._get_shape(node, 2)
         assert len(input_ids_shape) == 2 and len(word_embedding_shape) == 2
         output_shape = input_ids_shape + [word_embedding_shape[1]]
-        
+
         input_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], input_dtype, output_shape))
