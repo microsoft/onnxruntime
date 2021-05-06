@@ -13,6 +13,7 @@ export function getActicationSnippet(activation: string) {
       activationFunction = glslSigmoid().body;
       break;
     default:
+      // TODO: adding other activations that can be fused.
       activationName = '';
       activationFunction = '';
   }

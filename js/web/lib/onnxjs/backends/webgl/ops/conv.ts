@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {Attribute} from '../../../attribute';
 import {Logger} from '../../../instrument';
@@ -366,7 +366,7 @@ export class WebGLUnpackedConv extends Conv {
       shaderSource,
       samplers,
       variables: [{name: 'sharedDimOffset', type: 'int'}],
-      params: {'sharedDim': sharedDim, 'sharedDimReadSize': sharedDimReadSize}
+      params: {sharedDim, sharedDimReadSize}
     };
   }
   static prepKernelForDotProduct(shape: number[], group: number, channels: number, kernel: Float32Array): Float32Array {

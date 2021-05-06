@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
@@ -14,7 +14,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? `value += vec4(getBias(a[0]*2).xx, getBias(a[0]*2).yy);` : ``;
+    const processBias = hasBias ? 'value += vec4(getBias(a[0]*2).xx, getBias(a[0]*2).yy);' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
