@@ -60,19 +60,19 @@ class PythonOp final : public CudaKernel {
     output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
     output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
 
-    create_const_args();
-    create_arg_positions();
+    CreateConstArgs();
+    CreateArgPositions();
   };
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  void add_int_scalar_args();
-  void add_input_tuple_args();
-  void add_float_tuple_args();
-  void add_pointer_scalar_args();
-  void create_const_args();
-  void create_arg_positions();
+  void AddIntScalarArgs();
+  void AddInputTupleArgs();
+  void AddFloatTupleArgs();
+  void AddPointerScalarArgs();
+  void CreateConstArgs();
+  void CreateArgPositions();
 
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;

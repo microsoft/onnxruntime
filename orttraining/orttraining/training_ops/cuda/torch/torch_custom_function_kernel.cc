@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOpGrad);
 
-void PythonOp::add_int_scalar_args() {
+void PythonOp::AddIntScalarArgs() {
   ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_int_scalars_.size(); ++i) {
     const_arg_positions_.emplace_back(input_int_scalar_positions_.at(i));
@@ -44,7 +44,7 @@ void PythonOp::add_int_scalar_args() {
   }
 }
 
-void PythonOp::add_input_tuple_args() {
+void PythonOp::AddInputTupleArgs() {
   ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_int_tuple_begins_.size(); ++i) {
     // Process i-th tuple.
@@ -62,7 +62,7 @@ void PythonOp::add_input_tuple_args() {
   }
 }
 
-void PythonOp::add_float_tuple_args() {
+void PythonOp::AddFloatTupleArgs() {
   ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_float_tuple_begins_.size(); ++i) {
     // Process i-th tuple.
@@ -80,7 +80,7 @@ void PythonOp::add_float_tuple_args() {
   }
 }
 
-void PythonOp::add_pointer_scalar_args() {
+void PythonOp::AddPointerScalarArgs() {
   ORT_ENFORCE(const_args_.size() == const_arg_positions_.size());
   for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
     const_arg_positions_.emplace_back(input_pointer_scalar_positions_.at(i));
@@ -89,16 +89,16 @@ void PythonOp::add_pointer_scalar_args() {
   }
 }
 
-void PythonOp::create_const_args() {
+void PythonOp::CreateConstArgs() {
   ORT_ENFORCE(const_args_.size() == 0);
   ORT_ENFORCE(const_arg_positions_.size() == 0);
-  PythonOp::add_int_scalar_args();
-  PythonOp::add_input_tuple_args();
-  PythonOp::add_float_tuple_args();
-  PythonOp::add_pointer_scalar_args();
+  PythonOp::AddIntScalarArgs();
+  PythonOp::AddInputTupleArgs();
+  PythonOp::AddFloatTupleArgs();
+  PythonOp::AddPointerScalarArgs();
 }
 
-void PythonOp::create_arg_positions() {
+void PythonOp::CreateArgPositions() {
   ORT_ENFORCE(arg_positions_.size() == 0);
 
   // occupied[i] being true means the i-th input argument
@@ -141,7 +141,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
-      allback, input_tensor_requires_grads_, inputs, arg_positions_, const_args_, const_arg_positions_, outputs);
+      callback, input_tensor_requires_grads_, inputs, arg_positions_, const_args_, const_arg_positions_, outputs);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?
