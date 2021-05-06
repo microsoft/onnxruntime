@@ -849,7 +849,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vecto
   FastReduceKind fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, reduce_axes, fast_shape, output_shape, fast_axes, keep_dims, false);
 
-  auto output=make_unique<Tensor>(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+  auto output = make_unique<Tensor>(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
 
   if (fast_kind == FastReduceKind::kEmpty) {
     if (new_input_shape.Size() == 1) {
@@ -865,18 +865,18 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vecto
   if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
     switch (fast_kind) {
       case FastReduceKind::kKR: {
-        ValidateFastReduceKR(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+        ValidateFastReduceKR(fast_shape, *output);
+        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, *output, tp);
         return output;
       }
       case FastReduceKind::kRK: {
-        ValidateFastReduceRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+        ValidateFastReduceRK(fast_shape, *output);
+        ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, *output, tp);
         return output;
       }
       case FastReduceKind::kKRK: {
-        ValidateFastReduceKRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+        ValidateFastReduceKRK(fast_shape, *output);
+        ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, *output, tp);
         return output;
       }
       case FastReduceKind::kR:
@@ -889,7 +889,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vecto
   }
 
   ResultsNoTransposePrepareForReduce last_results;
-  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(&output, fast_shape, input, fast_axes, tp, last_results);
+  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(output.get(), fast_shape, input, fast_axes, tp, last_results);
   return output;
 }
 

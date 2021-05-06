@@ -262,7 +262,7 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()
 
-  add_library(onnxruntime_providers_cuda SHARED ${onnxruntime_providers_cuda_src})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
 
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
@@ -290,11 +290,8 @@ if (onnxruntime_USE_CUDA)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
   endif()
 
-  # TODO: Hack to get it to link, need to move the stuff from CMakeLists.txt into here
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft)
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_shared)
-
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cudart cublas cudnn curand cufft onnxruntime_providers_shared)
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
