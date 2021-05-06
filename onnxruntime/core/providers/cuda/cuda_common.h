@@ -11,12 +11,7 @@
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 #include "gsl/gsl"
 
-// Can't include "core/util/math.h" in a provider, so this is the part we need for cuda:
 namespace onnxruntime {
-namespace math {
-uint16_t floatToHalf(float f);
-}
-
 namespace cuda {
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
@@ -103,8 +98,8 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
-#if defined(CUDA_VERSION) && CUDA_VERSION < 11000    
-    enable_ = (mode == CUBLAS_TENSOR_OP_MATH ? prop.major >= 7 : true );
+#if defined(CUDA_VERSION) && CUDA_VERSION < 11000
+    enable_ = (mode == CUBLAS_TENSOR_OP_MATH ? prop.major >= 7 : true);
 #else
     enable_ = (mode == CUBLAS_TF32_TENSOR_OP_MATH ? prop.major >= 8 : true);
 #endif
