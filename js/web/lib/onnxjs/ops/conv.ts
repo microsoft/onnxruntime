@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+// Licensed under the MIT license.
 
 import {Attribute} from '../attribute';
 import {InferenceHandler} from '../backend';
@@ -17,6 +17,7 @@ export abstract class Conv implements Operator {
     this.kernelShape = attributes.getInts('kernel_shape', []);
     this.pads = attributes.getInts('pads', [0, 0, 0, 0]);
     this.strides = attributes.getInts('strides', [1, 1]);
+    this.activation = attributes.getString('__internal_activation', '');
   }
 
   checkInputs(inputs: Tensor[]): boolean {
@@ -88,4 +89,5 @@ export abstract class Conv implements Operator {
   protected kernelShape: number[];
   protected pads: number[];
   protected strides: number[];
+  protected activation: string;
 }

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+// Licensed under the MIT license.
 
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {getActicationSnippet} from './fuse_utils';
 
 export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -13,7 +14,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += vec4(getBias(a[0]*2).xx, getBias(a[0]*2).yy);' : '';
+    const processBias = hasBias ? `value += vec4(getBias(a[0]*2).xx, getBias(a[0]*2).yy);` : ``;
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -25,8 +26,11 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     const aRank = aShape.length;
     const bRank = bShape.length;
     const sharedDim = aShape[aShape.length - 1];
+
+    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
     // TODO:fix broadcasting
     const shaderSource = `
+      ${activationFunction}
       vec4 process(int indices[${rank}]) {
           int a[${aRank}];
           int b[${bRank}];
@@ -41,6 +45,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
               value += ${getA(aRank)}.ggaa * ${getB(bRank)}.baba;
           }
           ${processBias}
+          ${applyActivation}
           return value;
       }`;
     return {

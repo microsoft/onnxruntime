@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+// Licensed under the MIT license.
 
 import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ortSchema/ort_generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
 import {LongUtil, ProtoUtil} from './util';
 
 export declare namespace Graph {
   export interface Shape {
-    readonly dims: readonly number[];
+    readonly dims: ReadonlyArray<number>;
   }
   export interface ValueType {
     readonly tensorType: Tensor.DataType;
@@ -25,7 +25,7 @@ export declare namespace Graph {
     readonly from: number;
 
     // indices to the Nodes where the values go to.
-    readonly to: readonly number[];
+    readonly to: ReadonlyArray<number>;
 
     // value type specification. empty for non-input values.
     readonly type?: ValueType;
@@ -38,10 +38,10 @@ export declare namespace Graph {
     readonly opType: string;
 
     // indices to the Values where the inputs come from.
-    readonly inputs: readonly number[];
+    readonly inputs: ReadonlyArray<number>;
 
     // indices to the Values where the outpus go to.
-    readonly outputs: readonly number[];
+    readonly outputs: ReadonlyArray<number>;
 
     // the attributes that used by the operator
     readonly attributes: Attribute;
@@ -53,6 +53,8 @@ export declare namespace Graph {
   export interface Transformer {
     removeAllIdentityNodes(): void;
     removeAllDropoutNodes(): void;
+
+    fuseConvActivationNodes(): void;
     // TODO: add generic functions to manipulate the graph
   }
 
@@ -62,17 +64,16 @@ export declare namespace Graph {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-redeclare
 export interface Graph {
-  getInputIndices(): readonly number[];
-  getInputNames(): readonly string[];
-  getOutputIndices(): readonly number[];
-  getOutputNames(): readonly string[];
-  getValues(): readonly Graph.Value[];
-  getNodes(): readonly Graph.Node[];
+  getInputIndices(): ReadonlyArray<number>;
+  getInputNames(): ReadonlyArray<string>;
+  getOutputIndices(): ReadonlyArray<number>;
+  getOutputNames(): ReadonlyArray<string>;
+  getValues(): ReadonlyArray<Graph.Value>;
+  getNodes(): ReadonlyArray<Graph.Node>;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-redeclare
+// tslint:disable-next-line:variable-name
 export const Graph = {
   /**
    * construct a graph from a graph protobuf type
@@ -156,27 +157,27 @@ class GraphImpl implements Graph, Graph.Transformer {
     this.checkIsAcyclic();
   }
 
-  getInputIndices(): readonly number[] {
+  getInputIndices(): ReadonlyArray<number> {
     return this._allInputIndices;
   }
 
-  getInputNames(): readonly string[] {
+  getInputNames(): ReadonlyArray<string> {
     return this._allInputNames;
   }
 
-  getOutputIndices(): readonly number[] {
+  getOutputIndices(): ReadonlyArray<number> {
     return this._allOutputIndices;
   }
 
-  getOutputNames(): readonly string[] {
+  getOutputNames(): ReadonlyArray<string> {
     return this._allOutputNames;
   }
 
-  getValues(): readonly Graph.Value[] {
+  getValues(): ReadonlyArray<Graph.Value> {
     return this._allData;
   }
 
-  getNodes(): readonly Graph.Node[] {
+  getNodes(): ReadonlyArray<Graph.Node> {
     return this._nodes;
   }
 
@@ -306,10 +307,10 @@ class GraphImpl implements Graph, Graph.Transformer {
         // operator and ignore the node from the graph
         if (nodeProto.opType === 'Constant') {
           if (!nodeProto.attribute || nodeProto.attribute.length !== 1 || !nodeProto.attribute[0].t) {
-            throw new Error('missing attributes or missing tensor value in attributes for this Constant operator');
+            throw new Error(`missing attributes or missing tensor value in attributes for this Constant operator`);
           }
           if (!nodeProto.output || nodeProto.output.length !== 1) {
-            throw new Error('missing output or incorrect number of outputs for this Constant operator');
+            throw new Error(`missing output or incorrect number of outputs for this Constant operator`);
           }
           node.outputs.pop();
           node.executeNode = false;
@@ -371,12 +372,12 @@ class GraphImpl implements Graph, Graph.Transformer {
           if (valueType !== ortFbs.TypeInfoValue.tensor_type) {
             throw new Error('Unexpected value type for the nodeArg.');
           }
-          const valueInfo = graph.nodeArgs(j)!.type()!.value(new ortFbs.TensorTypeAndShape())!;
-          const type = ProtoUtil.tensorDataTypeFromProto(valueInfo.elemType());
-          const shape = valueInfo.shape()!;
+          const valueInfo = graph.nodeArgs(j)?.type()?.value(new ortFbs.TensorTypeAndShape());
+          const type = ProtoUtil.tensorDataTypeFromProto(valueInfo?.elemType()!);
+          const shape = valueInfo?.shape();
           const dims = [];
-          for (let k = 0; k < shape.dimLength()!; k++) {
-            dims.push(LongUtil.longToNumber(shape.dim(k)!.value()!.dimValue()!));
+          for (let k = 0; k < shape?.dimLength()!; k++) {
+            dims.push(LongUtil.longToNumber(shape?.dim(k)?.value()?.dimValue()!));
           }
           value.type = {shape: {dims}, tensorType: type};
           const currentIndex = this._allData.push(value) - 1;
@@ -474,10 +475,10 @@ class GraphImpl implements Graph, Graph.Transformer {
         // operator and ignore the node from the graph
         if (nodeProto.opType() === 'Constant') {
           if (nodeProto.attributesLength() !== 1 || !nodeProto.attributes(0)!.t()) {
-            throw new Error('missing attributes or missing tensor value in attributes for this Constant operator');
+            throw new Error(`missing attributes or missing tensor value in attributes for this Constant operator`);
           }
           if (nodeProto.outputsLength() !== 1) {
-            throw new Error('missing output or incorrect number of outputs for this Constant operator');
+            throw new Error(`missing output or incorrect number of outputs for this Constant operator`);
           }
           node.outputs.pop();
           node.executeNode = false;
@@ -491,13 +492,13 @@ class GraphImpl implements Graph, Graph.Transformer {
     // scan node's inputs
     for (let i = 0; i < this._nodes.length; i++) {
       const node = this._nodes[i];
-      const nodeProto = graph.nodes(i)!;
+      const nodeProto = graph.nodes(i);
 
-      if (nodeProto.inputsLength() === 0) {
+      if (nodeProto?.inputsLength() === 0) {
         throw new Error(`missing input for node: ${nodeProto.name}`);
       }
-      for (let j = 0; j < nodeProto.inputsLength()!; j++) {
-        const input = nodeProto.inputs(j)!;
+      for (let j = 0; j < nodeProto?.inputsLength()!; j++) {
+        const input = nodeProto?.inputs(j)!;
         const dataIndex = dataIndices.get(input);
         if (typeof dataIndex === 'undefined') {
           throw new Error(`unrecognized input '${input}' for node: ${nodeProto!.name()}`);
@@ -536,15 +537,15 @@ class GraphImpl implements Graph, Graph.Transformer {
         this._nodes[nodeIndex].outputs.forEach((outgoingEdgeIndex) => {
           const data = this._allData[outgoingEdgeIndex];
           if (typeof data.tensor !== 'undefined') {
-            throw new Error('node outputs should not be initialized');
+            throw new Error(`node outputs should not be initialized`);
           }
           if (data._from !== nodeIndex) {
-            throw new Error('from property of the Value object doesn\'t match index of Node being processed');
+            throw new Error(`from property of the Value object doesn't match index of Node being processed`);
           }
           data._to.forEach((downstreamNodeIndex) => {
             // back edge found - cyclic
             if (nodesState[downstreamNodeIndex] === 'gray') {
-              throw new Error('model graph is cyclic');
+              throw new Error(`model graph is cyclic`);
             }
             // tree edge found - continue processing by adding it to stack
             else if (nodesState[downstreamNodeIndex] === 'white') {
@@ -560,6 +561,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     // apply common transform
     this.removeAllIdentityNodes();
     this.removeAllDropoutNodes();
+    this.fuseConvActivationNodes();
 
     // apply initializer specific transform
     if (graphInitializer) {
@@ -658,12 +660,12 @@ class GraphImpl implements Graph, Graph.Transformer {
   private deleteNode(nodeIndex: number) {
     const node = this._nodes[nodeIndex];
     if (node.inputs.length > 1) {
-      throw new Error('Node deletion with multiple inputs is not supported. ');
+      throw new Error(`Node deletion with multiple inputs is not supported. `);
     }
     if (node.outputs.length > 1) {
       for (let i = 1; i < node.outputs.length; i++) {
         if (this._allData[node.outputs[i]].to.length > 0) {
-          throw new Error('Node deletion with more than one output connected to other nodes is not supported. ');
+          throw new Error(`Node deletion with more than one output connected to other nodes is not supported. `);
         }
       }
     }
@@ -678,7 +680,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     const delIndex = this._allData[inputValueIndex].to.indexOf(nodeIndex);
     // should not happen
     if (delIndex === -1) {
-      throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+      throw new Error(`The Value object doesn't have the current Node in it's 'to' property `);
     }
     this._allData[inputValueIndex].to.splice(delIndex, 1);
 
@@ -697,7 +699,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         const replaceIndex = this._nodes[nodeIndex].inputs.indexOf(outputValueIndex);
         // should not happen
         if (replaceIndex === -1) {
-          throw new Error('The Node object doesn\'t have the output Value in it\'s \'inputs\' property ');
+          throw new Error(`The Node object doesn't have the output Value in it's 'inputs' property `);
         }
         this._nodes[nodeIndex].inputs[replaceIndex] = inputValueIndex;
         this._allData[inputValueIndex].to.push(nodeIndex);
@@ -712,14 +714,14 @@ class GraphImpl implements Graph, Graph.Transformer {
       if (node.opType === 'Dropout') {
         // the node should have exactly 1 input and 1 or 2 outputs
         if (node.inputs.length !== 1) {
-          throw new Error('Dropout nodes should only contain one input. ');
+          throw new Error(`Dropout nodes should only contain one input. `);
         }
         if (node.outputs.length !== 1 && node.outputs.length !== 2) {
-          throw new Error('Dropout nodes should contain either 1 or 2 output(s)');
+          throw new Error(`Dropout nodes should contain either 1 or 2 output(s)`);
         }
         // the second output should not be referenced by any other node
         if (node.outputs.length === 2 && this._allData[node.outputs[1]]._to.length !== 0) {
-          throw new Error('Dropout nodes\'s second output should not be referenced by other nodes');
+          throw new Error(`Dropout nodes's second output should not be referenced by other nodes`);
         }
         this.deleteNode(nodeIndex);
       }
@@ -735,6 +737,29 @@ class GraphImpl implements Graph, Graph.Transformer {
         this.deleteNode(nodeIndex);
       }
       nodeIndex++;
+    }
+  }
+
+  isActivation(n: Node): boolean {
+    switch (n.opType) {
+      // TODO: add other activation methods
+      case 'Relu':
+      case 'Sigmoid':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  fuseConvActivationNodes() {
+    for (const node of this._nodes) {
+      if (node.opType === 'Conv') {
+        const next = this._allData[node.outputs[0]]._to;
+        if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
+          node.attributes.set('__internal_activation', 'string', (this._nodes[next[0]].opType));
+          this.deleteNode(next[0]);
+        }
+      }
     }
   }
 }
