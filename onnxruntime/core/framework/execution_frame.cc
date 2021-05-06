@@ -52,7 +52,6 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
-
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -66,9 +65,7 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 }
 
 void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches, const std::unordered_map<int, OrtValue>& initializers) {
-
   ORT_ENFORCE(fetch_mlvalue_idxs.size() == fetches.size());
-
 
   if (!fetches.empty()) {
     fetch_mlvalue_idxs_ = fetch_mlvalue_idxs;
@@ -138,7 +135,8 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index, const TensorShape* shape, OrtValue*& p_ort_value,
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index,
+                                                     const TensorShape* shape, OrtValue*& p_ort_value,
                                                      const Node& node, size_t nnz) {
   auto status = Status::OK();
   int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
@@ -158,8 +156,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
-      if (this->IsOutput(ort_value_idx)) {
-        VerifyOutputSizes(output_index, node, shape);
+      // shape is nullptr for traditional ML output values
+      if (shape != nullptr && IsOutput(ort_value_idx)) {
+        VerifyOutputSizes(output_index, node, *shape);
       }
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape, nnz);
     }
@@ -168,51 +167,6 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
   return status;
 }
 
-void IExecutionFrame::VerifyOutputSizes(int output_index, const Node& node,
-                                       const TensorShape* output_shape) {
-  ProtoHelperNodeContext protoContext(node);
-  OpNodeProtoHelper<ProtoHelperNodeContext> info(&protoContext);
-
-  const onnx::TypeProto* outputproto = info.GetOutputType(output_index);
-
-  if (outputproto == nullptr) {
-    return;
-  }
-
-  if (outputproto->value_case() != onnx::TypeProto::kTensorType) {
-    return;
-  }
-  const auto& tensortype = outputproto->tensor_type();
-  if (tensortype.has_shape()) {
-    const auto& shape = tensortype.shape();
-
-    int actual_num_dims = static_cast<int>(output_shape->NumDimensions());
-    int expected_num_dims = shape.dim_size();
-    if (actual_num_dims != expected_num_dims) {
-      if (GetLogger() != nullptr) {
-        LOGS(*GetLogger(), WARNING) << "Number of dimension(" << actual_num_dims << ") of output shape didn't match "
-                                               << "with model's expected number("<< expected_num_dims <<") of dimension of output shape";
-      }
-      return;
-    }
-
-    for (uint32_t output_dim = 0, end = actual_num_dims; output_dim < end; ++output_dim) {
-      const auto dim = shape.dim(output_dim);
-      
-      if (dim.has_dim_value()) {
-        int64_t expected_size = dim.dim_value();
-        int64_t actual_size = (*output_shape)[output_dim];
-        if (expected_size != actual_size) {
-          if (GetLogger() != NULL) {
-            LOGS(*GetLogger(), WARNING) << "Actual dimension(" << actual_size << ") didn't match with expected dimension ("
-                                                   << expected_size << ") for outputProtoIndex: " << output_index;
-          }
-          return;
-        }
-      }
-    }
-  }
-}
 bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
   // By default, there is not information about inferred shape, so this default
   // implementation always returns false. The derived class of IExecutionFrame
@@ -735,10 +689,6 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   }
 }
 
-const logging::Logger* ExecutionFrame::GetLogger() {
-  return &(session_state_.Logger());
-}
-
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
   return session_state_.GetAllocator(info);
 }
@@ -748,6 +698,33 @@ AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
 Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx,
                                                    const TensorShape* shape, size_t nnz) {
   return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape, nnz);
+}
+
+void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) {
+  const NodeArg* output_def = node.OutputDefs()[output_index];
+  const auto* expected_shape = output_def->Shape();
+  if (expected_shape == nullptr) {
+    // model didn't specify shape and shape inferencing wasn't able to calculate it so nothing to compare against
+    return;
+  }
+
+  const size_t expected_rank = expected_shape->dim_size();
+  bool compatible = expected_rank == output_shape.NumDimensions();
+  if (compatible) {
+    for (size_t i = 0; i < expected_rank; ++i) {
+      const auto& expected_dim = expected_shape->dim().Get(static_cast<int>(i));
+      if (expected_dim.has_dim_value() && expected_dim.dim_value() != output_shape[i]) {
+        compatible = false;
+        break;
+      }
+    }
+  }
+
+  if (!compatible) {
+    LOGS(session_state_.Logger(), WARNING) << "Expected shape from model of " << *expected_shape
+                                           << " does not match actual shape of " << output_shape
+                                           << " for output " << output_def->Name();
+  }
 }
 
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
