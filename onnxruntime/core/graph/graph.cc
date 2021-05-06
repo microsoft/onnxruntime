@@ -1495,13 +1495,18 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
               }
             }
           } else {
-            if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
-                    resolve_context_.inputs_and_initializers.cend() &&
-                // if we're manually creating a Graph for use as a subgraph the outer scope names are manually set here
-                outer_scope_node_arg_names_.find(input_arg_name) ==
-                    outer_scope_node_arg_names_.cend()) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid model. Node input '", input_arg_name,
-                                     "' is not a graph input, initializer, or output of a previous node.");
+            // Check all the inputs are found.
+            // Ignore a Fused node as it could have moved things like initializers to a different device
+            // (so they're internally available to the fused node but removed from the Graph instance).
+            // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
+            if (node.NodeType() != Node::Type::Fused) {
+              if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                      resolve_context_.inputs_and_initializers.cend() &&
+                  // if we're manually creating a Graph for use as a subgraph the outer scope names are manually set
+                  outer_scope_node_arg_names_.find(input_arg_name) == outer_scope_node_arg_names_.cend()) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid model. Node input '", input_arg_name,
+                                       "' is not a graph input, initializer, or output of a previous node.");
+              }
             }
           }
         }
@@ -2405,7 +2410,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     }
 
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                        logger_);
+                                                                logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
     node.SetFunctionBody(*function_container_.back());
