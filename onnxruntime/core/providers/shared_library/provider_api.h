@@ -181,6 +181,7 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control_utils.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 
@@ -241,21 +242,6 @@ struct Category {
 };
 
 }  // namespace logging
-
-namespace math {
-
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-
-uint16_t floatToHalf(float f);
-float halfToFloat(uint16_t h);
-
-}  // namespace math
 
 namespace utils {
 
