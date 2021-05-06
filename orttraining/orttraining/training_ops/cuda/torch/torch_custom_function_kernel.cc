@@ -172,10 +172,10 @@ void PythonOp::CreateArgPositions() {
   }
 }
 
-std::vector<OrtValue*> CreateArgs(OpKernelContext* context) {
+std::vector<OrtValue*> CreateArgs(OpKernelContext* context, const size_t begin_index) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   std::vector<OrtValue*> args;
-  for (size_t i = 0; i < static_cast<size_t>(ctx_internal->InputCount()); ++i) {
+  for (size_t i = begin_index; i < static_cast<size_t>(ctx_internal->InputCount()); ++i) {
     args.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
   }
   return args;
@@ -215,7 +215,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue*> args = CreateArgs(context);
+  std::vector<OrtValue*> args = CreateArgs(context, 0);
   // Place holder for Python returned values.
   std::vector<void*> returned_args;
 
@@ -237,48 +237,71 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+void PythonOpGrad::SetPositions() {
+  ORT_ENFORCE(const_arg_positions_.size() == 0);
+  ORT_ENFORCE(arg_positions_.size() == 0);
+
+  // Pytorch's autograd context is the first (indexed by 0) input of the called Python function.
+  // Note that here we will call autograd.Function.backward(ctx, tensor0, tensor1, ...).
+  const_arg_positions_ = {0};
+
+  // The rest inputs are just Pytorch tensors.
+  arg_positions_.resize(input_tensor_types_.size());
+  for (size_t i = 0; i < arg_positions_.size(); ++i) {
+    // i-th tensor is the (i+1)-th input of autograd.Function.backward.
+    arg_positions_.at(i) = static_cast<int64_t>(i) + 1;
+  }
+}
+
+std::vector<void*> CreateConstArgs(OpKernelContext* context) {
+  const Tensor* context_id_tensor = context->Input<Tensor>(0);
+  ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
+  const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
+  void* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  return {ctx_ptr};
+}
+
+void SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) {
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
+  // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
+  // In that case, returned_args may contain less arguments.
+  outputs_count = outputs_count > returned_args.size() ? returned_args.size() : outputs_count;
+  for (size_t i = 0; i < outputs_count; ++i) {
+    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
+    ORT_ENFORCE(ptr, i, "th output from Python should not be null.");
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+  }
+}
+
+PythonOpGrad::PythonOpGrad(const OpKernelInfo& info) : CudaKernel(info) {
+  ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
+  output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+  SetPositions();
+}
+
 Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-  ORT_ENFORCE(nullptr != context);
-  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  auto inputs_count = (size_t)ctx_internal->InputCount();
-  auto outputs_count = (size_t)ctx_internal->OutputCount();
 
-  std::vector<OrtValue*> inputs;
-  std::vector<void*> outputs;
-  const Tensor* first_output_tensor = context->Input<Tensor>(0);
-  ORT_ENFORCE(first_output_tensor != nullptr, "first output tensor should not be null.");
-  const int64_t* context_index_ptr = first_output_tensor->template Data<int64_t>();
-  PyObject* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  auto args = CreateArgs(context, 1);
+  // This is called "const" because that's how Pytorch calls all non-tensor inputs.
+  auto const_args = CreateConstArgs(context);
+  std::vector<void*> returned_args;
 
-  for (size_t i = 1; i < inputs_count; ++i) {
-    inputs.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
-  }
-
-  std::vector<int64_t> arg_positions(inputs.size());
-  for (int64_t i = 0; i < (int64_t)arg_positions.size(); ++i) {
-    arg_positions.at(i) = i + 1;
-  }
-
-  std::vector<void*> const_args{ctx_ptr};
-  std::vector<int64_t> const_arg_positions{0};
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(
+      callback, input_tensor_requires_grads_, args, arg_positions_, const_args, const_arg_positions_, returned_args);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  outputs_count = outputs_count > outputs.size() ? outputs.size() : outputs_count;
-  for (size_t index = 0; index < outputs_count; ++index) {
-    void* backward_ret_ortvalue_addr = outputs[index];
-    auto* backward_ret_ortvalue_ptr = reinterpret_cast<OrtValue*>(backward_ret_ortvalue_addr);
-    ORT_ENFORCE(backward_ret_ortvalue_ptr != nullptr, index, "th output from Python should not be null.");
-
-    ORT_RETURN_IF_ERROR(ctx_internal->SetOutputMLValue(index, *backward_ret_ortvalue_ptr));
-  }
+  SetOutputs(context, returned_args);
 
   return Status::OK();
 }

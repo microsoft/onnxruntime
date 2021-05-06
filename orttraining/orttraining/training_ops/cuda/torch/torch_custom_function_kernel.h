@@ -69,17 +69,11 @@ class PythonOp final : public CudaKernel {
 // Pytorch's torch.autograd.Function.backward(...) wrapper.
 class PythonOpGrad final : public CudaKernel {
  public:
-  PythonOpGrad(const OpKernelInfo& info) : CudaKernel(info) {
-    ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
-    ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
-    input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
-    output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
-  }
-
+  PythonOpGrad(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+  void SetPositions();
   // Name of containing class. For example, MyReLU.
   std::string name_;
   // Input types of MyReLU.backward(...).
@@ -88,6 +82,8 @@ class PythonOpGrad final : public CudaKernel {
   std::vector<int64_t> output_tensor_types_;
   std::vector<int64_t> input_tensor_requires_grads_;
   std::vector<int64_t> output_tensor_requires_grads_;
+  std::vector<int64_t> arg_positions_;
+  std::vector<int64_t> const_arg_positions_;
 };
 
 }  // namespace cuda
