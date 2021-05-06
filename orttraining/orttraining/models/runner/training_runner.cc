@@ -32,6 +32,170 @@ using json = nlohmann::json;
 namespace onnxruntime {
 namespace training {
 
+namespace {
+namespace protobufutil = google::protobuf::util;
+
+void MLValueToTensorProto(MLValue& ml_value,
+                          /* out */ ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  bool using_raw_data = true;
+  if (!ml_value.IsTensor()) {
+    ORT_THROW("Don't support Non-Tensor values", OrtErrorCode::ORT_NOT_IMPLEMENTED);
+  }
+  // Tensor in MLValue
+  const auto& tensor = ml_value.Get<Tensor>();
+  const auto& shape = tensor.Shape();
+
+  // dims field
+  for (const auto& dim : shape.GetDims()) {
+    tensor_proto.add_dims(dim);
+  }
+  auto elem_count = shape.Size();
+
+  // data_type field
+  ONNX_NAMESPACE::TensorProto_DataType data_type = (onnx::TensorProto_DataType)tensor.GetElementType();
+  tensor_proto.set_data_type(data_type);
+
+  // data_location field: Data is stored in raw_data (if set) otherwise in type-specified field.
+  if (using_raw_data && data_type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+  }
+
+  // *_data field
+  // According to onnx_ml.proto, depending on the data_type field,
+  // exactly one of the *_data fields is used to store the elements of the tensor.
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {  // Target: raw_data or float_data
+      const auto* data = tensor.Data<float>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(float) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_float_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<int32_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(int32_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<uint8_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(uint8_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<int8_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(int8_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<uint16_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(uint16_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<int16_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(int16_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {  // Target: raw_data or int32_data
+      const auto* data = tensor.Data<bool>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(bool) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_int32_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {  // Target: raw_data or int64_data
+      const auto* data = tensor.Data<int64_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(int64_t) * elem_count);
+      } else {
+        for (size_t x = 0, loop_length = elem_count; x < loop_length; ++x) {
+          tensor_proto.add_int64_data(data[x]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {  // Target: raw_data or uint64_data
+      const auto* data = tensor.Data<uint32_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(uint32_t) * elem_count);
+      } else {
+        for (size_t i = 0, count = elem_count; i < count; ++i) {
+          tensor_proto.add_uint64_data(data[i]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64: {  // Target: raw_data or uint64_data
+      const auto* data = tensor.Data<uint64_t>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(uint64_t) * elem_count);
+      } else {
+        for (size_t x = 0, loop_length = elem_count; x < loop_length; ++x) {
+          tensor_proto.add_uint64_data(data[x]);
+        }
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {  // Target: raw_data or double_data
+      auto data = tensor.Data<double>();
+      if (using_raw_data) {
+        tensor_proto.set_raw_data(data, sizeof(double) * elem_count);
+      } else {
+        for (size_t x = 0, loop_length = elem_count; x < loop_length; ++x) {
+          tensor_proto.add_double_data(data[x]);
+        }
+      }
+      break;
+    }
+    default: {
+      std::ostringstream ostr;
+      ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
+      ORT_THROW(ostr.str(), OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
+  }
+
+  return;
+}
+}  // namespace
+
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
@@ -327,13 +491,26 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   {
     std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
     std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
+    static int i_batch = 0;
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
       if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
+        ONNX_NAMESPACE::TensorProto tp;
+        MLValueToTensorProto(data_feeds[i], tp);
+        std::string str;
+        *tp.mutable_name() = name;
+        tp.SerializeToString(&str);
+        std::string filename = "input_" + std::to_string(i) + ".pb";
+        if (!filename.empty()) {
+          std::ofstream File(std::string("test_data_set_") + std::to_string(i_batch) + "/" + filename, std::ofstream::out | std::ofstream::binary);
+          File << str;
+          File.close();
+        }
       }
     }
+    i_batch++;
   }
 
   // Pick up feed from loss scaling.
