@@ -12,6 +12,10 @@
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
+
+template <typename T>
+using DeleteOnUnloadPtr = std::unique_ptr<T>;
+
 #else
 #define SHARED_PROVIDER 1
 
