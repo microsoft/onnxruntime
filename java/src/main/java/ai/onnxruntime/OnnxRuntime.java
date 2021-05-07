@@ -36,6 +36,11 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
+  /** The short name of the ONNX runtime shared provider library */
+  static final String ONNXRUNTIME_LIBRARY_SHARED_NAME = "onnxruntime_providers_shared";
+  /** The short name of the ONNX runtime cuda provider library */
+  static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
+
   private static final String OS_ARCH_STR = initOsArch();
 
   private static boolean loaded = false;
@@ -93,8 +98,10 @@ final class OnnxRuntime {
     }
     Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
-      load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
-      load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
+      load(tempDirectory, ONNXRUNTIME_LIBRARY_SHARED_NAME, false);
+      load(tempDirectory, ONNXRUNTIME_LIBRARY_CUDA_NAME, false);
+      load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME, true);
+      load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME, true);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_7);
       providers = initialiseProviders(ortApiHandle);
       loaded = true;
@@ -138,7 +145,7 @@ final class OnnxRuntime {
    * @param library The bare name of the library.
    * @throws IOException If the file failed to read or write.
    */
-  private static void load(Path tempDirectory, String library) throws IOException {
+  private static void load(Path tempDirectory, String library, boolean system_load) throws IOException {
     // On Android, we simply use System.loadLibrary
     if (isAndroid()) {
       System.loadLibrary("onnxruntime4j_jni");
@@ -201,7 +208,8 @@ final class OnnxRuntime {
             os.write(buffer, 0, readBytes);
           }
         }
-        System.load(tempFile.getAbsolutePath());
+        if (system_load)
+          System.load(tempFile.getAbsolutePath());
         logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
     } finally {

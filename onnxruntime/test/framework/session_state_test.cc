@@ -19,10 +19,9 @@
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
-#elif USE_ROCM
+#ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #endif
 
@@ -189,8 +188,7 @@ static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri,
 
   ExecutionProviders execution_providers;
 #if defined(USE_CUDA)
-  CUDAExecutionProviderInfo cuda_epi;
-  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, std::make_unique<CUDAExecutionProvider>(cuda_epi)));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
 #elif defined(USE_ROCM)
   ROCMExecutionProviderInfo rocm_epi;
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kRocmExecutionProvider, std::make_unique<ROCMExecutionProvider>(rocm_epi)));
@@ -248,9 +246,9 @@ TEST(SessionStateTest, CPUPlacementTest3) {
   TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_3.onnx"), expected_cpu_nodes, expected_gpu_nodes);
 }
 TEST(SessionStateTest, CPUPlacementTest4) {
-  // Currently, the behaviour is different for RocM and CUDA EP as Rocm EP is missing a valid kernel 
-  // for ReduceSum for int64 type. This causes the backward trace in GetCpuPreferredNodes to stop 
-  // earlier. The expected values can be modified to match CUDA once the RocM EP kernel is updated 
+  // Currently, the behaviour is different for RocM and CUDA EP as Rocm EP is missing a valid kernel
+  // for ReduceSum for int64 type. This causes the backward trace in GetCpuPreferredNodes to stop
+  // earlier. The expected values can be modified to match CUDA once the RocM EP kernel is updated
 #if defined(USE_CUDA)
   std::unordered_set<std::string> expected_cpu_nodes = {"range", "reduce", "const1"};
   std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand"};
