@@ -2385,6 +2385,20 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
                                           {MakeAttribute("axis", axis)});
     EXPECT_IS_TINY(max_error);
   }
+
+  {
+    // GatherElementsGradWithLargerIndiceOnAxis
+    TensorInfo data_info({2, 2}, true);
+    TensorInfo indice_info({2, 4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {1, 1, 1, 1, 1, 1, 1, 1}};
+
+    TensorInfo y_info({2, 4}, true);
+    int64_t axis = 1;
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
 TEST(GradientCheckerTest, TopKGrad) {
