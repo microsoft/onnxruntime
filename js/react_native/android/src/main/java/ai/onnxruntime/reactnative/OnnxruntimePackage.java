@@ -4,15 +4,12 @@
 package ai.onnxruntime.reactnative;
 
 import android.os.Build;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
-
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.uimanager.ViewManager;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;

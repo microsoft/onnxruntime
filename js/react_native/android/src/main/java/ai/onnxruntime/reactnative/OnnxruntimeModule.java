@@ -3,13 +3,19 @@
 
 package ai.onnxruntime.reactnative;
 
+import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OnnxValue;
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtException;
+import ai.onnxruntime.OrtSession;
+import ai.onnxruntime.OrtSession.Result;
+import ai.onnxruntime.OrtSession.RunOptions;
+import ai.onnxruntime.OrtSession.SessionOptions;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
-
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -20,7 +26,6 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,15 +38,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OnnxValue;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.OrtSession.Result;
-import ai.onnxruntime.OrtSession.SessionOptions;
-import ai.onnxruntime.OrtSession.RunOptions;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule {
@@ -64,7 +60,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   /**
    * React native binding API to load a model using given uri.
    *
-   * @param uri a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are loaded.
+   * @param uri a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are
+   *     loaded.
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
    * @note when run() is called, the same uri must be passed into the first parameter.
@@ -227,18 +224,21 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return resultMap;
   }
 
-  private static final Map<String, SessionOptions.OptLevel> graphOptimizationLevelTable = Stream.of(new Object[][] {
-                                                                                                        {"disabled", SessionOptions.OptLevel.NO_OPT},
-                                                                                                        {"basic", SessionOptions.OptLevel.BASIC_OPT},
-                                                                                                        {"extended", SessionOptions.OptLevel.EXTENDED_OPT},
-                                                                                                        {"all", SessionOptions.OptLevel.ALL_OPT},
-                                                                                                    })
-                                                                                              .collect(Collectors.toMap(p -> (String) p[0], p -> (SessionOptions.OptLevel) p[1]));
+  private static final Map<String, SessionOptions.OptLevel> graphOptimizationLevelTable =
+      Stream
+          .of(new Object[][] {
+              {"disabled", SessionOptions.OptLevel.NO_OPT},
+              {"basic", SessionOptions.OptLevel.BASIC_OPT},
+              {"extended", SessionOptions.OptLevel.EXTENDED_OPT},
+              {"all", SessionOptions.OptLevel.ALL_OPT},
+          })
+          .collect(Collectors.toMap(p -> (String)p[0], p -> (SessionOptions.OptLevel)p[1]));
 
-  private static final Map<String, SessionOptions.ExecutionMode> executionModeTable = Stream.of(new Object[][] {
-                                                                                                    {"sequential", SessionOptions.ExecutionMode.SEQUENTIAL},
-                                                                                                    {"parallel", SessionOptions.ExecutionMode.PARALLEL}})
-                                                                                          .collect(Collectors.toMap(p -> (String) p[0], p -> (SessionOptions.ExecutionMode) p[1]));
+  private static final Map<String, SessionOptions.ExecutionMode> executionModeTable =
+      Stream
+          .of(new Object[][] {{"sequential", SessionOptions.ExecutionMode.SEQUENTIAL},
+                              {"parallel", SessionOptions.ExecutionMode.PARALLEL}})
+          .collect(Collectors.toMap(p -> (String)p[0], p -> (SessionOptions.ExecutionMode)p[1]));
 
   private SessionOptions parseSessionOptions(ReadableMap options) throws OrtException {
     SessionOptions sessionOptions = new SessionOptions();

@@ -3,34 +3,30 @@
 
 package ai.onnxruntime.reactnative;
 
-import android.util.Base64;
-
-import androidx.test.platform.app.InstrumentationRegistry;
-
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static org.mockito.Mockito.when;
 
+import ai.onnxruntime.TensorInfo;
+import android.util.Base64;
+import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
-
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoSession;
 
-import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
-
-import ai.onnxruntime.TensorInfo;
-
 public class OnnxruntimeModuleTest {
-  private ReactApplicationContext reactContext = new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
+  private ReactApplicationContext reactContext =
+      new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
 
   @Before
   public void setUp() {}
@@ -53,7 +49,8 @@ public class OnnxruntimeModuleTest {
 
       // test loadModel()
       {
-        InputStream modelStream = reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+        InputStream modelStream =
+            reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
         JavaOnlyMap options = new JavaOnlyMap();
         try {
           ReadableMap resultMap = ortModule.loadModel("test", modelStream, options);
@@ -114,7 +111,9 @@ public class OnnxruntimeModuleTest {
           }
           Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeFloat);
           String dataEncoded = outputMap.getString("data");
-          FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
+          FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT))
+                                   .order(ByteOrder.nativeOrder())
+                                   .asFloatBuffer();
           for (int i = 0; i < 5; ++i) {
             Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
           }

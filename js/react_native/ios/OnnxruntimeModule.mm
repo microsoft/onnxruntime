@@ -1,23 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import <Foundation/Foundation.h>
-#import <React/RCTLog.h>
-#import "onnxruntime_cxx_api.h"
 #import "OnnxruntimeModule.h"
 #import "TensorHelper.h"
+#import "onnxruntime_cxx_api.h"
+#import <Foundation/Foundation.h>
+#import <React/RCTLog.h>
 
 @implementation OnnxruntimeModule
 
 struct SessionInfo {
   std::unique_ptr<Ort::Session> session;
   std::vector<Ort::MemoryAllocation> allocations;
-  std::vector<const char*> inputNames;
-  std::vector<const char*> outputNames;
+  std::vector<const char *> inputNames;
+  std::vector<const char *> outputNames;
 };
 
-static Ort::Env* ortEnv = new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
-static NSMutableDictionary* sessionMap = [NSMutableDictionary dictionary];
+static Ort::Env *ortEnv = new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
+static NSMutableDictionary *sessionMap = [NSMutableDictionary dictionary];
 static Ort::AllocatorWithDefaultOptions ortAllocator;
 
 RCT_EXPORT_MODULE(Onnxruntime)
@@ -25,25 +25,22 @@ RCT_EXPORT_MODULE(Onnxruntime)
 /**
  * React native binding API to load a model using given uri.
  *
- * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are loaded.
+ * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models
+ * are loaded.
  * @param options onnxruntime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
 RCT_EXPORT_METHOD(loadModel
-                  : (NSString*)modelPath
-                      options
-                  : (NSDictionary*)options
-                      resolver
-                  : (RCTPromiseResolveBlock)resolve
-                      rejecter
+                  : (NSString *)modelPath options
+                  : (NSDictionary *)options resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    NSDictionary* resultMap = [self loadModel:modelPath options:options];
+    NSDictionary *resultMap = [self loadModel:modelPath options:options];
     resolve(resultMap);
-  }
-  @catch (NSException* exception) {
+  } @catch (NSException *exception) {
     reject(@"onnxruntime", @"can't load model", nil);
   }
 }
@@ -59,22 +56,16 @@ RCT_EXPORT_METHOD(loadModel
  * @param reject callback for returning an error back to react native js
  */
 RCT_EXPORT_METHOD(run
-                  : (NSString*)url
-                      input
-                  : (NSDictionary*)input
-                      output
-                  : (NSArray*)output
-                      options
-                  : (NSDictionary*)options
-                      resolver
-                  : (RCTPromiseResolveBlock)resolve
-                      rejecter
+                  : (NSString *)url input
+                  : (NSDictionary *)input output
+                  : (NSArray *)output options
+                  : (NSDictionary *)options resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    NSDictionary* resultMap = [self run:url input:input output:output options:options];
+    NSDictionary *resultMap = [self run:url input:input output:output options:options];
     resolve(resultMap);
-  }
-  @catch (NSException* exception) {
+  } @catch (NSException *exception) {
     reject(@"onnxruntime", @"can't run model", nil);
   }
 }
@@ -82,13 +73,14 @@ RCT_EXPORT_METHOD(run
 /**
  * Load a model using given model path.
  *
- * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are loaded.
+ * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models
+ * are loaded.
  * @param options onnxruntime session options
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
-- (NSDictionary*)loadModel:(NSString*)modelPath options:(NSDictionary*)options {
-  NSValue* value = [sessionMap objectForKey:modelPath];
-  SessionInfo* sessionInfo = nullptr;
+- (NSDictionary *)loadModel:(NSString *)modelPath options:(NSDictionary *)options {
+  NSValue *value = [sessionMap objectForKey:modelPath];
+  SessionInfo *sessionInfo = nullptr;
   if (value == nil) {
     sessionInfo = new SessionInfo();
 
@@ -109,22 +101,22 @@ RCT_EXPORT_METHOD(run
       sessionInfo->outputNames.emplace_back(outputName);
     }
 
-    value = [NSValue valueWithPointer:(void*)sessionInfo];
+    value = [NSValue valueWithPointer:(void *)sessionInfo];
     sessionMap[modelPath] = value;
   } else {
-    sessionInfo = (SessionInfo*)[value pointerValue];
+    sessionInfo = (SessionInfo *)[value pointerValue];
   }
 
-  NSMutableDictionary* resultMap = [NSMutableDictionary dictionary];
+  NSMutableDictionary *resultMap = [NSMutableDictionary dictionary];
   resultMap[@"key"] = modelPath;
 
-  NSMutableArray* inputNames = [NSMutableArray array];
+  NSMutableArray *inputNames = [NSMutableArray array];
   for (auto inputName : sessionInfo->inputNames) {
     [inputNames addObject:[NSString stringWithCString:inputName encoding:NSUTF8StringEncoding]];
   }
   resultMap[@"inputNames"] = inputNames;
 
-  NSMutableArray* outputNames = [NSMutableArray array];
+  NSMutableArray *outputNames = [NSMutableArray array];
   for (auto outputName : sessionInfo->outputNames) {
     [outputNames addObject:[NSString stringWithCString:outputName encoding:NSUTF8StringEncoding]];
   }
@@ -141,24 +133,26 @@ RCT_EXPORT_METHOD(run
  * @param output an output names to be returned
  * @param options onnxruntime run options
  */
-- (NSDictionary*)run:(NSString*)url
-               input:(NSDictionary*)input
-              output:(NSArray*)output
-             options:(NSDictionary*)options {
-  NSValue* value = [sessionMap objectForKey:url];
+- (NSDictionary *)run:(NSString *)url
+                input:(NSDictionary *)input
+               output:(NSArray *)output
+              options:(NSDictionary *)options {
+  NSValue *value = [sessionMap objectForKey:url];
   if (value == nil) {
-    NSException* exception = [NSException exceptionWithName:@"onnxruntime" reason:@"can't find onnxruntime session" userInfo:nil];
+    NSException *exception = [NSException exceptionWithName:@"onnxruntime"
+                                                     reason:@"can't find onnxruntime session"
+                                                   userInfo:nil];
     @throw exception;
   }
-  SessionInfo* sessionInfo = (SessionInfo*)[value pointerValue];
+  SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
 
   std::vector<Ort::Value> feeds;
   std::vector<Ort::MemoryAllocation> allocations;
   feeds.reserve(sessionInfo->inputNames.size());
   for (auto inputName : sessionInfo->inputNames) {
-    NSDictionary* inputTensor = [input objectForKey:[NSString stringWithUTF8String:inputName]];
+    NSDictionary *inputTensor = [input objectForKey:[NSString stringWithUTF8String:inputName]];
     if (inputTensor == nil) {
-      NSException* exception = [NSException exceptionWithName:@"onnxruntime" reason:@"can't find input" userInfo:nil];
+      NSException *exception = [NSException exceptionWithName:@"onnxruntime" reason:@"can't find input" userInfo:nil];
       @throw exception;
     }
 
@@ -166,39 +160,32 @@ RCT_EXPORT_METHOD(run
     feeds.emplace_back(std::move(value));
   }
 
-  std::vector<const char*> requestedOutputs;
+  std::vector<const char *> requestedOutputs;
   requestedOutputs.reserve(output.count);
-  for (NSString* outputName : output) {
+  for (NSString *outputName : output) {
     requestedOutputs.emplace_back([outputName UTF8String]);
   }
   Ort::RunOptions runOptions = [self parseRunOptions:options];
 
-  auto result = sessionInfo->session->Run(runOptions,
-                                          sessionInfo->inputNames.data(),
-                                          feeds.data(),
-                                          sessionInfo->inputNames.size(),
-                                          requestedOutputs.data(),
-                                          requestedOutputs.size());
+  auto result =
+      sessionInfo->session->Run(runOptions, sessionInfo->inputNames.data(), feeds.data(),
+                                sessionInfo->inputNames.size(), requestedOutputs.data(), requestedOutputs.size());
 
-  NSDictionary* resultMap = [TensorHelper createOutputTensor:requestedOutputs
-                                                      values:result];
+  NSDictionary *resultMap = [TensorHelper createOutputTensor:requestedOutputs values:result];
 
   return resultMap;
 }
 
-static NSDictionary* graphOptimizationLevelTable = @{
+static NSDictionary *graphOptimizationLevelTable = @{
   @"disabled" : @(ORT_DISABLE_ALL),
   @"basic" : @(ORT_ENABLE_BASIC),
   @"extended" : @(ORT_ENABLE_EXTENDED),
   @"all" : @(ORT_ENABLE_ALL)
 };
 
-static NSDictionary* executionModeTable = @{
-  @"sequential" : @(ORT_SEQUENTIAL),
-  @"parallel" : @(ORT_PARALLEL)
-};
+static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @"parallel" : @(ORT_PARALLEL)};
 
-- (Ort::SessionOptions)parseSessionOptions:(NSDictionary*)options {
+- (Ort::SessionOptions)parseSessionOptions:(NSDictionary *)options {
   Ort::SessionOptions sessionOptions;
 
   if ([options objectForKey:@"intraOpNumThreads"]) {
@@ -216,9 +203,10 @@ static NSDictionary* executionModeTable = @{
   }
 
   if ([options objectForKey:@"graphOptimizationLevel"]) {
-    NSString* graphOptimizationLevel = [[options objectForKey:@"graphOptimizationLevel"] stringValue];
+    NSString *graphOptimizationLevel = [[options objectForKey:@"graphOptimizationLevel"] stringValue];
     if ([graphOptimizationLevelTable objectForKey:graphOptimizationLevel]) {
-      sessionOptions.SetGraphOptimizationLevel((GraphOptimizationLevel)[[graphOptimizationLevelTable objectForKey:graphOptimizationLevel] intValue]);
+      sessionOptions.SetGraphOptimizationLevel(
+          (GraphOptimizationLevel)[[graphOptimizationLevelTable objectForKey:graphOptimizationLevel] intValue]);
     }
   }
 
@@ -241,14 +229,14 @@ static NSDictionary* executionModeTable = @{
   }
 
   if ([options objectForKey:@"executionMode"]) {
-    NSString* executionMode = [[options objectForKey:@"executionMode"] stringValue];
+    NSString *executionMode = [[options objectForKey:@"executionMode"] stringValue];
     if ([executionModeTable objectForKey:executionMode]) {
       sessionOptions.SetExecutionMode((ExecutionMode)[[executionModeTable objectForKey:executionMode] intValue]);
     }
   }
 
   if ([options objectForKey:@"logId"]) {
-    NSString* logId = [[options objectForKey:@"logId"] stringValue];
+    NSString *logId = [[options objectForKey:@"logId"] stringValue];
     sessionOptions.SetLogId([logId UTF8String]);
   }
 
@@ -260,7 +248,7 @@ static NSDictionary* executionModeTable = @{
   return sessionOptions;
 }
 
-- (Ort::RunOptions)parseRunOptions:(NSDictionary*)options {
+- (Ort::RunOptions)parseRunOptions:(NSDictionary *)options {
   Ort::RunOptions runOptions;
 
   if ([options objectForKey:@"logSeverityLevel"]) {
@@ -269,7 +257,7 @@ static NSDictionary* executionModeTable = @{
   }
 
   if ([options objectForKey:@"tag"]) {
-    NSString* tag = [[options objectForKey:@"tag"] stringValue];
+    NSString *tag = [[options objectForKey:@"tag"] stringValue];
     runOptions.SetRunTag([tag UTF8String]);
   }
 
@@ -277,10 +265,10 @@ static NSDictionary* executionModeTable = @{
 }
 
 - (void)dealloc {
-  NSEnumerator* iterator = [sessionMap keyEnumerator];
-  while (NSString* key = [iterator nextObject]) {
-    NSValue* value = [sessionMap objectForKey:key];
-    SessionInfo* sessionInfo = (SessionInfo*)[value pointerValue];
+  NSEnumerator *iterator = [sessionMap keyEnumerator];
+  while (NSString *key = [iterator nextObject]) {
+    NSValue *value = [sessionMap objectForKey:key];
+    SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
     delete sessionInfo;
     sessionInfo = nullptr;
   }

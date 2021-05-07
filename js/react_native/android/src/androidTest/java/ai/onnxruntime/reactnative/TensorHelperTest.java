@@ -3,18 +3,8 @@
 
 package ai.onnxruntime.reactnative;
 
-import android.content.Context;
-import android.util.Base64;
-
-import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.JavaOnlyArray;
-import com.facebook.react.bridge.JavaOnlyMap;
-import com.facebook.react.bridge.ReadableMap;
-
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.MockitoSession;
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
+import static org.mockito.Mockito.when;
 
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
@@ -22,10 +12,14 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.OrtUtil;
 import ai.onnxruntime.TensorInfo;
-
+import android.content.Context;
+import android.util.Base64;
 import androidx.test.filters.SmallTest;
 import androidx.test.platform.app.InstrumentationRegistry;
-
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.JavaOnlyArray;
+import com.facebook.react.bridge.JavaOnlyMap;
+import com.facebook.react.bridge.ReadableMap;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -37,9 +31,10 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
-
-import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
-import static org.mockito.Mockito.when;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.MockitoSession;
 
 @SmallTest
 public class TensorHelperTest {
@@ -52,7 +47,8 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_float32() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new float[] {Float.MIN_VALUE, 2.0f, Float.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, new float[] {Float.MIN_VALUE, 2.0f, Float.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -95,7 +91,7 @@ public class TensorHelperTest {
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
     dataByteBuffer.put(Byte.MIN_VALUE);
-    dataByteBuffer.put((byte) 2);
+    dataByteBuffer.put((byte)2);
     dataByteBuffer.put(Byte.MAX_VALUE);
     String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", dataEncoded);
@@ -113,7 +109,8 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_int16() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new short[] {Short.MIN_VALUE, 2, Short.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, new short[] {Short.MIN_VALUE, 2, Short.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -126,7 +123,7 @@ public class TensorHelperTest {
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 2).order(ByteOrder.nativeOrder());
     ShortBuffer dataShortBuffer = dataByteBuffer.asShortBuffer();
     dataShortBuffer.put(Short.MIN_VALUE);
-    dataShortBuffer.put((short) 2);
+    dataShortBuffer.put((short)2);
     dataShortBuffer.put(Short.MAX_VALUE);
     String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", dataEncoded);
@@ -144,7 +141,8 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_int32() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new int[] {Integer.MIN_VALUE, 2, Integer.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, new int[] {Integer.MIN_VALUE, 2, Integer.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -175,9 +173,8 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_int64() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(
-        ortEnvironment,
-        new long[] {Long.MIN_VALUE, 15000000001L, Long.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, new long[] {Long.MIN_VALUE, 15000000001L, Long.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -208,10 +205,7 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_string() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(
-        ortEnvironment,
-        new String[] {"a", "b", "c"},
-        new long[] {3});
+    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new String[] {"a", "b", "c"}, new long[] {3});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -230,10 +224,11 @@ public class TensorHelperTest {
     OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    Assert.assertEquals(outputTensor.getInfo().onnxType,
+                        TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
-    String[] inputData = (String[]) inputTensor.getValue();
-    String[] outputData = (String[]) outputTensor.getValue();
+    String[] inputData = (String[])inputTensor.getValue();
+    String[] outputData = (String[])outputTensor.getValue();
     Assert.assertArrayEquals(inputData, outputData);
 
     inputTensor.close();
@@ -242,9 +237,8 @@ public class TensorHelperTest {
 
   @Test
   public void createInputTensor_double() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(
-        ortEnvironment,
-        new double[] {Double.MIN_VALUE, 1.8e+30, Double.MAX_VALUE});
+    OnnxTensor outputTensor =
+        OnnxTensor.createTensor(ortEnvironment, new double[] {Double.MIN_VALUE, 1.8e+30, Double.MAX_VALUE});
 
     JavaOnlyMap inputTensorMap = new JavaOnlyMap();
 
@@ -265,7 +259,8 @@ public class TensorHelperTest {
     OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE);
-    Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE);
+    Assert.assertEquals(outputTensor.getInfo().onnxType,
+                        TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE);
     Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
     Assert.assertArrayEquals(inputTensor.getDoubleBuffer().array(), outputTensor.getDoubleBuffer().array(), 1e-6f);
 
@@ -342,7 +337,8 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeDouble);
       String dataEncoded = outputMap.getString("data");
-      DoubleBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
+      DoubleBuffer buffer =
+          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
       }
@@ -382,7 +378,8 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeFloat);
       String dataEncoded = outputMap.getString("data");
-      FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
+      FloatBuffer buffer =
+          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
       }
@@ -462,7 +459,8 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeShort);
       String dataEncoded = outputMap.getString("data");
-      ShortBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asShortBuffer();
+      ShortBuffer buffer =
+          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asShortBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -502,7 +500,8 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeInt);
       String dataEncoded = outputMap.getString("data");
-      IntBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asIntBuffer();
+      IntBuffer buffer =
+          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asIntBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -542,7 +541,8 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeLong);
       String dataEncoded = outputMap.getString("data");
-      LongBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
+      LongBuffer buffer =
+          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -573,7 +573,7 @@ public class TensorHelperTest {
       container.put(inputName, onnxTensor);
 
       OrtSession.Result result = session.run(container);
-      String[] outputData = (String[]) ((OnnxTensor) result.get(0)).getValue();
+      String[] outputData = (String[])((OnnxTensor)result.get(0)).getValue();
 
       ReadableMap resultMap = TensorHelper.createOutputTensor(result);
       ReadableMap outputMap = resultMap.getMap("output");

@@ -3,14 +3,18 @@
 
 package ai.onnxruntime.reactnative;
 
+import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OnnxValue;
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtSession;
+import ai.onnxruntime.OrtUtil;
+import ai.onnxruntime.TensorInfo;
 import android.util.Base64;
-
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
@@ -23,13 +27,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OnnxValue;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.OrtUtil;
-import ai.onnxruntime.TensorInfo;
 
 public class TensorHelper {
   /**
@@ -88,19 +85,19 @@ public class TensorHelper {
     while (iterator.hasNext()) {
       Map.Entry<String, OnnxValue> entry = iterator.next();
       String outputName = entry.getKey();
-      OnnxValue onnxValue = (OnnxValue) entry.getValue();
+      OnnxValue onnxValue = (OnnxValue)entry.getValue();
       if (onnxValue.getType() != OnnxValue.OnnxValueType.ONNX_TYPE_TENSOR) {
         throw new Exception("Not supported type: " + onnxValue.getType().toString());
       }
 
-      OnnxTensor onnxTensor = (OnnxTensor) onnxValue;
+      OnnxTensor onnxTensor = (OnnxTensor)onnxValue;
       WritableMap outputTensor = Arguments.createMap();
 
       // dims
       WritableArray outputDims = Arguments.createArray();
       long[] dims = onnxTensor.getInfo().getShape();
       for (long dim : dims) {
-        outputDims.pushInt((int) dim);
+        outputDims.pushInt((int)dim);
       }
       outputTensor.putArray("dims", outputDims);
 
@@ -109,7 +106,7 @@ public class TensorHelper {
 
       // data
       if (onnxTensor.getInfo().onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-        String[] buffer = (String[]) onnxTensor.getValue();
+        String[] buffer = (String[])onnxTensor.getValue();
         WritableArray dataArray = Arguments.createArray();
         for (String value : buffer) {
           dataArray.pushString(value);
@@ -126,51 +123,49 @@ public class TensorHelper {
     return outputTensorMap;
   }
 
-  private static OnnxTensor createInputTensor(TensorInfo.OnnxTensorType tensorType,
-      long[] dims,
-      ByteBuffer values,
-      OrtEnvironment ortEnvironment) throws Exception {
+  private static OnnxTensor createInputTensor(TensorInfo.OnnxTensorType tensorType, long[] dims, ByteBuffer values,
+                                              OrtEnvironment ortEnvironment) throws Exception {
     OnnxTensor tensor = null;
     switch (tensorType) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-        FloatBuffer buffer = values.asFloatBuffer();
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-        ByteBuffer buffer = values;
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
-        ShortBuffer buffer = values.asShortBuffer();
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-        IntBuffer buffer = values.asIntBuffer();
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-        LongBuffer buffer = values.asLongBuffer();
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-        DoubleBuffer buffer = values.asDoubleBuffer();
-        tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      default:
-        throw new IllegalStateException("Unexpected value: " + tensorType.toString());
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+      FloatBuffer buffer = values.asFloatBuffer();
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+      ByteBuffer buffer = values;
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
+      ShortBuffer buffer = values.asShortBuffer();
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+      IntBuffer buffer = values.asIntBuffer();
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+      LongBuffer buffer = values.asLongBuffer();
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+      DoubleBuffer buffer = values.asDoubleBuffer();
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims);
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+    default:
+      throw new IllegalStateException("Unexpected value: " + tensorType.toString());
     }
 
     return tensor;
@@ -180,60 +175,62 @@ public class TensorHelper {
     TensorInfo tensorInfo = onnxTensor.getInfo();
     ByteBuffer buffer = null;
 
-    int capacity = (int) OrtUtil.elementCount(onnxTensor.getInfo().getShape());
+    int capacity = (int)OrtUtil.elementCount(onnxTensor.getInfo().getShape());
 
     switch (tensorInfo.onnxType) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        buffer = ByteBuffer.allocate(capacity * 4).order(ByteOrder.nativeOrder());
-        buffer.asFloatBuffer().put(onnxTensor.getFloatBuffer());
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-        buffer = ByteBuffer.allocate(capacity).order(ByteOrder.nativeOrder());
-        buffer.put(onnxTensor.getByteBuffer());
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-        buffer = ByteBuffer.allocate(capacity * 2).order(ByteOrder.nativeOrder());
-        buffer.asShortBuffer().put(onnxTensor.getShortBuffer());
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        buffer = ByteBuffer.allocate(capacity * 4).order(ByteOrder.nativeOrder());
-        buffer.asIntBuffer().put(onnxTensor.getIntBuffer());
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-        buffer = ByteBuffer.allocate(capacity * 8).order(ByteOrder.nativeOrder());
-        buffer.asLongBuffer().put(onnxTensor.getLongBuffer());
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-        buffer = ByteBuffer.allocate(capacity * 8).order(ByteOrder.nativeOrder());
-        buffer.asDoubleBuffer().put(onnxTensor.getDoubleBuffer());
-        break;
-      }
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      default:
-        throw new IllegalStateException("Unexpected type: " + tensorInfo.onnxType.toString());
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      buffer = ByteBuffer.allocate(capacity * 4).order(ByteOrder.nativeOrder());
+      buffer.asFloatBuffer().put(onnxTensor.getFloatBuffer());
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      buffer = ByteBuffer.allocate(capacity).order(ByteOrder.nativeOrder());
+      buffer.put(onnxTensor.getByteBuffer());
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      buffer = ByteBuffer.allocate(capacity * 2).order(ByteOrder.nativeOrder());
+      buffer.asShortBuffer().put(onnxTensor.getShortBuffer());
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      buffer = ByteBuffer.allocate(capacity * 4).order(ByteOrder.nativeOrder());
+      buffer.asIntBuffer().put(onnxTensor.getIntBuffer());
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      buffer = ByteBuffer.allocate(capacity * 8).order(ByteOrder.nativeOrder());
+      buffer.asLongBuffer().put(onnxTensor.getLongBuffer());
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+      buffer = ByteBuffer.allocate(capacity * 8).order(ByteOrder.nativeOrder());
+      buffer.asDoubleBuffer().put(onnxTensor.getDoubleBuffer());
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+    default:
+      throw new IllegalStateException("Unexpected type: " + tensorInfo.onnxType.toString());
     }
 
     String data = Base64.encodeToString(buffer.array(), Base64.DEFAULT);
     return data;
   }
 
-  private static final Map<String, TensorInfo.OnnxTensorType> JsTensorTypeToOnnxTensorTypeMap = Stream.of(new Object[][] {
-                                                                                                              {JsTensorTypeFloat, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT},
-                                                                                                              {JsTensorTypeByte, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8},
-                                                                                                              {JsTensorTypeShort, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16},
-                                                                                                              {JsTensorTypeInt, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
-                                                                                                              {JsTensorTypeLong, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
-                                                                                                              {JsTensorTypeString, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
-                                                                                                              {JsTensorTypeBool, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL},
-                                                                                                              {JsTensorTypeDouble, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE},
-                                                                                                          })
-                                                                                                    .collect(Collectors.toMap(p -> (String) p[0], p -> (TensorInfo.OnnxTensorType) p[1]));
+  private static final Map<String, TensorInfo.OnnxTensorType> JsTensorTypeToOnnxTensorTypeMap =
+      Stream
+          .of(new Object[][] {
+              {JsTensorTypeFloat, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT},
+              {JsTensorTypeByte, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8},
+              {JsTensorTypeShort, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16},
+              {JsTensorTypeInt, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+              {JsTensorTypeLong, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64},
+              {JsTensorTypeString, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING},
+              {JsTensorTypeBool, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL},
+              {JsTensorTypeDouble, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE},
+          })
+          .collect(Collectors.toMap(p -> (String)p[0], p -> (TensorInfo.OnnxTensorType)p[1]));
 
   private static TensorInfo.OnnxTensorType getOnnxTensorType(String type) {
     if (JsTensorTypeToOnnxTensorTypeMap.containsKey(type)) {
@@ -243,17 +240,19 @@ public class TensorHelper {
     }
   }
 
-  private static final Map<TensorInfo.OnnxTensorType, String> OnnxTensorTypeToJsTensorTypeMap = Stream.of(new Object[][] {
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, JsTensorTypeByte},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, JsTensorTypeShort},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, JsTensorTypeInt},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, JsTensorTypeLong},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, JsTensorTypeString},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, JsTensorTypeBool},
-                                                                                                              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, JsTensorTypeDouble},
-                                                                                                          })
-                                                                                                    .collect(Collectors.toMap(p -> (TensorInfo.OnnxTensorType) p[0], p -> (String) p[1]));
+  private static final Map<TensorInfo.OnnxTensorType, String> OnnxTensorTypeToJsTensorTypeMap =
+      Stream
+          .of(new Object[][] {
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, JsTensorTypeByte},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, JsTensorTypeShort},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, JsTensorTypeInt},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, JsTensorTypeLong},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, JsTensorTypeString},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, JsTensorTypeBool},
+              {TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, JsTensorTypeDouble},
+          })
+          .collect(Collectors.toMap(p -> (TensorInfo.OnnxTensorType)p[0], p -> (String)p[1]));
 
   private static String getJsTensorType(TensorInfo.OnnxTensorType type) {
     if (OnnxTensorTypeToJsTensorTypeMap.containsKey(type)) {

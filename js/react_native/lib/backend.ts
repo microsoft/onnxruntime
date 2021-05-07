@@ -84,7 +84,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
           if (Object.prototype.hasOwnProperty.call(fetches, name)) {
             if (fetches[name]) {
               throw new Error(
-                'Preallocated output is not supported and only names as string array is allowed as parameter');
+                  'Preallocated output is not supported and only names as string array is allowed as parameter');
             }
             outputNames.push(name);
           }

@@ -3,45 +3,41 @@
 
 package com.example.reactnativeonnxruntimemodule;
 
+import ai.onnxruntime.reactnative.OnnxruntimePackage;
 import android.app.Application;
 import android.content.Context;
-
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactApplication;
+import com.facebook.react.ReactInstanceManager;
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
-import com.facebook.react.ReactInstanceManager;
 import com.facebook.soloader.SoLoader;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
-import ai.onnxruntime.reactnative.OnnxruntimePackage;
-
 public class MainApplication extends Application implements ReactApplication {
   private static Context appContext;
 
-  private final ReactNativeHost mReactNativeHost =
-      new ReactNativeHost(this) {
-        @Override
-        public boolean getUseDeveloperSupport() {
-          return BuildConfig.DEBUG;
-        }
+  private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {
+    @Override
+    public boolean getUseDeveloperSupport() {
+      return BuildConfig.DEBUG;
+    }
 
-        @Override
-        protected List<ReactPackage> getPackages() {
-          @SuppressWarnings("UnnecessaryLocalVariable")
-          List<ReactPackage> packages = new PackageList(this).getPackages();
-          packages.add(new OnnxruntimePackage());
-          packages.add(new DataHandlerPackage());
+    @Override
+    protected List<ReactPackage> getPackages() {
+      @SuppressWarnings("UnnecessaryLocalVariable") List<ReactPackage> packages = new PackageList(this).getPackages();
+      packages.add(new OnnxruntimePackage());
+      packages.add(new DataHandlerPackage());
 
-          return packages;
-        }
+      return packages;
+    }
 
-        @Override
-        protected String getJSMainModuleName() {
-          return "index";
-        }
-      };
+    @Override
+    protected String getJSMainModuleName() {
+      return "index";
+    }
+  };
 
   @Override
   public ReactNativeHost getReactNativeHost() {
@@ -53,12 +49,11 @@ public class MainApplication extends Application implements ReactApplication {
     super.onCreate();
     appContext = getApplicationContext();
     SoLoader.init(this, /* native exopackage */ false);
-    initializeFlipper(this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
+    initializeFlipper(
+        this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
   }
 
-  public static Context getAppContext() {
-    return appContext;
-  }
+  public static Context getAppContext() { return appContext; }
 
   /**
    * Loads Flipper in React Native templates.
@@ -73,8 +68,7 @@ public class MainApplication extends Application implements ReactApplication {
         since Flipper library is not available in release mode
         */
         Class<?> aClass = Class.forName("com.onnxruntimereactnativeExample.ReactNativeFlipper");
-        aClass
-            .getMethod("initializeFlipper", Context.class, ReactInstanceManager.class)
+        aClass.getMethod("initializeFlipper", Context.class, ReactInstanceManager.class)
             .invoke(null, context, reactInstanceManager);
       } catch (ClassNotFoundException e) {
         e.printStackTrace();

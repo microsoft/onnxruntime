@@ -3,6 +3,10 @@
 
 package com.example.reactnativeonnxruntimemodule;
 
+import static java.util.stream.Collectors.joining;
+
+import ai.onnxruntime.reactnative.OnnxruntimeModule;
+import ai.onnxruntime.reactnative.TensorHelper;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -10,11 +14,9 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Base64;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.math.MathUtils;
-
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -25,7 +27,6 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -42,11 +43,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import ai.onnxruntime.reactnative.OnnxruntimeModule;
-import ai.onnxruntime.reactnative.TensorHelper;
-
-import static java.util.stream.Collectors.joining;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class MNISTDataHandler extends ReactContextBaseJavaModule {
@@ -131,12 +127,13 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     // Resize bitmap to 28x28
     bitmap = Bitmap.createScaledBitmap(bitmap, imageWidth, imageHeight, false);
 
-    ByteBuffer imageByteBuffer = ByteBuffer.allocate(imageHeight * imageWidth * channelSize * 4).order(ByteOrder.nativeOrder());
+    ByteBuffer imageByteBuffer =
+        ByteBuffer.allocate(imageHeight * imageWidth * channelSize * 4).order(ByteOrder.nativeOrder());
     FloatBuffer imageFloatBuffer = imageByteBuffer.asFloatBuffer();
     for (int h = 0; h < imageHeight; ++h) {
       for (int w = 0; w < imageWidth; ++w) {
         int pixel = bitmap.getPixel(w, h);
-        imageFloatBuffer.put((float) Color.red(pixel));
+        imageFloatBuffer.put((float)Color.red(pixel));
       }
     }
     imageByteBuffer.rewind();
@@ -173,18 +170,17 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     ReadableMap outputTensor = result.getMap("Plus214_Output_0");
 
     String outputData = outputTensor.getString("data");
-    FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(outputData, Base64.DEFAULT))
-                             .order(ByteOrder.nativeOrder())
-                             .asFloatBuffer();
+    FloatBuffer buffer =
+        ByteBuffer.wrap(Base64.decode(outputData, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
     ArrayList<Double> dataArray = new ArrayList<>();
     while (buffer.hasRemaining()) {
-      dataArray.add((double) buffer.get());
+      dataArray.add((double)buffer.get());
     }
 
     final double max = Collections.max(dataArray);
     double total = 0.0f;
     for (int i = 0; i < dataArray.size(); ++i) {
-      dataArray.set(i, Math.exp((double) dataArray.get(i) - max));
+      dataArray.set(i, Math.exp((double)dataArray.get(i) - max));
       total += dataArray.get(i);
     }
     double[] softmax = new double[dataArray.size()];

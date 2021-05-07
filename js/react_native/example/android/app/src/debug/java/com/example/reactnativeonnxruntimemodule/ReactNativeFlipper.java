@@ -34,33 +34,30 @@ public class ReactNativeFlipper {
       client.addPlugin(new SharedPreferencesFlipperPlugin(context));
       client.addPlugin(CrashReporterPlugin.getInstance());
       NetworkFlipperPlugin networkFlipperPlugin = new NetworkFlipperPlugin();
-      NetworkingModule.setCustomClientBuilder(
-          new NetworkingModule.CustomClientBuilder() {
-            @Override
-            public void apply(OkHttpClient.Builder builder) {
-              builder.addNetworkInterceptor(new FlipperOkhttpInterceptor(networkFlipperPlugin));
-            }
-          });
+      NetworkingModule.setCustomClientBuilder(new NetworkingModule.CustomClientBuilder() {
+        @Override
+        public void apply(OkHttpClient.Builder builder) {
+          builder.addNetworkInterceptor(new FlipperOkhttpInterceptor(networkFlipperPlugin));
+        }
+      });
       client.addPlugin(networkFlipperPlugin);
       client.start();
       // Fresco Plugin needs to ensure that ImagePipelineFactory is initialized
       // Hence we run if after all native modules have been initialized
       ReactContext reactContext = reactInstanceManager.getCurrentReactContext();
       if (reactContext == null) {
-        reactInstanceManager.addReactInstanceEventListener(
-            new ReactInstanceManager.ReactInstanceEventListener() {
+        reactInstanceManager.addReactInstanceEventListener(new ReactInstanceManager.ReactInstanceEventListener() {
+          @Override
+          public void onReactContextInitialized(ReactContext reactContext) {
+            reactInstanceManager.removeReactInstanceEventListener(this);
+            reactContext.runOnNativeModulesQueueThread(new Runnable() {
               @Override
-              public void onReactContextInitialized(ReactContext reactContext) {
-                reactInstanceManager.removeReactInstanceEventListener(this);
-                reactContext.runOnNativeModulesQueueThread(
-                    new Runnable() {
-                      @Override
-                      public void run() {
-                        client.addPlugin(new FrescoFlipperPlugin());
-                      }
-                    });
+              public void run() {
+                client.addPlugin(new FrescoFlipperPlugin());
               }
             });
+          }
+        });
       } else {
         client.addPlugin(new FrescoFlipperPlugin());
       }
