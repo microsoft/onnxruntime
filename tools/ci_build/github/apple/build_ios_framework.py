@@ -3,20 +3,23 @@
 # Licensed under the MIT License.
 
 import argparse
+import glob
+import json
 import os
 import pathlib
-import json
+import shutil
 import subprocess
 import sys
-import glob
-import shutil
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 
 # We by default will build below 2 archs
-DEFAULT_BUILD_OSX_ARCHS = [["iphonesimulator", "x86_64"], ["iphoneos", "arm64"]]
+DEFAULT_BUILD_OSX_ARCHS = [
+    {'sysroot': 'iphoneos', 'arch': 'arm64'},
+    {'sysroot': 'iphonesimulator', 'arch': 'x86_64'},
+]
 
 
 def _parse_build_settings(args):
@@ -30,12 +33,12 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    if 'build_osx_archs' in _build_settings_data:
-        build_settings['build_osx_archs'] = []
-        for _arch in _build_settings_data['build_osx_archs']:
-            build_settings['build_osx_archs'].append([_arch["sysroot"], _arch["arch"]])
+    if 'apple_deploy_target' in _build_settings_data:
+        build_settings['apple_deploy_target'] = _build_settings_data['apple_deploy_target']
     else:
-        build_settings['build_osx_archs'] = DEFAULT_BUILD_OSX_ARCHS
+        raise ValueError('apple_deploy_target is required in the build config file')
+
+    build_settings["build_osx_archs"] = _build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
 
     build_params = []
     if 'build_params' in _build_settings_data:
@@ -57,7 +60,7 @@ def _build_package(args):
     _base_build_command = [
         sys.executable, BUILD_PY,
         '--config=' + _build_config,
-        '--apple_deploy_target=' + args.apple_deploy_target
+        '--apple_deploy_target=' + build_settings['apple_deploy_target']
     ] + build_settings['build_params']
 
     # paths of the onnxruntime libraries for different archs
@@ -66,25 +69,27 @@ def _build_package(args):
 
     # Build binary for each arch, one by one
     for _osx_arch in build_settings['build_osx_archs']:
-        _build_dir = os.path.join(_intermediates_dir, _osx_arch[0] + "_" + _osx_arch[1])
+        _sysroot = _osx_arch['sysroot']
+        _arch = _osx_arch['arch']
+        _build_dir_current_arch = os.path.join(_intermediates_dir, _sysroot + "_" + _arch)
         _build_command = _base_build_command + [
-            '--ios_sysroot=' + _osx_arch[0],
-            '--osx_arch=' + _osx_arch[1],
-            '--build_dir=' + _build_dir
+            '--ios_sysroot=' + _sysroot,
+            '--osx_arch=' + _arch,
+            '--build_dir=' + _build_dir_current_arch
         ]
 
         if args.include_ops_by_config is not None:
-            _build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
+            _build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]
 
         subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
 
         _framework_dir = os.path.join(
-            _build_dir, _build_config, _build_config + "-" + _osx_arch[0], 'onnxruntime.framework')
+            _build_dir_current_arch, _build_config, _build_config + "-" + _sysroot, 'onnxruntime.framework')
         _ort_libs.append(os.path.join(_framework_dir, 'onnxruntime'))
 
-        # We actually only need to define the info.plist and headers once since them are all the same
+        # We actually only need to define the info.plist and headers once since they are all the same
         if not _info_plist:
-            _info_plist = os.path.join(_build_dir, _build_config, 'info.plist')
+            _info_plist = os.path.join(_build_dir_current_arch, _build_config, 'info.plist')
             _headers = glob.glob(os.path.join(_framework_dir, 'Headers', '*.h'))
 
     # manually create the fat framework
@@ -116,14 +121,11 @@ def parse_args():
         '''
     )
 
-    parser.add_argument("--apple_deploy_target", type=str,
-                        help="Specify the minimum version of the target iOS platform")
-
     parser.add_argument('--build_dir', type=str, default=os.path.join(REPO_DIR, 'build/iOS_framework'),
                         help='Provide the root directory for build output')
 
     parser.add_argument(
-        "--include_ops_by_config", type=str,
+        "--include_ops_by_config", type=pathlib.Path,
         help="Include ops from config file. See /docs/Reduced_Operator_Kernel_build.md for more information.")
 
     parser.add_argument("--config", type=str, default="Release",
@@ -138,10 +140,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-
-    if not args.apple_deploy_target:
-        raise ValueError('apple_deploy_target is required')
-
     _build_package(args)
 
 
