@@ -118,12 +118,12 @@ final class OnnxRuntime {
    *
    * @param file The file to remove.
    */
-  private static void cleanUp(File file) {
+  private static void cleanUp(File file, boolean on_exit_only=false) {
     if (!file.exists()) {
       return;
     }
     logger.log(Level.FINE, "Deleting " + file);
-    if (!file.delete()) {
+    if (on_exit_only || !file.delete()) {
       logger.log(Level.FINE, "Deleting " + file + " on exit");
       file.deleteOnExit();
     }
@@ -213,7 +213,7 @@ final class OnnxRuntime {
         logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
     } finally {
-      if (system_load) cleanUp(tempFile);
+      cleanUp(tempFile, !system_load);
     }
   }
 
