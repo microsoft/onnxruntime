@@ -88,8 +88,9 @@ export default class App extends React.PureComponent<{}, State> {
       const mnistOutput : MNISTOutput = {};
       for (const key in output) {
         if (Object.hasOwnProperty.call(output, key)) {
+          const buffer = (output[key].data as Float32Array).buffer;
           const tensorData = {
-            data : Buffer.from((output[key].data as Float32Array).buffer).toString('base64'),
+            data : Buffer.from(buffer, 0, buffer.byteLength).toString('base64'),
           };
           mnistOutput[key] = tensorData;
         }

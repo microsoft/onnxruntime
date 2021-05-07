@@ -115,13 +115,11 @@ export declare namespace InferenceSession {
   // Backend Node.js binding: supports "cpu" and "cuda".
   // Backend WebAssembly: supports 'wasm'.
   // Backend ONNX.js: supports 'webgl'.
-  // Backend React Native: supports 'react-native'.
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
-    reactnative: ReactNativeExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -145,10 +143,6 @@ export declare namespace InferenceSession {
   }
   export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgl';
-    // TODO: add flags
-  }
-  export interface ReactNativeExecutionProviderOption extends ExecutionProviderOption {
-    readonly name: 'react-native';
     // TODO: add flags
   }
   //#endregion

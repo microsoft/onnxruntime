@@ -57,9 +57,8 @@ class OnnxruntimeSessionHandler implements SessionHandler {
 
       this.inputNames = results.inputNames;
       this.outputNames = results.outputNames;
-      return Promise.resolve();
     } catch (e) {
-      throw new Error('Can\'t load a model');
+      throw new Error(`Can't load a model: ${e.message}`);
     }
   }
 
@@ -81,9 +80,13 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       try {
         // Java API doesn't support preallocated output names and allows only string array as parameter.
         const outputNames: Binding.FetchesType = [];
-        for (const fetch in fetches) {
-          if (Object.prototype.hasOwnProperty.call(fetches, fetch)) {
-            outputNames.push(fetch);
+        for (const name in fetches) {
+          if (Object.prototype.hasOwnProperty.call(fetches, name)) {
+            if (fetches[name]) {
+              throw new Error(
+                'Preallocated output is not supported and only names as string array is allowed as parameter');
+            }
+            outputNames.push(name);
           }
         }
         const input = this.encodeFeedsType(feeds);
@@ -106,7 +109,8 @@ class OnnxruntimeSessionHandler implements SessionHandler {
           data = feeds[key].data as string[];
         } else {
           // Base64-encode tensor data
-          data = Buffer.from((feeds[key].data as SupportedTypedArray).buffer).toString('base64');
+          const buffer = (feeds[key].data as SupportedTypedArray).buffer;
+          data = Buffer.from(buffer, 0, buffer.byteLength).toString('base64');
         }
 
         returnValue[key] = {

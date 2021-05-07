@@ -109,6 +109,6 @@
   },
   "dependencies": {
     "buffer": "^6.0.3",
-    "onnxruntime-common": "file:../common"
+    "onnxruntime-common": "~1.7.0"
   }
 }

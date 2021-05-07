@@ -5,4 +5,4 @@ export *from 'onnxruntime-common';
 import{registerBackend} from 'onnxruntime-common';
 import{onnxruntimeBackend} from './backend';
 
-registerBackend('react-native', onnxruntimeBackend, 1);
+registerBackend('cpu', onnxruntimeBackend, 1);
