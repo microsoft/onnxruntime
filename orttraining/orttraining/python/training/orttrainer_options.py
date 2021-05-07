@@ -723,8 +723,6 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'strategy': {
                         'type': 'propagate_cast_ops_strategy',
                         'nullable': True,
-                        'min': PropagateCastOpsStrategy.INSERT_AND_REDUCE,
-                        'max': PropagateCastOpsStrategy.FLOOD_FILL,
                         'default': PropagateCastOpsStrategy.INSERT_AND_REDUCE
                     },
                     'level': {
