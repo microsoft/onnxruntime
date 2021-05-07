@@ -107,7 +107,7 @@ final class OnnxRuntime {
       loaded = true;
     } finally {
       if (tempDirectory != null) {
-        cleanUp(tempDirectory.toFile());
+        cleanUp(tempDirectory.toFile(), false);
       }
     }
   }
@@ -118,7 +118,7 @@ final class OnnxRuntime {
    *
    * @param file The file to remove.
    */
-  private static void cleanUp(File file, boolean on_exit_only=false) {
+  private static void cleanUp(File file, boolean on_exit_only) {
     if (!file.exists()) {
       return;
     }
