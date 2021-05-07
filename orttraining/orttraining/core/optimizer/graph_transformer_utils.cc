@@ -75,8 +75,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
       rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-      rule_transformer->Register(make_unique<BatchNormReplacement>());
-      rule_transformer->Register(std::make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(std::make_unique<BatchNormReplacement>());
       rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
       rule_transformer->Register(std::make_unique<ExpandElimination>());
       rule_transformer->Register(std::make_unique<CastElimination>());

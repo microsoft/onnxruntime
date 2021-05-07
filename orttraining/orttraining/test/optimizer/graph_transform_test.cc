@@ -66,8 +66,107 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
 
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
-  rule_transformer_L1->Register(onnxruntime::make_unique<BatchNormReplacement>());
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
+  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  
+  ASSERT_TRUE(graph.NumberOfNodes() == 1);
+  // Make sure that BN was updated to add outputs
+  ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
+  ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
+}
+
+
+TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset14) {
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}},
+              {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  // 1x3x3x3
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  TypeProto scale_tensor_type;
+  scale_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  scale_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  auto& input_X = graph.GetOrCreateNodeArg("X", &input_tensor_type);
+  auto& input_scale = graph.GetOrCreateNodeArg("scale", &scale_tensor_type);
+  auto& input_B = graph.GetOrCreateNodeArg("B", &scale_tensor_type);
+  auto& input_mean = graph.GetOrCreateNodeArg("input_mean", &scale_tensor_type);
+  auto& input_var = graph.GetOrCreateNodeArg("input_var", &scale_tensor_type);
+
+  auto& output_Y = graph.GetOrCreateNodeArg("Y", &input_tensor_type);
+  auto& output_running_mean = graph.GetOrCreateNodeArg("running_mean", &scale_tensor_type);
+  auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
+  auto& bn_node = graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
+                                                {&output_Y, &output_running_mean, &output_running_var});
+  bn_node.AddAttribute("training_mode", static_cast<int64_t>(1));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
+  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  
+  ASSERT_TRUE(graph.NumberOfNodes() == 1);
+  // Make sure that BN was updated to add outputs
+  ASSERT_TRUE(graph.Nodes().begin()->MutableOutputDefs().size() == 5);
+  ASSERT_TRUE(graph.Nodes().begin()->OpType().compare("BatchNormInternal") == 0);
+}
+
+
+TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOpset9) {
+  Model model("BatchNormReplacement", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}, {"com.microsoft", 1}},
+              {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  // 1x3x3x3
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  TypeProto scale_tensor_type;
+  scale_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  scale_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  auto& input_X = graph.GetOrCreateNodeArg("X", &input_tensor_type);
+  auto& input_scale = graph.GetOrCreateNodeArg("scale", &scale_tensor_type);
+  auto& input_B = graph.GetOrCreateNodeArg("B", &scale_tensor_type);
+  auto& input_mean = graph.GetOrCreateNodeArg("input_mean", &scale_tensor_type);
+  auto& input_var = graph.GetOrCreateNodeArg("input_var", &scale_tensor_type);
+
+  auto& output_Y = graph.GetOrCreateNodeArg("Y", &input_tensor_type);
+  auto& output_running_mean = graph.GetOrCreateNodeArg("running_mean", &scale_tensor_type);
+  auto& output_running_var = graph.GetOrCreateNodeArg("running_var", &scale_tensor_type);
+  auto& saved_mean = graph.GetOrCreateNodeArg("saved_mean", &scale_tensor_type);
+  auto& saved_var = graph.GetOrCreateNodeArg("saved_var", &scale_tensor_type);
+  graph.AddNode("BN", "BatchNormalization", "", {&input_X, &input_scale, &input_B, &input_mean, &input_var},
+                                                {&output_Y, &output_running_mean, &output_running_var, &saved_mean, &saved_var});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
+  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
