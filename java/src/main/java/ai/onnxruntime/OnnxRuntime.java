@@ -145,7 +145,8 @@ final class OnnxRuntime {
    * @param library The bare name of the library.
    * @throws IOException If the file failed to read or write.
    */
-  private static void load(Path tempDirectory, String library, boolean system_load) throws IOException {
+  private static void load(Path tempDirectory, String library, boolean system_load)
+      throws IOException {
     // On Android, we simply use System.loadLibrary
     if (isAndroid()) {
       System.loadLibrary("onnxruntime4j_jni");
@@ -208,8 +209,7 @@ final class OnnxRuntime {
             os.write(buffer, 0, readBytes);
           }
         }
-        if (system_load)
-          System.load(tempFile.getAbsolutePath());
+        if (system_load) System.load(tempFile.getAbsolutePath());
         logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
     } finally {
