@@ -8,9 +8,9 @@ from ._inference_manager import InferenceManager
 
 
 class GraphExecutionManagerFactory(object):
-    def __init__(self, module):
-        self._training_manager = TrainingManager(module)
-        self._inference_manager = InferenceManager(module)
+    def __init__(self, module, device=None):
+        self._training_manager = TrainingManager(module, device)
+        self._inference_manager = InferenceManager(module, device)
 
     def __call__(self, is_training):
         if is_training:

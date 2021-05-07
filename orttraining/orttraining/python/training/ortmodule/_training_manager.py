@@ -10,6 +10,7 @@ from ._execution_agent import TrainingAgent
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
+import copy
 import onnx
 import torch
 
@@ -20,8 +21,9 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model):
+    def __init__(self, model, device=None):
         super().__init__(model)
+        self._device = device
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
@@ -63,28 +65,33 @@ class TrainingManager(GraphExecutionManager):
 
         # Exporting module to ONNX for the first time
         build_gradient_graph = self._export_model(*inputs, **kwargs)
+
         if build_gradient_graph:
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=True)
 
-        input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                      self._onnx_model,
-                                                      inputs,
-                                                      kwargs)
+        create_execution_session = build_gradient_graph
+        if self._original_module:
+            input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
+                                                          self._onnx_model,
+                                                          inputs,
+                                                          kwargs)
 
-        # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+            # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
+            if input_info != self._input_info:
+                build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+
+            module_device = _utils.get_device_from_module(self._original_module)
+            create_execution_session = build_gradient_graph or self._device != module_device 
+            if self._device != module_device:
+                self._device = module_device
 
         # Build the gradient graph
         if build_gradient_graph:
             self._build_graph()
 
-        module_device = _utils.get_device_from_module(self._original_module)
         # The _training_session/_inference_session should be created every time
         # the graph was built or if the device changed between calls to forward
-        create_execution_session = build_gradient_graph or self._device != module_device
-        if self._device != module_device:
-            self._device = module_device
         if create_execution_session:
             # Create execution session creates the training_session
             self._create_execution_agent()
@@ -151,13 +158,10 @@ class TrainingManager(GraphExecutionManager):
 
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
-                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
-                # affect peak memory usage in a subsequent graph run.
-                del ctx.run_info.state
                 # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
+                num_user_input_grads = len(self._input_info.require_grad_names if self._input_info else self._graph_info.user_input_grad_names)
                 results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
+                require_grad_names_set = set(self._input_info.require_grad_names if self._input_info else [n for n in self._graph_info.user_input_grad_names])
                 require_grad_names_index = 0
                 for input_name in self._graph_info.user_input_names:
                     # Append to the results the backward output for each input that required grad
@@ -186,10 +190,12 @@ class TrainingManager(GraphExecutionManager):
                                         self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                self._flattened_module.named_parameters(),
+                                                [p[1] for p in self._flattened_module.named_parameters()] if self._flattened_module else \
+                                                    [torch.nn.Parameter(torch.as_tensor(copy.deepcopy(onnx.numpy_helper.to_array(p)))) \
+                                                        for p in self._onnx_model.graph.initializer],
                                                 self._graph_info.user_input_names,
-                                                self._input_info,
-                                                self._flattened_module.named_buffers(),
+                                                self._input_info.names if self._input_info else self._graph_info.user_input_names,
+                                                self._flattened_module.named_buffers() if self._flattened_module else {},
                                                 inputs,
                                                 kwargs)))
 
