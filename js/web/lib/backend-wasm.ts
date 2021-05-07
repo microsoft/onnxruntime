@@ -22,14 +22,6 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
       buffer = pathOrBuffer;
     }
 
-    if (flags.worker !== undefined) {
-      if (options !== undefined) {
-        options.intraOpNumThreads = flags.worker;
-      } else {
-        options = { intraOpNumThreads: flags.worker }
-      }
-    }
-
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     handler.loadModel(buffer, options);
     return Promise.resolve(handler);

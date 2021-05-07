@@ -114,7 +114,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     const wasm = getInstance();
     if (!ortInit) {
       // TODO: This will be merged with Yulong's PR
-      if (wasm._OrtInit(2) != 0) {
+      if (wasm._OrtInit(2) !== 0) {
         throw new Error('Can\'t initialize onnxruntime');
       }
       ortInit = true;
@@ -122,7 +122,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
     const modelDataOffset = wasm._malloc(model.byteLength);
 
-    let allocs: number[] = [];
+    const allocs: number[] = [];
     const sessionOptionsHandle = this.setSessionOptions(allocs, options);
 
     try {
@@ -233,7 +233,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       }
     }
 
-    let allocs: number[] = [];
+    const allocs: number[] = [];
     const runOptionsHandle = this.setRunOptions(allocs, options);
 
     const beforeRunStack = wasm.stackSave();
@@ -353,7 +353,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 99);
           break;
       }
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set a graph optimization level as a session option');
       }
     }
@@ -364,7 +364,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       } else {
         errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
       }
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set a CPU memory arena as a session option');
       }
     }
@@ -375,7 +375,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       } else {
         errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
       }
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set a memory pattern as a session option');
       }
     }
@@ -390,7 +390,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 0);
           break;
       }
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set an execution mode as a session option');
       }
     }
@@ -401,14 +401,14 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
       errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
       allocs.push(logIdDataOffset);
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set a log id as a session option');
       }
     }
 
     if (options.logSeverityLevel !== undefined) {
       errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
-      if (errorCode != 0) {
+      if (errorCode !== 0) {
         throw new Error('Can\'t set a log severity level as a session option');
       }
     }
@@ -424,8 +424,8 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
     if (options.logSeverityLevel !== undefined) {
       errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
-      if (errorCode != 0) {
-        throw new Error('Can\'t set a log severity level as a run option')
+      if (errorCode !== 0) {
+        throw new Error('Can\'t set a log severity level as a run option');
       }
     }
 
@@ -435,8 +435,8 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
       errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
       allocs.push(tagDataOffset);
-      if (errorCode != 0) {
-        throw new Error('Can\'t set a tag as a run option')
+      if (errorCode !== 0) {
+        throw new Error('Can\'t set a tag as a run option');
       }
     }
 
