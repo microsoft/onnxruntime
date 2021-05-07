@@ -265,7 +265,7 @@ export class CoordsGlslLib extends GlslLib {
   protected getOutputPacked3DCoords(shape: [number, number, number], texShape: [number, number]): GlslLibRoutine {
     const packedTexShape = [texShape[0], texShape[1]];
     const texelsInLogicalRow = Math.ceil(shape[2] / 2);
-    const texelsInBatch = texelsInLogicalRow * Math.ceil(shape[1] / 2);    
+    const texelsInBatch = texelsInLogicalRow * Math.ceil(shape[1] / 2);
     const source = `
         ivec3 getOutputCoords() {
           ivec2 resTexRC = ivec2(TexCoords.xy *
