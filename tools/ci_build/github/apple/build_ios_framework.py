@@ -79,7 +79,7 @@ def _build_package(args):
         subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
 
         _framework_dir = os.path.join(
-            _build_dir, _build_config, _build_config + "-" + _osx_arch[0],'onnxruntime.framework')
+            _build_dir, _build_config, _build_config + "-" + _osx_arch[0], 'onnxruntime.framework')
         _ort_libs.append(os.path.join(_framework_dir, 'onnxruntime'))
 
         # We actually only need to define the info.plist and headers once since them are all the same
