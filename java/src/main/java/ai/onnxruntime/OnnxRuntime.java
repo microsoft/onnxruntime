@@ -213,7 +213,7 @@ final class OnnxRuntime {
         logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
     } finally {
-      cleanUp(tempFile);
+      if (system_load) cleanUp(tempFile);
     }
   }
 
