@@ -957,9 +957,6 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       }
     }
     if (has_float_inputs && (level >= 2 || all_float_inputs_have_casts) && casts.size() > 1) {
-      LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Removed Cast nodes "
-                            << ConcatNames<std::vector<Node*>>(casts)
-                            << " feeding the same compute node " << node->Name();
       if (non_cast_producers_map.size() > 0) {
         InsertCastNodes(graph, non_cast_producers_map, true, removed_nodes);
         LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Inserted FP16 Cast node to "
@@ -968,6 +965,9 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
+      LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Removed Cast nodes "
+                            << ConcatNames<std::vector<Node*>>(casts)
+                            << " feeding the same compute node " << node->Name();
       NodeArgToConsumerMap node_args_map;
       for (NodeArg* output : node->MutableOutputDefs()) {
         if (output->Exists() && IsRelevantOutput(node, output) && IsType(*output, TensorProto::FLOAT)) {
@@ -1060,9 +1060,6 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       }
     }
     if (has_float_outputs && (level >= 2 || all_float_outputs_have_casts) && casts.size() > 1) {
-      LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
-                            << ConcatNames<std::vector<Node*>>(casts)
-                            << " feeding from the same compute node " << node->Name();
       if (non_cast_consumers_map.size() > 0) {
         InsertCastNodes(graph, non_cast_consumers_map, false, removed_nodes);
         LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Inserted FP32 Cast node to "
@@ -1071,6 +1068,9 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
       for (Node* cast : casts) {
         RemoveCastNodesChain(graph, {cast}, removed_nodes);
       }
+      LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
+                            << ConcatNames<std::vector<Node*>>(casts)
+                            << " feeding from the same compute node " << node->Name();
       NodeArgToConsumerMap node_args_map;
       for (NodeArg* input : node->MutableInputDefs()) {
         if (IsRelevantInput(node, input) && IsType(*input, TensorProto::FLOAT)) {
