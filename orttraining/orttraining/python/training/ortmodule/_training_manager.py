@@ -73,6 +73,8 @@ class TrainingManager(GraphExecutionManager):
                                                       kwargs)
 
         # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
+        # Order of or operation is important here because we always need to call
+        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
         build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
         # Build the gradient graph
