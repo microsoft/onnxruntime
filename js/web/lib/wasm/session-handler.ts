@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 import {onnx} from 'onnx-proto';
-import {InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
-import {getInstance} from './binding';
+import {env, InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
+import {getInstance} from './wasm-factory';
 
 let ortInit: boolean;
 
@@ -113,8 +113,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      // TODO: This will be merged with Yulong's PR
-      if (wasm._OrtInit(2) !== 0) {
+      if (wasm._OrtInit(env.wasm.numThreads!, this.getLoggingLevel(env.wasm.loggingLevel!)) !== 0) {
         throw new Error('Can\'t initialize onnxruntime');
       }
       ortInit = true;
@@ -325,6 +324,23 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   endProfiling(): void {
     // TODO: implement profiling
+  }
+
+  getLoggingLevel(loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number {
+    switch (loggingLevel) {
+      case 'verbose':
+        return 0;
+      case 'info':
+        return 1;
+      case 'warning':
+        return 2;
+      case 'error':
+        return 3;
+      case 'fatal':
+        return 4;
+      default:
+        return 2;
+    }
   }
 
   setSessionOptions(allocs: number[], options?: InferenceSession.SessionOptions): number {

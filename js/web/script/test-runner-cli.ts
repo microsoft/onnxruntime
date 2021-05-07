@@ -410,7 +410,7 @@ function run(config: Test.Config) {
   npmlog.info('TestRunnerCli.Run', `(3/5) Retrieving npm bin folder... DONE, folder: ${npmBin}`);
 
   if (args.env === 'node') {
-    // STEP 4. use tsc to build ONNX.js
+    // STEP 4. use tsc to build ONNX Runtime Web
     npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc...');
     const tscCommand = path.join(npmBin, 'tsc');
     const tsc = spawnSync(tscCommand, {shell: true, stdio: 'inherit'});
@@ -433,17 +433,20 @@ function run(config: Test.Config) {
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha... DONE');
 
   } else {
-    // STEP 4. use webpack to generate ONNX.js
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running webpack to generate ONNX.js...');
-    const webpackCommand = path.join(npmBin, 'webpack');
-    const webpackArgs = ['--env', `--bundle-mode=${args.bundleMode}`];
-    npmlog.info('TestRunnerCli.Run', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
-    const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
-    if (webpack.status !== 0) {
-      console.error(webpack.error);
-      process.exit(webpack.status === null ? undefined : webpack.status);
+    // STEP 4. generate bundle
+    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
+    const buildCommand = `node ${path.join(__dirname, 'build')}`;
+    const buildArgs = [`--bundle-mode=${args.bundleMode}`];
+    if (args.backends.indexOf('wasm') === -1) {
+      buildArgs.push('--no-wasm');
     }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running webpack to generate ONNX.js... DONE');
+    npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
+    const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
+    if (build.status !== 0) {
+      console.error(build.error);
+      process.exit(build.status === null ? undefined : build.status);
+    }
+    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
 
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
@@ -451,7 +454,7 @@ function run(config: Test.Config) {
     const browser = getBrowserNameFromEnv(args.env, args.debug);
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
-      karmaArgs.push('--log-level info');
+      karmaArgs.push('--log-level info --timeout-mocha 9999999');
     } else {
       karmaArgs.push('--single-run');
     }
@@ -475,7 +478,6 @@ function run(config: Test.Config) {
       // check if we have the latest Edge installed:
       if (os.platform() === 'darwin' ||
           (os.platform() === 'win32' &&
-           // tslint:disable-next-line:no-require-imports no-submodule-imports
            require('@chiragrupani/karma-chromium-edge-launcher/dist/Utilities').default.GetEdgeExe('Edge') !== '')) {
         // use "@chiragrupani/karma-chromium-edge-launcher"
         karmaArgs.push(
@@ -563,15 +565,18 @@ function saveConfig(config: Test.Config) {
   if (config.options.webglFlags && config.options.webglFlags.pack !== undefined) {
     setOptions += `ort.env.webgl.pack = ${JSON.stringify(config.options.webglFlags.pack)};`;
   }
-  if (config.options.wasmFlags && config.options.wasmFlags.worker !== undefined) {
-    setOptions += `ort.env.wasm.worker = ${JSON.stringify(config.options.wasmFlags.worker)};`;
+  if (config.options.wasmFlags && config.options.wasmFlags.numThreads !== undefined) {
+    setOptions += `ort.env.wasm.numThreads = ${JSON.stringify(config.options.wasmFlags.numThreads)};`;
+  }
+  if (config.options.wasmFlags && config.options.wasmFlags.loggingLevel !== undefined) {
+    setOptions += `ort.env.wasm.loggingLevel = ${JSON.stringify(config.options.wasmFlags.loggingLevel)};`;
   }
   if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
     setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
   }
   // TODO: support onnxruntime nodejs binding
-  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'onnxruntime'))) {
-  //   setOptions += 'require(\'onnxjs-node\');';
+  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+  //   setOptions += 'require(\'onnxruntime-node\');';
   // }
 
   fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}

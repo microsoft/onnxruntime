@@ -4,11 +4,16 @@ set -e -x
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 
-while getopts d:m parameter_Option
+while getopts p:d:v:tmur parameter_Option
 do case "${parameter_Option}"
 in
+p) echo "Python version is no longer accepted as an input to this script. Ignoring the input argument -p.";;
 d) DEVICE_TYPE=${OPTARG};;
+v) echo "Cuda version is no longer accepted as an input to this script. Ignoring the input argument -v.";;
+t) echo "Installing python training dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -t.";;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
+u) echo "Installing ortmodule python dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -u.";;
+r) echo "Installing ROCM python dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -r.";;
 esac
 done
 

@@ -3,11 +3,37 @@
 
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
 
-import {init, OnnxruntimeWebAssemblySessionHandler} from './wasm';
+import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import {initializeWebAssembly} from './wasm/wasm-factory';
+
+/**
+ * This function initializes all flags for WebAssembly.
+ *
+ * Those flags are accessible from `ort.env.wasm`. Users are allow to set those flags before the first inference session
+ * being created, to override default value.
+ */
+export const initializeFlags = (): void => {
+  if (typeof env.wasm.initTimeout !== 'number' || env.wasm.initTimeout < 0) {
+    env.wasm.initTimeout = 0;
+  }
+
+  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads < 0) {
+    env.wasm.numThreads = Math.ceil((navigator.hardwareConcurrency || 1) / 2);
+  }
+  env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
+
+  if (typeof env.wasm.loggingLevel !== 'string' || env.wasm.loggingLevel === undefined) {
+    env.wasm.loggingLevel = 'warning';
+  }
+};
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {
-    await init();
+    // populate wasm flags
+    initializeFlags();
+
+    // init wasm
+    await initializeWebAssembly();
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
@@ -29,22 +55,3 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
 }
 
 export const wasmBackend = new OnnxruntimeWebAssemblyBackend();
-
-export interface WebAssemblyFlags {
-  /**
-   * set or get number of worker(s)
-   *
-   * This setting is available only when WebAssembly multithread feature is available in current context.
-   */
-  worker?: number;
-
-  /**
-   * set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds.
-   */
-  initTimeout?: number;
-}
-
-/**
- * Represent a set of flags for WebAssembly backend.
- */
-export const flags: WebAssemblyFlags = env.wasm = env.wasm as WebAssemblyFlags || {};

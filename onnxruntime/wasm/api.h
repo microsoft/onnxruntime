@@ -28,8 +28,10 @@ extern "C" {
 
 /**
  * perform global initialization. should be called only once.
+ * @param numThreads number of total threads to use.
+ * @param logging_level default logging level.
  */
-int EMSCRIPTEN_KEEPALIVE OrtInit(int level);
+int EMSCRIPTEN_KEEPALIVE OrtInit(int numThreads, int logging_level);
 
 /**
  * create an instance of ORT session options.

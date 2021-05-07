@@ -23,9 +23,9 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
   return error_code;
 }
 
-int OrtInit(int level) {
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
-  switch (level) {
+int OrtInit(int numThreads, int logging_level) {
+  OrtLoggingLevel level = ORT_LOGGING_LEVEL_WARNING;
+  switch (logging_level) {
     case 0:
       level = ORT_LOGGING_LEVEL_VERBOSE;
       break;
@@ -42,7 +42,28 @@ int OrtInit(int level) {
       level = ORT_LOGGING_LEVEL_FATAL;
       break;
   }
-  return CheckStatus(Ort::GetApi().CreateEnv(logging_level, "Default", &g_env));
+
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  int error_code = ORT_OK;
+
+  OrtThreadingOptions* tp_options = nullptr;
+  error_code = CheckStatus(Ort::GetApi().CreateThreadingOptions(&tp_options));
+  if (error_code != ORT_OK) {
+    return error_code;
+  }
+  error_code = CheckStatus(Ort::GetApi().SetGlobalIntraOpNumThreads(tp_options, numThreads));
+  if (error_code != ORT_OK) {
+    return error_code;
+  }
+  error_code = CheckStatus(Ort::GetApi().SetGlobalInterOpNumThreads(tp_options, 1));
+  if (error_code != ORT_OK) {
+    return error_code;
+  }
+
+  return CheckStatus(Ort::GetApi().CreateEnvWithGlobalThreadPools(level, "Default", tp_options, &g_env));
+#else
+  return CheckStatus(Ort::GetApi().CreateEnv(level, "Default", &g_env));
+#endif
 }
 
 OrtSessionOptions* OrtCreateSessionOptions() {
@@ -114,24 +135,27 @@ int OrtSetSessionLogSeverityLevel(OrtSessionOptions* session_options, size_t lev
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
-  OrtSession* session = nullptr;
-  int error_code = ORT_OK;
+  // OrtSessionOptions must not be nullptr.
+  if (session_options == nullptr) {
+    return nullptr;
+  }
 
-#if !defined(__EMSCRIPTEN_PTHREADS__)
-  if (session_options) {
-    // must disable thread pool when WebAssembly multi-threads support is disabled.
-    error_code = CheckStatus(Ort::GetApi().SetIntraOpNumThreads(session_options, 1));
-    if (error_code != ORT_OK) {
-      return nullptr;
-    }
-    error_code = CheckStatus(Ort::GetApi().SetSessionExecutionMode(session_options, ORT_SEQUENTIAL));
-    if (error_code != ORT_OK) {
-      return nullptr;
-    }
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  if (CheckStatus(Ort::GetApi().DisablePerSessionThreads(session_options)) != ORT_OK) {
+    return nullptr;
+  }
+#else
+  // must disable thread pool when WebAssembly multi-threads support is disabled.
+  if (CheckStatus(Ort::GetApi().SetIntraOpNumThreads(session_options, 1)) != ORT_OK) {
+    return nullptr;
+  }
+  if (CheckStatus(Ort::GetApi().SetSessionExecutionMode(session_options, ORT_SEQUENTIAL)) != ORT_OK) {
+    return nullptr;
   }
 #endif
 
-  error_code = CheckStatus(Ort::GetApi().CreateSessionFromArray(g_env, data, data_length, session_options, &session));
+  OrtSession* session = nullptr;
+  int error_code = CheckStatus(Ort::GetApi().CreateSessionFromArray(g_env, data, data_length, session_options, &session));
   return (error_code == ORT_OK) ? session : nullptr;
 }
 
