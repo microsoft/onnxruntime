@@ -64,7 +64,7 @@ def _build_package(args):
     _ort_libs = []
     _info_plist = ''
 
-    # Build binary for each ABI, one by one
+    # Build binary for each arch, one by one
     for _osx_arch in build_settings['build_osx_archs']:
         _build_dir = os.path.join(_intermediates_dir, _osx_arch[0] + "_" + _osx_arch[1])
         _build_command = _base_build_command + [
@@ -76,7 +76,7 @@ def _build_package(args):
         if args.include_ops_by_config is not None:
             _build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
 
-        # subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
+        subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
 
         _framework_dir = os.path.join(_build_dir, _build_config, _build_config + "-" + _osx_arch[0], 'onnxruntime.framework')
         _ort_libs.append(os.path.join(_framework_dir, 'onnxruntime'))
