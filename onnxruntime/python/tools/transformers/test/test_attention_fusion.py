@@ -28,7 +28,21 @@ class TestFusion(unittest.TestCase):
                                            'pruned_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
-    
+
+    def test_attention_fusion_reverse_add_order(self):
+        model = create_bert_attention(switch_add_inputs=True)
+        dir = '.'
+        model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
+        onnx.save(model, model_path)
+        optimized_model = optimize_model(model_path)
+        os.remove(model_path)
+
+        # reverse add input order will get same optimized model
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+                                           'pruned_attention_opt.onnx')
+        expected = onnx.load(expected_model_path)
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+
     def test_3d_attention_fusion_tf2onnx_model(self):
         model = create_tf2onnx_attention_3d()
         dir = '.'
