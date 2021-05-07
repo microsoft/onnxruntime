@@ -68,7 +68,7 @@ export class WebGLUnpackedGroupedConv extends Conv implements WebGLOperator {
 
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? `value += getBias(output_channel);` : ``;
+    const processBias = hasBias ? 'value += getBias(output_channel);' : '';
     const xShape = inputs[0].dims.slice();
     const wShape = inputs[1].dims.slice();
     const outputChannelsPerGroup = wShape[0] / this.group;

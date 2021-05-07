@@ -37,7 +37,7 @@ export class WebGLConvPacked extends Conv {
     const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
     const im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
     const matmul = new WebGLMatMulPacked();
-    if (!!this.activation) {
+    if (this.activation) {
       const attributes = new Attribute(undefined);
       attributes.set('__internal_activation', 'string', (this.activation));
       matmul.initialize(attributes);

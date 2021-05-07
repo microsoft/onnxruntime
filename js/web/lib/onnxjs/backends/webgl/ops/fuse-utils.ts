@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {glslRelu, glslSigmoid} from './unary-op';
 
 export function getActicationSnippet(activation: string) {
