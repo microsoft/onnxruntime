@@ -409,7 +409,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_ const OrtEnv* env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
-                                                _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                                                _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                                                 size_t model_data_length,
 
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {

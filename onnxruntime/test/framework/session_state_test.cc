@@ -836,7 +836,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // The weight to be "stored" is the same weight that we got by invoking PrePack() in the step above.
     // Hence, assert that it wasn't a "cached" pre-packed weight (i.e.) pre-packed weight
     // from another instance of the same op_type consuming the same constant initializer.
-    ASSERT_EQ(session_state_1.GetUsedCachedprepackedWeightCounter(), 0);
+    ASSERT_EQ(session_state_1.GetUsedCachedprepackedWeightCounter(), static_cast<size_t>(0));
 
     // Second session/model
     Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -867,7 +867,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // The weight to be "stored" is a "cached" weight (i.e.) a pre-packed weight
     // from another instance of the same op_type consuming the same constant initializer.
     // Assert this.
-    ASSERT_EQ(session_state_2.GetUsedCachedprepackedWeightCounter(), 1);
+    ASSERT_EQ(session_state_2.GetUsedCachedprepackedWeightCounter(), static_cast<size_t>(1));
   }
 }
 
