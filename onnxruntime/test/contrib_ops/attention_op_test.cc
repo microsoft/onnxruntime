@@ -37,12 +37,13 @@ static void RunAttentionTest(
     const std::vector<float>* present_data = nullptr,
     MaskIndexType mask_index_type = kMaskIndexEnd,
     int input_hidden_size = 0,
-    int max_sequence_length = 0) {
+    int max_sequence_length = 0,
+    bool only_enable_cuda = false) {
   input_hidden_size = (input_hidden_size == 0 ? hidden_size : input_hidden_size); // By default, no pruning.
 
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !is_weights_constant;
-  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16;
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !only_enable_cuda;
 
   int head_size = hidden_size / number_of_heads;
   if (enable_cpu || enable_cuda) {
@@ -153,15 +154,18 @@ static void RunAttentionTest(
     const std::vector<float>* present_data = nullptr,
     MaskIndexType mask_index_type = kMaskIndexEnd,
     int input_hidden_size = 0,
-    int max_sequence_length = 0) {
+    int max_sequence_length = 0,
+    bool only_enable_cuda = false) {
   RunAttentionTest(input_data, weights_data, false, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
-                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length);
+                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
+                   only_enable_cuda);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
-                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length);
+                   past_data, present_data, mask_index_type, input_hidden_size, max_sequence_length,
+                   only_enable_cuda);
 }
 
 TEST(AttentionTest, AttentionBatch1) {
@@ -1389,7 +1393,7 @@ TEST(AttentionTest, Attention4DMask) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  // Test 3D mask BxSxS*
+  // Test 4D mask Bx1xmax_Sxmax_S
   std::vector<int32_t> mask_index_data = {
       0, 1, 0, 0,
       0, 1, 0, 0,
@@ -1400,18 +1404,20 @@ TEST(AttentionTest, Attention4DMask) {
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f};
 
-  bool use_float16 = true;
+  bool use_float16 = false;
   bool is_unidirectional = false;
   bool use_past_state = false;
   int past_sequence_length = 0;
   int input_hidden_size = 0;
   int max_sequence_length = 4;
+  bool only_enable_cuda = true; // only support 4D mask in cuda
   const std::vector<float>* past_data = nullptr;
   const std::vector<float>* present_data = nullptr;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
-                   past_data, present_data, kMask4D, input_hidden_size, max_sequence_length);
+                   past_data, present_data, kMask4D, input_hidden_size, max_sequence_length,
+                   only_enable_cuda);
 }
 
 TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
