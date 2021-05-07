@@ -7,7 +7,7 @@ from onnx import helper, AttributeProto, TensorProto, GraphProto
 import os
 
 if os.path.exists(os.path.join(os.path.dirname(__file__), '..', '..', 'python', 'tools', 'symbolic_shape_infer.py')):
-    # Running this test script without installing onnxruntime package.
+    # Allow running this test script without installing onnxruntime package.
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'python', 'tools'))
     from symbolic_shape_infer import SymbolicShapeInference

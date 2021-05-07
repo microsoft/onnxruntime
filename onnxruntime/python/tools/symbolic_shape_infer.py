@@ -48,6 +48,7 @@ def get_opset(mp, domain=None):
     for opset in mp.opset_import:
         if opset.domain in domain:
             return opset.version
+
     return None
 
 
@@ -142,11 +143,11 @@ class SymbolicShapeInference:
             # contrib ops:
             'Attention': self._infer_Attention,
             'BiasGelu': self._infer_BiasGelu,
+            'EmbedLayerNormalization': self._infer_EmbedLayerNormalization,
             'FastGelu': self._infer_FastGelu,
             'Gelu': self._infer_Gelu,
             'LayerNormalization': self._infer_LayerNormalization,
             'LongformerAttention': self._infer_LongformerAttention,
-            'EmbedLayerNormalization': self._infer_EmbedLayerNormalization,
             'SkipLayerNormalization': self._infer_SkipLayerNormalization
         }
         self.run_ = True
@@ -218,6 +219,7 @@ class SymbolicShapeInference:
     def _preprocess(self, in_mp):
         self.out_mp_ = onnx.ModelProto()
         self.out_mp_.CopyFrom(in_mp)
+        self.graph_inputs_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
         self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.known_vi_.update(
@@ -327,17 +329,23 @@ class SymbolicShapeInference:
                         self.symbolic_dims_[str(new_dim)] = new_dim
 
     def _onnx_infer_single_node(self, node):
-        # skip onnx shape inference for some ops, as they are handled in _infer_* or it is not in onnx domain
-        skip_infer = node.domain in ['com.microsoft'] \
-                  or node.op_type in ['If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', 'LayerNormalization']
+        # skip onnx shape inference for some ops, as they are handled in _infer_*
+        skip_infer = node.op_type in [
+            'If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', \
+            'Attention', 'BiasGelu', 'EmbedLayerNormalization', 'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', 'SkipLayerNormalization' # contrib ops
+        ]
 
         if not skip_infer:
-            # Some operators need initializers for shape inference. For example, Unsqueeze in opset 13 has axes in the second input.
-            need_initializers = node.op_type in ['Unsqueeze']
-
-            # Only pass initializers with impact on shape inference result for performance.
-            initializers = [self.initializers_[name] for name in node.input
-                            if name in self.initializers_] if need_initializers else []
+            # Only pass initializers that satisfy the following condition:
+            # (1) Operator need value of some input for shape inference. For example, Unsqueeze in opset 13 uses axes input to calcuate output shape.
+            # (2) opset version >= 9. In older version, initializer is required in graph input by onnx spec.
+            # (3) The initializer is not in graph input. The means the node input is "constant" in inference.
+            initializers = []
+            if (get_opset(self.out_mp_) >= 9) and node.op_type in ['Unsqueeze']:
+                initializers = [
+                    self.initializers_[name] for name in node.input
+                    if (name in self.initializers_ and name not in self.graph_inputs_)
+                ]
 
             # run single node inference with self.known_vi_ shapes
             tmp_graph = helper.make_graph(
@@ -1524,7 +1532,7 @@ class SymbolicShapeInference:
     @staticmethod
     def infer_shapes(in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
         onnx_opset = get_opset(in_mp)
-        if not onnx_opset or onnx_opset < 7:
+        if (not onnx_opset) or onnx_opset < 7:
             print('Only support models of onnx opset 7 and above.')
             return None
         symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
