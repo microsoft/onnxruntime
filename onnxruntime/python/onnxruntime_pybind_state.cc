@@ -1746,7 +1746,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             //config_key and config_value will be copied
-            const Status status = options->session_configurations.AddConfigEntry(config_key, config_value);
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1756,7 +1756,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
-            if (!options->session_configurations.TryGetConfigEntry(key, value))
+            if (!options->config_options.TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return value;
