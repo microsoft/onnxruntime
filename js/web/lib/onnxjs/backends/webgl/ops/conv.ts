@@ -12,7 +12,7 @@ import {Artifact, ProgramInfo, RunData, TextureLayout, WebGLOperator} from '../t
 import {WebGLContext} from '../webgl-context';
 
 import {WebGLConvPacked} from './conv-pack';
-import {getActicationSnippet} from './fuse_utils';
+import {getActicationSnippet} from './fuse-utils';
 
 export class WebGLConv extends Conv {
   unpackedGroupedConvImpl: WebGLUnpackedGroupedConv;

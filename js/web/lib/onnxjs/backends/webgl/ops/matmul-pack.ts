@@ -6,7 +6,7 @@ import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
-import {getActicationSnippet} from './fuse_utils';
+import {getActicationSnippet} from './fuse-utils';
 
 export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
