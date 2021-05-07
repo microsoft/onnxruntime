@@ -1035,7 +1035,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
     NodeArgToConsumerMap non_cast_consumers_map;
     for (auto iter = outputs.begin(); iter != outputs.end() && (level >= 2 || all_float_outputs_have_casts); ++iter) {
       NodeArg* output = *iter;
-      if (!IsType(*output, TensorProto::FLOAT) || !IsRelevantOutput(node, output)) {
+      if (!IsType(*output, TensorProto::FLOAT16) || !IsRelevantOutput(node, output)) {
         continue;
       }
       has_float_outputs = true;
