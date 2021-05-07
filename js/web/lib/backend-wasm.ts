@@ -11,7 +11,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, _options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
     let buffer: Uint8Array;
     if (typeof pathOrBuffer === 'string') {
@@ -21,9 +21,17 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     } else {
       buffer = pathOrBuffer;
     }
+
+    if (flags.worker !== undefined) {
+      if (options !== undefined) {
+        options.intraOpNumThreads = flags.worker;
+      } else {
+        options = { intraOpNumThreads: flags.worker }
+      }
+    }
+
     const handler = new OnnxruntimeWebAssemblySessionHandler();
-    // TODO: support SessionOptions
-    handler.loadModel(buffer);
+    handler.loadModel(buffer, options);
     return Promise.resolve(handler);
   }
 }

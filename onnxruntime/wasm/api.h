@@ -12,10 +12,14 @@
 
 #include <stddef.h>
 
-namespace Ort {
-struct Session;
-}
-using ort_session_handle_t = Ort::Session*;
+struct OrtSession;
+using ort_session_handle_t = OrtSession*;
+
+struct OrtSessionOptions;
+using ort_session_options_handle_t = OrtSessionOptions*;
+
+struct OrtRunOptions;
+using ort_run_options_handle_t = OrtRunOptions*;
 
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
@@ -25,7 +29,57 @@ extern "C" {
 /**
  * perform global initialization. should be called only once.
  */
-void EMSCRIPTEN_KEEPALIVE OrtInit();
+int EMSCRIPTEN_KEEPALIVE OrtInit(int level);
+
+/**
+ * create an instance of ORT session options.
+ */
+ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions();
+
+/**
+ * release the specified ORT session options.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseSessionOptions(ort_session_options_handle_t session_options);
+
+/**
+ * set an optimization level for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtSetSessionGraphOptimizationLevel(ort_session_options_handle_t session_options, size_t level);
+
+/**
+ * enable CPU memory arena for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtEnableCpuMemArena(ort_session_options_handle_t session_options);
+
+/**
+ * disable CPU memory arena for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtDisableCpuMemArena(ort_session_options_handle_t session_options);
+
+/**
+ * enable memory pattern for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtEnableMemPattern(ort_session_options_handle_t session_options);
+
+/**
+ * disable memory pattern for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtDisableMemPattern(ort_session_options_handle_t session_options);
+
+/**
+ * set an execution mode for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtSetSessionExecutionMode(ort_session_options_handle_t session_options, size_t mode);
+
+/**
+ * set a log ID for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtSetSessionLogId(ort_session_options_handle_t session_options, const char* logid);
+
+/**
+ * set a log severity level for session.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtSetSessionLogSeverityLevel(ort_session_options_handle_t session_options, size_t level);
 
 /**
  * create an instance of ORT session.
@@ -33,7 +87,9 @@ void EMSCRIPTEN_KEEPALIVE OrtInit();
  * @param data_length the size of the buffer in bytes.
  * @returns a handle of the ORT session.
  */
-ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data, size_t data_length);
+ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data,
+                                                           size_t data_length,
+                                                           ort_session_options_handle_t session_options);
 
 /**
  * release the specified ORT session.
@@ -94,6 +150,26 @@ void EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data
 void EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
 
 /**
+ * create an instance of ORT run options.
+ */
+ort_run_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateRunOptions();
+
+/**
+ * release the specified ORT run options.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
+
+/**
+ * set log severity level for run.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunOptionsSetRunLogSeverityLevel(ort_run_options_handle_t run_options, size_t level);
+
+/**
+ * set a tag for the Run() calls using this.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunOptionsSetRunTag(ort_run_options_handle_t run_options, const char* tag);
+
+/**
  * inference the model.
  * @param session handle of the specified session
  * @returns error code defined in enum OrtErrorCode
@@ -104,5 +180,6 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
                                 size_t input_count,
                                 const char** output_names,
                                 size_t output_count,
-                                ort_tensor_handle_t* outputs);
+                                ort_tensor_handle_t* outputs,
+                                ort_run_options_handle_t run_options);
 };

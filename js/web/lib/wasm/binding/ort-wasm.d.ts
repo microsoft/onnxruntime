@@ -10,9 +10,9 @@ export interface BackendWasmModule extends EmscriptenModule {
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
 
-  _OrtInit(): void;
+  _OrtInit(loggingLevel: number): number;
 
-  _OrtCreateSession(dataOffset: number, dataLength: number): number;
+  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputCount(sessionHandle: number): number;
   _OrtGetOutputCount(sessionHandle: number): number;
@@ -28,7 +28,23 @@ export interface BackendWasmModule extends EmscriptenModule {
   _OrtReleaseTensor(tensorHandle: number): void;
   _OrtRun(
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
-      outputNamesOffset: number, outputCount: number, outputsOffset: number): number;
+      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
+
+  _OrtCreateSessionOptions(): number;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+  _OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle: number, level: number): number;
+  _OrtEnableCpuMemArena(sessionOptionsHandle: number): number;
+  _OrtDisableCpuMemArena(sessionOptionsHandle: number): number;
+  _OrtEnableMemPattern(sessionOptionsHandle: number): number;
+  _OrtDisableMemPattern(sessionOptionsHandle: number): number;
+  _OrtSetSessionExecutionMode(sessionOptionsHandle: number, mode: number): number;
+  _OrtSetSessionLogId(sessionOptionsHandle: number, logid: number): number;
+  _OrtSetSessionLogSeverityLevel(sessionOptionsHandle: number, level: number): number;
+
+  _OrtCreateRunOptions(): number;
+  _OrtReleaseRunOptions(runOptionsHandle: number): void;
+  _OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle: number, level: number): number;
+  _OrtRunOptionsSetRunTag(runOptionsHandle: number, tag: number): number;
 }
 
 declare const moduleFactory: EmscriptenModuleFactory<BackendWasmModule>;

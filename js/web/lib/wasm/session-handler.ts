@@ -110,19 +110,28 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   outputNames: string[];
   private outputNamesUTF8Encoded: number[];
 
-  loadModel(model: Uint8Array): void {
+  loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      wasm._OrtInit();
+      // TODO: This will be merged with Yulong's PR
+      if (wasm._OrtInit(2) != 0) {
+        throw new Error('Can\'t initialize onnxruntime');
+      }
       ortInit = true;
     }
 
     const modelDataOffset = wasm._malloc(model.byteLength);
+
+    let allocs: number[] = [];
+    const sessionOptionsHandle = this.setSessionOptions(allocs, options);
+
     try {
       wasm.HEAPU8.set(model, modelDataOffset);
-      this.sessionHandle = wasm._OrtCreateSession(modelDataOffset, model.byteLength);
+      this.sessionHandle = wasm._OrtCreateSession(modelDataOffset, model.byteLength, sessionOptionsHandle);
     } finally {
       wasm._free(modelDataOffset);
+      wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+      allocs.forEach(i => wasm._free(i));
     }
 
     const inputCount = wasm._OrtGetInputCount(this.sessionHandle);
@@ -160,9 +169,8 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     }
   }
 
-  async run(
-      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+  async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
+      Promise<SessionHandler.ReturnType> {
     const wasm = getInstance();
 
     const inputArray: Tensor[] = [];
@@ -225,11 +233,15 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       }
     }
 
+    let allocs: number[] = [];
+    const runOptionsHandle = this.setRunOptions(allocs, options);
+
     const beforeRunStack = wasm.stackSave();
     const inputValuesOffset = wasm.stackAlloc(inputCount * 4);
     const inputNamesOffset = wasm.stackAlloc(inputCount * 4);
     const outputValuesOffset = wasm.stackAlloc(outputCount * 4);
     const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
+
     try {
       let inputValuesIndex = inputValuesOffset / 4;
       let inputNamesIndex = inputNamesOffset / 4;
@@ -247,7 +259,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       // support RunOptions
       const errorCode = wasm._OrtRun(
           this.sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
-          outputValuesOffset);
+          outputValuesOffset, runOptionsHandle);
 
       const output: {[name: string]: Tensor} = {};
 
@@ -302,6 +314,8 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       }
     } finally {
       wasm.stackRestore(beforeRunStack);
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+      allocs.forEach(i => wasm._free(i));
     }
   }
 
@@ -311,5 +325,121 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   endProfiling(): void {
     // TODO: implement profiling
+  }
+
+  setSessionOptions(allocs: number[], options?: InferenceSession.SessionOptions): number {
+    const wasm = getInstance();
+    const sessionOptionsHandle = wasm._OrtCreateSessionOptions();
+
+    if (options === undefined) {
+      return sessionOptionsHandle;
+    }
+
+    let errorCode = 0;
+
+    if (options.graphOptimizationLevel !== undefined) {
+      switch (options.graphOptimizationLevel) {
+        case 'disabled':
+          errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 0);
+          break;
+        case 'basic':
+          errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 1);
+          break;
+        case 'extended':
+          errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 2);
+          break;
+        case 'all':
+        default:
+          errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 99);
+          break;
+      }
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a graph optimization level as a session option');
+      }
+    }
+
+    if (options.enableCpuMemArena !== undefined) {
+      if (options.enableCpuMemArena) {
+        errorCode = wasm._OrtEnableCpuMemArena(sessionOptionsHandle);
+      } else {
+        errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
+      }
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a CPU memory arena as a session option');
+      }
+    }
+
+    if (options.enableMemPattern !== undefined) {
+      if (options.enableMemPattern) {
+        errorCode = wasm._OrtEnableMemPattern(sessionOptionsHandle);
+      } else {
+        errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
+      }
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a memory pattern as a session option');
+      }
+    }
+
+    if (options.executionMode !== undefined) {
+      switch (options.executionMode) {
+        case 'parallel':
+          errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 1);
+          break;
+        case 'sequential':
+        default:
+          errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 0);
+          break;
+      }
+      if (errorCode != 0) {
+        throw new Error('Can\'t set an execution mode as a session option');
+      }
+    }
+
+    if (options.logId !== undefined) {
+      const logIdDataLength = wasm.lengthBytesUTF8(options.logId) + 1;
+      const logIdDataOffset = wasm._malloc(logIdDataLength);
+      wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
+      errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
+      allocs.push(logIdDataOffset);
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a log id as a session option');
+      }
+    }
+
+    if (options.logSeverityLevel !== undefined) {
+      errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a log severity level as a session option');
+      }
+    }
+
+    return sessionOptionsHandle;
+  }
+
+  setRunOptions(allocs: number[], options: InferenceSession.RunOptions): number {
+    const wasm = getInstance();
+    const runOptionsHandle = wasm._OrtCreateRunOptions();
+
+    let errorCode = 0;
+
+    if (options.logSeverityLevel !== undefined) {
+      errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a log severity level as a run option')
+      }
+    }
+
+    if (options.tag !== undefined) {
+      const tagDataLength = wasm.lengthBytesUTF8(options.tag) + 1;
+      const tagDataOffset = wasm._malloc(tagDataLength);
+      wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
+      errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
+      allocs.push(tagDataOffset);
+      if (errorCode != 0) {
+        throw new Error('Can\'t set a tag as a run option')
+      }
+    }
+
+    return runOptionsHandle;
   }
 }
