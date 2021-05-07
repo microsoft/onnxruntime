@@ -75,6 +75,14 @@ MLDataType DataTypeImpl::GetType<Tensor>() { return g_host->DataTypeImpl__GetTyp
 template <>
 MLDataType DataTypeImpl::GetType<float>() { return g_host->DataTypeImpl__GetType_float(); }
 template <>
+MLDataType DataTypeImpl::GetType<BFloat16>() { return g_host->DataTypeImpl__GetType_BFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetType<MLFloat16>() { return g_host->DataTypeImpl__GetType_MLFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetType<int32_t>() { return g_host->DataTypeImpl__GetType_int32(); }
+template <>
+MLDataType DataTypeImpl::GetType<int64_t>() { return g_host->DataTypeImpl__GetType_int64(); }
+template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return g_host->DataTypeImpl__GetTensorType_bool(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<int8_t>() { return g_host->DataTypeImpl__GetTensorType_int8(); }
@@ -351,6 +359,10 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
 }  // namespace utils
 
+
+Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host->UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
+Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host->GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
+
 #ifdef USE_CUDA
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host->TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
@@ -358,8 +370,6 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
 
 Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) { return g_host->NonMaxSuppressionBase__PrepareCompute(ctx, pc); }
 Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) { return g_host->NonMaxSuppressionBase__GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
-
-Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host->UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
 Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
@@ -396,7 +406,6 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
                                      Prepare& p) const { return g_host->ConcatBase__PrepareForCompute(this, ctx, input_tensors, p); }
 
-Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host->GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 
 PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__Default(); }
 
