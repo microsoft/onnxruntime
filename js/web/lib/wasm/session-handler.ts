@@ -113,8 +113,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      if (wasm._OrtInit(env.wasm.numThreads!, this.getLoggingLevel(env.wasm.loggingLevel!)) !== 0) {
-        throw new Error('Can\'t initialize onnxruntime');
+      const errorCode = wasm._OrtInit(env.wasm.numThreads!, this.getLoggingLevel(env.wasm.loggingLevel!));
+      if (errorCode !== 0) {
+        throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
       }
       ortInit = true;
     }
@@ -123,6 +124,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
     const allocs: number[] = [];
     const sessionOptionsHandle = this.setSessionOptions(allocs, options);
+    if (sessionOptionsHandle === 0) {
+      throw new Error('Can\'t create session options');
+    }
 
     try {
       wasm.HEAPU8.set(model, modelDataOffset);
@@ -346,6 +350,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   setSessionOptions(allocs: number[], options?: InferenceSession.SessionOptions): number {
     const wasm = getInstance();
     const sessionOptionsHandle = wasm._OrtCreateSessionOptions();
+    if (sessionOptionsHandle === 0) {
+      throw new Error('Can\'t create session options');
+    }
 
     if (options === undefined) {
       return sessionOptionsHandle;
@@ -370,7 +377,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           break;
       }
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a graph optimization level as a session option');
+        throw new Error(`Can't set a graph optimization level as a session option. error code = ${errorCode}`);
       }
     }
 
@@ -381,7 +388,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
       }
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a CPU memory arena as a session option');
+        throw new Error(`Can't set a CPU memory arena as a session option. error code = ${errorCode}`);
       }
     }
 
@@ -392,7 +399,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
       }
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a memory pattern as a session option');
+        throw new Error(`Can't set a memory pattern as a session option. error code = ${errorCode}`);
       }
     }
 
@@ -407,7 +414,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           break;
       }
       if (errorCode !== 0) {
-        throw new Error('Can\'t set an execution mode as a session option');
+        throw new Error(`Can't set an execution mode as a session option. error code = ${errorCode}`);
       }
     }
 
@@ -418,14 +425,14 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
       allocs.push(logIdDataOffset);
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a log id as a session option');
+        throw new Error(`Can't set a log id as a session option. error code = ${errorCode}`);
       }
     }
 
     if (options.logSeverityLevel !== undefined) {
       errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a log severity level as a session option');
+        throw new Error(`Can't set a log severity level as a session option. error code = ${errorCode}`);
       }
     }
 
@@ -435,13 +442,16 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   setRunOptions(allocs: number[], options: InferenceSession.RunOptions): number {
     const wasm = getInstance();
     const runOptionsHandle = wasm._OrtCreateRunOptions();
+    if (runOptionsHandle === 0) {
+      throw new Error('Can\'t create run options');
+    }
 
     let errorCode = 0;
 
     if (options.logSeverityLevel !== undefined) {
       errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a log severity level as a run option');
+        throw new Error(`Can't set a log severity level as a run option. error code = ${errorCode}`);
       }
     }
 
@@ -452,7 +462,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
       allocs.push(tagDataOffset);
       if (errorCode !== 0) {
-        throw new Error('Can\'t set a tag as a run option');
+        throw new Error(`Can't set a tag as a run option. error code = ${errorCode}`);
       }
     }
 
