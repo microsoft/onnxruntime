@@ -35,7 +35,7 @@ def _parse_build_settings(args):
         for _arch in _build_settings_data['build_osx_archs']:
             build_settings['build_osx_archs'].append([_arch["sysroot"], _arch["arch"]])
     else:
-        raise ValueError('build_osx_archs is required in the build config file')
+        build_settings['build_osx_archs'] = DEFAULT_BUILD_OSX_ARCHS
 
     build_params = []
     if 'build_params' in _build_settings_data:
