@@ -293,11 +293,7 @@ class GraphExecutionManager(ABC):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
-        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE: C.Severity.VERBOSE,
-                                        _logger.LogLevel.INFO: C.Severity.INFO,
-                                        _logger.LogLevel.WARNING: C.Severity.WARNING,
-                                        _logger.LogLevel.ERROR: C.Severity.ERROR,
-                                        _logger.LogLevel.FATAL: C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
+        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._loglevel)
         self._graph_builder = C.OrtModuleGraphBuilder()
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
