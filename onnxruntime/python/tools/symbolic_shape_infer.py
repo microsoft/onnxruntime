@@ -337,7 +337,8 @@ class SymbolicShapeInference:
 
         if not skip_infer:
             # Only pass initializers that satisfy the following condition:
-            # (1) Operator need value of some input for shape inference. For example, Unsqueeze in opset 13 uses axes input to calcuate output shape.
+            # (1) Operator need value of some input for shape inference.
+            #     For example, Unsqueeze in opset 13 uses the axes input to calculate shape of output.
             # (2) opset version >= 9. In older version, initializer is required in graph input by onnx spec.
             # (3) The initializer is not in graph input. The means the node input is "constant" in inference.
             initializers = []
