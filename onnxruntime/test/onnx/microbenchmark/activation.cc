@@ -111,7 +111,7 @@ class MyIExecutionFrame : public IExecutionFrame {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
     auto alloc = a_.GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
+    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
 
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
     ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());

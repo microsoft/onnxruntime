@@ -27,9 +27,9 @@ from .onnx_quantizer import ONNXQuantizer
 
 class QDQQuantizer(ONNXQuantizer):
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
-                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options={}):
         ONNXQuantizer.__init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType,
-                               tensors_range, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
+                               tensors_range, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options)
         self.tensors_to_quantize = []
         self.tensors_to_quantize_per_channel = []
         self.bias_to_quantize = []

@@ -69,7 +69,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     } else if (cpu_id_info.HasAVX()) {
       codegen_target_ = CodeGenTarget_AVX();
     } else {
-      codegen_target_ = onnxruntime::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
+      codegen_target_ = std::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
     }
   } else if (target_str == "avx") {
     codegen_target_ = CodeGenTarget_AVX();
@@ -78,7 +78,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   } else if (target_str == "avx512") {
     codegen_target_ = CodeGenTarget_AVX512();
   } else if (target_str != stackvm_target_str) {
-    codegen_target_ = onnxruntime::make_unique<CodeGenTarget>(target_str);
+    codegen_target_ = std::make_unique<CodeGenTarget>(target_str);
   } else {
     ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
@@ -106,18 +106,18 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   AllocatorCreationInfo memory_info(
       [](int /*id*/) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
       },
       static_cast<OrtDevice::DeviceId>(tvm_ctx_.device_id));
 
   InsertAllocator(CreateAllocator(memory_info));
 
   // TODO add multi-target support
-  tvm_codegen_manager_ = onnxruntime::make_unique<TVMCodeGenManager>();
+  tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();
 
   // Create codegen handle for one target for now
   codegen_handles_.clear();
-  auto handle = onnxruntime::make_unique<NupharCodeGenHandle>();
+  auto handle = std::make_unique<NupharCodeGenHandle>();
   tvm_codegen_manager_->Initialization();
   tvm_codegen_manager_->SetCodeGenHandle(handle.get());
   handle->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
@@ -137,7 +137,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   codegen_handles_.push_back(std::move(handle));
 
   // Runtime Handle
-  runtime_handle_ = onnxruntime::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
+  runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
   runtime_handle_->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
   runtime_handle_->allow_unaligned_buffers = info.allow_unaligned_buffers;
   runtime_handle_->enable_model_parallelism = false;
@@ -366,7 +366,7 @@ Status NupharExecutionProvider::SaveInitializer(
 
     const TensorShape& shape = TensorShape::ReinterpretBaseType(shape_dims);
     auto data_type = OrtTypeInfo::ElementTypeFromProto(proto->data_type());
-    auto t = onnxruntime::make_unique<Tensor>(
+    auto t = std::make_unique<Tensor>(
         data_type,
         shape,
         GetAllocator(0, OrtMemTypeDefault)->Alloc(SafeInt<size_t>(shape.Size()) * data_type->Size()),
@@ -420,7 +420,7 @@ Status NupharExecutionProvider::Compile(
     info.create_state_func =
         [&, node](ComputeContext* ctx, FunctionState* state) {
           std::unique_ptr<NupharKernelState> s =
-              onnxruntime::make_unique<NupharKernelState>(
+              std::make_unique<NupharKernelState>(
                   *node,
                   *ctx,
                   *this);

@@ -82,7 +82,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   std::unique_ptr<bool[]> mask_buffer{};
   if (use_mask) {
-    mask_buffer = onnxruntime::make_unique<bool[]>(input_size);
+    mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
     t.AddMissingOptionalOutput<bool>();

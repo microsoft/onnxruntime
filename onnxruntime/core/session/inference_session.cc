@@ -1145,7 +1145,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
@@ -1177,7 +1177,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = onnxruntime::make_unique<SessionState>(
+    session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
         session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
@@ -1186,7 +1186,8 @@ common::Status InferenceSession::Initialize() {
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute);
+        session_options_.use_deterministic_compute,
+        session_options_.enable_mem_reuse);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -1265,11 +1266,13 @@ common::Status InferenceSession::Initialize() {
                             "Please disable any execution providers which generate compiled nodes."));
       }
 
-      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
+      // add a warning if the NchwcTransformer was enabled, as it contains the hardware specific logic
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3 &&
+          optimizers_to_disable_.find("NchwcTransformer") == optimizers_to_disable_.cend()) {
         LOGS(*session_logger_, WARNING)
-            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
-               "The generated model may contain hardware and execution provider specific optimizations, "
-               "and should only be used in the same environment the model was optimized for.";
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED and the "
+               "NchwcTransformer enabled. The generated model may contain hardware specific optimizations, and "
+               "should only be used in the same environment the model was optimized in.";
       }
 
       if (saving_ort_format) {
@@ -1504,6 +1507,73 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 
   return common::Status::OK();
 }
+
+#ifdef ENABLE_TRAINING
+Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
+                                    const std::vector<OrtValue>& feeds,
+                                    std::vector<OrtValue>& fetches,
+                                    PartialGraphExecutionState& state,
+                                    FeedsFetchesManager& feeds_fetches_manager) {
+  Status retval = Status::OK();
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
+  ORT_TRY {
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    if (!run_options.run_tag.empty()) {
+      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+    }
+
+    // scope of owned_run_logger is just the call to Execute.
+    // If Execute ever becomes async we need a different approach
+    std::unique_ptr<logging::Logger> owned_run_logger;
+    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+    // info all execution providers InferenceSession:Run started
+    // TODO: only call OnRunStart for all providers in-use
+    for (auto& xp : execution_providers_) {
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
+    }
+
+    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false, "only_execute_path_to_fetches is not supported.");
+
+    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
+
+    // execute the graph
+    ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
+                                                        run_logger, state));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
+    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+  }
+
+  // info all execution providers InferenceSession:Run ended
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
+  }
+
+  return retval;
+}
+#endif
 
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,

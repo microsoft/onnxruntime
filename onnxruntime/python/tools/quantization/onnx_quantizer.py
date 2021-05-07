@@ -26,7 +26,7 @@ from .onnx_model import ONNXModel
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
-                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options={}):
 
         # run shape inference on the model
         model = onnx.shape_inference.infer_shapes(model)
@@ -40,6 +40,7 @@ class ONNXQuantizer:
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
+        self.extra_options = extra_options if extra_options is not None else {}
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -363,27 +364,31 @@ class ONNXQuantizer:
 
         return input_scale_name, input_zp_name, [], []
 
-    def _get_quantization_params(self, param_name):
+    def _get_quantization_params(self, param_name, use_scale=None, use_zeropoint=None):
         '''
         Create initializers and inputs in the graph for zero point and scale of output.
         Zero point and scale values are obtained from self.quantization_params if specified.
             parameter param_name: Name of the quantization parameter.
             return: result, scale_name, zero_point_name, scale_shape, zero_point_shape.
         '''
-        if self.quantization_params is None or param_name not in self.quantization_params:
-            return False, "", "", "", ""
+        if use_scale is None or use_zeropoint is None:
+            if self.quantization_params is None or param_name not in self.quantization_params:
+                return False, "", "", "", ""
 
-        params = self.quantization_params[param_name]
-        if params is None or len(params) != 2:
-            raise ValueError("Quantization parameters should contain zero point and scale. "
-                             "Specified values for output {}: {}".format(param_name, params))
+            params = self.quantization_params[param_name]
+            if params is None or len(params) != 2:
+                raise ValueError("Quantization parameters should contain zero point and scale. "
+                                 "Specified values for output {}: {}".format(param_name, params))
 
-        zero_point_values = [params[0]]
+            zero_point_values = [params[0]]
+            scale_values = [params[1]]
+        else:
+            zero_point_values = [use_zeropoint]
+            scale_values = [use_scale]
+
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
         zero_point_type = self.input_qType
-
-        scale_values = [params[1]]
         scale_shape = []
         scale_name = param_name + "_scale"
 
@@ -409,47 +414,38 @@ class ONNXQuantizer:
         '''
         input_name = node.input[input_index]
         output_name = input_name + "_quantized"
+        ql_node_name = input_name + "_QuantizeLinear"
 
         if (given_scale_name is not None) and (given_zp_name is not None):
             data_found, scale_name, zp_name = (True, given_scale_name, given_zp_name)
         else:
             data_found, scale_name, zp_name, _, _ = self._get_quantization_params(input_name)
 
-        if self.static:
-            if data_found == False:
+        nodes = []
+        if data_found == True:
+            qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name],
+                                                 [output_name], ql_node_name)
+        else:
+            if self.static:
                 raise ValueError(
                     "Quantization parameters are not specified for param {}."
                     "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
                     format(input_name))
-
-            qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], [output_name],
-                                                 input_name + "_QuantizeLinear")
-            return [qlinear_node]
-
-        else:
-            if data_found == True:
-                qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], [output_name],
-                                                     input_name + "_QuantizeLinear")
-                return [qlinear_node]
+            # dynamic mode
+            # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
+            if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
+                scale_name = input_name + "_scale"
+                zp_name = input_name + "_zero_point"
+                qlinear_node = onnx.helper.make_node("DynamicQuantizeLinear", [input_name],
+                                                     [output_name, scale_name, zp_name], ql_node_name)
             else:
-                # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
-                if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
-                    scale_name = input_name + "_scale"
-                    zeropoint_name = input_name + "_zero_point"
-                    qlinear_node = onnx.helper.make_node("DynamicQuantizeLinear", [input_name],
-                                                         [output_name, scale_name, zeropoint_name],
-                                                         input_name + "_QuantizeLinear")
-                    return [qlinear_node]
+                scale_name, zp_name, scale_shape, zp_shape = \
+                    self._get_dynamic_input_quantization_params(input_name, nodes, qType)
+                qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name],
+                                                     [output_name], ql_node_name)
 
-                else:
-                    nodes = []
-                    scale_name, zp_name, scale_shape, zp_shape = \
-                        self._get_dynamic_input_quantization_params(
-                            input_name, nodes, qType)
-                    qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name],
-                                                         [output_name], input_name + "_QuantizeLinear")
-
-                    return nodes + [qlinear_node]
+        self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
+        return nodes + [qlinear_node]
 
     def get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
         '''

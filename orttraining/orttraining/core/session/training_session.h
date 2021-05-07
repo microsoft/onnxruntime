@@ -142,7 +142,13 @@ class TrainingSession : public InferenceSession {
     // Exactly one of loss_function_config or loss_name should be given.
     optional<std::string> loss_name{};
 
-    struct GistConfiguration {};
+    struct GistConfiguration {
+      // The operator type to which GIST is applied. Valid Values - 1 (Softmax), 2 (Transpose), 3 (Reshape),
+      // 4 (Add), 5 (Dropout), 6 (LayerNormalization), 7 (MatMul), 8 (Relu), 9 (All the above)
+      int op_type{};
+      // The compression type used for GIST. Valid values - GistBinarize, GistPack1, GistPack8, GistPack16, GistPackMsfp15
+      std::string compr_type{};
+    };
     // The GIST configuration.
     // If not provided, GIST is disabled.
     optional<GistConfiguration> gist_config{};
@@ -255,6 +261,8 @@ class TrainingSession : public InferenceSession {
       // Propagate FP16 Cast operations up and FP32 operations down
       int propagate_cast_ops_level{-1};
       std::vector<std::string> propagate_cast_ops_allow;
+      // Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
+      bool allow_layer_norm_mod_precision{false};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
@@ -431,7 +439,7 @@ class TrainingSession : public InferenceSession {
       std::string* loss_scale_input_name,
       std::string& actual_loss_name);
 
-  common::Status AddGistEncoding();
+  common::Status AddGistEncoding(const int op_type, const std::string compr_type);
 
   /** Add tensorboard summary nodes to the graph.
   @param summary_name name for the merged summary node.

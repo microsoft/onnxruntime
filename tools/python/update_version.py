@@ -88,10 +88,15 @@ def update_version():
                     continue
                 f.write(line)
 
-    # update version for node.js binding
+    # update version for NPM packages
     current_version = ''
-    file_names = ['package.json', 'package-lock.json']
-    file_paths = [os.path.join(cwd, '..', '..', 'nodejs', file_name) for file_name in file_names]
+    js_root = os.path.join(cwd, '..', '..', 'js')
+    file_paths = [
+        os.path.join(js_root, 'common', 'package.json'),
+        os.path.join(js_root, 'common', 'package-lock.json'),
+        os.path.join(js_root, 'node', 'package.json'),
+        os.path.join(js_root, 'node', 'package-lock.json'),
+    ]
     for file_path in file_paths:
         with open(file_path) as f:
             content = json.load(f)

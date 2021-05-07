@@ -71,7 +71,7 @@ AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
 }
 
 void SessionState::CreateGraphInfo() {
-  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph_);
+  graph_viewer_ = std::make_unique<onnxruntime::GraphViewer>(graph_);
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger_, VERBOSE) << "SaveMLValueNameIndexMapping";
   int idx = 0;
@@ -188,7 +188,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
-  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
 }
 
@@ -535,7 +535,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
-    auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+    auto mem_patterns = std::make_unique<MemoryPatternGroup>();
     if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();
@@ -579,6 +579,8 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::refere
 }
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
+
+bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
@@ -806,7 +808,7 @@ Status SessionState::CreateSubgraphSessionState() {
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          onnxruntime::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
+          std::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
                                                  thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                                  logger_, profiler_);
 
@@ -998,7 +1000,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));

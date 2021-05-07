@@ -14,7 +14,7 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
         -t onnxruntime_ortmodule_distributed_tests_image \
         -x " \
           --config RelWithDebInfo \
@@ -23,7 +23,8 @@ jobs:
           --build_wheel \
           " \
         -m \
-        -u
+        -u \
+        -e
       DisplayName: 'Build'
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
@@ -41,9 +42,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /mnist:/mnist \
         onnxruntime_ortmodule_distributed_tests_image \
-          /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_ortmodule_distributed_tests.py --mnist /mnist" \
-            --cwd /build/RelWithDebInfo \
+          bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; rm -rf /build/RelWithDebInfo/onnxruntime/ ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_distributed_tests.py --mnist /mnist' --cwd /build/RelWithDebInfo" \
     displayName: 'Run orttraining_ortmodule_distributed_tests.py'
     condition: succeededOrFailed()
     timeoutInMinutes: 30

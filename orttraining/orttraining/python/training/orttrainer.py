@@ -679,14 +679,15 @@ class ORTTrainer(object):
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
         del self._training_session
-
         # Set provider-specific options if needed
         def get_providers(provider_options):
             providers = ort.get_available_providers()
-            
             if provider_options:
                 for provider_name in provider_options:
-                    providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
+                    if provider_name in providers:
+                        providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
+                    else:
+                        providers.insert(0, (provider_name, provider_options[provider_name]))
             #default: using cuda
             elif 'cuda' in self.options.device.id.lower():
                 gpu_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}

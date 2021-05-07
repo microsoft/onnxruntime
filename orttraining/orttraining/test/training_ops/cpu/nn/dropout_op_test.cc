@@ -69,7 +69,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
   std::unique_ptr<bool[]> mask_buffer{};
   if (use_mask) {
-    mask_buffer = onnxruntime::make_unique<bool[]>(input_size);
+    mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
     t.AddMissingOptionalOutput<bool>();
@@ -163,7 +163,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   std::vector<float> dy_data(input_shape.Size(), input_constant);
   std::vector<float> ratio_data(1, ratio);
 
-  auto mask_buffer = onnxruntime::make_unique<bool[]>(input_shape.Size());
+  auto mask_buffer = std::make_unique<bool[]>(input_shape.Size());
   std::generate_n(
       mask_buffer.get(), input_shape.Size(),
       [ratio, rng = std::default_random_engine{42},

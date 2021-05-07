@@ -186,6 +186,7 @@ ActivationFuncs::ActivationFuncs(const std::vector<std::string>& funcs,
   }
 }
 
+#if defined(DUMP_MATRIXES)
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col, int offset, int col_width) {
   std::cout << "Dump matrix: " << name << std::endl;
 
@@ -200,6 +201,7 @@ void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
   }
   std::cout << std::endl;
 }
+#endif
 
 void ComputeGemm(const int M,
                  const int N,

@@ -20,6 +20,10 @@ class InferenceSessionWrapper : public InferenceSession {
     return model_->MainGraph();
   }
 
+  Graph& GetMutableGraph() const {
+    return model_->MainGraph();
+  }
+
   const SessionState& GetSessionState() const {
     return InferenceSession::GetSessionState();
   }

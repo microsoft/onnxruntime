@@ -178,7 +178,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_ENFORCE(info == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   const auto& node = Node();
-  info = onnxruntime::make_unique<If::Info>(node, subgraph_session_state.GetGraphViewer());
+  info = std::make_unique<If::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // all inputs for the If subgraph are implicit
   std::vector<std::string> feed_names;
