@@ -4,7 +4,6 @@
 #include "eye_like.h"
 #include "eye_like_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 using namespace onnxruntime::common;
@@ -17,20 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     9,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T1",
-                                      std::vector<MLDataType>{
-                                          DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<double>(),
-                                          DataTypeImpl::GetTensorType<uint64_t>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<int32_t>()})
-        .TypeConstraint("T2",
-                        std::vector<MLDataType>{
-                            DataTypeImpl::GetTensorType<float>(),
-                            DataTypeImpl::GetTensorType<double>(),
-                            DataTypeImpl::GetTensorType<uint64_t>(),
-                            DataTypeImpl::GetTensorType<int64_t>(),
-                            DataTypeImpl::GetTensorType<int32_t>()}),
+    (*KernelDefBuilder::Create()).TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<int32_t>()}).TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<int32_t>()}),
     EyeLike);
 
 #define TYPED_FUNCTION_CALL(T)                                                              \
@@ -71,7 +57,7 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
     diag_count = std::min(dim0 + k_, dim1);
   }
 
-  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : T1->GetElementType();
+  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(dtype_) : T1->GetElementType();
   switch (output_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       TYPED_FUNCTION_CALL(float)

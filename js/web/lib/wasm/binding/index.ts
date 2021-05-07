@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import wasmModuleFactory, {BackendWasmModule} from './onnxruntime_wasm';
+import wasmModuleFactory, {BackendWasmModule} from './ort-wasm';
 
 // some global parameters to deal with wasm binding initialization
 let wasm: BackendWasmModule;

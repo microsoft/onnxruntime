@@ -28,11 +28,6 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -553,7 +548,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // Add GIST encoding
   if (config.gist_config.has_value()) {
-    ORT_RETURN_IF_ERROR(AddGistEncoding());
+    const auto& gist_config = config.gist_config.value();
+    ORT_RETURN_IF_ERROR(AddGistEncoding(gist_config.op_type, gist_config.compr_type));
   }
 
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
@@ -808,12 +804,12 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   return common::Status::OK();
 }
 
-Status TrainingSession::AddGistEncoding() {
+Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
   try {
     Graph& graph = model_->MainGraph();
 
     auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 

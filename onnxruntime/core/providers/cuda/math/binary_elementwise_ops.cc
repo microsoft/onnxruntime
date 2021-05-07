@@ -85,47 +85,47 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   return Status::OK();
 }
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, class_name, ver, T)       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, class_name, ver, T)                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                   \
+      kOnnxDomain,                                                                         \
+      ver,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       class_name<T>);
 
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, x, ver, T)
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_NONTEMP(x, class_name, ver, ...)              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                         \
-      x,                                                                                 \
-      kOnnxDomain,                                                                       \
-      ver,                                                                               \
-      kCudaExecutionProvider,                                                            \
-      KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<>(__VAR_ARGS__)), \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_NONTEMP(x, class_name, ver, ...)                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                    \
+      x,                                                                                            \
+      kOnnxDomain,                                                                                  \
+      ver,                                                                                          \
+      kCudaExecutionProvider,                                                                       \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<>(__VAR_ARGS__)), \
       class_name);
 
-#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
-      x,                                                                                                                                  \
-      kOnnxDomain,                                                                                                                        \
-      ver,                                                                                                                                \
-      T,                                                                                                                                  \
-      kCudaExecutionProvider,                                                                                                             \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                     \
+      x,                                                                                                                                             \
+      kOnnxDomain,                                                                                                                                   \
+      ver,                                                                                                                                           \
+      T,                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                        \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                         \
-      x,                                                                           \
-      kOnnxDomain,                                                                 \
-      startver,                                                                    \
-      endver,                                                                      \
-      T,                                                                           \
-      kCudaExecutionProvider,                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T)         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      x,                                                                                   \
+      kOnnxDomain,                                                                         \
+      startver,                                                                            \
+      endver,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_CLASS(x, class_name, startver, endver, T) \
@@ -136,7 +136,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       endver,                                                                                        \
       T,                                                                                             \
       kCudaExecutionProvider,                                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                      \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),           \
       class_name<T>);
 
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
@@ -303,7 +303,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -311,7 +311,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 namespace pow12_internal {

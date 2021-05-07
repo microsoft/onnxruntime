@@ -163,6 +163,8 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = params_.gist_config.op_type;
+    gist.compr_type = params_.gist_config.compr_type;
 
     config.gist_config = gist;
   }

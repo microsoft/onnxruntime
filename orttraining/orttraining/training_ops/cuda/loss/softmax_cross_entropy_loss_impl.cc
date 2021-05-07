@@ -4,12 +4,20 @@
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/tensor/transpose.h"
-#include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/framework/ml_value.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cuda/loss/softmax_cross_entropy_loss_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
+  auto new_tensor = Tensor::Create(data_type, shape, allocator);
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  return OrtValue{new_tensor.release(), ml_tensor,
+                  ml_tensor->GetDeleteFunc()};
+};
 
 #define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver) \
   ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                             \
@@ -18,7 +26,7 @@ namespace cuda {
       startver, endver,                                                                    \
       T, Tin,                                                                              \
       kCudaExecutionProvider,                                                              \
-      KernelDefBuilder()                                                                   \
+      (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
           .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                      \
       Class<T, Tin>);
@@ -30,7 +38,7 @@ namespace cuda {
       version,                                                          \
       T, Tin,                                                           \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
+      (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
       Class<T, Tin>);
@@ -75,7 +83,6 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   }
 
   OrtValue transpose_output;
-  Tensor transpose_tensor;
   std::vector<int64_t> new_shape;
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
@@ -85,7 +92,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   if (logit_shape.NumDimensions() > 2) {
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, logit_shape, new_shape, permutations);
-    transpose_output = scan::detail::AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
+    transpose_output = AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
     ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, logit, *transpose_output.GetMutable<Tensor>()));
     logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }
@@ -199,7 +206,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   if (probability_shape.NumDimensions() > 2) {
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
-    transpose_output = scan::detail::AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
+    transpose_output = AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
     ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
     log_prob_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }

@@ -3,13 +3,20 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
+#include "core/framework/float16.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/util/math.h"
+#include "gsl/gsl"
 
+// Can't include "core/util/math.h" in a provider, so this is the part we need for cuda:
 namespace onnxruntime {
+namespace math {
+uint16_t floatToHalf(float f);
+}
+
 namespace cuda {
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
@@ -101,7 +108,7 @@ class CublasMathModeSetter {
 #else
     enable_ = (mode == CUBLAS_TF32_TENSOR_OP_MATH ? prop.major >= 8 : true);
 #endif
-    
+
     if (enable_) {
       cublasGetMathMode(handle, &mode_);
       enable_ = (mode_ != mode);
@@ -156,7 +163,19 @@ class HalfGemmOptions {
 
   bool IsCompute16F() const { return compute_16f_; }
 
-  void Initialize(int value);
+  void Initialize(int value) {
+    compute_16f_ = (value & 0x01) > 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    disallow_reduced_precision_reduction_ = (value & 0x02) > 0;
+    pedantic_ = (value & 0x04) > 0;
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_GEMM_OPTIONS: compute_16f=" << instance.compute_16f_
+                       << " disallow_reduced_precision_reduction=" << instance.disallow_reduced_precision_reduction_
+                       << " pedantic=" << instance.pedantic_;
+#else
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_GEMM_OPTIONS: compute_16f=" << instance.compute_16f_;
+#endif
+    initialized_ = true;
+  }
 
  private:
   // Default is FP32. Aggregate in FP16 might be faster but the cost is loss in precision.

@@ -1819,25 +1819,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 // End support for non-tensor types
 
-#ifndef USE_CUDA
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(cuda_options);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-#endif
-
 #ifndef USE_ROCM
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {

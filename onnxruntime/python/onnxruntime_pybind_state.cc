@@ -33,9 +33,6 @@
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
@@ -145,9 +142,7 @@ struct OrtStatus {
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 // TODO remove deprecated global config
@@ -169,6 +164,9 @@ size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -208,10 +206,14 @@ namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+#ifdef USE_CUDA
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+#endif
 #ifdef USE_OPENVINO
-const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 #endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
@@ -467,8 +469,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
 #ifdef USE_CUDA
 
 static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = 0;
-  CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+  int num_devices = GetProviderInfo_CUDA()->cudaGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
@@ -486,21 +487,22 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
-  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
-  return id_to_allocator_map[id];
+  return (*id_to_allocator_map)[id];
 }
 
 static void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyHostToDevice));
+  GetProviderInfo_CUDA()->cudaMemcpy_HostToDevice(dst, src, num_bytes);
 }
 
 static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
+  GetProviderInfo_CUDA()->cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
 static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
@@ -637,26 +639,23 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       const auto it = provider_options_map.find(type);
-      const CUDAExecutionProviderInfo info =
-          it != provider_options_map.end()
-              ? CUDAExecutionProviderInfo::FromProviderOptions(it->second)
-              : [&]() {
-                  CUDAExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-                  info.do_copy_in_default_stream = do_copy_in_default_stream;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }();
+      CUDAExecutionProviderInfo info{};
+      if (it != provider_options_map.end())
+        GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+      else {
+        info.device_id = cuda_device_id;
+        info.gpu_mem_limit = gpu_mem_limit;
+        info.arena_extend_strategy = arena_extend_strategy;
+        info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+        info.do_copy_in_default_stream = do_copy_in_default_stream;
+        info.external_allocator_info = external_allocator_info;
+      }
 
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
-      RegisterExecutionProvider(
-          sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info));
+      RegisterExecutionProvider(sess, *GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info));
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -673,7 +672,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -784,7 +783,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -792,7 +791,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -2094,12 +2093,16 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
+
+  atexit([] {
+    UnloadSharedProviders();
+  });
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING

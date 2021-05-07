@@ -65,7 +65,7 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
 
     # User inputs
     non_none_inputs = [inp for inp in inputs if inp is not None]
-    named_buffers_iter = iter(buffer_names)
+    buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
     for input_idx, name in enumerate(onnx_input_names):
@@ -82,16 +82,17 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
 
         elif input_idx >= len(non_none_inputs):
             # Registered buffers are translated to user_input+initializer in ONNX
-            buffer_name, inp = next(named_buffers_iter)
-            assert buffer_name == name, f'Input name {name} expected, but {buffer_name} found!'
+            try:
+                inp = buffer_names_dict[name]
+            except KeyError:
+                raise KeyError(f'Registered buffer name {name} not found.')
 
         if inp is not None:
             result.append(inp)
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
     # Initializers
-    for param in param_names:
-        result.append(param[1])
+    result.extend([param[1] for param in param_names])
     return result
 
 

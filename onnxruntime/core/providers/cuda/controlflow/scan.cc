@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/scan.h"
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/framework/ml_value.h"
+#include "core/framework/ort_value_tensor_slicer.cc"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -66,8 +69,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
                                   8, 8,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'sequence_lens' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'sequence_lens' needs to be on CPU
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                   Scan<8>);
@@ -76,7 +79,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kOnnxDomain,
                                   9, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
+                                  (*KernelDefBuilder::Create())
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Scan<9>);
@@ -86,7 +89,7 @@ ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
                         11,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
+                        (*KernelDefBuilder::Create())
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Scan<9>);

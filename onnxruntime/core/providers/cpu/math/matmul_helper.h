@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 template <typename T>

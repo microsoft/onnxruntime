@@ -7,12 +7,22 @@ import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {TextureLayout} from '../types';
 import {getPackedShape} from '../utils';
+import {WebGLReshapePacked} from './reshape-packed';
 
 export class WebGLReshape extends Reshape {
+  packedImpl: WebGLReshapePacked;
+  constructor() {
+    super();
+    this.packedImpl = new WebGLReshapePacked();
+  }
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    const reshapedDims = ShapeUtil.calculateReshapedDims(inputs[0].dims, inputs[1].integerData);
-    const reshapedTensor = reshape(inferenceHandler, inputs[0], reshapedDims);
-    return [reshapedTensor];
+    if (inferenceHandler.session.pack) {
+      return inferenceHandler.run(this.packedImpl, inputs);
+    } else {
+      const reshapedDims = ShapeUtil.calculateReshapedDims(inputs[0].dims, inputs[1].integerData);
+      const reshapedTensor = reshape(inferenceHandler, inputs[0], reshapedDims);
+      return [reshapedTensor];
+    }
   }
 }
 
@@ -33,6 +43,6 @@ export function reshape(
     unpackedShape: reshapedDims,
   };
 
-  const newTextureData = inferenceHandler.createSharedTextureData(newTextureLayout, input.type, inputTD.texture, {});
+  const newTextureData = inferenceHandler.createSharedTextureData(newTextureLayout, input.type, inputTD.texture);
   return newTextureData.tensor;
 }
