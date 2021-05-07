@@ -370,14 +370,37 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 if enable_training:
-    def get_onnxruntime_version(package_name, version_number, cuda_version):
-        version_path = path.join('onnxruntime', 'version.py')
+    def save_build_and_package_info(package_name, version_number, cuda_version):
+        from onnxruntime.capi.onnxruntime_validation import find_cudart_versions, find_cudnn_versions
+
+        version_path = path.join('onnxruntime', 'build_and_package_info.py')
         with open(version_path, 'w') as f:
             f.write("package_name = '{}'\n".format(package_name))
             f.write("__version__ = '{}'\n".format(version_number))
-            f.write("cuda = {}\n".format(cuda_version))
 
-    get_onnxruntime_version(package_name, version_number, cuda_version)
+            if cuda_version:
+                f.write("cuda_version = {}\n".format(cuda_version))
+            
+                cudart_versions = find_cudart_versions(build_env=True)
+                if len(cudart_versions) == 1:
+                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                else:
+                    print(
+                        "Error getting cudart version. ",
+                        "did not find any cudart library" if len(cudart_versions) == 0 else "found multiple cudart libraries")
+
+                cudnn_versions = find_cudnn_versions(build_env=True)
+                if len(cudnn_versions) == 1:
+                    f.write("cudnn_version = {}\n".format(cudnn_versions[0]))
+                else:
+                    print(
+                        "Error getting cudnn version. ",
+                        "did not find any cudnn library" if len(cudnn_versions) == 0 else "found multiple cudnn libraries")
+            else:
+                # TODO: rcom
+                pass
+
+    save_build_and_package_info(package_name, version_number, cuda_version)
 
 # Setup
 setup(

@@ -26,15 +26,71 @@ try:
 except ImportError:
     pass
 
-onnxruntime_package_name = ''
-cuda = ''
-
 try:
-    # override onnxruntime and cuda version
-    from .version import onnxruntime_package_name
-    from .version import __version__
-    from .version import cuda as cuda_version
+    from onnxruntime.training.ortmodule import ORTModule
+    has_ortmodule = True
 except ImportError:
-    pass
+    has_ortmodule = False
+
+package_name = ''
+cuda_version = ''
+
+if has_ortmodule:
+    try:
+        # collect onnxruntime package name, version, and cuda version
+        from .build_and_package_info import package_name
+
+        # only override __version__ if it is a nightly build
+        if 'dev' not in package_name:
+            from .build_and_package_info import __version__
+
+        cuda_version = None
+        try:
+            from .build_and_package_info import cuda_version
+        except:
+            pass
+
+        print('onnxruntime training package info: package_name:', package_name)
+        print('onnxruntime training package info: __version__:', __version__)
+
+        if cuda_version:
+            print('onnxruntime training package info: cuda_version:', cuda_version)
+
+            # collect cuda library build info. the library info may not be available
+            # when the build environment has none or multiple libraries installed
+            try:
+                from .build_and_package_info import cudart_version
+                print('onnxruntime build info: cudart_version:', cudart_version)
+            except:
+                print('WARNING: failed to get cudart_version from onnxruntime build info.')
+                cudart_version = None
+
+            try:
+                from .build_and_package_info import cudnn_version
+                print('onnxruntime build info: cudnn_version:', cudnn_version)
+            except:
+                print('WARNING: failed to get cudnn_version from onnxruntime build info')
+                cudnn_version = None
+
+            # collection cuda library info from current environment.
+            from onnxruntime.capi.onnxruntime_validation import find_cudart_versions, find_cudnn_versions
+            local_cudart_versions = find_cudart_versions(build_env=False)
+
+            if cudart_version and cudart_version not in local_cudart_versions:
+                print('WARNING: failed to find cudart version that matches onnxruntime build info')
+                print('WARNING: found cudart versions: ', local_cudart_versions)
+
+            local_cudnn_versions = find_cudnn_versions(build_env=False)
+            if cudnn_version and cudnn_version not in local_cudnn_versions:
+                print('WARNING: failed to find cudnn version that matches onnxruntime build info')
+                print('WARNING: found cudnn versions: ', local_cudnn_versions)
+        else:
+            # TODO: rcom
+            pass
+
+    except:
+        print('WARNING: failed to collect onnxruntime version and build info')
+        pass
+
 
 onnxruntime_validation.check_distro_info()
