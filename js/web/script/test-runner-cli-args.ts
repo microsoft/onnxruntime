@@ -3,10 +3,8 @@
 
 import minimist from 'minimist';
 import npmlog from 'npmlog';
-import {InferenceSession} from 'onnxruntime-common';
+import {Env, InferenceSession} from 'onnxruntime-common';
 
-import {WebGLFlags} from '../lib/backend-onnxjs';
-import {WebAssemblyFlags} from '../lib/backend-wasm';
 import {Logger} from '../lib/onnxjs/instrument';
 import {Test} from '../test/test-types';
 
@@ -14,7 +12,7 @@ import {Test} from '../test/test-types';
 const HELP_MESSAGE = `
 test-runner-cli
 
-Run ONNX.js tests, models, benchmarks in different environments.
+Run ONNX Runtime Web tests, models, benchmarks in different environments.
 
 Usage:
  test-runner-cli <mode> ... [options]
@@ -31,7 +29,7 @@ Options:
 
  -h, --help                    Print this message.
  -d, --debug                   Specify to run test runner in debug mode.
-                                 Debug mode outputs verbose log for test runner, sets up ONNX.js environment debug flag, and keeps karma not to exit after tests completed.
+                                 Debug mode outputs verbose log for test runner, sets up environment debug flag, and keeps karma not to exit after tests completed.
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
                                    webgl
@@ -60,7 +58,7 @@ Options:
 
 *** Backend Options ***
 
- --wasm-worker                 Set the WebAssembly worker number
+ --wasm-number-threads         Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
@@ -151,9 +149,9 @@ export interface TestRunnerCliArgs {
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
-  wasmFlags?: WebAssemblyFlags;
+  wasmFlags?: Env.WebAssemblyFlags;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  webglFlags?: WebGLFlags;
+  webglFlags?: Env.WebGLFlags;
 
   noSandbox?: boolean;
 }
@@ -246,23 +244,23 @@ function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssem
   return {name: 'wasm'};
 }
 
-function parseWasmFlags(args: minimist.ParsedArgs): WebAssemblyFlags {
-  const worker = args['wasm-worker'];
-  if (typeof worker !== 'undefined' && typeof worker !== 'number') {
-    throw new Error('Flag "wasm-worker" must be a number value');
+function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
+  const numThreads = args['wasm-number-threads'];
+  if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
+    throw new Error('Flag "wasm-number-threads" must be a number value');
   }
   const initTimeout = args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
     throw new Error('Flag "wasm-init-timeout" must be a number value');
   }
-  return {worker, initTimeout};
+  return {numThreads, initTimeout};
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');

@@ -578,7 +578,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
-          if (option.first == "has_trt_options") {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              params.device_id = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "has_trt_options") {
             if (option.second == "True" || option.second == "true") {
               params.has_trt_options = true;
             } else if (option.second == "False" || option.second == "false") {
