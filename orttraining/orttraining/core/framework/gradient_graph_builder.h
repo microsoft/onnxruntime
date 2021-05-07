@@ -112,6 +112,8 @@ class GradientGraphBuilder {
 
   const logging::Logger& logger_;
 
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
+
   // key: ArgDef for the gradient after accumulation
   // value: ArgDef for the gradients to be accumulated
   struct ArgDefHasher {
