@@ -429,11 +429,11 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
-  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
+  session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0");
   VerifyConstantFoldingWithDequantizeLinear(1, 3, 1, graph, session_options, *logger_);
 
   // set SessionOptionsEnableQuantQDQ to disable it
-  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
+  session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
   VerifyConstantFoldingWithDequantizeLinear(1, 1, 1, graph, session_options, *logger_);
 }
 
@@ -2547,10 +2547,10 @@ TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
   // GeluApproximation is not enabled by default.
   VerifyGeluApproximation(false, session_options);
 
-  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
+  session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "1");
   VerifyGeluApproximation(true, session_options);
 
-  session_options.session_configurations.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
+  session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableGeluApproximation, "0");
   VerifyGeluApproximation(false, session_options);
 }
 

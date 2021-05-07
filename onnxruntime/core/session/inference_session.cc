@@ -213,7 +213,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 #endif
 
   bool set_denormal_as_zero =
-      session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
   // The only first session option for flush-to-zero and denormal-as-zero is effective to main thread and OpenMP threads.
   {
@@ -235,7 +235,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
       bool allow_intra_op_spinning =
-          session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.intra_op_param;
       std::basic_stringstream<ORTCHAR_T> ss;
       if (to.name) {
@@ -256,7 +256,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       bool allow_inter_op_spinning =
-          session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
@@ -630,7 +630,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  std::string model_type = session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -657,7 +657,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  std::string model_type = session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -684,7 +684,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  std::string model_type = session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
@@ -1168,8 +1168,8 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
-    std::string use_env_allocators = session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
-                                                                                                "0");
+    std::string use_env_allocators = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
+                                                                                        "0");
     if (use_env_allocators == "1") {
       LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
       UpdateProvidersWithSharedAllocators();
@@ -1209,7 +1209,7 @@ common::Status InferenceSession::Initialize() {
     bool saving_model = !session_options_.optimized_model_filepath.empty();
     bool saving_ort_format = false;
     if (saving_model) {
-      std::string model_type = session_options_.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
+      std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
       bool has_explicit_type = !model_type.empty();
       saving_ort_format = ((has_explicit_type && model_type == "ORT") ||
                            (!has_explicit_type &&
@@ -1615,7 +1615,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     // shrink certain default memory arenas if the user has requested for it
     const std::string& shrink_memory_arenas =
-        run_options.run_configurations.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
     if (!shrink_memory_arenas.empty()) {
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
@@ -1686,7 +1686,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
-  if (arenas_to_shrink.size() > 0) {
+  if (!arenas_to_shrink.empty()) {
     ShrinkMemoryArenas(arenas_to_shrink);
   }
 
@@ -1864,12 +1864,12 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
                                                                    /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const {
   arenas_to_shrink.reserve(5);  // Allocate some memory for the container (we are unlikely to see more than 5 memory arena shrink requests)
 
-  std::stringstream ss_1(ort_device_list);
+  std::istringstream ss_1(ort_device_list);
   std::string device_id_pair;
 
   // Process all device-id pair(s)
   while (std::getline(ss_1, device_id_pair, ';')) {
-    std::stringstream ss_2(device_id_pair);
+    std::istringstream ss_2(device_id_pair);
     std::string device_id_component;
 
     // default values
@@ -1912,7 +1912,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
                              " combination is not an arena based allocator: ", device_id_pair);
     }
 
-    arenas_to_shrink.push_back(alloc);
+    arenas_to_shrink.push_back(std::move(alloc));
   }
 
   return Status::OK();

@@ -36,7 +36,7 @@ struct OrtRunOptions {
   // To add an configuration to this specific run, call OrtApis::AddRunConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
-  onnxruntime::ConfigOptions run_configurations;
+  onnxruntime::ConfigOptions config_options;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;

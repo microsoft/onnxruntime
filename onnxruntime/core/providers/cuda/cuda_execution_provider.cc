@@ -78,11 +78,8 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         },
         device_id,
         true,
-        {default_memory_arena_cfg ? default_memory_arena_cfg->max_mem : gpu_mem_limit,
-         default_memory_arena_cfg ? static_cast<int>(default_memory_arena_cfg->arena_extend_strategy) : static_cast<int>(arena_extend_strategy),
-         default_memory_arena_cfg ? default_memory_arena_cfg->initial_chunk_size_bytes : -1,
-         default_memory_arena_cfg ? default_memory_arena_cfg->max_dead_bytes_per_chunk : -1,
-         default_memory_arena_cfg ? default_memory_arena_cfg->initial_regrowth_chunk_size_bytes : -1});
+        {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);

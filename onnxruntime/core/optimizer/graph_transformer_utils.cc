@@ -133,9 +133,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool disable_quant_qdq = session_options.session_configurations.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  bool disable_quant_qdq = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
-  bool enable_gelu_approximation = session_options.session_configurations.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+  bool enable_gelu_approximation = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
 
   switch (level) {

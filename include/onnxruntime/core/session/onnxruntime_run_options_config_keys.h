@@ -24,4 +24,4 @@
 // If "cpu" is included in the list, DisableCpuMemArena() API must not be called (i.e.) arena for cpu should be enabled.
 // Example usage: "cpu:0;gpu:0" (or) "gpu:0"
 // By default, the value for this key is empty (i.e.) no memory arenas are shrunk
-static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "run.enable_memory_arena_shrinkage";
+static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memory.enable_memory_arena_shrinkage";

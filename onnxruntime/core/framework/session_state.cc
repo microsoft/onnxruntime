@@ -1062,7 +1062,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
 #ifndef ENABLE_TRAINING
   const auto disable_prepacking =
-      session_options.session_configurations.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));

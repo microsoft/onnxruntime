@@ -182,7 +182,7 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  return onnxruntime::ToOrtStatus(options->value.session_configurations.AddConfigEntry(config_key, config_value));
+  return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,

@@ -114,7 +114,7 @@ struct SessionOptions {
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
-  ConfigOptions session_configurations;
+  ConfigOptions config_options;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.

@@ -1283,19 +1283,18 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
 
   Graph& fused_graph = session.GetMutableGraph();
   ASSERT_TRUE(fused_graph.NumberOfNodes() == 1);
-  auto &fused_node = *fused_graph.Nodes().begin();
+  auto& fused_node = *fused_graph.Nodes().begin();
   ASSERT_TRUE(fused_node.NodeType() == Node::Type::Fused);
   ASSERT_TRUE(fused_node.Op()->has_type_and_shape_inference_function());
 
   // Clear shape inference data from output node to verify that assigned inference function is called
-  auto &fused_node_output = *fused_node.MutableOutputDefs()[0];
+  auto& fused_node_output = *fused_node.MutableOutputDefs()[0];
   fused_node_output.ClearShape();
   fused_graph.SetGraphResolveNeeded();
   fused_graph.Resolve();
 
   ASSERT_TRUE(fused_node_output.Shape() != nullptr);
-  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape())
-              == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
+  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape()) == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
@@ -2068,7 +2067,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   {
     // Second Run - with shrinkage
     RunOptions run_options_2;
-    run_options_2.run_configurations.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+    run_options_2.config_options.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
     RunModel(session_object, run_options_2);
 
     static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
@@ -2559,13 +2558,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2604,13 +2603,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
+  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2784,11 +2783,11 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   ASSERT_TRUE(st.IsOK());
 
   SessionOptions so;
-  so.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
   so.use_per_session_threads = false;
 
   std::string configValue;
-  so.session_configurations.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
+  so.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
   EXPECT_EQ(configValue, "1");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
@@ -2839,7 +2838,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // inference session without denormal as zero.
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   // inference session with denormal as zero
-  so.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
@@ -2863,7 +2862,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
-  so.session_configurations.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
