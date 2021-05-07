@@ -31,13 +31,24 @@ class TrainingManager(GraphExecutionManager):
         # Assert that the input and model device match
         _utils._check_same_device(device, "Input argument to forward", *inputs)
 
+        # Make sure input are non-contiguous, as a requirement converting it to ortvalue.
+        contiguous_inputs = []
+        for idx, _input in enumerate(inputs):
+            if _input is None:
+                raise ValueError("find some of input is None")
+            elif not _input.is_contiguous():
+                _contiguous_input = _input.contiguous()
+            else:
+                _contiguous_input = _input
+            contiguous_inputs.append(_contiguous_input)
+
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
         # have the need for passing IOBinding.
         state = C.PartialGraphExecutionState()
         forward_inputs = C.OrtValueVector()
-        for input in inputs:
+        for input in contiguous_inputs:
             forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
 
         forward_outputs = C.OrtValueVector()
