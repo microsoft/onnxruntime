@@ -102,8 +102,14 @@ function buildTestRunnerConfig({
     externals: {
       'onnxruntime-common': 'ort',
       'fs': 'fs',
+      'perf_hooks': 'perf_hooks',
+      'worker_threads': 'worker_threads',
     },
-    resolve: { extensions: ['.ts', '.js'], aliasFields: [] },
+    resolve: {
+      extensions: ['.ts', '.js'],
+      aliasFields: [],
+      fallback: { './binding/ort-wasm-threaded.js': false, './binding/ort-wasm.js': false }
+    },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin()
@@ -132,35 +138,39 @@ module.exports = () => {
   const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|undefined;
   const builds = [];
 
-  if (bundleMode === 'prod') {
-    builds.push(
-      // ort.min.js
-      buildOrtConfig({ suffix: '.min' }),
-      // ort.js
-      buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
-      // ort.es6.min.js
-      buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
-      // ort.es6.js
-      buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+  switch (bundleMode) {
+    case 'prod':
+      builds.push(
+        // ort.min.js
+        buildOrtConfig({ suffix: '.min' }),
+        // ort.js
+        buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
+        // ort.es6.min.js
+        buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
+        // ort.es6.js
+        buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
 
-      // ort-web.min.js
-      buildOrtWebConfig({ suffix: '.min' }),
-      // ort-web.js
-      buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
-      // ort-web.es6.min.js
-      buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
-      // ort-web.es6.js
-      buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+        // ort-web.min.js
+        buildOrtWebConfig({ suffix: '.min' }),
+        // ort-web.js
+        buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
+        // ort-web.es6.min.js
+        buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
+        // ort-web.es6.js
+        buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
 
-      // ort-web.node.js
-      buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
-    );
-  }
-
-  if (bundleMode === 'dev') {
-    builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
-  } else if (bundleMode === 'perf') {
-    builds.push(buildTestRunnerConfig({ suffix: '.perf', devtool: undefined }));
+        // ort-web.node.js
+        buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
+      );
+      break;
+    case 'dev':
+      builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
+      break;
+    case 'perf':
+      builds.push(buildTestRunnerConfig({ suffix: '.perf' })); // TODO: .js.LICENSE.txt
+      break;
+    default:
+      throw new Error(`unsupported bundle mode: ${bundleMode}`);
   }
 
   return builds;

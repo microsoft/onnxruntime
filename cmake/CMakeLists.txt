@@ -270,11 +270,13 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  # Enable LTO for release build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
-    # currently, wasm-ld does not work correctly with "-flto=thin"
-    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+  # Enable LTO for release single-thread build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    # NOTES:
+    # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
+    # (2) "-flto=thin" does not work correctly for wasm-ld.
+    #     we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    #     instead, we manually set CMAKE_CXX_FLAGS "-flto"
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
