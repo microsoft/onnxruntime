@@ -1395,13 +1395,13 @@ TEST(AttentionTest, Attention4DMask) {
 
   // Test 4D mask Bx1xmax_Sxmax_S
   std::vector<int32_t> mask_index_data = {
-      0, 1, 0, 0,
-      0, 1, 0, 0,
       0, 0, 0, 0,
-      0, 0, 0, 0};
+      0, 1, 0, 0,
+      0, 1, 1, 0,
+      0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      8.69f, -0.13f, 4.25f, 5.65f,
+      3.97f, 0.073f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f};
 
   bool use_float16 = false;

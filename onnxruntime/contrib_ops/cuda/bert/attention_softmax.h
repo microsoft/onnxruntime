@@ -195,7 +195,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     const int& mask = attention_mask[mask_offset];
     float mask_value = mask > 0 ? 0.0f : -10000.0f;
 
-    if (is_unidirectional && mask_dimension != 4) {
+    if (is_unidirectional) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset of from token in all sequence length.
       if (threadIdx.x > from_index) {
         mask_value += -10000.0f;
