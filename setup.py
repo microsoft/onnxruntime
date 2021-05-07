@@ -371,12 +371,17 @@ with open(requirements_path) as f:
 
 if enable_training:
     def save_build_and_package_info(package_name, version_number, cuda_version):
-        from onnxruntime.capi.onnxruntime_validation import find_cudart_versions, find_cudnn_versions
+
+        sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
+        from onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
 
         version_path = path.join('onnxruntime', 'build_and_package_info.py')
         with open(version_path, 'w') as f:
             f.write("package_name = '{}'\n".format(package_name))
-            f.write("__version__ = '{}'\n".format(version_number))
+
+            # only override __version__ if it is a nightly build
+            if 'dev' in version_number:
+                f.write("__version__ = '{}'\n".format(version_number))
 
             if cuda_version:
                 f.write("cuda_version = {}\n".format(cuda_version))

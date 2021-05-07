@@ -40,14 +40,15 @@ if has_ortmodule:
         # collect onnxruntime package name, version, and cuda version
         from .build_and_package_info import package_name
 
-        # only override __version__ if it is a nightly build
-        if 'dev' not in package_name:
+        try:
             from .build_and_package_info import __version__
+        except: # noqa
+            pass
 
         cuda_version = None
         try:
             from .build_and_package_info import cuda_version
-        except:
+        except: # noqa
             pass
 
         print('onnxruntime training package info: package_name:', package_name)
@@ -61,21 +62,20 @@ if has_ortmodule:
             try:
                 from .build_and_package_info import cudart_version
                 print('onnxruntime build info: cudart_version:', cudart_version)
-            except:
+            except: # noqa
                 print('WARNING: failed to get cudart_version from onnxruntime build info.')
                 cudart_version = None
 
             try:
                 from .build_and_package_info import cudnn_version
                 print('onnxruntime build info: cudnn_version:', cudnn_version)
-            except:
+            except: # noqa
                 print('WARNING: failed to get cudnn_version from onnxruntime build info')
                 cudnn_version = None
 
             # collection cuda library info from current environment.
-            from onnxruntime.capi.onnxruntime_validation import find_cudart_versions, find_cudnn_versions
+            from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
             local_cudart_versions = find_cudart_versions(build_env=False)
-
             if cudart_version and cudart_version not in local_cudart_versions:
                 print('WARNING: failed to find cudart version that matches onnxruntime build info')
                 print('WARNING: found cudart versions: ', local_cudart_versions)
@@ -88,7 +88,7 @@ if has_ortmodule:
             # TODO: rcom
             pass
 
-    except:
+    except: # noqa
         print('WARNING: failed to collect onnxruntime version and build info')
         pass
 
