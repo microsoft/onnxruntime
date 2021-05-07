@@ -8,11 +8,9 @@ from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
-import copy
 import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar
-import onnx
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -42,63 +40,44 @@ class ORTModule(torch.nn.Module):
         of nested structures is not supported at the moment)
     """
 
-    def __init__(self, module, model_desc=None, device=None):
+    def __init__(self, module):
+        assert isinstance(
+            module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
-        """
-        Initialize ORTTrainer.
+        # Create forward dynamically, so each ORTModule instance will have its own copy.
+        # This is needed to be able to copy the forward signatures from the original PyTorch models
+        # and possibly have different signatures for different instances.
+        def _forward(self, *inputs, **kwargs):
+            '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
-        Args:
-            model: one of
-               - a PyTorch model (class that inherits from torch.nn.Module)
-               - a combined PyTorch model and loss function.
-                  Inputs to this combined PyTorch model are a concatenation of the
-                  model's input and the loss function's label input.
-                  Outputs are a concatenation of the loss function's output and the
-                  model's output.
-               - a combined ONNX model and loss function.
-            model_desc: Specify input/output shapes, types, and names.
-               Must be consistent with the training model.
-            device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
-        """
+            ONNX model is exported the first time this method is executed.
+            Next, we build a full training graph with module_gradient_graph_builder.
+            Finally, we instantiate the ONNX Runtime InferenceSession.
+            '''
 
-        assert isinstance(module, torch.nn.Module) or isinstance(module, onnx.ModelProto), \
-            "'module' must be a torch.nn.Module or onnx.ModelProto"
+            return self._execution_manager(self._is_training()).forward(*inputs, **kwargs)
+
+        # Bind the forward method.
+        self.forward = _forward.__get__(self)
+        # Copy the forward signature from the PyTorch module.
+        functools.update_wrapper(
+            self.forward.__func__, module.forward.__func__)
 
         super(ORTModule, self).__init__()
 
         # Support contrib OPs
         register_custom_ops_pytorch_exporter.register_custom_op()
 
-        self.model_desc_ = model_desc
-        self._onnx_model = None
-        self._isTrain = True
+        # User module is wrapped to use its initializers and save computed gradients
+        self._original_module = module
 
-        if isinstance(module, torch.nn.Module):
-            # User module is wrapped to use its initializers and save computed gradients
-            self._original_module = module
-            # Get the module that flattens both input and output
-            self._flattened_module = _io._FlattenedModule(self._original_module)
-            self._isTrain = self._flattened_module.training and torch.is_grad_enabled()
-            self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
+        # Get the module that flattens both input and output
+        self._flattened_module = _io._FlattenedModule(self._original_module)
 
-        elif isinstance(module, onnx.ModelProto):
-            self._onnx_model = module
-            self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, device)
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
 
-    def __call__(self, *inputs, **kwargs):
-        return self.forward(*inputs, **kwargs)
-
-    def forward(self, *inputs, **kwargs):
-        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
-
-        ONNX model is exported the first time this method is executed.
-        Next, we build a full training graph with module_gradient_graph_builder.
-        Finally, we instantiate the ONNX Runtime InferenceSession.
-        '''
-        return self._execution_manager(self._isTrain).forward(*inputs, **kwargs)
-
-    def is_training(self, isTrain = True):
-        self._isTrain = isTrain
+    def _is_training(self):
+        return self._flattened_module.training and torch.is_grad_enabled()
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         """Override original method to delegate execution to the base module"""
@@ -134,13 +113,8 @@ class ORTModule(torch.nn.Module):
         return self._original_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
-        if self._onnx_model:
-            for initializer in self._onnx_model.graph.initializer:
-                nparr = copy.deepcopy(onnx.numpy_helper.to_array(initializer))
-                yield torch.nn.Parameter(torch.as_tensor(nparr))
-        else:
-            """Override original method to delegate execution to the base module"""
-            yield from self._original_module.parameters(recurse=recurse)
+        """Override original method to delegate execution to the base module"""
+        yield from self._original_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """Override original method to delegate execution to the base module"""

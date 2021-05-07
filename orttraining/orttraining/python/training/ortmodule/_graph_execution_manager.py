@@ -10,10 +10,9 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from abc import ABC, abstractmethod
-import collections
 import copy
 import io
-import inspect 
+import inspect
 import onnx
 import onnxruntime
 import torch
@@ -42,22 +41,15 @@ class GraphExecutionManager(ABC):
         the onnx graph, and ExecutionAgent to run the onnx graph.
         """
 
-        self._original_module = None
+        # Original and flattened (tranformed) output module
+        self._original_module = module._original_module
+        self._flattened_module = module
+
+        # Exported model
         self._onnx_model = None
-        self._flattened_module = None
 
-        if isinstance(module, torch.nn.Module): 
-            # Original and flattened (tranformed) output module
-            self._original_module = module._original_module
-            self._flattened_module = module
-            # TODO: Single device support for now
-            self._device = _utils.get_device_from_module(module)
-        elif isinstance(module, onnx.ModelProto):
-            # Exported model
-            self._onnx_model = module
-            # Model after inference optimization or gradient building.
-            self._optimized_onnx_model = module
-
+        # Model after inference optimization or gradient building.
+        self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
 
@@ -89,7 +81,7 @@ class GraphExecutionManager(ABC):
         self._use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
-        self._run_symbolic_shape_infer = False
+        self._run_symbolic_shape_infer = True
 
         self._input_info = None
         self._module_output_schema = None
@@ -97,25 +89,21 @@ class GraphExecutionManager(ABC):
         # Log level
         self._loglevel = _logger.LogLevel.WARNING
 
-        InputParameters = collections.namedtuple('InputParameters',['name','kind'])
-        if isinstance(module, torch.nn.Module):
-            self._module_parameters = [InputParameters(v.name, v.kind) \
-                    for v in inspect.signature(self._original_module.forward).parameters.values()]
+        # TODO: Single device support for now
+        self._device = _utils.get_device_from_module(module)
 
-            # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
-            for input_parameter in self._module_parameters:
-                if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                    if self._loglevel <= _logger.LogLevel.WARNING:
-                        warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
-                                      UserWarning)
-        else:
-            self._module_parameters = [InputParameters(i.name, inspect.Parameter.POSITIONAL_OR_KEYWORD) \
-                    for i in self._onnx_model.graph.input]
-        
+        self._module_parameters = inspect.signature(self._original_module.forward).parameters.values()
+
+        # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
+        for input_parameter in self._module_parameters:
+            if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                if self._loglevel <= _logger.LogLevel.WARNING:
+                    warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
+                                  UserWarning)
 
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
-        self._use_external_gpu_allocator = False
+        self._use_external_gpu_allocator = True
         if self._use_external_gpu_allocator:
             # CPP extension to get torch GPU allocator's alloc and free function addresses
             self._torch_gpu_allocator = _utils._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
@@ -201,13 +189,11 @@ class GraphExecutionManager(ABC):
         # Return True if the model needed to be exported, False if no export was required.
 
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._input_info and schema == self._input_info.schema:
+        if self._onnx_model and schema == self._input_info.schema:
             # All required models have already been exported previously
             return False
 
-        if self._original_module:
-            self._set_device_from_module()
-
+        self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
@@ -225,15 +211,9 @@ class GraphExecutionManager(ABC):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                            self._onnx_model,
+                                                            None,
                                                             inputs,
                                                             kwargs)
-        if self._onnx_model:
-            for output in self._onnx_model.graph.output:
-                self._input_info.dynamic_axes[output.name] = dict(enumerate([d.dim_param for d in output.type.tensor_type.shape.dim]))
-            # self._module_output_schema add information about output
-            return self._onnx_model
-
         output_names, output_dynamic_axes, self._module_output_schema = \
             _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
         self._input_info.dynamic_axes.update(output_dynamic_axes)
@@ -285,16 +265,11 @@ class GraphExecutionManager(ABC):
 
     def _initialize_graph_builder(self, training):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
-        initializer_names = []
-        initializer_names_to_train = []
-        if self._flattened_module:
-            # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-            initializer_names = [name for name, _ in self._flattened_module.named_parameters()]
-            initializer_names_to_train = [name for name,
+
+        # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
+        initializer_names = [name for name, _ in self._flattened_module.named_parameters()]
+        initializer_names_to_train = [name for name,
                                       param in self._flattened_module.named_parameters() if param.requires_grad]
-        elif self._onnx_model:
-            initializer_names = [initializer.name for initializer in self._onnx_model.graph.initializer]
-            initializer_names_to_train = [initializer.name for initializer in self._onnx_model.graph.initializer]
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()

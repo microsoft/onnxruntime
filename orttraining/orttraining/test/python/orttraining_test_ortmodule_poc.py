@@ -1,17 +1,11 @@
 import argparse
 import logging
-import io
-import onnx
-import os
 import torch
 import time
-import tempfile
 from torchvision import datasets, transforms
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
-from torch.onnx import TrainingMode
 
 
 class NeuralNet(torch.nn.Module):
@@ -132,9 +126,7 @@ def main():
     parser.add_argument('--seed', type=int, default=42, metavar='S',
                         help='random seed (default: 42)')
     parser.add_argument('--pytorch-only', action='store_true', default=False,
-                        help='disables ONNX Runtime training')  
-    parser.add_argument('--onnx', action='store_true', default=True,
-                        help='convert model to onnx for test')
+                        help='disables ONNX Runtime training')
     parser.add_argument('--log-interval', type=int, default=300, metavar='N',
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
@@ -173,27 +165,9 @@ def main():
 
     # Model architecture
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
-    if args.onnx:
-        with torch.no_grad():
-            # convert to onnx model
-            f = io.BytesIO()
-            torch.onnx.export(model,
-                              torch.rand([32, 784]),
-                              f,
-                              input_names=['input1'],
-                              output_names=['output0'],
-                              opset_version=ONNX_OPSET_VERSION,
-                              do_constant_folding=False,
-                              training=TrainingMode.TRAINING,
-                              dynamic_axes={'input1': {0: 'input1_dim0', 1: 'input1_dim1'}, 'output0': {0: 'output0_dim0', 1: 'output0_dim1'}},
-                              export_params=True,
-                              keep_initializers_as_inputs=False)
-        model = onnx.load_model_from_string(f.getvalue())
-        onnx.checker.check_model(model)
-        
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
-        model = ORTModule(model, device=torch.device(device))
+        model = ORTModule(model)
 
         # TODO: change it to False to stop saving ONNX models
         model._save_onnx = True
