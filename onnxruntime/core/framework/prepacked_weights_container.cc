@@ -81,8 +81,8 @@ bool PrepackedWeightsContainer::HasPrepackedWeightForOpTypeAndConstantInitialize
   ss_2 << op_type;
   ss_2 << "+";
   // TODO: Should we hash the contents of the data buffer instead of looking at just the data buffer pointer ?
-  // For now, this seems like a reasonable approach given that for shared initializers, users are likely to \
-                      // use the same memory across different shared initializers.
+  // For now, this seems like a reasonable approach given that for shared initializers, users are likely to
+  // use the same memory across different shared initializers.
   ss_2 << reinterpret_cast<uintptr_t>(const_initialized_tensor_data);
 
   const std::string& key = ss_2.str();
@@ -96,8 +96,8 @@ void PrepackedWeightsContainer::MarkHasPrepackedWeightForOpTypeAndConstantInitia
   ss_2 << op_type;
   ss_2 << "+";
   // TODO: Should we hash the contents of the data buffer instead of looking at just the data buffer pointer ?
-  // For now, this seems like a reasonable approach given that for shared initializers, users are likely to \
-                      // use the same memory across different shared initializers.
+  // For now, this seems like a reasonable approach given that for shared initializers, users are likely to
+  // use the same memory across different shared initializers.
   ss_2 << reinterpret_cast<uintptr_t>(const_initialized_tensor_data);
 
   const std::string& key = ss_2.str();
