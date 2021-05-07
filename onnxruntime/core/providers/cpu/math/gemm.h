@@ -31,9 +31,9 @@ class Gemm : public OpKernel {
                  /*out*/ PrepackedWeight* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override;
 
-  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                  int input_idx,
-                                  /*out*/ bool& read_from_cache) override;
+  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+                              int input_idx,
+                              /*out*/ bool& stored_weight) override;
 
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           int64_t M, int64_t N, int64_t K,

@@ -305,6 +305,10 @@ class SessionState {
     return parent_;
   }
 
+  size_t GetUsedCachedprepackedWeightCounter() const {
+    return used_cached_pre_packed_weight_counter_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -476,6 +480,10 @@ class SessionState {
     graph_id_ = p->next_graph_id_++;
   }
 #endif
+
+  // Counter for number of times a cached version of the pre-packed weight corresponding to
+  // a constant initialized weight was used by the session state
+  size_t used_cached_pre_packed_weight_counter_ = 0;
 };
 
 }  // namespace onnxruntime

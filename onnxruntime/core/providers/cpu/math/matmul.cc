@@ -133,29 +133,29 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool&
 
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, b_shape_);
+    size_t packed_b_size;
+    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, packed_b_size, b_shape_);
     bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     if (is_packed && !kernel_owns_prepacked_buffer) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
+      prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
       prepacked_weight_for_caching->shapes_.push_back(b_shape_);
-      prepacked_weight_for_caching->weights_sizes_.push_back(b_shape_.Size());
       prepacked_weight_for_caching->is_filled_ = true;
-      packed_b_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
     }
   }
   return Status::OK();
 }
 
-Status MatMul<float>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                               int input_idx,
-                                               /*out*/ bool& read_from_cache) {
-  read_from_cache = false;
+Status MatMul<float>::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+                                           int input_idx,
+                                           /*out*/ bool& stored_weight) {
+  stored_weight = false;
 
   if (input_idx == 1) {
-    read_from_cache = true;
+    stored_weight = true;
     // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
-    packed_b_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-    b_shape_ = cached_prepacked_weight.shapes_[0];
+    packed_b_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+    b_shape_ = prepacked_weight.shapes_[0];
   }
 
   return Status::OK();

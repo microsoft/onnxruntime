@@ -64,7 +64,8 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
       return Status::OK();
     }
 
-    auto* packed_filter_data = alloc->Alloc(packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group);
+    size_t packed_filter_data_size = packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group;
+    auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
     transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
 
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -76,9 +77,9 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
     bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
     if (!kernel_owns_prepacked_buffer) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(transposed_filter_));
+      prepacked_weight_for_caching->buffer_sizes_.push_back(packed_filter_data_size);
       prepacked_weight_for_caching->shapes_.push_back(filter_shape_);
       prepacked_weight_for_caching->is_filled_ = true;
-      transposed_filter_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
     }
 
     is_packed = true;
@@ -87,23 +88,23 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
 }
 
 template <typename T>
-Status ConvTranspose<T>::UseCachedPrePackedWeight(const PrepackedWeight& /*cached_prepacked_weight*/,
-                                                  int /*input_idx*/,
-                                                  /*out*/ bool& read_from_cache) {
-  read_from_cache = false;
+Status ConvTranspose<T>::StorePrePackedWeight(const PrepackedWeight& /*prepacked_weight*/,
+                                              int /*input_idx*/,
+                                              /*out*/ bool& stored_weight) {
+  stored_weight = false;
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                                      int input_idx,
-                                                      /*out*/ bool& read_from_cache) {
-  read_from_cache = false;
+Status ConvTranspose<float>::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+                                                  int input_idx,
+                                                  /*out*/ bool& stored_weight) {
+  stored_weight = false;
 
   if (input_idx == 1) {
-    read_from_cache = true;
-    filter_shape_ = cached_prepacked_weight.shapes_[0];
-    transposed_filter_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+    stored_weight = true;
+    filter_shape_ = prepacked_weight.shapes_[0];
+    transposed_filter_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
   }
 
   return Status::OK();

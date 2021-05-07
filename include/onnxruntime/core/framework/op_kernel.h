@@ -97,13 +97,13 @@ class OpKernel {
   //     return Status::OK();
   //   }
   // Please refer to MatMulIntegerToFloatBase for a complete example
-  // @param cached_prepacked_weight: The cached pre-packed weight for this kernel
+  // @param prepacked_weight: The pre-packed weight to be used by this kernel
   // @param input_idx: The input index of the tensor in this kernel
-  // @param read_from_cache: Boolean flag set by the implementation indicating that the cached weight has been read.
-  virtual Status UseCachedPrePackedWeight(const PrepackedWeight& /*cached_prepacked_weight*/,
-                                          int /*input_idx*/,
-                                          /*out*/ bool& read_from_cache) {
-    read_from_cache = false;
+  // @param stored_weight: Boolean flag set by the implementation indicating that the provided weight has been used.
+  virtual Status StorePrePackedWeight(const PrepackedWeight& /*prepacked_weight*/,
+                                      int /*input_idx*/,
+                                      /*out*/ bool& stored_weight) {
+    stored_weight = false;
     return Status::OK();
   }
 

@@ -3,12 +3,16 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <unordered_set>
+#include <string>
+#include <cstdint>
+
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/allocator.h"
 #include "core/platform/ort_mutex.h"
-#include <unordered_map>
-#include <string>
+#include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
 
@@ -21,11 +25,20 @@ struct PrepackedWeight final {
   // It is upto the developer of the kernel to decide which fields to cache for re-use.
 
   std::vector<std::unique_ptr<void, BufferDeleter>> buffers_;  // cache pre-packed buffers associated with the kernel
-  std::vector<size_t> weights_sizes_;                          // cache sizes associated with pre-packed buffers
-  std::vector<TensorShape> shapes_;                            // cache tensor shapes associates with pre-packed buffers
-  std::vector<bool> flags_;                                    // cache some flags associated with the pre-packed buffers
+  std::vector<size_t> buffer_sizes_;                           // cache sizes of pre-packed buffers (in bytes)
+
+  // NOTE: `weights_sizes_` hold the number of elements in the weight tensor getting pre-packed
+  // `buffer_sizes_` is the size of the pre-packed buffer.
+  // In some rare cases, weights_size * sizeof(element) may not be equal to buffer_size of the pre-packed buffer.
+  // Hence, we track both separately.
+  std::vector<size_t> weights_sizes_;  // cache sizes associated with weights that are getting pre-packed
+  std::vector<TensorShape> shapes_;    // cache tensor shapes associated with weights that are getting pre-packed
+  std::vector<bool> flags_;            // cache some flags associated with the pre-packed buffers
 
   bool is_filled_ = false;  // By default, an instance of this class is "unfilled"
+
+  // Produces a hash of the buffers stored in the given instance of this class
+  uint64_t GetHash();
 };
 
 class PrepackedWeightsContainer final {
@@ -43,6 +56,12 @@ class PrepackedWeightsContainer final {
 
   bool HasCachedWeight(const std::string& key);
 
+  bool HasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
+                                                         const void* const_initialized_tensor_data);
+
+  void MarkHasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
+                                                             const void* const_initialized_tensor_data);
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);
 
   // Resource to be acquired by the method that is going to invoke calls to the kernels'
@@ -57,6 +76,7 @@ class PrepackedWeightsContainer final {
   // because the Tensor buffers will be de-allocated using these allocators
   std::unordered_map<std::string, AllocatorPtr> allocators_;
   std::unordered_map<std::string, PrepackedWeight> initialized_tensor_name_to_prepacked_weights_;
+  std::unordered_set<std::string> op_type_tensor_data_memory_map_;
 };
 
 }  // namespace onnxruntime

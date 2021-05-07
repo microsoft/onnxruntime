@@ -44,10 +44,10 @@ class MatMulIntegerBase : public OpKernel {
       bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
       if (!kernel_owns_prepacked_buffer) {
         prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
+        prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
         prepacked_weight_for_caching->shapes_.push_back(b_shape_);
         prepacked_weight_for_caching->flags_.push_back(b_is_signed_);
         prepacked_weight_for_caching->is_filled_ = true;
-        packed_b_ = BufferUniquePtr(prepacked_weight_for_caching->buffers_[0].get(), BufferDeleter(nullptr));
       }
 
       is_packed = true;
@@ -55,16 +55,16 @@ class MatMulIntegerBase : public OpKernel {
     return Status::OK();
   }
 
-  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                  int input_idx,
-                                  /*out*/ bool& read_from_cache) override {
-    read_from_cache = false;
+  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+                              int input_idx,
+                              /*out*/ bool& stored_weight) override {
+    stored_weight = false;
 
     if (input_idx == GetBIdx()) {
-      read_from_cache = true;
-      packed_b_ = BufferUniquePtr(cached_prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-      b_shape_ = cached_prepacked_weight.shapes_[0];
-      b_is_signed_ = cached_prepacked_weight.flags_[0];
+      stored_weight = true;
+      packed_b_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+      b_shape_ = prepacked_weight.shapes_[0];
+      b_is_signed_ = prepacked_weight.flags_[0];
     }
 
     return Status::OK();

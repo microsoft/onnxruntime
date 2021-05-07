@@ -31,9 +31,9 @@ class ConvTranspose : public OpKernel {
                  /*out*/ PrepackedWeight* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override;
 
-  Status UseCachedPrePackedWeight(const PrepackedWeight& cached_prepacked_weight,
-                                  int input_idx,
-                                  /*out*/ bool& read_from_cache) override;
+  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+                              int input_idx,
+                              /*out*/ bool& stored_weight) override;
 
   Status Compute(OpKernelContext* context) const override;
 
