@@ -264,7 +264,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
         if output is None:
             return
         elif isinstance(output, torch.Tensor):
-            output_name = f'output{output_idx[0]}'
+            # Naming the outputs with a hyphen ensures that there can be no input with the same
+            # name, preventing collisions with other NodeArgs (for example an input to forward called output0)
+            output_name = f'output-{output_idx[0]}'
             output_idx[0] += 1
             output_names.append(output_name)
             output_dynamic_axes[output_name] = {}
