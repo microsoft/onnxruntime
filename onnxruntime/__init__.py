@@ -39,11 +39,7 @@ if has_ortmodule:
     try:
         # collect onnxruntime package name, version, and cuda version
         from .build_and_package_info import package_name
-
-        try:
-            from .build_and_package_info import __version__
-        except: # noqa
-            pass
+        from .build_and_package_info import __version__
 
         cuda_version = None
         try:

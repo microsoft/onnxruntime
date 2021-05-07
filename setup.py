@@ -378,10 +378,7 @@ if enable_training:
         version_path = path.join('onnxruntime', 'build_and_package_info.py')
         with open(version_path, 'w') as f:
             f.write("package_name = '{}'\n".format(package_name))
-
-            # only override __version__ if it is a nightly build
-            if 'dev' in version_number:
-                f.write("__version__ = '{}'\n".format(version_number))
+            f.write("__version__ = '{}'\n".format(version_number))
 
             if cuda_version:
                 f.write("cuda_version = {}\n".format(cuda_version))
