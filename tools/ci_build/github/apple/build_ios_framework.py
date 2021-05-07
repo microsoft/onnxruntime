@@ -16,7 +16,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 
 # We by default will build below 2 archs
-DEFAULT_BUILD_OSX_ARCHS = [["iphonesimulator", "x86_64"], ["iphoneos", "arm64"],]
+DEFAULT_BUILD_OSX_ARCHS = [["iphonesimulator", "x86_64"], ["iphoneos", "arm64"]]
 
 
 def _parse_build_settings(args):
@@ -78,7 +78,8 @@ def _build_package(args):
 
         subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
 
-        _framework_dir = os.path.join(_build_dir, _build_config, _build_config + "-" + _osx_arch[0], 'onnxruntime.framework')
+        _framework_dir = os.path.join(
+            _build_dir, _build_config, _build_config + "-" + _osx_arch[0],'onnxruntime.framework')
         _ort_libs.append(os.path.join(_framework_dir, 'onnxruntime'))
 
         # We actually only need to define the info.plist and headers once since them are all the same
