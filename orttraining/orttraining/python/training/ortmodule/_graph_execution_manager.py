@@ -81,7 +81,7 @@ class GraphExecutionManager(ABC):
         self._use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
-        self._run_symbolic_shape_infer = False
+        self._run_symbolic_shape_infer = True
 
         # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'.
         # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX is needed.

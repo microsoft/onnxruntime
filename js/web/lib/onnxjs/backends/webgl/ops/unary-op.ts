@@ -17,7 +17,13 @@ export class WebGLUnaryOp extends UnaryOp implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const outputShape = inputs[0].dims.slice();
-    const inputLayout = handler.getOrCreateTextureLayout(inputs[0]);
+    const inputLayout = handler.session.pack ?
+        handler.getOrCreateTextureLayout(inputs[0], 4, true, inputs[0].dims, true) :
+        handler.getOrCreateTextureLayout(inputs[0]);
+
+    const outputLayout = handler.session.pack ?
+        handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}) :
+        handler.createTextureLayoutFromShape(outputShape);
     const glsl = getGlsl(handler.session.backend.glContext.version);
     const shaderSource = `
       ${this.glslFunc.body}
@@ -27,14 +33,28 @@ export class WebGLUnaryOp extends UnaryOp implements WebGLOperator {
         ${glsl.output} = v;
       }
       `;
-    const outputLayout = handler.createTextureLayoutFromShape(outputShape);
-    return {inputLayouts: [inputLayout], outputLayout, samplers: ['A'], shaderSource, hasMain: true};
+
+    if (handler.session.pack) {
+      return {
+        inputLayouts: [inputLayout],
+        outputLayout,
+        samplers: ['A'],
+        shaderSource,
+        hasMain: true,
+        expectPackedInputs: true,
+        expectPackedOutputs: true
+      };
+    } else {
+      return {inputLayouts: [inputLayout], outputLayout, samplers: ['A'], shaderSource, hasMain: true};
+    }
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = [handler.getOrCreateTextureData(inputs[0], programInfo.inputLayouts[0])];
+    const inputTD = handler.session.pack ?
+        handler.getOrCreateTextureData(inputs[0], handler.getOrCreateTextureLayout(inputs[0], 1, false, [], true)) :
+        handler.getOrCreateTextureData(inputs[0]);
     return {
-      inputTextureDatas: inputTDs,
-      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
+      inputTextureDatas: [inputTD],
+      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTD.tensor.type),
       uniformData: {}
     };
   }

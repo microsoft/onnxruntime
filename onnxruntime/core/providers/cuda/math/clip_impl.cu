@@ -19,13 +19,23 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(reinterpret_cast<const CudaT*>(input_data),
-                                                                  reinterpret_cast<CudaT*>(output_data),
-                                                                  reinterpret_cast<const CudaT*>(min),
-                                                                  reinterpret_cast<const CudaT*>(max),
-                                                                  *reinterpret_cast<CudaT*>(&min_default),
-                                                                  *reinterpret_cast<CudaT*>(&max_default),
-                                                                  count);
+  union ConstAliasUnion {
+    const T *t;
+    const CudaT *cudaT;
+    ConstAliasUnion(const T* _t) { t = _t;}
+  };
+  union AliasUnion {
+    T *t;
+    CudaT *cudaT;
+    AliasUnion(T* _t) { t = _t;}
+  };
+  _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union ConstAliasUnion)input_data).cudaT,
+                                                                          ((union AliasUnion)output_data).cudaT,
+                                                                          ((union ConstAliasUnion)min).cudaT,
+                                                                          ((union ConstAliasUnion)max).cudaT,
+                                                                          *((union AliasUnion)&min_default).cudaT,
+                                                                          *((union AliasUnion)&max_default).cudaT,
+                                                                          count);
 }
 
 template void ClipImpl<float>(cudaStream_t stream, const float* input_data, float* output_data, const float* min, const float* max, float min_default, float max_default, size_t count);

@@ -5,7 +5,7 @@ file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs
     "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
 )
 
-add_library(onnxruntime_language_interop_torch ${onnxruntime_language_interop_torch_srcs})
+onnxruntime_add_static_library(onnxruntime_language_interop_torch ${onnxruntime_language_interop_torch_srcs})
 add_dependencies(onnxruntime_language_interop_torch onnxruntime_graph onnxruntime_util)
 onnxruntime_add_include_to_target(onnxruntime_language_interop_torch onnxruntime_common onnxruntime_util onnxruntime_graph onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(onnxruntime_language_interop_torch PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})

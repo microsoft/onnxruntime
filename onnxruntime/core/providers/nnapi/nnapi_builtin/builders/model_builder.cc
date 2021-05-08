@@ -552,7 +552,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   // be empty so we will not check API level here, see GetTargetDevices()
   bool use_create_for_devices = false;
   if (!nnapi_target_devices_.empty()) {
-    std::unique_ptr<bool[]> supported_ops_holder = onnxruntime::make_unique<bool[]>(num_nnapi_ops_);
+    std::unique_ptr<bool[]> supported_ops_holder = std::make_unique<bool[]>(num_nnapi_ops_);
     auto* supported_ops = supported_ops_holder.get();
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(

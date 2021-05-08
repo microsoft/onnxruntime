@@ -32,14 +32,18 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
-npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
+let whitelist: Test.WhiteList;
+const shouldLoadSuiteTestData = (args.mode === 'suite0');
+if (shouldLoadSuiteTestData) {
+  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
 
-// The following is a whitelist of unittests for already implemented operators.
-// Modify this list to control what node tests to run.
-const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
-const json = stripJsonComments(jsonWithComments, {whitespace: true});
-const whitelist = JSON.parse(json) as Test.WhiteList;
-npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+  // The following is a whitelist of unittests for already implemented operators.
+  // Modify this list to control what node tests to run.
+  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
+  const json = stripJsonComments(jsonWithComments, {whitespace: true});
+  whitelist = JSON.parse(json) as Test.WhiteList;
+  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+}
 
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
@@ -55,7 +59,6 @@ const nodeTests = new Map<string, Test.ModelTestGroup[]>();
 const onnxTests = new Map<string, Test.ModelTestGroup>();
 const opTests = new Map<string, Test.OperatorTestGroup[]>();
 
-const shouldLoadSuiteTestData = (args.mode === 'suite0');
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test...');
 
@@ -242,7 +245,7 @@ function modelTestFromFolder(
       const stat = fs.lstatSync(thisFullPath);
       if (stat.isFile()) {
         const ext = path.extname(thisPath);
-        if (ext.toLowerCase() === '.onnx') {
+        if (ext.toLowerCase() === '.onnx' || ext.toLowerCase() === '.ort') {
           if (modelUrl === null) {
             modelUrl = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, thisFullPath));
             if (FILE_CACHE_ENABLED && !fileCache[modelUrl] && stat.size <= FILE_CACHE_MAX_FILE_SIZE) {
@@ -322,7 +325,7 @@ function tryLocateModelTestFolder(searchPattern: string): string {
 
   // pick the first folder that matches the pattern
   for (const folderCandidate of folderCandidates) {
-    const modelCandidates = globby.sync('*.onnx', {onlyFiles: true, cwd: folderCandidate});
+    const modelCandidates = globby.sync('*.{onnx,ort}', {onlyFiles: true, cwd: folderCandidate});
     if (modelCandidates && modelCandidates.length === 1) {
       return folderCandidate;
     }
@@ -407,7 +410,7 @@ function run(config: Test.Config) {
   npmlog.info('TestRunnerCli.Run', `(3/5) Retrieving npm bin folder... DONE, folder: ${npmBin}`);
 
   if (args.env === 'node') {
-    // STEP 4. use tsc to build ONNX.js
+    // STEP 4. use tsc to build ONNX Runtime Web
     npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc...');
     const tscCommand = path.join(npmBin, 'tsc');
     const tsc = spawnSync(tscCommand, {shell: true, stdio: 'inherit'});
@@ -430,17 +433,20 @@ function run(config: Test.Config) {
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha... DONE');
 
   } else {
-    // STEP 4. use webpack to generate ONNX.js
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running webpack to generate ONNX.js...');
-    const webpackCommand = path.join(npmBin, 'webpack');
-    const webpackArgs = ['--env', `--bundle-mode=${args.bundleMode}`];
-    npmlog.info('TestRunnerCli.Run', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
-    const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
-    if (webpack.status !== 0) {
-      console.error(webpack.error);
-      process.exit(webpack.status === null ? undefined : webpack.status);
+    // STEP 4. generate bundle
+    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
+    const buildCommand = `node ${path.join(__dirname, 'build')}`;
+    const buildArgs = [`--bundle-mode=${args.bundleMode}`];
+    if (args.backends.indexOf('wasm') === -1) {
+      buildArgs.push('--no-wasm');
     }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running webpack to generate ONNX.js... DONE');
+    npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
+    const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
+    if (build.status !== 0) {
+      console.error(build.error);
+      process.exit(build.status === null ? undefined : build.status);
+    }
+    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
 
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
@@ -448,7 +454,7 @@ function run(config: Test.Config) {
     const browser = getBrowserNameFromEnv(args.env, args.debug);
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
-      karmaArgs.push('--log-level info');
+      karmaArgs.push('--log-level info --timeout-mocha 9999999');
     } else {
       karmaArgs.push('--single-run');
     }
@@ -472,7 +478,6 @@ function run(config: Test.Config) {
       // check if we have the latest Edge installed:
       if (os.platform() === 'darwin' ||
           (os.platform() === 'win32' &&
-           // tslint:disable-next-line:no-require-imports no-submodule-imports
            require('@chiragrupani/karma-chromium-edge-launcher/dist/Utilities').default.GetEdgeExe('Edge') !== '')) {
         // use "@chiragrupani/karma-chromium-edge-launcher"
         karmaArgs.push(
@@ -560,15 +565,15 @@ function saveConfig(config: Test.Config) {
   if (config.options.webglFlags && config.options.webglFlags.pack !== undefined) {
     setOptions += `ort.env.webgl.pack = ${JSON.stringify(config.options.webglFlags.pack)};`;
   }
-  if (config.options.wasmFlags && config.options.wasmFlags.worker !== undefined) {
-    setOptions += `ort.env.wasm.worker = ${JSON.stringify(config.options.wasmFlags.worker)};`;
+  if (config.options.wasmFlags && config.options.wasmFlags.numThreads !== undefined) {
+    setOptions += `ort.env.wasm.numThreads = ${JSON.stringify(config.options.wasmFlags.numThreads)};`;
   }
   if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
     setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
   }
   // TODO: support onnxruntime nodejs binding
-  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'onnxruntime'))) {
-  //   setOptions += 'require(\'onnxjs-node\');';
+  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+  //   setOptions += 'require(\'onnxruntime-node\');';
   // }
 
   fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}

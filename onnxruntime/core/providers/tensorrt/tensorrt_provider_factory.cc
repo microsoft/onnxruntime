@@ -23,7 +23,7 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<TensorrtExecutionProvider>(info_);
+  return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {

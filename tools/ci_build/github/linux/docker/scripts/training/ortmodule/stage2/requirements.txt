@@ -6,5 +6,5 @@ tensorboard
 h5py
 wget
 pytorch-lightning==1.2.5
-deepspeed
+deepspeed==0.3.15
 fairscale
