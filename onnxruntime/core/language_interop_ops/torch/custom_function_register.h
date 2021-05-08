@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/platform/env.h"
 #include <mutex>
 #include <Python.h>
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {

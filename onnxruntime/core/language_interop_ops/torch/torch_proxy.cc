@@ -1,32 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-#define LIB_PYOP "onnxruntime_pywrapper.dll"
-#define LOAD_PYOP_LIB(n, v, m) ORT_ENFORCE((v = LoadLibraryA(n)) != nullptr, m)
-#else
-#ifdef __APPLE__
-#define LIB_PYOP "./libonnxruntime_pywrapper.dylib"
-#else
-#define LIB_PYOP "./libonnxruntime_pywrapper.so"
-#endif
-#define LOAD_PYOP_LIB(n, v, m) ORT_ENFORCE((v = dlopen(n, RTLD_NOW | RTLD_GLOBAL)) != nullptr, m)
-#include "dlfcn.h"
-#endif
+#include <Python.h>
 #include "core/framework/tensorprotoutils.h"
-#include "torch_proxy.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/platform/env.h"
 #include "core/util/dlpack_convertor.h"
-#ifdef _DEBUG
-#undef _DEBUG
-#include <Python.h>
-#define _DEBUG
-#else
-#include <Python.h>
-#endif
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include "numpy/arrayobject.h"
-#include "core/language_interop_ops/torch/custom_function_register.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -79,24 +59,9 @@ TorchProxy& TorchProxy::GetInstance() {
 
 TorchProxy::TorchProxy() {
   Scope scope;
-  // in theory we shouldn't initialize it any more,
-  // so comment it out currently.
-  // Py_Initialize();
-  if (_import_array() < 0) {
-    return;
-  }
-  auto path_list = PySys_GetObject("path");  //do not release it
-  if (nullptr == path_list || !PyList_Check(path_list) ||
-      PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
-    return;
-  }
-  initialized_ = true;
 }
 
 TorchProxy::~TorchProxy() {
-  if (initialized_) {
-    Py_Finalize();
-  }
 }
 
 int32_t TorchProxy::GetGil() const {
