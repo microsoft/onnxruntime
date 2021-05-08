@@ -148,6 +148,7 @@ class SymbolicShapeInference:
             'Gelu': self._infer_Gelu,
             'LayerNormalization': self._infer_LayerNormalization,
             'LongformerAttention': self._infer_LongformerAttention,
+            'PythonOp': self._infer_PythonOp,
             'SkipLayerNormalization': self._infer_SkipLayerNormalization
         }
         self.run_ = True
@@ -332,7 +333,8 @@ class SymbolicShapeInference:
         # skip onnx shape inference for some ops, as they are handled in _infer_*
         skip_infer = node.op_type in [
             'If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', \
-            'Attention', 'BiasGelu', 'EmbedLayerNormalization', 'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', 'SkipLayerNormalization' # contrib ops
+            'Attention', 'BiasGelu', 'EmbedLayerNormalization', 'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', 'SkipLayerNormalization', \
+            'PythonOp' # contrib ops
         ]
 
         if not skip_infer:
@@ -1341,6 +1343,15 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
+
+    def _infer_PythonOp(self, node):
+        output_tensor_cnt = len(node.output) - 1
+        for i in range(output_tensor_cnt):
+            self._propagate_shape_and_type(node, 0, i + 1)
+
+        # set the context output seperately
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, [1]))
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)
