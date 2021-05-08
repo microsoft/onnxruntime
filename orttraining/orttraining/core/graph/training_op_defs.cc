@@ -2493,14 +2493,15 @@ Return true if all elements are true and false otherwise.
         const auto name_proto = ctx.getAttribute("name");
         ORT_ENFORCE(name_proto, "ATenOp's must have \"name\" attribute.");
         const std::string& name = name_proto->s();
-        ORT_ENFORCE(contrib::aten_ops::ATEN_OPERATORS.find(name) != contrib::aten_ops::ATEN_OPERATORS.end());
-        contrib::aten_ops::ATenOperatorConfig op_config = contrib::aten_ops::ATEN_OPERATORS.at(name);
-        ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_tensor_output_type_configs.size());
+        const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+        ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+        const auto& op_config = *op_config_ptr;
+        ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_output_type_infer_configs.size());
 
         // Set inferred output types.
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          int type_config = std::get<1>(op_config.forward_tensor_output_type_configs[i]);
-          if (std::get<0>(op_config.forward_tensor_output_type_configs[i]) == contrib::aten_ops::PROPAGATE_FROM_INPUT) {
+          int type_config = std::get<1>(op_config.forward_output_type_infer_configs[i]);
+          if (std::get<0>(op_config.forward_output_type_infer_configs[i]) == contrib::aten_ops::PROPAGATE_FROM_INPUT) {
             propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(type_config), i);
           } else {
             updateOutputElemType(ctx, i, type_config);
@@ -2532,7 +2533,7 @@ Return true if all elements are true and false otherwise.
                     "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
         // Set inferred output types.
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          updateOutputElemType(ctx, i, output_types_proto->ints().at(i));
+          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints().at(i)));
         }
       });
 }

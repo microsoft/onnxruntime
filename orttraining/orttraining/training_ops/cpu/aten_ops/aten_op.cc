@@ -25,8 +25,9 @@ template <bool is_backward>
 ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {
   std::string op_name;
   ORT_THROW_IF_ERROR(info.GetAttr("name", &op_name));
-  ORT_ENFORCE(aten_ops::ATEN_OPERATORS.find(op_name) != aten_ops::ATEN_OPERATORS.end());
-  aten_ops::ATenOperatorConfig op_config = aten_ops::ATEN_OPERATORS.at(op_name);
+  const auto* op_config_ptr = aten_ops::GetATenOperatorConfig(op_name);
+  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", op_name, " is not found.");
+  const auto& op_config = *op_config_ptr;
   op_name_ = is_backward ? op_config.backward_op_name : op_name;
   const auto& argument_configs = is_backward ? op_config.backward_argument_configs : op_config.forward_argument_configs;
 
@@ -40,9 +41,10 @@ ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {
         tensor_argument_indices_.emplace_back(i);
         break;
       case aten_ops::INT:
+        // JSON supports INT as 32-bit int, our attribute uses 64-bit int as INT type.
         int int_value;
         ORT_ENFORCE(parser.TryGetValue<int>(argument_name, int_value));
-        int_arguments_.emplace_back(std::make_tuple(i, int_value));
+        int_arguments_.emplace_back(std::make_tuple(i, static_cast<int64_t>(int_value)));
         break;
       case aten_ops::FLOAT:
         float float_value;
@@ -69,8 +71,11 @@ Status ATenOpBase<is_backward>::Compute(OpKernelContext* p_ctx) const {
 
   auto result = aten_ops::ATenOperatorExecutor::Instance()(op_name_, tensor_arguments, int_arguments_, float_arguments_,
                                                            bool_arguments_);
-  // Support single tensor as result for now.
-  ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(result[0])));
+
+  for (size_t i = 0; i < result.size(); i++) {
+    ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(static_cast<int>(i), dlpack::DlpackToOrtValue(result[i])));
+  }
+
   return Status::OK();
 }
 

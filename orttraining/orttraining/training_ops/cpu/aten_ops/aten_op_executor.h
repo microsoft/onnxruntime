@@ -19,8 +19,11 @@ typedef std::vector<DLManagedTensor*> (*ExecuteATenOperatorFunc)(
 class ATenOperatorExecutor {
  public:
   static ATenOperatorExecutor& Instance() {
-    static ATenOperatorExecutor instance;
-    return instance;
+    return InstanceImpl();
+  }
+
+  static void Initialize(void* p_func_raw) {
+    InstanceImpl(p_func_raw);
   }
 
   std::vector<DLManagedTensor*> operator()(const std::string& op_name,
@@ -28,14 +31,21 @@ class ATenOperatorExecutor {
                                            const std::vector<std::tuple<size_t, int64_t>>& int_arguments,
                                            const std::vector<std::tuple<size_t, float>>& float_arguments,
                                            const std::vector<std::tuple<size_t, bool>>& bool_arguments) {
-    ORT_ENFORCE(p_func_);
+    ORT_ENFORCE(p_func_, "ATenOperatorExecutor is not initialized.");
     return p_func_(op_name.c_str(), tensor_arguments, int_arguments, float_arguments, bool_arguments);
   }
 
-  void SetExecutorFunc(void* p_func_raw) { p_func_ = reinterpret_cast<ExecuteATenOperatorFunc>(p_func_raw); }
-
  private:
-  ATenOperatorExecutor() = default;
+  static ATenOperatorExecutor& InstanceImpl(void* p_func_raw = nullptr) {
+    static ATenOperatorExecutor instance(p_func_raw);
+    return instance;
+  }
+
+  ATenOperatorExecutor(void* p_func_raw) {
+    ORT_ENFORCE(p_func_raw);
+    p_func_ = reinterpret_cast<ExecuteATenOperatorFunc>(p_func_raw);
+  }
+
   ExecuteATenOperatorFunc p_func_;
 };
 

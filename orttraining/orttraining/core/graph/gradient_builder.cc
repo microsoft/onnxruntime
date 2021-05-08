@@ -1624,16 +1624,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
   }
 
-  ORT_ENFORCE(contrib::aten_ops::ATEN_OPERATORS.find(name) != contrib::aten_ops::ATEN_OPERATORS.end());
-  contrib::aten_ops::ATenOperatorConfig op_config = contrib::aten_ops::ATEN_OPERATORS.at(name);
+  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+  const auto& op_config = *op_config_ptr;
 
   std::vector<int64_t> grad_output_types;
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
 
-  for (size_t i = 0; i < op_config.backward_tensor_input_configs.size(); i++) {
-    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_tensor_input_configs[i]));
-    switch (std::get<0>(op_config.backward_tensor_input_configs[i])) {
+  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
+    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
       case contrib::aten_ops::GRAD_OUTPUT:
         input_args.emplace_back(GO(index));
         break;

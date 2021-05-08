@@ -15,17 +15,20 @@ namespace aten_ops {
 // Currently these configs are C++ codes below, ideally we can use string/text configs
 // just as derivatives.yaml in PyTorch, and parse that text to generate below configs.
 
-enum ForwardTensorOutputTypeKind {
-  PROPAGATE_FROM_INPUT,
-  CONCRETE_TYPE,
+// To indicate how to infer outputs' types.
+enum OutputTypeInferKind {
+  PROPAGATE_FROM_INPUT, // Propagate current output's type from i-th input.
+  CONCRETE_TYPE,        // Current output's type is concrete type with value of i (i.e., float if i = 1).
 };
 
-enum BackwardTensorInputKind {
-  GRAD_OUTPUT,
-  FORWARD_INPUT,
-  FORWARD_OUTPUT,
+// To indicate the source of backward Op inputs.
+enum BackwardInputSourceKind {
+  GRAD_OUTPUT,    // Current input is i-th output grad, i.e., GO(i) in gradient builder.
+  FORWARD_INPUT,  // Current input is i-th forward input, i.e., I(i) in gradient builder.
+  FORWARD_OUTPUT, // Current input is i-th forward output, i.e., O(i) in gradient builder.
 };
 
+// To indicete the argument kind of ATen Op.
 enum ArgumentKind {
   TENSOR,
   INT,
@@ -37,26 +40,30 @@ enum ArgumentKind {
 // TODO: need to support default attribute value.
 struct ATenOperatorConfig {
   std::string backward_op_name;
+  // Forward ATen Op's argument kind and name.
   std::vector<std::tuple<ArgumentKind, std::string>> forward_argument_configs;
+  // Backward ATen Op's argument kind and name.
   std::vector<std::tuple<ArgumentKind, std::string>> backward_argument_configs;
-  std::vector<std::tuple<BackwardTensorInputKind, int>> backward_tensor_input_configs;
-  std::vector<std::tuple<ForwardTensorOutputTypeKind, int>> forward_tensor_output_type_configs;
+  // The source config of inputs of com.microsoft::ATenOpGrad.
+  std::vector<std::tuple<BackwardInputSourceKind, int>> backward_input_source_configs;
+  // The output type infer config of outputs of com.microsoft::ATenOp.
+  std::vector<std::tuple<OutputTypeInferKind, int>> forward_output_type_infer_configs;
+  // The mapping between com.microsoft::ATenOpGrad's outputs and com.microsoft::ATenOp's inputs,
+  // i.e., backward_output_configs[i] means GI(backward_output_configs[i]) in gradient builder.
   std::vector<int> backward_output_configs;
 
-  ATenOperatorConfig(
-      const std::string& i_backward_op_name,
-      const std::vector<std::tuple<ArgumentKind, std::string>>& i_forward_argument_configs,
-      const std::vector<std::tuple<ArgumentKind, std::string>>& i_backward_argument_configs,
-      const std::vector<std::tuple<BackwardTensorInputKind, int>>& i_backward_tensor_input_configs,
-      const std::vector<std::tuple<ForwardTensorOutputTypeKind, int>>& i_forward_tensor_output_type_configs,
-      const std::vector<int>& i_backward_output_configs) {
+  ATenOperatorConfig(const std::string& i_backward_op_name,
+                     const std::vector<std::tuple<ArgumentKind, std::string>>& _forward_argument_configs,
+                     const std::vector<std::tuple<ArgumentKind, std::string>>& _backward_argument_configs,
+                     const std::vector<std::tuple<BackwardInputSourceKind, int>>& _backward_input_source_configs,
+                     const std::vector<std::tuple<OutputTypeInferKind, int>>& _forward_output_type_infer_configs,
+                     const std::vector<int>& i_backward_output_configs) {
     backward_op_name = i_backward_op_name;
-    forward_argument_configs.assign(i_forward_argument_configs.begin(), i_forward_argument_configs.end());
-    backward_argument_configs.assign(i_backward_argument_configs.begin(), i_backward_argument_configs.end());
-    backward_tensor_input_configs.assign(i_backward_tensor_input_configs.begin(),
-                                         i_backward_tensor_input_configs.end());
-    forward_tensor_output_type_configs.assign(i_forward_tensor_output_type_configs.begin(),
-                                              i_forward_tensor_output_type_configs.end());
+    forward_argument_configs.assign(_forward_argument_configs.begin(), _forward_argument_configs.end());
+    backward_argument_configs.assign(_backward_argument_configs.begin(), _backward_argument_configs.end());
+    backward_input_source_configs.assign(_backward_input_source_configs.begin(), _backward_input_source_configs.end());
+    forward_output_type_infer_configs.assign(_forward_output_type_infer_configs.begin(),
+                                             _forward_output_type_infer_configs.end());
     backward_output_configs.assign(i_backward_output_configs.begin(), i_backward_output_configs.end());
   }
 };
@@ -77,6 +84,14 @@ static const std::unordered_map<std::string, ATenOperatorConfig> ATEN_OPERATORS 
                          {BOOL, "sparse"}},
                         {{GRAD_OUTPUT, 0}, {FORWARD_INPUT, 1}, {FORWARD_INPUT, 0}}, {{PROPAGATE_FROM_INPUT, 0}}, {0})},
 };
+
+inline const ATenOperatorConfig* GetATenOperatorConfig(const std::string& op_name) {
+  if (ATEN_OPERATORS.find(op_name) == ATEN_OPERATORS.end()) {
+    return nullptr;
+  }
+
+  return &ATEN_OPERATORS.at(op_name);
+}
 
 }  // namespace aten_ops
 }  // namespace contrib

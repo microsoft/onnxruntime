@@ -22,8 +22,8 @@ class AttributesJsonParser {
     const auto& attr = parsed_json_.at(name);
     bool is_type_matched = false;
     if (std::is_same<T, int>::value) is_type_matched = attr.is_number_integer();
-    if (std::is_same<T, float>::value) is_type_matched = attr.is_number_float();
-    if (std::is_same<T, bool>::value) is_type_matched = attr.is_boolean();
+    else if (std::is_same<T, float>::value) is_type_matched = attr.is_number_float();
+    else if (std::is_same<T, bool>::value) is_type_matched = attr.is_boolean();
     if (!is_type_matched) {
       return false;
     }
@@ -33,7 +33,7 @@ class AttributesJsonParser {
   }
 
   template <typename T>
-  bool TryGetListValue(const std::string& name, const std::vector<T>& value) {
+  bool TryGetListValue(const std::string& name, std::vector<T>& value) {
     if (!parsed_json_.contains(name)) {
       return false;
     }
@@ -46,8 +46,8 @@ class AttributesJsonParser {
     for (const auto& elem : attr) {
       bool is_type_matched = false;
       if (std::is_same<T, int>::value) is_type_matched = attr.is_number_integer();
-      if (std::is_same<T, float>::value) is_type_matched = attr.is_number_float();
-      if (std::is_same<T, bool>::value) is_type_matched = attr.is_boolean();
+      else if (std::is_same<T, float>::value) is_type_matched = attr.is_number_float();
+      else if (std::is_same<T, bool>::value) is_type_matched = attr.is_boolean();
       if (!is_type_matched) {
         return false;
       }

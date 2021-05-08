@@ -947,7 +947,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
         size_t aten_op_executor_address_int;
         ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-        contrib::aten_ops::ATenOperatorExecutor::Instance().SetExecutorFunc(p_aten_op_executor);
+        contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
 #endif
 
