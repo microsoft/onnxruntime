@@ -29,7 +29,7 @@ except ImportError:
 try:
     from onnxruntime.training.ortmodule import ORTModule
     has_ortmodule = True
-except ImportError:
+except: # noqa
     has_ortmodule = False
 
 package_name = ''
