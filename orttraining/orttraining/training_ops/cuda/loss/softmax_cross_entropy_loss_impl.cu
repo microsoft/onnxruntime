@@ -17,9 +17,10 @@ __global__ void _ComputeWeightsSoftmaxCrossEntropy(
     CUDA_LONG C,
     CUDA_LONG ignore_index) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D);
+  T w = static_cast<T>(1.0f);
   if (label_data[i] != ignore_index) {
     CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < C);
-    weight_data_nd[i] = weight_data != nullptr ? weight_data[label_data[i]] : 1;
+    weight_data_nd[i] = weight_data != nullptr ? weight_data[label_data[i]] : w;
   }
 }
 
@@ -45,12 +46,12 @@ void ComputeWeightsSoftmaxCrossEntropyImpl(
       II);
 }
 
-template <typename T, typename Tin>
+template <typename T, typename TAcc, typename Tin>
 __global__ void _WeightedSoftmaxCrossEntropyLoss(
     const T* log_prob_data,
     const Tin* label_data,
     const T* weight_data,
-    const T* normalize_factor_data,
+    const TAcc* normalize_factor_data,
     T* output_data,
     CUDA_LONG N_D,
     CUDA_LONG C,
@@ -60,17 +61,17 @@ __global__ void _WeightedSoftmaxCrossEntropyLoss(
     output_data[i] = 0;
   } else {
     CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < C);
-    output_data[i] = -log_prob_data[i * C + label_data[i]] * weight_data[i] / (*normalize_factor_data);
+    output_data[i] = -log_prob_data[i * C + label_data[i]] * weight_data[i] / static_cast<T>(*normalize_factor_data);
   }
 }
 
-template <typename T, typename Tin>
+template <typename T, typename TAcc, typename Tin>
 void SoftmaxCrossEntropyLossImpl(
     cudaStream_t stream,
     const T* log_prob,
     const Tin* label,
     const T* weight,
-    const T* normalize_factor,
+    const TAcc* normalize_factor,
     size_t count,
     size_t label_depth,
     int64_t ignore_index,
@@ -79,7 +80,7 @@ void SoftmaxCrossEntropyLossImpl(
   CUDA_LONG N_D = static_cast<CUDA_LONG>(count);
   CUDA_LONG C = static_cast<CUDA_LONG>(label_depth);
   CUDA_LONG II = static_cast<CUDA_LONG>(ignore_index);
-  _WeightedSoftmaxCrossEntropyLoss<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+  _WeightedSoftmaxCrossEntropyLoss<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       log_prob,
       label,
       weight,
@@ -90,20 +91,21 @@ void SoftmaxCrossEntropyLossImpl(
       II);
 }
 
-#define SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(T, Tin) \
+#define SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(T, TAcc, Tin) \
   template void SoftmaxCrossEntropyLossImpl(            \
       cudaStream_t stream,                              \
       const T* log_prob,                                \
       const Tin* label,                                 \
       const T* weight,                                  \
-      const T* normalize_factor,                        \
+      const TAcc* normalize_factor,                        \
       size_t count,                                     \
       size_t label_depth,                               \
       int64_t ignore_index,                             \
       T* output_data);
 
-SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int32_t)
-SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int64_t)
+SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, float, int32_t)
+SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, float, int64_t)
+SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(half, float, int64_t)
 
 template <typename T, typename Tin>
 __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
@@ -221,6 +223,7 @@ SPECIALIZED_IMPL_SoftMaxEntropyLossGradImpl(float, int64_t)
 
 SPECIALIZED_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int32_t)
 SPECIALIZED_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int64_t)
+SPECIALIZED_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(half, int64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

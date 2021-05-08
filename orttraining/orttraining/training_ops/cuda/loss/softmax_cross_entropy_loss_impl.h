@@ -10,13 +10,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename Tin>
+template <typename T, typename TAcc, typename Tin>
 void SoftmaxCrossEntropyLossImpl(
     cudaStream_t stream,
     const T* log_prob,
     const Tin* label,
     const T* weight,
-    const T* normalize_factor,
+    const TAcc* normalize_factor,
     size_t count,
     size_t label_depth,
     int64_t ignore_index,
