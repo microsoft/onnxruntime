@@ -98,7 +98,8 @@ final class OnnxRuntime {
     }
     Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
-      // Extract and prepare the shared provider libraries but don't try to load them, Onnxruntime itself will load them
+      // Extract and prepare the shared provider libraries but don't try to load them, Onnxruntime
+      // itself will load them
       load(tempDirectory, ONNXRUNTIME_LIBRARY_SHARED_NAME, false);
       load(tempDirectory, ONNXRUNTIME_LIBRARY_CUDA_NAME, false);
 
