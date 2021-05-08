@@ -20,7 +20,7 @@ class TorchProxy {
       const std::vector<int64_t>& requires_grads,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
-      std::vector<void*>& obj_args,
+      const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
       std::vector<void*>& outputs,
       bool is_training_mode);
@@ -30,7 +30,7 @@ class TorchProxy {
       const std::vector<int64_t>& requires_grads,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
-      std::vector<void*>& obj_args,
+      const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
       std::vector<void*>& outputs);
 

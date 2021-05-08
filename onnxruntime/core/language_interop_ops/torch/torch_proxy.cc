@@ -180,7 +180,6 @@ void InvokeRunner(
     PyObject* args,
     std::vector<void*>& returned_args) {
   PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
-
   if (PyErr_Occurred()) {
     PyErr_Print();
     ORT_THROW("Python function execution fails with the above information.");
@@ -198,7 +197,7 @@ PyObject* CreateForwardArguments(
     const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
-    std::vector<void*>& obj_args,
+    const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     bool is_training_mode) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
@@ -230,7 +229,7 @@ void Invoke(
     const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
-    std::vector<void*>& obj_args,
+    const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args,
     bool is_training_mode) {
@@ -255,7 +254,7 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
-    std::vector<void*>& obj_args,
+    const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args,
     bool is_training_mode) {
@@ -277,7 +276,7 @@ void TorchProxy::Backward(
     const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
-    std::vector<void*>& obj_args,
+    const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args) {
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();

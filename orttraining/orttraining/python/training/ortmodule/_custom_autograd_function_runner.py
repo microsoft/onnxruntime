@@ -38,6 +38,7 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                     new_wrapped_args.append(arg)
             onnxruntime.register_python_object(new_wrapped_args)
             result = forward_function(*new_wrapped_args)
+
             if isinstance(result, torch.Tensor):
                 ort_value = _ortvalue_from_dlpack(to_dlpack(result))
                 unwrapped_values = [ort_value]
@@ -55,11 +56,16 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             # Must extract one valid context from result tensors.
             assert ctx is not None
 
+        for i, value in enumerate(unwrapped_values):
+            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
         onnxruntime.register_python_object(result)
         for value in unwrapped_values:
             # Maintain their life time.
             # This causes memory leak.
             onnxruntime.register_python_object(value)
+
+        for i, value in enumerate(unwrapped_values):
+            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
 
         unwrapped_ptrs = [int(id(ctx))]
         for v in unwrapped_values:
