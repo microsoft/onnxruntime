@@ -399,7 +399,7 @@ if enable_training:
                         "Error getting cudnn version. ",
                         "did not find any cudnn library" if len(cudnn_versions) == 0 else "found multiple cudnn libraries")
             else:
-                # TODO: rcom
+                # TODO: rocm
                 pass
 
     save_build_and_package_info(package_name, version_number, cuda_version)

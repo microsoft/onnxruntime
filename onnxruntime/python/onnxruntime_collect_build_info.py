@@ -10,9 +10,9 @@ import sys
 def find_cudart_versions(build_env=False):
     # ctypes.CDLL and ctypes.util.find_library load the latest installed library.
     # it may not the the library that would be loaded by onnxruntime.
-    # for example, in an environment already has Cuda 11.1 installed.
-    # it later has conda cudatoolkit (10.2.89) installed. ctypes will find cudart 10.2.
-    # however, onnxruntime will find and load Cuda 11.1 and works fine.
+    # for example, in an environment with Cuda 11.1 and subsequently
+    # conda cudatoolkit 10.2.89 installed. ctypes will find cudart 10.2. however,
+    # onnxruntime built with Cuda 11.1 will find and load cudart for Cuda 11.1.
     # for the above reason, we need find all versions in the environment and
     # only give warnings if the expected cuda version is not found.
     # in onnxruntime build environment, we expected only one Cuda version.
@@ -52,7 +52,7 @@ def find_cudart_versions(build_env=False):
 
     # use set to avoid duplications
     cudart_found_versions = {
-        get_cudart_version(find_cudart_version) for find_cudart_version in cudart_possible_versions}
+        get_cudart_version(cudart_version) for cudart_version in cudart_possible_versions}
 
     # convert to list and remove None
     return [ver for ver in cudart_found_versions if ver]
@@ -90,7 +90,7 @@ def find_cudnn_versions(build_env=False):
             return None
 
     # use set to avoid duplications
-    cudnn_found_versions = {get_cudnn_version(find_cudnn_version) for find_cudnn_version in cudnn_possible_versions}
+    cudnn_found_versions = {get_cudnn_version(cudnn_version) for cudnn_version in cudnn_possible_versions}
 
     # convert to list and remove None
-    return list(cudnn_found_versions)
+    return [ver for ver in cudnn_found_versions if ver]

@@ -19,6 +19,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, 
 from onnxruntime.capi import onnxruntime_validation
 
 from onnxruntime.capi.training import *  # noqa: F403
+import sys
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
 try:
@@ -47,45 +48,46 @@ if has_ortmodule:
         except: # noqa
             pass
 
-        print('onnxruntime training package info: package_name:', package_name)
-        print('onnxruntime training package info: __version__:', __version__)
+        print('onnxruntime training package info: package_name:', package_name, file=sys.stderr)
+        print('onnxruntime training package info: __version__:', __version__, file=sys.stderr)
 
         if cuda_version:
-            print('onnxruntime training package info: cuda_version:', cuda_version)
+            print('onnxruntime training package info: cuda_version:', cuda_version, file=sys.stderr)
 
             # collect cuda library build info. the library info may not be available
             # when the build environment has none or multiple libraries installed
             try:
                 from .build_and_package_info import cudart_version
-                print('onnxruntime build info: cudart_version:', cudart_version)
+                print('onnxruntime build info: cudart_version:', cudart_version, file=sys.stderr)
             except: # noqa
-                print('WARNING: failed to get cudart_version from onnxruntime build info.')
+                print('WARNING: failed to get cudart_version from onnxruntime build info.', file=sys.stderr)
                 cudart_version = None
 
             try:
                 from .build_and_package_info import cudnn_version
-                print('onnxruntime build info: cudnn_version:', cudnn_version)
+                print('onnxruntime build info: cudnn_version:', cudnn_version, file=sys.stderr)
             except: # noqa
-                print('WARNING: failed to get cudnn_version from onnxruntime build info')
+                print('WARNING: failed to get cudnn_version from onnxruntime build info', file=sys.stderr)
                 cudnn_version = None
 
             # collection cuda library info from current environment.
             from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
             local_cudart_versions = find_cudart_versions(build_env=False)
             if cudart_version and cudart_version not in local_cudart_versions:
-                print('WARNING: failed to find cudart version that matches onnxruntime build info')
-                print('WARNING: found cudart versions: ', local_cudart_versions)
+                print('WARNING: failed to find cudart version that matches onnxruntime build info', file=sys.stderr)
+                print('WARNING: found cudart versions: ', local_cudart_versions, file=sys.stderr)
 
             local_cudnn_versions = find_cudnn_versions(build_env=False)
             if cudnn_version and cudnn_version not in local_cudnn_versions:
-                print('WARNING: failed to find cudnn version that matches onnxruntime build info')
-                print('WARNING: found cudnn versions: ', local_cudnn_versions)
+                # need to be soft on cudnn version - very likely there is a mismatch but onnxruntime works just fine.
+                print('INFO: failed to find cudnn version that matches onnxruntime build info', file=sys.stderr)
+                print('INFO: found cudnn versions: ', local_cudnn_versions, file=sys.stderr)
         else:
             # TODO: rcom
             pass
 
     except: # noqa
-        print('WARNING: failed to collect onnxruntime version and build info')
+        print('WARNING: failed to collect onnxruntime version and build info', file=sys.stderr)
         pass
 
 
