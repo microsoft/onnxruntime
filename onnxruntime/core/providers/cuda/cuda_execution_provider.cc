@@ -96,7 +96,6 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUBLAS_CALL_THROW(cublasLtCreate(&cublaslt_handle_));
-  CUBLAS_CALL_THROW(cublasLtSetStream(cublaslt_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
@@ -111,6 +110,12 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
     CUBLAS_CALL(cublasDestroy(cublas_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
+  }
+
+  try {
+    CUBLAS_CALL(cublasLtDestroy(cublaslt_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }

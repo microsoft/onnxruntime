@@ -1389,7 +1389,7 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_NVTX_PROFILE)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
   else()
-    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cublasLt cudnn curand cufft)
   endif()
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})

@@ -4,10 +4,21 @@
 #include <vector>
 
 #include <cuda.h>
+#include <cuda_fp16.h>
 #include <cublasLt.h>
+
+#include "core/common/status.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_pch.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+
+namespace onnxruntime {
+namespace cuda {
 
 auto constexpr algoCombinations = 6000;
 constexpr int MAX_NUM_ALGO_IDS = 40;
+constexpr int NUM_ITERATIONS = 10;
 
 template <typename T>
 struct TGemmTypes
@@ -27,6 +38,18 @@ struct TGemmTypes<half>
 };
 
 template <>
+struct TGemmTypes<nv_bfloat16>
+{
+    static const cudaDataType_t cudaTypeI = CUDA_R_16BF;
+    using dataTypeI = nv_bfloat16;
+    static const cudaDataType_t cudaTypeO = CUDA_R_16BF;
+    using dataTypeO = nv_bfloat16;
+    static const cudaDataType_t cudaTypeS = CUDA_R_32F; // scale type, usually same as computeType
+    using dataTypeS = float;
+    static const cublasComputeType_t cudaTypeCom = CUBLAS_COMPUTE_32F;
+};
+
+template <>
 struct TGemmTypes<float>
 {
     static const cudaDataType_t cudaTypeI = CUDA_R_32F;
@@ -36,6 +59,18 @@ struct TGemmTypes<float>
     static const cudaDataType_t cudaTypeS = CUDA_R_32F; // scale type, usually same as computeType
     using dataTypeS = float;
     static const cublasComputeType_t cudaTypeCom = CUBLAS_COMPUTE_32F;
+};
+
+template <>
+struct TGemmTypes<double>
+{
+    static const cudaDataType_t cudaTypeI = CUDA_R_64F;
+    using dataTypeI = double;
+    static const cudaDataType_t cudaTypeO = CUDA_R_64F;
+    using dataTypeO = double;
+    static const cudaDataType_t cudaTypeS = CUDA_R_64F; // scale type, usually same as computeType
+    using dataTypeS = double;
+    static const cublasComputeType_t cudaTypeCom = CUBLAS_COMPUTE_64F;
 };
 
 template <typename T>
@@ -51,9 +86,9 @@ struct TGemm
   size_t bytesC;
 
   using Types = TGemmTypes<T>;
-  typename Types::dataTypeI* A{nullptr};
-  typename Types::dataTypeI* B{nullptr};
-  typename Types::dataTypeO* C{nullptr};
+  const typename Types::dataTypeI* A;
+  const typename Types::dataTypeI* B;
+  typename Types::dataTypeO* C;
 
   bool transA, transB;
   cublasOperation_t opA;
@@ -65,11 +100,10 @@ struct TGemm
   TGemm() {}
 
   TGemm(int m_, int n_, int k_,
-        typename Types::dataTypeI* A_,
-        typename Types::dataTypeI* B_,
+        const typename Types::dataTypeI* A_,
+        const typename Types::dataTypeI* B_,
         typename Types::dataTypeO* C_,
-        bool transA_ = false, bool transB_ = false)
-  {
+        bool transA_ = false, bool transB_ = false) : A(A_), B(B_), C(C_) {
     m = m_;
     n = n_;
     k = k_;
@@ -79,10 +113,6 @@ struct TGemm
     bytesA = sizeof(T) * elemA;
     bytesB = sizeof(T) * elemB;
     bytesC = sizeof(T) * elemC;
-  
-    A = A_;
-    B = B_;
-    C = C_;
   
     transA = transA_;
     transB = transB_;
@@ -109,14 +139,14 @@ struct TGemm
 /* Structure to store information about different run trials */
 typedef struct
 {
-    cublasLtMatmulAlgo_t algo;
-    cublasStatus_t status;
-    float time{1000000};
-    size_t workspaceSize; // actual memory workspace needed
-    cublasMath_t mathMode;
-    cublasLtReductionScheme_t reductionScheme;
-    int customOption;
-    float wavesCount;
+  cublasLtMatmulAlgo_t algo;
+  cublasStatus_t status;
+  float time{1000000};
+  size_t workspaceSize; // actual memory workspace needed
+  cublasMath_t mathMode;
+  cublasLtReductionScheme_t reductionScheme;
+  int customOption;
+  float wavesCount;
 } MatmulPerf_t;
 
 // clang-format off
@@ -136,7 +166,7 @@ void LtGemmSearch(cublasLtHandle_t ltHandle,
                   int const &ldc,
                   void *workSpace,
                   size_t workSpaceSize,
-                  cudaDataType_t computeType,
+                  cublasComputeType_t computeType,
                   cudaDataType_t scaleType,
                   cudaDataType_t Atype,
                   cudaDataType_t Btype,
@@ -164,27 +194,6 @@ void LtGemmSearch(cublasLtHandle_t handle, const TGemm<T> &g,
                TGemm<T>::Types::cudaTypeI,
                TGemm<T>::Types::cudaTypeO,
                perfResults);
-    // clang-format on
-}
-
-template <typename T>
-cublasStatus_t inline cublasLtMatmul(LtContext &ctx, TGemm<T> &g,
-                                     cublasLtMatmulAlgo_t algo,
-                                     void *workspace, size_t workspaceSize,
-                                     cudaStream_t stream)
-{
-    // clang-format off
-     return cublasLtMatmul(ctx.cublas,
-                    ctx.operationDesc,
-                    &g.alpha,
-                    g.A, ctx.Adesc,
-                    g.B, ctx.Bdesc,
-                    &g.beta,
-                    g.C, ctx.Cdesc,
-                    g.C, ctx.Cdesc,
-                    &algo,
-                    workspace, workspaceSize,
-                    stream);
     // clang-format on
 }
 
@@ -218,25 +227,5 @@ const char *const matmulTileName[] = {
     "512x64",
 };
 
-struct AlgoProps
-{
-  int algoId;
-  int tile;
-  int swizzle;
-  int customOption;
-  int numSplitsK;
-  int reductionScheme;
-  int mathMode;
-
-  void populate(const cublasLtMatmulAlgo_t &algo)
-  {
-    const cublasLtMatmulAlgo_t *matmulAlgo = &algo;
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_ID, &algoId, sizeof(algoId), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_TILE_ID, &tile, sizeof(tile), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_SPLITK_NUM, &numSplitsK, sizeof(numSplitsK), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME, &reductionScheme, sizeof(reductionScheme), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING, &swizzle, sizeof(swizzle), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoConfigGetAttribute(matmulAlgo, CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION, &customOption, sizeof(customOption), nullptr));
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoCapGetAttribute(matmulAlgo, CUBLASLT_ALGO_CAP_MATHMODE_IMPL, &mathMode, sizeof(mathMode), nullptr));
-  }
-};
+}  // namespace cuda
+}  // namespace onnxruntime

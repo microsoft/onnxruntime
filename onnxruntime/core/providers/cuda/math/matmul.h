@@ -28,12 +28,12 @@ class MatMul final : public CudaKernel {
   const bool trans_A_;
   const bool trans_B_;
 
-  bool valid_algo_{false};
-  size_t workspace_size_{0};
-  cublasLtMatmulAlgo_t algo_;
+  mutable bool valid_algo_{false};
+  mutable size_t workspace_size_{0};
+  mutable cublasLtMatmulAlgo_t algo_;
 
-  cublasLtMatmulDesc_t operationDesc{nullptr};
-  cublasLtMatrixLayout_t Adesc{nullptr}, Bdesc{nullptr}, Cdesc{nullptr}, Ddesc{nullptr};
+  mutable cublasLtMatmulDesc_t operationDesc{nullptr};
+  mutable cublasLtMatrixLayout_t Adesc{nullptr}, Bdesc{nullptr}, Cdesc{nullptr}, Ddesc{nullptr};
 };
 }  // namespace cuda
 }  // namespace onnxruntime
