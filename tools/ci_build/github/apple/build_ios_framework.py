@@ -33,11 +33,6 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    if 'apple_deploy_target' in _build_settings_data:
-        build_settings['apple_deploy_target'] = _build_settings_data['apple_deploy_target']
-    else:
-        raise ValueError('apple_deploy_target is required in the build config file')
-
     build_settings["build_osx_archs"] = _build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
 
     build_params = []
@@ -57,11 +52,7 @@ def _build_package(args):
     # Temp dirs to hold building results
     _intermediates_dir = os.path.join(build_dir, 'intermediates')
     _build_config = args.config
-    _base_build_command = [
-        sys.executable, BUILD_PY,
-        '--config=' + _build_config,
-        '--apple_deploy_target=' + build_settings['apple_deploy_target']
-    ] + build_settings['build_params']
+    _base_build_command = [sys.executable, BUILD_PY, '--config=' + _build_config] + build_settings['build_params']
 
     # paths of the onnxruntime libraries for different archs
     _ort_libs = []
@@ -81,8 +72,10 @@ def _build_package(args):
         if args.include_ops_by_config is not None:
             _build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]
 
+        # the actual build process for current arch
         subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
 
+        # get the compiled lib path
         _framework_dir = os.path.join(
             _build_dir_current_arch, _build_config, _build_config + "-" + _sysroot, 'onnxruntime.framework')
         _ort_libs.append(os.path.join(_framework_dir, 'onnxruntime'))
