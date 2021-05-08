@@ -1,47 +1,31 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# orttraining_test_ortmodule_api.py
 
-import math
-import random
+
 import copy
-import torch
-from transformers import AutoConfig, BertForSequenceClassification
-from transformers.modeling_outputs import SequenceClassifierOutput
-import pytest
-from time import sleep
-import warnings
-from unittest.mock import patch
-from collections import OrderedDict
-from collections import namedtuple
-from inspect import signature
-
-from onnxruntime.training.ortmodule import _utils, ORTModule
-import _test_helpers
-
-from torch.nn.parameter import Parameter
+import os
 import sys
 import onnx
-import torch
-torch.manual_seed(1)
-import onnxruntime as ort
-import os
-from torch.utils.dlpack import from_dlpack, to_dlpack
- 
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state as C
-import copy
 import numpy as np
-from torch.nn.parallel import DistributedDataParallel as DDP
+import threading
 
+import torch
+from torch.nn.parameter import Parameter
+from torch.utils.dlpack import from_dlpack, to_dlpack
+from torch import optim
+import torch.nn.functional as F
 # distributed requirements start
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.multiprocessing import Process
-from torch import optim
-import torch.nn.functional as F
-import threading
+from torch.nn.parallel import DistributedDataParallel as DDP
 # distributed requirements end
+
+torch.manual_seed(1)
+
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training.ortmodule import ORTModule
 
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
@@ -168,9 +152,6 @@ def test_Distributed_ReduceWithoutMarkDirtyModel(rank):
     optimizer.zero_grad()
     outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size], device, optimizer)
     torch.cuda.synchronize()
-    
-    ort.register_forward_core("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunction.apply)
-    ort.register_backward_core("ReduceWithoutMarkDirtyFunction", ReduceWithoutMarkDirtyFunction.backward)
 
     optimizer = optim.SGD(m.parameters(), lr=0.01, momentum=0.5)
     optimizer.zero_grad()
@@ -252,9 +233,6 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
         # outputs, grads = run_with_pytorch_on_gpu(pytorch_ddp_m, [x], [output_size], device, optimizer)
         # torch.cuda.synchronize()
 
-        ort.register_forward_core("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunction.apply)
-        ort.register_backward_core("ReduceWithMarkDirtyFunction", ReduceWithMarkDirtyFunction.backward)
-
         pt_ort_m = copy.deepcopy(m)
         # optimizer = optim.SGD(pt_ort_m.parameters(), lr=0.01, momentum=0.5)
         # optimizer.zero_grad()
@@ -280,11 +258,6 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
     except Exception as e:
         print("test_Distributed_ReduceWithMarkDirtyModel:", e)
         return 0 
-
-
-
-
-
 
 if __name__ == "__main__":
     size = 2

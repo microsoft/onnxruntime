@@ -271,6 +271,17 @@ class GraphExecutionManager(ABC):
                         # give a name for debugging
                         node.name = node.op_type + "_id_" + str(index)
                         index += 1
+
+                def fullname(kclass):
+                    module = kclass.__module__
+                    if module == 'builtins':
+                        return kclass.__qualname__ # avoid outputs like 'builtins.str'
+                    return module + '.' + kclass.__qualname__
+                print([fullname(cls) for cls in torch.autograd.Function.__subclasses__()])
+                for kclass in torch.autograd.Function.__subclasses__():
+                    print("Registering apply and backward for ", fullname(kclass))
+                    onnxruntime.register_forward_core(fullname(kclass), getattr(kclass, "apply"))
+                    onnxruntime.register_backward_core(fullname(kclass), getattr(kclass, "backward"))
             else:
                 with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                     torch.onnx.export(self._flattened_module,

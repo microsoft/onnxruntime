@@ -1,39 +1,22 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# orttraining_test_ortmodule_api.py
 
-import math
-import random
 import copy
-import torch
-from transformers import AutoConfig, BertForSequenceClassification
-from transformers.modeling_outputs import SequenceClassifierOutput
-import pytest
-from time import sleep
-import warnings
-from unittest.mock import patch
-from collections import OrderedDict
-from collections import namedtuple
-from inspect import signature
-
-from onnxruntime.training.ortmodule import _utils, ORTModule
-import _test_helpers
-
-from torch.nn.parameter import Parameter
-
 import onnx
-import torch
-torch.manual_seed(1)
-import onnxruntime as ort
 import os
-from torch.utils.dlpack import from_dlpack, to_dlpack
- 
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state as C
-import copy
+import torch
 import numpy as np
 import threading
-import sys
+
+import torch
+from torch.nn.parameter import Parameter
+from torch.utils.dlpack import from_dlpack, to_dlpack
+
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.capi import _pybind_state as C
+
+torch.manual_seed(1)
 
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
@@ -206,8 +189,6 @@ class GeLUModel(torch.nn.Module):
 def test_GeLU():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("GeLUFunction", GeLUFunction.apply)
-        ort.register_backward_core("GeLUFunction", GeLUFunction.backward)
         return GeLUModel(output_size)
 
     def input_generator():
@@ -254,8 +235,6 @@ class MegatronFModel(torch.nn.Module):
 def test_MegatronF():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("MegatronFFunction", MegatronFFunction.apply)
-        ort.register_backward_core("MegatronFFunction", MegatronFFunction.backward)
         return MegatronFModel(output_size)
 
     def input_generator():
@@ -305,8 +284,6 @@ class ScalarAndTupleModel(torch.nn.Module):
 def test_ScalarAndTuple():
     output_size = 2
     def model_builder():
-        ort.register_forward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.apply)
-        ort.register_backward_core("ScalarAndTupleFunction", ScalarAndTupleFunction.backward)
         return ScalarAndTupleModel(output_size)
 
     def input_generator():
@@ -356,8 +333,6 @@ class InplaceUpdateInputAsOutputNotRequireGradModel(torch.nn.Module):
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.apply)
-        ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradFunction", InplaceUpdateInputAsOutputNotRequireGradFunction.backward)
         return InplaceUpdateInputAsOutputNotRequireGradModel(output_size)
 
     def input_generator():
@@ -408,8 +383,6 @@ class InplaceUpdateInputNotAsOutputNotRequireGradModel(torch.nn.Module):
 def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply)
-        ort.register_backward_core("InplaceUpdateInputNotAsOutputNotRequireGradFunction", InplaceUpdateInputNotAsOutputNotRequireGradFunction.backward)
         return InplaceUpdateInputNotAsOutputNotRequireGradModel(output_size)
 
     def input_generator():
@@ -461,8 +434,6 @@ class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(torch.nn.Module
 def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply)
-        ort.register_backward_core("InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction", InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.backward)
         return InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(output_size)
 
     def input_generator():
@@ -517,8 +488,6 @@ class InplaceUpdateInputAsOutputRequireGradModel(torch.nn.Module):
 def test_InplaceUpdateInputAsOutputRequireGrad():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.apply)
-        ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradFunction', InplaceUpdateInputAsOutputRequireGradFunction.backward)
         return InplaceUpdateInputAsOutputRequireGradModel(output_size)
 
     def input_generator():
@@ -573,8 +542,6 @@ class InplaceUpdateInputNotAsOutputRequireGradModel(torch.nn.Module):
 def test_InplaceUpdateInputNotAsOutputRequireGrad():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.apply)
-        ort.register_backward_core('InplaceUpdateInputNotAsOutputRequireGradFunction', InplaceUpdateInputNotAsOutputRequireGradFunction.backward)
         return InplaceUpdateInputNotAsOutputRequireGradModel(output_size)
 
     def input_generator():
@@ -627,8 +594,6 @@ class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(torch.nn.Module):
 def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply)
-        ort.register_backward_core('InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction', InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.backward)
         return InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(output_size)
 
     def input_generator():
@@ -678,8 +643,6 @@ class EvalTestModel(torch.nn.Module):
 def test_EvalTest():
     output_size = 1024
     def model_builder():
-        ort.register_forward_core("EvalTestFunction", EvalTestFunction.apply)
-        ort.register_backward_core("EvalTestFunction", EvalTestFunction.backward)
         return EvalTestModel(output_size)
 
     def input_generator():

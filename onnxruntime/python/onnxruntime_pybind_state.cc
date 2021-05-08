@@ -947,18 +947,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-  m.def("register_custom_torch_function_forward", [](std::string name, py::object obj) -> void {
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterForward(name, x);
-  });
-  m.def("register_custom_torch_function_backward", [](std::string name, py::object obj) -> void {
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterBackward(name, x);
-  });
   m.def("register_python_object", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
