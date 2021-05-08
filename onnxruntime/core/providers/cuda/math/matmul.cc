@@ -119,22 +119,58 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        Base::CublasHandle(),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
-        ldb,
-        reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
-        lda,
-        &zero,
-        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-        ldc,
-        device_prop));
+    // CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    //     Base::CublasHandle(),
+    //     transB,
+    //     transA,
+    //     static_cast<int>(helper.N()),
+    //     static_cast<int>(helper.M()),
+    //     static_cast<int>(helper.K()),
+    //     &alpha,
+    //     reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+    //     ldb,
+    //     reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+    //     lda,
+    //     &zero,
+    //     reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+    //     ldc,
+    //     device_prop));
+    TGemm<T> gemm(helper.N(), helper.M(), helper.K(),
+                  reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                  reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                  reinterpret_cast<CudaT*>(Y->template MutableData<T>()), transb, transa);
+    CUBLAS_RETURN_IF_ERROR(
+        cublasLtMatmulDescCreate(&operationDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &gemm.opA, sizeof(gemm.opA)));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &gemm.opB, sizeof(gemm.opB)));
+
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, TGemm<T>::Types::cudaTypeI,
+                                            gemm.rA, gemm.cA, gemm.ldA));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, TGemm<T>::Types::cudaTypeI,
+                                            gemm.rB, gemm.cB, gemm.ldB));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, TGemm<T>::Types::cudaTypeO,
+                                            gemm.m, gemm.n, gemm.ldC));
+    if (!valid_algo_) {
+      std::vector<MatmulPerf_t> perfResults(algoCombinations);
+      LtGemmSearch(Base::CublasHandle(), gemm, nullptr, 0, perfResults);
+      valid_algo_ = true;
+      algo_ = &perfResults[0].algo;
+      workspace_size_ = perfResults[0].workspaceSize;
+    }
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(Base::CublasHandle(),
+                                operationDesc,
+                                &gemm.alpha,
+                                gemm.A, Adesc,
+                                gemm.B, Bdesc,
+                                &gemm.beta,
+                                gemm.C, Cdesc,
+                                gemm.C, Cdesc,
+                                &algo_,
+                                nullptr,
+                                0,
+                                0));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, stride_A, stride_B, stride_C, batch_count)) {

@@ -95,6 +95,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublaslt_handle_));
+  CUBLAS_CALL_THROW(cublasLtSetStream(cublaslt_handle_, stream));
+
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
