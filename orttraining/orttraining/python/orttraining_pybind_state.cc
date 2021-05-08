@@ -72,7 +72,8 @@ struct TrainingParameters {
   // transformation
   int propagate_cast_ops_level = -1;
   std::vector<std::string> propagate_cast_ops_allow;
-  int propagate_cast_ops_strategy = 0;
+  GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
   bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
@@ -237,8 +238,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
-  config.graph_transformer_config.propagate_cast_ops_config.strategy =
-      static_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(parameters.propagate_cast_ops_strategy);
+  config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
   config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
@@ -519,13 +519,23 @@ void addObjectMethodsForTraining(py::module& m) {
         }
       });
 
-  py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local())
+  py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
       .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
-      .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill);
-      
-  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration> propagate_cast_ops_config(
-      m, "PropagateCastOpsConfiguration",
-      R"pbdoc(Propagate cast ops configuration.)pbdoc");
+      .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
+      .value("REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts)
+      .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
+      .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator&))
+      .def("__eq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator==))
+      .def("__neq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator!=));
+
+  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration>
+      propagate_cast_ops_config(
+          m, "PropagateCastOpsConfiguration",
+          R"pbdoc(Propagate cast ops configuration.)pbdoc");
   propagate_cast_ops_config.def(py::init())
       .def_readwrite("strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
       .def_readwrite("level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
