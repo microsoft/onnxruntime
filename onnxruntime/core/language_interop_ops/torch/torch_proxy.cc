@@ -199,24 +199,26 @@ PyObject* CreateForwardArguments(
     const std::vector<OrtValue*>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     std::vector<void*>& obj_args,
-    const std::vector<int64_t>& obj_indices) {
+    const std::vector<int64_t>& obj_indices,
+    bool is_training_mode) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
-  PyObject* args = PyTuple_New(3 + len);
+  PyObject* args = PyTuple_New(4 + len);
   PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
   PyObject* requires_grad_flags = CreateRequiresGradFlags(requires_grads);
   PyTuple_SetItem(args, 0, callback);
   PyTuple_SetItem(args, 1, requires_grad_flags);
   PyTuple_SetItem(args, 2, tensor_flags);
+  PyTuple_SetItem(args, 3, is_training_mode ? Py_True : Py_False);
 
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    PyTuple_SetItem(args, 3 + tensor_indices[i], dltensor);
+    PyTuple_SetItem(args, 4 + tensor_indices[i], dltensor);
   }
 
   for (size_t i = 0; i < obj_args.size(); ++i) {
-    PyTuple_SetItem(args, 3 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
+    PyTuple_SetItem(args, 4 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
   }
 
   return args;
@@ -230,7 +232,8 @@ void Invoke(
     const std::vector<int64_t>& tensor_indices,
     std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    std::vector<void*>& returned_args) {
+    std::vector<void*>& returned_args,
+    bool is_training_mode) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   PyObject* args = CreateForwardArguments(
@@ -240,7 +243,8 @@ void Invoke(
       tensor_args,
       tensor_indices,
       obj_args,
-      obj_indices);
+      obj_indices,
+      is_training_mode);
   InvokeRunner(runner, args, returned_args);
   // TODO: Free Python objects.
   // DestoryForwardArguments(args);
@@ -253,7 +257,8 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& tensor_indices,
     std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    std::vector<void*>& returned_args) {
+    std::vector<void*>& returned_args,
+    bool is_training_mode) {
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
   Invoke(
       runner,
@@ -263,7 +268,8 @@ void TorchProxy::Forward(
       tensor_indices,
       obj_args,
       obj_indices,
-      returned_args);
+      returned_args,
+      is_training_mode);
 }
 
 void TorchProxy::Backward(
@@ -283,7 +289,8 @@ void TorchProxy::Backward(
       tensor_indices,
       obj_args,
       obj_indices,
-      returned_args);
+      returned_args,
+      true /*is_training_mode*/);
 }
 }  // namespace torch
 }  // namespace language_interop_ops

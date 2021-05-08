@@ -38,44 +38,62 @@ import sys
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
 
-def run_with_pytorch_on_gpu(model, input_list, label_input):
+def run_with_pytorch_on_gpu(model, input_list, label_input, is_eval_mode=False):
     print('Use PyTorch for CUDA run....')
     device = torch.device('cuda:0')
     model.to(device)
+    if is_eval_mode:
+        model.eval()
+    else:
+        model.train()
+
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
     forward_outputs=[output]
-    criterion = torch.nn.MSELoss()
-
-    target = label_input.to(device)
-    loss = criterion(output, target)
-    loss.backward()
-    torch.cuda.synchronize()
     grad_outputs = []
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            grad_outputs.append(param.grad)
+
+    if not is_eval_mode:
+        criterion = torch.nn.MSELoss()
+        target = label_input.to(device)
+        loss = criterion(output, target)
+        loss.backward()
+        torch.cuda.synchronize()
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                grad_outputs.append(param.grad)
+    else:
+        torch.cuda.synchronize()
     return forward_outputs, grad_outputs
 
-def run_with_ort_on_gpu(model, input_list, label_input):
+def run_with_ort_on_gpu(model, input_list, label_input, is_eval_mode=False):
     print('Use ORTModule for CUDA run....')
     device = torch.device('cuda:0')
     model = copy.deepcopy(model)
     model.to(device)
     model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
+    if is_eval_mode:
+        print("evalation mode.............")
+        model.eval()
+    else:
+        model.train()
+
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
     forward_outputs=[output]
-    criterion = torch.nn.MSELoss()
-
-    target = label_input.to(device)
-    loss = criterion(output, target)
-    loss.backward()
-    torch.cuda.synchronize()
     grad_outputs = []
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            grad_outputs.append(param.grad)
+
+    if not is_eval_mode:
+        criterion = torch.nn.MSELoss()
+        target = label_input.to(device)
+        loss = criterion(output, target)
+        loss.backward()
+        torch.cuda.synchronize()
+
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                grad_outputs.append(param.grad)
+    else:
+        torch.cuda.synchronize()
     return forward_outputs, grad_outputs
 
 def compare_numpy_list(val_a, val_b):
@@ -95,7 +113,7 @@ def compare_numpy_list(val_a, val_b):
     print("outputs matched successfully.")
 
 
-def run_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
+def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
     m = pt_model_builder_func()
     x = pt_model_inputs_generator()
 
@@ -117,6 +135,23 @@ def run_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_mo
         val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
         val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
         compare_numpy_list(val_a, val_b)
+
+def run_evalue_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
+    m = pt_model_builder_func()
+    x = pt_model_inputs_generator()
+
+    m_ort = copy.deepcopy(m)
+    x_ort = copy.deepcopy(x)
+
+    outputs, grads = run_with_pytorch_on_gpu(m, [x], pt_model_label_input, is_eval_mode=True)
+    torch.cuda.synchronize()
+
+    outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input, is_eval_mode=True)
+
+    torch.cuda.synchronize()
+    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
+    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
+    compare_numpy_list(val_a, val_b)
 
 ###################################################################################
 
@@ -181,7 +216,7 @@ def test_GeLU():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)
 
 ###################################################################################
 
@@ -229,7 +264,7 @@ def test_MegatronF():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)
 
 #############################################################
 
@@ -280,7 +315,7 @@ def test_ScalarAndTuple():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)
 
 #############################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -331,7 +366,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 #########################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -383,7 +418,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 #########################################################################################
 class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
@@ -436,7 +471,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)
 
 ##########################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -492,7 +527,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 ##########################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -548,7 +583,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 ##########################################################################################
 
@@ -602,7 +637,73 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+
+
+###################################################################################
+
+@torch.jit.script
+def bias_gelu(x):
+    return  
+
+# gradient of tanh approximation of gelu
+# gradient of actual gelu is:
+# 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+@torch.jit.script
+def bias_gelu_back(g, bias, y):
+    x = bias + y
+    tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+    # sqrt(2/pi) * 3 * 0.044715 -> 0.1070322243
+    ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+    return ff*g
+
+class EvalTestFunction(torch.autograd.Function):
+    @staticmethod
+    # bias is an optional argument
+    def forward(ctx, x):
+        print("EvalTestFunction(torch.autograd.Function) forward")
+        ctx.save_for_backward(x)
+        return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x = ctx.saved_tensors
+        return None
+
+class EvalTestModel(torch.nn.Module):
+    def __init__(self, output_size):
+        super(EvalTestModel, self).__init__()
+        self.custom_fn = EvalTestFunction.apply
+        self.bias = Parameter(torch.empty(
+            output_size,
+            device=torch.cuda.current_device(),
+            dtype=torch.float))
+
+        # Always initialize bias to zero.
+        with torch.no_grad():
+            #self.bias.zero_()
+            self.bias.uniform_()
+
+    def forward(self, model_input):
+        # model_input did not require_grad
+        out = self.custom_fn(model_input)
+        return out + self.bias
+
+def test_EvalTest():
+    output_size = 1024
+    def model_builder():
+        ort.register_forward_core("EvalTestFunction", EvalTestFunction.apply)
+        ort.register_backward_core("EvalTestFunction", EvalTestFunction.backward)
+        return EvalTestModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+    run_evalue_test_and_compare(model_builder, input_generator, label_input)
+
 
 test_GeLU()
 test_MegatronF()
@@ -617,3 +718,6 @@ test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
 test_InplaceUpdateInputAsOutputRequireGrad()
 test_InplaceUpdateInputNotAsOutputRequireGrad()
 test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
+
+# test pure inferencing scenarios, when inputs don't requires_grad.
+test_EvalTest()

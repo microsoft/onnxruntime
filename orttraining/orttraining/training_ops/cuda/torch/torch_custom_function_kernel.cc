@@ -123,7 +123,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs);
+  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(callback, input_tensor_requires_grads_, inputs, arg_positions, const_args, const_arg_positions, outputs, is_training_mode_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?

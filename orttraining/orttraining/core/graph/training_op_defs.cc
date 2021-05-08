@@ -2436,6 +2436,11 @@ Return true if all elements are true and false otherwise.
           "Indicate if the output should reuse input memory.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .Attr(
+          "training_mode",
+          "Indicate if the model is exported in training_mode, by default, False.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),

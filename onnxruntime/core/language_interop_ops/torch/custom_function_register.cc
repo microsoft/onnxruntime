@@ -3,10 +3,9 @@
 
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include <Python.h>
-#include <sstream>
 #include <mutex>
-#include <iostream>
 #include "core/platform/env.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -88,26 +87,16 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
 PyObject* OrtTorchFunctionPool::GetForward(
     const std::string& custom_function_name) {
   auto it = forward_pool.find(custom_function_name);
-  if (it == forward_pool.end()) {
-    std::ostringstream oss;
-    oss << "No custom forward function registered for "
-        << custom_function_name << std::endl;
-    throw std::runtime_error(oss.str());
-  }
+  ORT_ENFORCE(it != forward_pool.end(), "No custom forward function registered for ", custom_function_name);
   return it->second;
-};
+}
 
 PyObject* OrtTorchFunctionPool::GetBackward(
     const std::string& custom_function_name) {
   auto it = backward_pool.find(custom_function_name);
-  if (it == backward_pool.end()) {
-    std::ostringstream oss;
-    oss << "No custom backward function registered for "
-        << custom_function_name << std::endl;
-    throw std::runtime_error(oss.str());
-  }
+  ORT_ENFORCE(it != backward_pool.end(), "No custom backward function registered for ", custom_function_name);
   return it->second;
-};
+}
 
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0;
@@ -117,7 +106,7 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   func_context_pool.insert({index_, auto_grad_context});
   Py_INCREF(auto_grad_context);
   return index_;
-};
+}
 
 PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   auto ctx = func_context_pool.find(context_index);
@@ -130,7 +119,7 @@ void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   PyObject_Print(ctx->second, stdout, 0);
   Py_XDECREF(ctx->second);
   func_context_pool.erase(ctx);
-};
+}
 
 }  // namespace torch
 }  // namespace language_interop_ops

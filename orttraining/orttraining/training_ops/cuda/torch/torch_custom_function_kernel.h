@@ -17,6 +17,7 @@ class PythonOp final : public CudaKernel {
   PythonOp(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
     inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
+    is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
     ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
 
     // Input tensors.
@@ -68,6 +69,7 @@ class PythonOp final : public CudaKernel {
   std::string name_;
   int64_t inplace_;
   std::string call_convention_;
+  bool is_training_mode_;
 
   // Attributes of input tensors for calling MyReLU.apply(...).
   // Types. input_tensor_types_[i] is the element type of the i-th tensor.

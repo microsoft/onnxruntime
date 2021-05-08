@@ -9,7 +9,7 @@ from onnxruntime.capi import _pybind_state
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(_pybind_state.OrtValue.from_dlpack(dlpack_tensor, False))
 
-def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, *args):
+def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
     try:
         wrapped_args = []
         for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
@@ -17,7 +17,7 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                 # Got a tensor. Assume it's a DLPack tensor
                 # and convert it to Pytorch tensor.
                 wrapped_arg = from_dlpack(arg).detach().clone().contiguous()
-                if grad_flag:
+                if is_training_mode and grad_flag:
                     wrapped_arg.requires_grad = True
                 else:
                     wrapped_arg.requires_grad = False
@@ -46,13 +46,14 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                 for value in result:
                     unwrapped_value = _ortvalue_from_dlpack(to_dlpack(v))
                     unwrapped_values.append(unwrapped_value)
-                    if ctx is not None and hasattr(ctx, 'grad_fn'):
+                    if ctx is None and unwrapped_value is not None and hasattr(unwrapped_value, 'grad_fn'):
                         ctx = unwrapped_value.grad_fn
             else:
                 raise Exception('Unsupported returned type: ', type(result), ' by calling ', forward_function)
 
-        # Must extract one valid context from result tensors.
-        assert ctx is not None
+        if is_training_mode:
+            # Must extract one valid context from result tensors.
+            assert ctx is not None
 
         onnxruntime.register_python_object(result)
         for value in unwrapped_values:
@@ -63,7 +64,6 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
         unwrapped_ptrs = [int(id(ctx))]
         for v in unwrapped_values:
             unwrapped_ptrs.append(int(v.ortvalue_ptr()))
-
         return tuple(unwrapped_ptrs)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
@@ -71,7 +71,7 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
         sys.stderr.flush()
         raise
 
-def call_python_backward_function(backward_function, requires_grad_flags, tensor_type_flags, *args):
+def call_python_backward_function(backward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
     try:
         wrapped_args = []
         for requires_grad, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
