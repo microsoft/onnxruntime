@@ -38,6 +38,10 @@ class DummyArena : public IArenaAllocator {
     return Alloc(size);
   }
 
+  Status Shrink() override {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
   size_t Used() const override {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
