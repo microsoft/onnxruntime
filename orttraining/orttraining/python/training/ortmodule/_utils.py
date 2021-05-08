@@ -8,7 +8,6 @@ from onnxruntime.capi import _pybind_state as C
 
 import threading
 import torch
-import onnxruntime
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
@@ -235,7 +234,7 @@ size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&Execut
                                                  functions=['execute_aten_operator_address'],
                                                  verbose=verbosity, with_cuda=True)
 
-    onnxruntime.register_aten_op_executor(str(aten_op_executor_cpp_extension.execute_aten_operator_address()))
+    C.register_aten_op_executor(str(aten_op_executor_cpp_extension.execute_aten_operator_address()))
 
 def _load_aten_op_executor_cpp_extension_if_needed(onnx_model, verbosity, is_rocm_pytorch):
     for node in onnx_model.graph.node:
