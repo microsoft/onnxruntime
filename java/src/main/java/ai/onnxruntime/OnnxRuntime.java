@@ -98,8 +98,10 @@ final class OnnxRuntime {
     }
     Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
+      // Extract and prepare the shared provider libraries but don't try to load them, Onnxruntime itself will load them
       load(tempDirectory, ONNXRUNTIME_LIBRARY_SHARED_NAME, false);
       load(tempDirectory, ONNXRUNTIME_LIBRARY_CUDA_NAME, false);
+
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME, true);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME, true);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_7);
