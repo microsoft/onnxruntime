@@ -1404,10 +1404,10 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-#ifdef USE_CUDA
-// TODO fix flaky test
-// failing random seed: 4133818171
-TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
+
+// TODO fix flaky test for CUDA (failing random seed: 4133818171)
+// Somehow failing CPU test with seed 181700829???
+TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"BatchNormalization"};
@@ -1554,7 +1554,6 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   }
   */
 }
-#endif
 
 TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
