@@ -166,6 +166,12 @@ module.exports = {
     files: ['react_native/lib/**/*.ts'], rules: {
       '@typescript-eslint/naming-convention': 'off'
     }
+  }, {
+    files: ['react_native/scripts/**/*.ts'], rules: {
+      'import/no-extraneous-dependencies': 'off',
+      'prefer-arrow/prefer-arrow-functions': 'off',
+      'no-console': 'off'
+    }
   }],
   extends: [
     'eslint:recommended',

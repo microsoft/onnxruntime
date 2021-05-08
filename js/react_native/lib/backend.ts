@@ -75,28 +75,20 @@ class OnnxruntimeSessionHandler implements SessionHandler {
 
   async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
       Promise<SessionHandler.ReturnType> {
-    // eslint-disable-next-line no-async-promise-executor
-    return new Promise(async (resolve, reject) => {
-      try {
-        // Java API doesn't support preallocated output names and allows only string array as parameter.
-        const outputNames: Binding.FetchesType = [];
-        for (const name in fetches) {
-          if (Object.prototype.hasOwnProperty.call(fetches, name)) {
-            if (fetches[name]) {
-              throw new Error(
-                  'Preallocated output is not supported and only names as string array is allowed as parameter');
-            }
-            outputNames.push(name);
-          }
+    const outputNames: Binding.FetchesType = [];
+    for (const name in fetches) {
+      if (Object.prototype.hasOwnProperty.call(fetches, name)) {
+        if (fetches[name]) {
+          throw new Error(
+              'Preallocated output is not supported and only names as string array is allowed as parameter');
         }
-        const input = this.encodeFeedsType(feeds);
-        const results: Binding.ReturnType = await this.#inferenceSession.run(this.#key, input, outputNames, options);
-        const output = this.decodeReturnType(results);
-        resolve(output);
-      } catch (e) {
-        reject(e);
+        outputNames.push(name);
       }
-    });
+    }
+    const input = this.encodeFeedsType(feeds);
+    const results: Binding.ReturnType = await this.#inferenceSession.run(this.#key, input, outputNames, options);
+    const output = this.decodeReturnType(results);
+    return output;
   }
 
   encodeFeedsType(feeds: SessionHandler.FeedsType): Binding.FeedsType {
@@ -152,19 +144,12 @@ class OnnxruntimeBackend implements Backend {
 
   async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
-    // eslint-disable-next-line no-async-promise-executor
-    return new Promise(async (resolve, reject) => {
-      try {
-        if (typeof pathOrBuffer !== 'string') {
-          throw new Error('Uint8Array is not supported');
-        }
-        const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
-        await handler.loadModel(options || {});
-        resolve(handler);
-      } catch (e) {
-        reject(e);
-      }
-    });
+    if (typeof pathOrBuffer !== 'string') {
+      throw new Error('Uint8Array is not supported');
+    }
+    const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
+    await handler.loadModel(options || {});
+    return handler;
   }
 }
 

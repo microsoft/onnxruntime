@@ -235,9 +235,9 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
 
 ### NPM Packaging
 
-1. Update a version using `npm verison <version>`. If it's for a dev, use `npm version <version>-dev.<subversion>`
+1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Run pre-pack to change `onnxruntime-common` package to point to a published one
+2. Run `yarn prepack` to change `onnxruntime-common` to point to a published npm package
 
 3. Run `npm pack` and verify NPM package contents
 
