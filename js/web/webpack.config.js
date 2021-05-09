@@ -25,6 +25,9 @@ function addCopyrightBannerPlugin(mode) {
         },
         compress: {
           passes: 2
+        },
+        mangle: {
+          reserved: ["_scriptDir"]
         }
       }
     });
