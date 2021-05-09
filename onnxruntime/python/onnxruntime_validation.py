@@ -8,7 +8,6 @@ Check OS requirements for ONNX Runtime Python Bindings.
 import platform
 import linecache
 import warnings
-import ctypes
 import sys
 
 
@@ -60,90 +59,71 @@ def check_distro_info():
                       __my_system__)
 
 
-def find_cudart_versions(build_env=False):
-    # ctypes.CDLL and ctypes.util.find_library load the latest installed library.
-    # it may not the the library that would be loaded by onnxruntime.
-    # for example, in an environment already has Cuda 11.1 installed.
-    # it later has conda cudatoolkit (10.2.89) installed. ctypes will find cudart 10.2.
-    # however, onnxruntime will find and load Cuda 11.1 and works fine.
-    # for the above reason, we need find all versions in the environment and
-    # only give warnings if the expected cuda version is not found.
-    # in onnxruntime build environment, we expected only one Cuda version.
-    if 'linux' not in sys.platform:
-        warnings.warn('find_cudart_versions only works on Linux')
-        return None
+def validate_build_package_info(version):
+    try:
+        from onnxruntime.training.ortmodule import ORTModule
+        has_ortmodule = True
+    except ImportError:
+        has_ortmodule = False
+        print("no ortmodule")
+    except:
+        # this may happen if Cuda is not installed
+        has_ortmodule = True
 
-    cudart_possible_versions = {None}
-    if not build_env:
-        # if not in a build environment, there may be more than one installed cudart.
-        cudart_possible_versions.update({
-            '11.3',
-            '11.2',
-            '11.1',
-            '11.0',
-            '10.2',
-            '10.1',
-            '10.0'})
+    package_name = ''
+    cuda_version = ''
 
-    def get_cudart_version(find_cudart_version=None):
-        cudart_lib_filename = 'libcudart.so'
-        if find_cudart_version:
-            cudart_lib_filename = cudart_lib_filename + '.' + find_cudart_version
-
+    if has_ortmodule:
         try:
-            cudart = ctypes.CDLL(cudart_lib_filename)
-            cudart.cudaRuntimeGetVersion.restype = int
-            cudart.cudaRuntimeGetVersion.argtypes = [ctypes.POINTER(ctypes.c_int)]
-            version = ctypes.c_int()
-            status = cudart.cudaRuntimeGetVersion(ctypes.byref(version))
-            if status != 0:
-                return None
+            # collect onnxruntime package name, version, and cuda version
+            from .build_and_package_info import package_name
+            from .build_and_package_info import __version__ as version
+
+            cuda_version = None
+            try:
+                from .build_and_package_info import cuda_version
+            except: # noqa
+                pass
+
+            print('onnxruntime training package info: package_name:', package_name, file=sys.stderr)
+            print('onnxruntime training package info: __version__:', version, file=sys.stderr)
+
+            if cuda_version:
+                print('onnxruntime training package info: cuda_version:', cuda_version, file=sys.stderr)
+
+                # collect cuda library build info. the library info may not be available
+                # when the build environment has none or multiple libraries installed
+                try:
+                    from .build_and_package_info import cudart_version
+                    print('onnxruntime build info: cudart_version:', cudart_version, file=sys.stderr)
+                except: # noqa
+                    print('WARNING: failed to get cudart_version from onnxruntime build info.', file=sys.stderr)
+                    cudart_version = None
+
+                try:
+                    from .build_and_package_info import cudnn_version
+                    print('onnxruntime build info: cudnn_version:', cudnn_version, file=sys.stderr)
+                except: # noqa
+                    print('WARNING: failed to get cudnn_version from onnxruntime build info', file=sys.stderr)
+                    cudnn_version = None
+
+                # collection cuda library info from current environment.
+                from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
+                local_cudart_versions = find_cudart_versions(build_env=False)
+                if cudart_version and cudart_version not in local_cudart_versions:
+                    print('WARNING: failed to find cudart version that matches onnxruntime build info', file=sys.stderr)
+                    print('WARNING: found cudart versions: ', local_cudart_versions, file=sys.stderr)
+
+                local_cudnn_versions = find_cudnn_versions(build_env=False)
+                if cudnn_version and cudnn_version not in local_cudnn_versions:
+                    # need to be soft on cudnn version - very likely there is a mismatch but onnxruntime works just fine.
+                    print('INFO: failed to find cudnn version that matches onnxruntime build info', file=sys.stderr)
+                    print('INFO: found cudnn versions: ', local_cudnn_versions, file=sys.stderr)
+            else:
+                # TODO: rcom
+                pass
+
         except: # noqa
-            return None
+            print('WARNING: failed to collect onnxruntime version and build info', file=sys.stderr)
 
-        return version.value
-
-    # use set to avoid duplications
-    cudart_found_versions = {
-        get_cudart_version(find_cudart_version) for find_cudart_version in cudart_possible_versions}
-
-    # convert to list and remove None
-    return [ver for ver in cudart_found_versions if ver]
-
-
-def find_cudnn_versions(build_env=False):
-    # comments in get_cudart_version apply here
-    if 'linux' not in sys.platform:
-        warnings.warn('find_cudnn_versions only works on Linux')
-
-    cudnn_possible_versions = {None}
-    if not build_env:
-        # if not in a build environment, there may be more than one installed cudnn.
-        # https://developer.nvidia.com/rdp/cudnn-archive to include all that may support Cuda 10+.
-        cudnn_possible_versions.update({
-            '8.2',
-            '8.1.1', '8.1.0',
-            '8.0.5', '8.0.4', '8.0.3', '8.0.2', '8.0.1',
-            '7.6.5', '7.6.4', '7.6.3', '7.6.2', '7.6.1', '7.6.0',
-            '7.5.1', '7.5.0',
-            '7.4.2', '7.4.1',
-            '7.3.1', '7.3.0',
-        })
-
-    def get_cudnn_version(find_cudnn_version=None):
-        cudnn_lib_filename = 'libcudnn.so'
-        if find_cudnn_version:
-            cudnn_lib_filename = cudnn_lib_filename + '.' + find_cudnn_version
-
-        try:
-            cudnn = ctypes.CDLL(cudnn_lib_filename)
-            cudnn_ver = cudnn.cudnnGetVersion()
-            return cudnn_ver
-        except: # noqa
-            return None
-
-    # use set to avoid duplications
-    cudnn_found_versions = {get_cudnn_version(find_cudnn_version) for find_cudnn_version in cudnn_possible_versions}
-
-    # convert to list and remove None
-    return list(cudnn_found_versions)
+    return package_name, version, cuda_version
