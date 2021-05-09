@@ -59,18 +59,19 @@ def check_distro_info():
                       __my_system__)
 
 
-def validate_build_package_info(version):
+def validate_build_package_info():
     try:
-        from onnxruntime.training.ortmodule import ORTModule
+        from onnxruntime.training.ortmodule import ORTModule # noqa
         has_ortmodule = True
     except ImportError:
         has_ortmodule = False
         print("no ortmodule")
-    except:
+    except: # noqa
         # this may happen if Cuda is not installed
         has_ortmodule = True
 
     package_name = ''
+    version = ''
     cuda_version = ''
 
     if has_ortmodule:
@@ -116,7 +117,8 @@ def validate_build_package_info(version):
 
                 local_cudnn_versions = find_cudnn_versions(build_env=False)
                 if cudnn_version and cudnn_version not in local_cudnn_versions:
-                    # need to be soft on cudnn version - very likely there is a mismatch but onnxruntime works just fine.
+                    # need to be soft on cudnn version
+                    # very likely there is a mismatch but onnxruntime works just fine.
                     print('INFO: failed to find cudnn version that matches onnxruntime build info', file=sys.stderr)
                     print('INFO: found cudnn versions: ', local_cudnn_versions, file=sys.stderr)
             else:
@@ -126,4 +128,7 @@ def validate_build_package_info(version):
         except: # noqa
             print('WARNING: failed to collect onnxruntime version and build info', file=sys.stderr)
 
-    return package_name, version, cuda_version
+    return has_ortmodule, package_name, version, cuda_version
+
+
+has_ortmodule, package_name, version, cuda_version = validate_build_package_info()

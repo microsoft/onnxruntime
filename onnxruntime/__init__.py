@@ -11,8 +11,7 @@ __version__ = "1.7.0"
 __author__ = "Microsoft"
 
 from onnxruntime.capi import onnxruntime_validation
-
-package_name, __version__, cuda_version = onnxruntime_validation.validate_build_package_info(__version__)
+from onnxruntime.capi.onnxruntime_validation import has_ortmodule
 
 from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
     RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
@@ -22,12 +21,17 @@ from onnxruntime.capi._pybind_state import get_all_providers, get_available_prov
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 
 from onnxruntime.capi.training import *  # noqa: F403
-import sys
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
 try:
     from . import experimental
 except ImportError:
     pass
+
+package_name, cuda_version = '', ''
+if has_ortmodule:
+    from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
+    if version:
+        __version__ = version
 
 onnxruntime_validation.check_distro_info()

@@ -375,7 +375,7 @@ if enable_training:
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
 
-        version_path = path.join('onnxruntime', 'build_and_package_info.py')
+        version_path = path.join('onnxruntime', 'capi', 'build_and_package_info.py')
         with open(version_path, 'w') as f:
             f.write("package_name = '{}'\n".format(package_name))
             f.write("__version__ = '{}'\n".format(version_number))
