@@ -28,4 +28,31 @@ bool BuildFunctionProto(FunctionProto& functionProto,
                         const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
                         const std::vector<OperatorSetIdProto>& relied_opsets = {});
 
+struct FunctionBuilder {
+  const FunctionBodyBuildContext& ctx;
+  FunctionBuilder(const FunctionBodyBuildContext& ctx_) : ctx(ctx_) {}
+
+  inline int64_t GetAttrOrDefault(const std::string& attributeName, int64_t defaultValue) const {
+    auto attr_proto = ctx.getAttribute(attributeName);
+    if ((nullptr != attr_proto) && attr_proto->has_i())
+      return attr_proto->i();
+    return defaultValue;
+  }
+
+  inline float GetAttrOrDefault(const std::string& attributeName, float defaultValue) const {
+    auto attr_proto = ctx.getAttribute(attributeName);
+    if ((nullptr != attr_proto) && attr_proto->has_f())
+      return attr_proto->f();
+    return defaultValue;
+  }
+
+  inline bool GetElementType(int i, TensorProto_DataType& elem_type) {
+    auto* tp = ctx.getInputType(i);
+    if ((tp == nullptr) || (!tp->has_tensor_type()))
+      return false;
+    elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+    return true;
+  }
+};
+
 }  // namespace ONNX_NAMESPACE

@@ -765,7 +765,97 @@ void RegisterTrainingOpSchemas() {
       .TypeConstraint(
           "T_BOOL",
           {"tensor(bool)"},
-          "Constrain types to boolean tensors.");
+          "Constrain types to boolean tensors.")
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            FunctionBuilder bldr(ctx);
+            float alpha = bldr.GetAttrOrDefault("alpha", 0.9f);
+            float beta = bldr.GetAttrOrDefault("beta", 0.999f);
+            float lambda = bldr.GetAttrOrDefault("lambda", 0.0f);
+            float epsilon = bldr.GetAttrOrDefault("epsilon", 1e-8f);  // => T4
+
+            ORT_ENFORCE(alpha >= 0);
+            ORT_ENFORCE(beta >= 0);
+            ORT_ENFORCE(lambda >= 0);
+            ORT_ENFORCE(epsilon >= 0);
+
+            int64_t tmp_flag = ctx.GetAttr<int64_t>("do_bias_correction", "Missing/Invalid do_bias_correction");
+            ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
+            bool do_bias_correction_ = (tmp_flag != 0);
+
+            int64_t weight_decay_mode_ = ctx.GetAttrOrDefault("weight_decay_mode", static_cast<int64_t>(0));
+            ORT_ENFORCE(weight_decay_mode_ == 0 || weight_decay_mode_ == 1, "Only 0 and 1 are supported for weight decay mode.");
+
+            const auto eta = "R";        // T1 (*float* or ...)
+            const auto step = "T";       // T2 (int64)
+            const auto W = "weights";    // T3 (double or *float*)
+            const auto G = "gradients";  // T_GRAD (float/mlfloat or ...)
+            const auto M1 = "moment_1";  // T4 (float/mlfloat or ...)
+            const auto M2 = "moment_2";  // T4
+
+            // Update exponentially-averaged historical gradient
+            // new_moment_1 = alpha * moment_1 + (1 - alpha) * gradients
+
+            bldr.Constant("alpha", alpha);
+            bldr.Constant("one_minus_alpha", 1.0f - alpha);
+            bldr.add("moment_1f", "Cast", "moment_1");
+            bldr.add("gradients_f", "Cast", "gradients");
+            bldr.add("T1", "Mul", "alpha", "moment_1f");
+            bldr.add("T2", "Mul", "one_minus_alpha", "gradients_f");
+            bldr.add("new_moment_1f", "Add", "T1", "T2");
+
+            // Update exponentially-averaged historical squared gradient
+            // new_moment_2 = beta * moment_2 + ((1 - beta) *  gradients) * gradients)
+
+            if (do_bias_correction_) {
+              bldr.add("Tfloat", "Cast", "T");
+              
+            } else {
+              bldr.Constant("alpha_correction", 1.0f);
+              bldr.Constant("beta_correction", 1.0f);
+            }
+            const float alpha_correction = do_bias_correction_ ? where("T" > 0, 1.0f - pow(alpha, cast<float>("T")), 1.0f) : 1.0f;  // float?
+            const float beta_correction = do_bias_correction_ ? where("T" > 0, 1.0f - pow(beta, cast<float>("T")), 1.0f) : 1.0f;    // float?
+
+            // Currently two modes of Adamw are supported:
+
+            if (weight_decay_mode_ == 0) {
+              // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
+              //         bias correction is applied on m and v individually,
+              //         weight decay is applied before weight is updated.
+
+              const auto& denom = sqrt("new_moment_2" / beta_correction) + epsilon_;                       // T4
+              const auto& update = (("new_moment_1" / alpha_correction) / denom) + (lambda_ * "weights");  //  T4 u T3
+              const auto& delta = -"R" * update;                                                           // T1 u T3 u T4
+
+            } else {
+              // (weight_decay_mode_ == 1)
+              // Mode 1: Huggingface https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.,
+              //         bias correction is applied on learning rate,
+              //         weight decay is applied after weight is updated.
+              const auto& denom = sqrt("new_moment_2") + epsilon_;                          // T4
+              const auto& step_size = "R" * std::sqrt(beta_correction) / alpha_correction;  //  T1 u float
+
+              // Huggingface updates weights in the following logic:
+              // param' = param - step_size * m1o / denom
+
+              // param_out = param' - original_lr * lambda * param'
+              // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+              // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+              const auto& delta = -step_size * "new_moment_1" / denom - eta * lambda_ * ("weights" - step_size * "new_moment_1" / denom);  // T1 u T3 u T4
+            }
+
+            // Weight, gradient, and "T" update.
+            if (ctx.hasOutput(4)) {
+              bldr.add("new_gradients", "Identity", "delta");
+            }
+            if (ctx.hasOutput(3)) {
+              bldr.add("new_weights", "Add", "weights", "delta");
+            }
+
+            bldr.Constant("one", 1);
+            bldr.add("new_T", "Add", "T", "one");
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
@@ -1453,7 +1543,7 @@ Example 4:
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
             if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
-              return false; // ONNX op Where doesn't support bfloat16 yet.
+              return false;  // ONNX op Where doesn't support bfloat16 yet.
 
             if (ctx.hasInput(2)) {
               // ratio specified.
