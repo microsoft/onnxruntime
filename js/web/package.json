@@ -75,6 +75,9 @@
   "browser": {
     "fs": false,
     "path": false,
-    "util": false
+    "util": false,
+    "worker_threads": false,
+    "perf_hooks": false,
+    "os": false
   }
 }

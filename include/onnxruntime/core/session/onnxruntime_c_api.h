@@ -268,21 +268,24 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                           // default cuda memory limitation to maximum finite value of size_t.
+                                                  // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
+                                                  // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
+  OrtArenaCfg* default_memory_arena_cfg;
 } OrtCUDAProviderOptions;
 
 /// <summary>
 /// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
 /// </summary>
 typedef struct OrtROCMProviderOptions {
-  int device_id;                                    // hip device with id=0 as default device.
-  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
-  size_t gpu_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
-  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+  int device_id;                      // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;  // miopen conv algo exhaustive search option
+  size_t gpu_mem_limit;               // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;          // default area extend strategy to KNextPowerOfTwo.
 } OrtROCMProviderOptions;
 
 /// <summary>
@@ -311,9 +314,9 @@ typedef struct OrtOpenVINOProviderOptions {
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
-  size_t num_of_threads;  // 0 uses default number of threads
-  unsigned char use_compiled_network; // 0 = false, nonzero = true
-  const char* blob_dump_path; // path is set to empty by default
+  size_t num_of_threads;               // 0 uses default number of threads
+  unsigned char use_compiled_network;  // 0 = false, nonzero = true
+  const char* blob_dump_path;          // path is set to empty by default
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -1192,6 +1195,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 
   /**
+  * (Deprecated) Use `CreateArenaCfgV2` instead
   * Use this API to create the configuration of an arena that can eventually be used to define
   * an arena based allocator's behavior
   * \param max_mem - use 0 to allow ORT to choose the default
@@ -1277,6 +1281,41 @@ struct OrtApi {
      */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out, _Inout_ size_t* size);
+
+  /**
+  * Use this API to create the configuration of an arena that can eventually be used to define
+  * an arena based allocator's behavior
+  * \param arena_config_keys - keys to configure the arena
+  * \param arena_config_values - values to configure the arena
+  * \param num_keys - number of keys passed in
+  * Supported keys are (See docs/C_API.md for details on what the following parameters mean and how to choose these values.):
+  * "max_mem": Maximum memory that can be allocated by the arena based allocator. 
+     Use 0 for ORT to pick the best value. Default is 0.
+  * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested. 
+     Use -1 to allow ORT to choose the default.
+  * "initial_chunk_size_bytes": (Possible) Size of the first allocation in the arena. 
+     Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the first allocation size is determined by the allocation memory request. 
+  * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
+     crossing which the current chunk is chunked into 2.
+  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+     Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the allocation size is determined by the allocation memory request.
+     Further allocation sizes are governed by the arena extend strategy.
+  */
+  ORT_API2_STATUS(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys,
+                  _In_reads_(num_keys) const size_t* arena_config_values, _In_ size_t num_keys,
+                  _Outptr_ OrtArenaCfg** out);
+
+  /**
+     * Set a single run configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
+     * The config_key and the format of config_value are defined in onnxruntime_run_options_config_keys.h
+     */
+  ORT_API2_STATUS(AddRunConfigEntry, _Inout_ OrtRunOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*

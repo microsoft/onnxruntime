@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-export interface BackendWasmModule extends EmscriptenModule {
+export interface OrtWasmModule extends EmscriptenModule {
+  //#region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
@@ -9,8 +10,10 @@ export interface BackendWasmModule extends EmscriptenModule {
   UTF8ToString(offset: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
+  //#endregion
 
-  _OrtInit(): void;
+  //#region ORT APIs
+  _OrtInit(numThreads: number, loggingLevel: number): void;
 
   _OrtCreateSession(dataOffset: number, dataLength: number): number;
   _OrtReleaseSession(sessionHandle: number): void;
@@ -29,7 +32,12 @@ export interface BackendWasmModule extends EmscriptenModule {
   _OrtRun(
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
       outputNamesOffset: number, outputCount: number, outputsOffset: number): number;
+  //#endregion
+
+  //#region config
+  mainScriptUrlOrBlob?: string|Blob;
+  //#endregion
 }
 
-declare const moduleFactory: EmscriptenModuleFactory<BackendWasmModule>;
+declare const moduleFactory: EmscriptenModuleFactory<OrtWasmModule>;
 export default moduleFactory;
