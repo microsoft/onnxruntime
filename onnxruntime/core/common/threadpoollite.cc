@@ -145,7 +145,7 @@ void ThreadPoolLite::MainLoop(int idx) {
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
 ThreadPoolLite2<ThreadPerPool, PoolSize>::ThreadPoolLite2(Env*,
-                                                          const ThreadOptions&,
+                                                          const ThreadOptions& options,
                                                           const NAME_CHAR_TYPE*,
                                                           int num_threads,
                                                           bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
@@ -153,6 +153,7 @@ ThreadPoolLite2<ThreadPerPool, PoolSize>::ThreadPoolLite2(Env*,
   num_pools_ = num_sub_threads / ThreadPerPool + (num_sub_threads % ThreadPerPool ? 1 : 0);
   num_slots_ = num_pools_ * PoolSize;
   slots_.reset(new Slot[num_slots_]);
+  set_denormal_as_zero_ = options.set_denormal_as_zero;
   size_t affinity_mask = 3;
   for (int i = 0; i < num_sub_threads; ++i) {
     sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
@@ -240,6 +241,7 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t 
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::MainLoop(int idx) {
+  SetDenormalAsZero(set_denormal_as_zero_);
   auto slot_from = idx / ThreadPerPool * PoolSize;
   auto slot_to = slot_from + PoolSize;
   while (!exit_) {
