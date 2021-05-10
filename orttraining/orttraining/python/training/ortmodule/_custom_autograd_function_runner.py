@@ -45,7 +45,7 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                 ctx = result.grad_fn
             elif isinstance(result, tuple) or isinstance(result, list):
                 for value in result:
-                    unwrapped_value = _ortvalue_from_dlpack(to_dlpack(v))
+                    unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
                     unwrapped_values.append(unwrapped_value)
                     if ctx is None and unwrapped_value is not None and hasattr(unwrapped_value, 'grad_fn'):
                         ctx = unwrapped_value.grad_fn

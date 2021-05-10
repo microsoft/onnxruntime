@@ -653,7 +653,63 @@ def test_EvalTest():
     run_evalue_test_and_compare(model_builder, input_generator, label_input)
 
 
-test_GeLU()
+###################################################################################
+
+class TwoOutputFunction(torch.autograd.Function):
+    @staticmethod
+    # bias is an optional argument
+    def forward(ctx, x, y):
+        print("TwoOutputFunction(torch.autograd.Function) forward")
+        ctx.save_for_backward(x, y)
+        w = x + y
+        z = x * y
+        return w, z
+
+    @staticmethod
+    def backward(ctx, dw, dz):
+        x, y = ctx.saved_tensors
+        # dL/dx = dL/dw * dw/dx + dL/dz * dz/dx
+        # dw/dx = 1
+        # dz/dx = y
+        dx = dw * 1.0 + dz * y
+        #
+        # dL/dw = dL/dw * dw/dy + dL/dz * dz/dy
+        # dw/dy = 1
+        # dz/dy = x
+        dy = dw * 1.0 + dz * x
+        return dx, dy 
+
+class TwoOutputModel(torch.nn.Module):
+    def __init__(self, output_size):
+        super(TwoOutputModel, self).__init__()
+        self.fun = TwoOutputFunction.apply
+        self.bias = Parameter(torch.empty(
+            output_size,
+            device=torch.cuda.current_device(),
+            dtype=torch.float))
+
+        # Always initialize bias to zero.
+        with torch.no_grad():
+            self.bias.uniform_()
+
+    def forward(self, x):
+        a, b = self.fun(x, self.bias)
+        return a + b
+
+
+def test_TwoOutputFunction():
+    output_size = 2
+    def model_builder():
+        return TwoOutputModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_evalue_test_and_compare(model_builder, input_generator, label_input)
+
 test_MegatronF()
 test_ScalarAndTuple()
 
@@ -669,3 +725,6 @@ test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
 
 # test pure inferencing scenarios, when inputs don't requires_grad.
 test_EvalTest()
+
+# Multi-input and multi-output custom function. 
+test_TwoOutputFunction()
