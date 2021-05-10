@@ -188,6 +188,8 @@ void RegisterNchwcSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Attr("scales", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("mode", "", AttributeProto::STRING, std::string("nearest"))
+      .Attr("coordinate_transformation_mode", "", AttributeProto::STRING, std::string("asymmetric"))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
