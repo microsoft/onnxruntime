@@ -359,6 +359,7 @@ void setup_training_params(GPT2Parameters& params) {
         0,
         true,
         0,
+        nullptr,
         nullptr};
 
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
@@ -439,17 +440,17 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
 
   auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params.horizontal_parallel_size;
   auto training_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                                   params.train_data_dir,
-                                                                   max_num_files_preload,
-                                                                   rank_in_data_parallel_group,
-                                                                   params.data_parallel_size);
+                                                           params.train_data_dir,
+                                                           max_num_files_preload,
+                                                           rank_in_data_parallel_group,
+                                                           params.data_parallel_size);
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
   }
 
   if (!params.perf_output_dir.empty()) {
@@ -463,8 +464,8 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   // only test and save trained model on device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
 
     ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
   }

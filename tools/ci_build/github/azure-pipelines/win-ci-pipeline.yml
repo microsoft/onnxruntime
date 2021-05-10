@@ -6,8 +6,7 @@ parameters:
 
 jobs:
 - job: 'build'
-  pool: 'RyanWinGPU'
-# pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2019'
   strategy:
     matrix:
       x64_debug:
