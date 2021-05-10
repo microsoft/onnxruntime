@@ -386,7 +386,7 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                               int input_idx,
                               /*out*/ bool& stored_weight) override {
     ORT_UNUSED_PARAMETER(input_idx);
@@ -398,7 +398,7 @@ class PrePackingTestOpKernel : public OpKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);

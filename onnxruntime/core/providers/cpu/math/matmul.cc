@@ -127,7 +127,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 }
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                              /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                              /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                               AllocatorPtr alloc) {
   is_packed = false;
 
@@ -135,8 +135,8 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool&
   if (input_idx == 1) {
     size_t packed_b_size;
     is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, packed_b_size, b_shape_);
-    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-    if (is_packed && !kernel_owns_prepacked_buffer) {
+    bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+    if (is_packed && share_prepacked_weights) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
       prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
       prepacked_weight_for_caching->shapes_.push_back(b_shape_);
@@ -146,7 +146,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool&
   return Status::OK();
 }
 
-Status MatMul<float>::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+Status MatMul<float>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                                            int input_idx,
                                            /*out*/ bool& stored_weight) {
   stored_weight = false;

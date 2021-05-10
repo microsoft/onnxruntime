@@ -53,7 +53,7 @@ class OpKernel {
   // Override this function to PrePack initialized constant tensor to the format as needed.
   // For example, MatMul kernel can pack the input B if it is constant like code below.
   //   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-  //                  /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+  //                  /*out*/ PrePackedWeights* prepacked_weight_for_caching,
   //                  AllocatorPtr alloc) override {
   //     is_packed = false;
   //     if (input_idx == 1) {
@@ -82,14 +82,14 @@ class OpKernel {
   //               (i.e.) the kernel does not own the buffer.
 
   virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*out*/ bool& is_packed,
-                         /*out*/ PrepackedWeight* /*prepacked_weight_for_caching*/,
+                         /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/,
                          AllocatorPtr /*alloc*/) {
     is_packed = false;
     return Status::OK();
   }
 
   // Override this function to use provided pre-packed weight.
-  // Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  // Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
   //                                        int input_idx,
   //                                        /*out*/ bool& stored_weight) {
   //     stored_weight = true;
@@ -101,7 +101,7 @@ class OpKernel {
   // @param input_idx: The input index of the tensor in this kernel
   // @param stored_weight: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been stored by the kernel.
-  virtual Status StorePrePackedWeight(const PrepackedWeight& /*prepacked_weight*/,
+  virtual Status StorePrePackedWeight(const PrePackedWeights& /*prepacked_weight*/,
                                       int /*input_idx*/,
                                       /*out*/ bool& stored_weight) {
     stored_weight = false;

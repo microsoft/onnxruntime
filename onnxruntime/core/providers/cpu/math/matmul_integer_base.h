@@ -12,7 +12,7 @@ class MatMulIntegerBase : public OpKernel {
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override {
     is_packed = false;
 
@@ -41,8 +41,8 @@ class MatMulIntegerBase : public OpKernel {
       packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
       MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
 
-      bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-      if (!kernel_owns_prepacked_buffer) {
+      bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+      if (share_prepacked_weights) {
         prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
         prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
         prepacked_weight_for_caching->shapes_.push_back(b_shape_);
@@ -55,7 +55,7 @@ class MatMulIntegerBase : public OpKernel {
     return Status::OK();
   }
 
-  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                               int input_idx,
                               /*out*/ bool& stored_weight) override {
     stored_weight = false;

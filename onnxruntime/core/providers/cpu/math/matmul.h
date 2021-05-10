@@ -25,10 +25,10 @@ class MatMul<float> final : public OpKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override;
 
-  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                               int input_idx,
                               /*out*/ bool& stored_weight) override;
 

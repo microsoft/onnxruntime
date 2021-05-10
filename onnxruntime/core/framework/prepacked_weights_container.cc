@@ -6,37 +6,6 @@
 
 namespace onnxruntime {
 
-class BufferHasher {
- public:
-  std::size_t operator()(const int8_t* data, size_t num_bytes) const {
-    std::size_t ret = num_bytes;
-    for (size_t i = 0; i < num_bytes; ++i) {
-      ret ^= std::hash<int32_t>()(data[i]);
-    }
-    return ret;
-  }
-};
-
-uint64_t PrepackedWeight::GetHash() {
-  // Adaptation of the hashing logic of the KernelDef class
-
-  uint32_t hash[4] = {0, 0, 0, 0};
-
-  auto hash_size_t = [&hash](size_t i) { MurmurHash3::x86_128(&i, sizeof(size_t), hash[0], &hash); };
-
-  ORT_ENFORCE(buffers_.size() == buffer_sizes_.size());
-  for (size_t iter = 0; iter < buffers_.size(); ++iter) {
-    BufferHasher buffer_hasher;
-    size_t buffer_hash = buffer_hasher(reinterpret_cast<int8_t*>(buffers_[iter].get()), buffer_sizes_[iter]);
-    hash_size_t(buffer_hash);
-  }
-
-  uint64_t returned_hash = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
-  returned_hash |= uint64_t(hash[1]) << 32;
-
-  return returned_hash;
-}
-
 AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_name) {
   auto iter = allocators_.find(device_name);
 
@@ -60,12 +29,12 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
   }
 }
 
-const PrepackedWeight& PrepackedWeightsContainer::GetCachedWeight(const std::string& key) {
+const PrePackedWeights& PrepackedWeightsContainer::GetCachedWeight(const std::string& key) {
   ORT_ENFORCE(HasCachedWeight(key), "PrepackedWeightsContainer does not have an initializer with the same key: ", key);
   return initialized_tensor_name_to_prepacked_weights_[key];
 }
 
-void PrepackedWeightsContainer::WriteCachedWeight(const std::string& key, PrepackedWeight&& packed_weight) {
+void PrepackedWeightsContainer::WriteCachedWeight(const std::string& key, PrePackedWeights&& packed_weight) {
   ORT_ENFORCE(!HasCachedWeight(key), "PrepackedWeightsContainer already has an initializer with the same key: ", key);
   initialized_tensor_name_to_prepacked_weights_.insert({key, std::move(packed_weight)});
 }

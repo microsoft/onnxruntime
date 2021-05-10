@@ -306,7 +306,7 @@ class SessionState {
   }
 
   size_t GetUsedCachedprepackedWeightCounter() const {
-    return used_cached_pre_packed_weight_counter_;
+    return used_cached_pre_packed_weights_counter_;
   }
 
  private:
@@ -483,7 +483,7 @@ class SessionState {
 
   // Counter for number of times a cached version of the pre-packed weight corresponding to
   // a constant initialized weight was used by the session state
-  size_t used_cached_pre_packed_weight_counter_ = 0;
+  size_t used_cached_pre_packed_weights_counter_ = 0;
 };
 
 }  // namespace onnxruntime

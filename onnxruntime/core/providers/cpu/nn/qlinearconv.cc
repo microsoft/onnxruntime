@@ -25,10 +25,10 @@ class QLinearConv : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override;
 
-  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                               int input_idx,
                               /*out*/ bool& stored_weight) override;
 
@@ -91,7 +91,7 @@ ONNX_OPERATOR_KERNEL_EX(
 #endif
 
 Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                            /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                            /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                             AllocatorPtr alloc) {
   is_packed = false;
 
@@ -126,7 +126,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
   const size_t group_output_channels = output_channels / group_count;
   const size_t kernel_dim = group_input_channels * kernel_size;
 
-  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
+  bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
@@ -154,7 +154,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
         Wdata += W_offset;
       }
 
-      if (!kernel_owns_prepacked_buffer) {
+      if (share_prepacked_weights) {
         prepacked_weight_for_caching->buffers_.push_back(std::move(packed_W_buffer_));
         prepacked_weight_for_caching->buffer_sizes_.push_back(packed_W_data_size);
         prepacked_weight_for_caching->weights_sizes_.push_back(packed_W_size_);
@@ -166,13 +166,13 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
       is_packed = true;
       return Status::OK();
     } else {
-      if (!kernel_owns_prepacked_buffer) {
+      if (share_prepacked_weights) {
         prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
         prepacked_weight_for_caching->is_filled_ = true;
       }
     }
   } else {
-    if (!kernel_owns_prepacked_buffer) {
+    if (share_prepacked_weights) {
       prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
       prepacked_weight_for_caching->is_filled_ = true;
     }
@@ -184,7 +184,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
-  if (!kernel_owns_prepacked_buffer) {
+  if (share_prepacked_weights) {
     prepacked_weight_for_caching->buffers_.push_back(std::move(reordered_W_buffer_));
     prepacked_weight_for_caching->buffer_sizes_.push_back(reordered_w_data_size);
     prepacked_weight_for_caching->flags_.push_back(is_W_signed_);
@@ -196,18 +196,17 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
   return Status::OK();
 }
 
-Status QLinearConv::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+Status QLinearConv::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                                          int input_idx,
                                          /*out*/ bool& stored_weight) {
   if (input_idx != 3) {
     return Status::OK();
   }
 
-  is_W_packed_ = true;
   stored_weight = true;
 
+  is_W_packed_ = true;
   is_W_signed_ = prepacked_weight.flags_[0];
-
   if (prepacked_weight.buffers_.size() == 1) {  // This means that only packed_W_ exists
     packed_W_buffer_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
     packed_W_size_ = prepacked_weight.weights_sizes_[0];

@@ -362,5 +362,145 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
+TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
+  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+
+  int num_directions = 1;
+  int input_size = 2;
+  int batch_size = 1;
+  int hidden_size = 16;
+
+  std::vector<std::string> activations;
+  activations = {"sigmoid", "tanh", "tanh"};
+  test.AddAttribute<std::vector<std::string>>("activations", activations);
+
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", static_cast<int64_t>(hidden_size));
+  test.AddAttribute<int64_t>("input_forget", 0);
+
+  RandomValueGenerator rand_gen;
+
+  // X
+  int64_t seq_len = 1;  // only use seq length 1 to model the test
+  std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
+  std::vector<float> X_data = rand_gen.Gaussian<float>({seq_len, batch_size, input_size}, 0.0f, 0.25f);
+  test.AddInput<float>("X", X_dims, X_data);
+
+  // W
+  std::vector<int64_t> W_dims = {num_directions, input_size, 4 * hidden_size};
+  std::vector<float> W_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, input_size}, 0.0f, 0.25f);
+
+  std::vector<float> w_scale;
+  std::vector<int8_t> w_zp;
+  std::vector<int8_t> w_quant;
+  QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size, false);
+  test.AddInput<int8_t>("W", W_dims, w_quant, true);  // Trigger pre-packing
+
+  // R
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, 4 * hidden_size};
+  std::vector<float> R_data = rand_gen.Gaussian<float>({num_directions, 4 * hidden_size, hidden_size}, 0.0f, 0.25f);
+
+  std::vector<float> r_scale;
+  std::vector<int8_t> r_zp;
+  std::vector<int8_t> r_quant;
+  QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size, false);
+  test.AddInput<int8_t>("R", R_dims, r_quant, true);  // Trigger pre-packing
+
+  // B
+  test.AddMissingOptionalInput<float>();
+
+  // sequence_lens
+  test.AddMissingOptionalInput<int>();
+
+  // initial_h
+  std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_h_data = rand_gen.Gaussian<float>(initial_h_dims, 0.0f, 0.25f);
+  test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
+
+  // initial_c
+  std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_c_data = rand_gen.Gaussian<float>(initial_c_dims, 0.0f, 0.25f);
+  test.AddInput<float>("initial_c", initial_c_dims, initial_c_data);
+
+  test.AddMissingOptionalInput<float>();
+
+  std::vector<int64_t> per_tensor_dims = {num_directions};
+  test.AddInput<float>("W_scale", per_tensor_dims, w_scale);
+  test.AddInput<int8_t>("W_zero_point", per_tensor_dims, w_zp);
+
+  test.AddInput<float>("R_scale", per_tensor_dims, r_scale);
+  test.AddInput<int8_t>("R_zero_point", per_tensor_dims, r_zp);
+
+  std::vector<float> Y_data;
+  std::vector<float> Y_h_data;
+  std::vector<float> Y_c_data;
+  ComputeRefOutput<int8_t>(Y_data, Y_h_data, Y_c_data,
+                           input_size, batch_size, hidden_size,
+                           X_data, W_data, R_data,
+                           nullptr,
+                           nullptr,
+                           initial_h_data, initial_c_data,
+                           "forward", activations, false);
+
+  std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+
+  std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  auto W_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(W_dims),
+                                                 w_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue W;
+
+  W.Init(W_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  auto R_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(R_dims),
+                                                 r_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue R;
+
+  R.Init(R_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  SessionOptions so;
+
+  // Set up weight(s) as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("W", &W), Status::OK());
+  ASSERT_EQ(so.AddInitializer("R", &R), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.AddPrePackedSharedContainerToSessions();
+
+  size_t used_cached_pre_packed_weights_counter = 0;
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
+             nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+  }
+
+  // Session 2
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
+             nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 2);  // Two pre-packed weights (R and W) have been shared thus far
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

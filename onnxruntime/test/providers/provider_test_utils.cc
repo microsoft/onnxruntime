@@ -26,7 +26,7 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-template<typename T>
+template <typename T>
 Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
   Tensor result(src.DataType(), src.Shape(), allocator);
   memcpy(result.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
@@ -39,7 +39,6 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-
   auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
@@ -71,7 +70,6 @@ template <typename T>
 struct TensorCheck {
   void operator()(const Tensor& expected_tensor, const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-
     Tensor expected_sorted, output_sorted;
     const T* expected;
     const T* output;
@@ -103,7 +101,6 @@ struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-
     const bool has_abs_err = params.absolute_error_.has_value();
     const bool has_rel_err = params.relative_error_.has_value();
 
@@ -217,7 +214,6 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
                             const Tensor& output_tensor,
                             const std::string& provider_type,
                             const CheckParams& params) {
-
   const bool has_abs_err = params.absolute_error_.has_value();
   const bool has_rel_err = params.relative_error_.has_value();
 
@@ -238,7 +234,7 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
   constexpr float threshold = 0.005f;
-#else 
+#else
   constexpr float threshold = 0.0001f;
 #endif
 
@@ -606,7 +602,8 @@ std::vector<MLValue> OpTester::ExecuteModel(
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names,
-    const std::string& provider_type) {
+    const std::string& provider_type,
+    /*out*/ size_t* used_cached_pre_packed_weights_counter) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
@@ -622,6 +619,15 @@ std::vector<MLValue> OpTester::ExecuteModel(
   }
 
   status = session_object.Initialize();
+
+  // After the model has initialized, we should be able to tell how many cached prepacked weights
+  // this model has used.
+  // Populate the value if the user has request this information.
+  if (used_cached_pre_packed_weights_counter) {
+    *used_cached_pre_packed_weights_counter =
+        session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
+  }
+
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
       EXPECT_TRUE(!status.IsOK());
@@ -758,7 +764,8 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    const Graph::ResolveOptions& options) {
+    const Graph::ResolveOptions& options,
+    /*out*/ size_t* used_cached_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
 #ifndef NDEBUG
@@ -850,7 +857,8 @@ void OpTester::Run(
         }
       }
 
-      InferenceSession session_object{so, GetEnvironment()};
+      InferenceSession session_object{so, GetEnvironment(),
+                                      add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
 
       ASSERT_TRUE(!execution_providers->empty())
           << "Empty execution providers vector.";
@@ -863,7 +871,8 @@ void OpTester::Run(
 
       fetches_ = ExecuteModel<InferenceSession>(
           *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types);
+          run_options, feeds, output_names, provider_types,
+          used_cached_pre_packed_weights_counter);
 
     } else {
       for (const std::string& provider_type : all_provider_types) {
@@ -876,7 +885,8 @@ void OpTester::Run(
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
-        InferenceSession session_object{so, GetEnvironment()};
+        InferenceSession session_object{so, GetEnvironment(),
+                                        add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
 
         for (auto& custom_session_registry : custom_session_registries_)
           ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
@@ -953,7 +963,7 @@ void OpTester::Run(
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type);
+            run_options, feeds, output_names, provider_type, used_cached_pre_packed_weights_counter);
 
         cur_provider = "not set";
       }
@@ -981,7 +991,8 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
   run_options.run_log_verbosity_level = 1;
 
   Status status;
-  InferenceSession subgraph_session_object{so, GetEnvironment()};
+  InferenceSession subgraph_session_object{so, GetEnvironment(),
+                                           add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
   ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
 

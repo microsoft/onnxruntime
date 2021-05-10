@@ -24,10 +24,10 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                  AllocatorPtr alloc) override;
 
-  Status StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                               int input_idx,
                               /*out*/ bool& stored_weight) override;
 
@@ -57,7 +57,7 @@ QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionC
 
 template <typename T>
 Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool& is_packed,
-                              /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                              /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                               AllocatorPtr alloc) {
   is_packed = false;
 
@@ -100,8 +100,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
     weights_data += head_size;
   }
 
-  bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-  if (!kernel_owns_prepacked_buffer) {
+  bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+  if (share_prepacked_weights) {
     prepacked_weight_for_caching->buffers_.push_back(std::move(packed_weights_));
     prepacked_weight_for_caching->buffer_sizes_.push_back(packed_weights_data_size);
     prepacked_weight_for_caching->shapes_.push_back(weight_shape_);
@@ -114,7 +114,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
 }
 
 template <typename T>
-Status QAttention<T>::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+Status QAttention<T>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                                            int input_idx,
                                            /*out*/ bool& stored_weight) {
   stored_weight = false;

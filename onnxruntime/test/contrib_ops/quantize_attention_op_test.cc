@@ -804,13 +804,79 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
       0.5f, 0.2f, 0.3f, -0.6f, 6.0f, 7.0f};
 
   std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f,
-      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f,
-      1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f,
-      };
+      0.1f,
+      -0.2f,
+      0.3f,
+      1.0f,
+      1.1f,
+      0.3f,
+      0.5f,
+      0.2f,
+      0.3f,
+      -0.6f,
+      1.5f,
+      2.0f,
+      0.5f,
+      0.1f,
+      0.4f,
+      1.6f,
+      1.0f,
+      2.0f,
+      0.4f,
+      0.8f,
+      0.9f,
+      0.1f,
+      -1.3f,
+      0.7f,
+      0.3f,
+      0.2f,
+      4.0f,
+      2.2f,
+      1.6f,
+      1.1f,
+      0.7f,
+      0.2f,
+      0.4f,
+      1.0f,
+      1.2f,
+      0.5f,
+      0.2f,
+      0.1f,
+      0.4f,
+      1.6f,
+      2.4f,
+      3.3f,
+      2.1f,
+      4.2f,
+      8.4f,
+      0.0f,
+      2.1f,
+      3.2f,
+      0.1f,
+      0.2f,
+      0.3f,
+      0.4f,
+      0.5f,
+      0.6f,
+      0.7f,
+      0.8f,
+      0.9f,
+      1.0f,
+      1.1f,
+      1.2f,
+      1.2f,
+      1.1f,
+      1.0f,
+      0.9f,
+      0.8f,
+      0.7f,
+      0.6f,
+      0.5f,
+      0.4f,
+      0.3f,
+      0.2f,
+      0.1f,
+  };
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
@@ -821,8 +887,7 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
       11.689527f, 2.769937f, 7.05f, 8.35f,
       11.69f, 2.77f, 7.05f, 8.35f,
       14.276558f, 5.374159f, 9.65f, 10.95f,
-      14.289073f, 5.370287f, 9.65f, 10.95f
-  };
+      14.289073f, 5.370287f, 9.65f, 10.95f};
 
   bool use_special_quantize_parameter = true;
   bool is_unidirectional = false;
@@ -831,6 +896,96 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_special_quantize_parameter, is_unidirectional, use_float16,
                    input_hidden_size);
+}
+
+TEST(QAttentionTest, SharedPrepackedWeights) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {2L};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+
+  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+
+  tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
+  const auto& weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
+  tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
+
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<float>("input_scale", {1}, {0.1f});
+  tester.AddInput<float>("weight_scale", {1}, {0.1f});
+  tester.AddOutput<float>("output", output_dims, output_data);
+
+  tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+
+  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+  tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
+                                           weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue weight;
+
+  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  SessionOptions so;
+
+  // Set up weight as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("weight", &weight), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  tester.AddPrePackedSharedContainerToSessions();
+
+  size_t used_cached_pre_packed_weights_counter = 0;
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
+               nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+  }
+  // Session 2
+  {
+    auto ep_vec = cpu_ep();
+    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
+               nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+  }
 }
 
 }  // namespace test

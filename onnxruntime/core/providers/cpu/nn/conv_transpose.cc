@@ -38,7 +38,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <typename T>
 Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*out*/ bool& is_packed,
-                                 /*out*/ PrepackedWeight* /*prepacked_weight_for_caching*/,
+                                 /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/,
                                  AllocatorPtr /*alloc*/) {
   is_packed = false;
   return Status::OK();
@@ -46,7 +46,7 @@ Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*
 
 template <>
 Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                                     /*out*/ PrepackedWeight* prepacked_weight_for_caching,
+                                     /*out*/ PrePackedWeights* prepacked_weight_for_caching,
                                      AllocatorPtr alloc) {
   is_packed = false;
 
@@ -74,8 +74,8 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
                     K, N);
     }
 
-    bool kernel_owns_prepacked_buffer = (prepacked_weight_for_caching == nullptr);
-    if (!kernel_owns_prepacked_buffer) {
+    bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+    if (share_prepacked_weights) {
       prepacked_weight_for_caching->buffers_.push_back(std::move(transposed_filter_));
       prepacked_weight_for_caching->buffer_sizes_.push_back(packed_filter_data_size);
       prepacked_weight_for_caching->shapes_.push_back(filter_shape_);
@@ -88,7 +88,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
 }
 
 template <typename T>
-Status ConvTranspose<T>::StorePrePackedWeight(const PrepackedWeight& /*prepacked_weight*/,
+Status ConvTranspose<T>::StorePrePackedWeight(const PrePackedWeights& /*prepacked_weight*/,
                                               int /*input_idx*/,
                                               /*out*/ bool& stored_weight) {
   stored_weight = false;
@@ -96,7 +96,7 @@ Status ConvTranspose<T>::StorePrePackedWeight(const PrepackedWeight& /*prepacked
 }
 
 template <>
-Status ConvTranspose<float>::StorePrePackedWeight(const PrepackedWeight& prepacked_weight,
+Status ConvTranspose<float>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
                                                   int input_idx,
                                                   /*out*/ bool& stored_weight) {
   stored_weight = false;

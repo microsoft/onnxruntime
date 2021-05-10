@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -282,30 +284,104 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path
   vector<int64_t> W_shape = {6, 3, 3, 3};
 
   vector<int64_t> Y_shape = {1, 6, 4, 4};
-  auto expected_vals = {12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f, // duplicate below
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,};
+  auto expected_vals = {
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,  // duplicate below
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+  };
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
@@ -918,6 +994,169 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ConvTransposeTest, SharedPrepackedWeights) {
+  OpTester test("ConvTranspose", 11);
+  test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
+  test.AddAttribute("group", static_cast<int64_t>(2));
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("output_shape", vector<int64_t>{1, 6, 4, 4});
+
+  int image_size = 4 * 4;
+  int input_channels = 3 * 2;
+  int output_channels = 3;
+  std::vector<float> X;
+  for (int i = 0; i < input_channels * image_size; i++)
+    X.push_back(1.0f);
+  test.AddInput<float>("X", {1, 6, 4, 4}, X, false);
+
+  std::vector<float> W;
+  int kernel_size = output_channels * input_channels * 3 * 3;
+  for (int i = 0; i < kernel_size; i++)
+    W.push_back(1.0f);
+  test.AddInput<float>("W", {6, 3, 3, 3}, W, true);  // Trigger pre-packing
+
+  auto expected_vals = {
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,  // duplicate below
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+  };
+  test.AddOutput<float>("Y", {1, 6, 4, 4}, expected_vals);
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
+                                           W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue w;
+
+  w.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  SessionOptions so;
+  // Set up W as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("W", &w), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.AddPrePackedSharedContainerToSessions();
+
+  size_t used_cached_pre_packed_weights_counter = 0;
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+  }
+
+  // Session 2
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+  }
 }
 
 }  // namespace test

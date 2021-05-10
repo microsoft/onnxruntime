@@ -343,5 +343,57 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RUN_MATMUL_INTEGER_U8X8(4, 8, 68);
 }
 
+TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {1, 1}, {11});
+  test.AddInput<uint8_t>("T2", {1, 1}, {13}, true);
+  test.AddInput<uint8_t>("a_zero_point", {}, {12});
+  test.AddInput<uint8_t>("b_zero_point", {}, {12});
+  test.AddOutput<int32_t>("T3", {1, 1}, {-1});
+
+  std::vector<uint8_t> t2_init_values(1, 13);
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
+                                           t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue t2;
+
+  t2.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  SessionOptions so;
+  // Set up T2 as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("T2", &t2), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.AddPrePackedSharedContainerToSessions();
+
+  size_t used_cached_pre_packed_weights_counter = 0;
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+  }
+
+  // Session 2
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &used_cached_pre_packed_weights_counter);
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
