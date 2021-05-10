@@ -1092,6 +1092,45 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
   }
   return modified;
 }
+
+/*
+* RemoveInputOutputUpDownCasts
+* When all the floatingpoint inputs on a node with ANY opcode are FP32 Cast outputs and
+* all the outputs are casted to FP16, remove the input FP32 casts and output FP16 casts.
+* This transformation only makes difference to opcodes not listed in FP16 allowed opcodes.
+* This transformation is less aggressive than adding all such opcodes that can benefit form
+* this transformation to FP16 allowed opcodes.
+*
+*        Input0/NodeArg  Input1/NodeArg
+*               |             |
+*          _____V____    _____V______                         
+*          |Cast FP32|   | Cast FP32| 
+*          |_________|   |__________|                        
+*               |              |             
+*             __V______________V___                         
+*            |       Opcode        |
+*            |(operation performed |
+*            |    in float32)      |
+*            |_____________________|                               
+*               |               |
+*          _____V____      _____V______                         
+*          |Cast FP16|     | Cast FP16| 
+*          |_________|     |__________|                        
+*                |              |         
+*                V              V
+*
+*
+*        Input0/NodeArg  Input1/NodeArg
+*               |              |
+*             __V______________V___                         
+*            |       Opcode        |
+*            |(operation performed |
+*            |    in float16)      |
+*            |_____________________|                               
+*               |               |
+*               |               |         
+*               V               V
+*/
 static bool RemoveInputOutputUpDownCasts(Graph& graph, Node* node,
                                       std::deque<NodeIndex>& removed_nodes,
                                       size_t level,

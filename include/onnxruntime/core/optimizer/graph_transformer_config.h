@@ -13,7 +13,7 @@ struct GraphTransformerConfiguration {
     /*
     * Cast propagation strategy.
     * One strategy is to insert casts around all the nodes with the allowed opcodes
-    * and reduce, remove redundent and back-to-back casts, and
+    * and reduce, by removing redundent-casts and back-to-back-casts etc., and
     * the other is to propagate casts using flood-fill approach, expanding float16 regions in the graph
     * traversing the graph up/down.
     */
