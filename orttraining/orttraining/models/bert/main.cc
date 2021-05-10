@@ -616,6 +616,7 @@ void setup_training_params(BertParameters& params) {
         0,
         true,
         0,
+        nullptr,
         nullptr};
 
     if (params.gpu_mem_limit_in_gb > 0) {
