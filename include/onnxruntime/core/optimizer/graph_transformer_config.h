@@ -56,7 +56,7 @@ struct GraphTransformerConfiguration {
                        1 => use ORT predefined list of level 1 opcodes in addition to the user specified allow opcodes
                        2 => use ORT predefined list of level 2 opcodes in addition to the user specified allow opcodes
                     */
-    Strategy strategy = Strategy::InsertAndReduce;
+    Strategy strategy = Strategy::None;
     // List of allowed opcodes to consider as safe to execute in float16, while moving cast operations
     std::vector<std::string> allow;
   };

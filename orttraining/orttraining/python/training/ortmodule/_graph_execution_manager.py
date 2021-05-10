@@ -61,15 +61,15 @@ class GraphExecutionManager(ABC):
         self._save_onnx_prefix = ''
 
         # Graph transformer config
-        # Specify cast propagation strategy. Currently two strategies are available, insert-and-reduce and flood-fill
-        # the default is insert-and-reduce
-        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.INSERT_AND_REDUCE
+        # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
+        # The default is NONE, which implies the transformer does no cast-propagation transformation.
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.NONE
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
         #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
         # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow use onnxruntime
         #   predetermined list of opcodes considered safe to move before/after cast operation.
-        # - Onnxruntime Level1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc.
+        # - Onnxruntime Level 1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc.
         #   whereas Level 2 perdetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, GeLU, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = -1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
@@ -77,7 +77,7 @@ class GraphExecutionManager(ABC):
         # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
         self._allow_layer_norm_mod_precision = False
 
-        # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
+        # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = None
 

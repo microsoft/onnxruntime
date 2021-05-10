@@ -197,7 +197,7 @@ class ORTTrainerOptions(object):
                             'schema': {
                                 'propagate_cast_ops_strategy': {
                                     'type': 'onnxruntime.training.PropagateCastOpsStrategy',
-                                    'default': INSERT_AND_REDUCE
+                                    'default': PropagateCastOpsStrategy.NONE
                                 },
                                 'propagate_cast_ops_level': {
                                     'type': 'integer',
@@ -374,8 +374,11 @@ class ORTTrainerOptions(object):
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
         graph_transformer.propagate_cast_ops_config (dict):
-            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default INSERT_AND_REDUCE)
-                Specify the choice of the cast propagation optimization strategy, either, INSERT_AND_REDUCE or FLOOD_FILL.
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default NONE)
+                Specify the choice of the cast propagation optimization strategy, either, NONE, INSERT_AND_REDUCE or FLOOD_FILL.
+                NONE strategy does not perform any cast propagation transformation on the graph, although other optimizations
+                locally change cast operations, for example, in order to fuse Transpose and MatMul nodes, the TransposeMatMulFunsion optimization could
+                interchange Transpose and Cast if the Cast node exists between Transpose and MatMul.
                 INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
                 FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
                 INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
@@ -723,7 +726,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'strategy': {
                         'type': 'propagate_cast_ops_strategy',
                         'nullable': True,
-                        'default': PropagateCastOpsStrategy.INSERT_AND_REDUCE
+                        'default': PropagateCastOpsStrategy.NONE
                     },
                     'level': {
                         'type': 'integer',
