@@ -574,22 +574,22 @@ stages:
       # Entry point for all ORTModule tests
       # The onnxruntime folder is deleted in the build directory
       # to enforce use of the onnxruntime wheel
-    - script: |
-        docker run \
-          --user 0 \
-          --gpus all \
-          --shm-size=1024m \
-          --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /mnist:/mnist \
-          --volume /bert_data:/bert_data \
-          --volume /hf_models_cache:/hf_models_cache \
-          onnxruntimetraininggpubuild \
-            bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; rm -rf /build/RelWithDebInfo/onnxruntime/ ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/RelWithDebInfo" \
-      displayName: 'Run orttraining_ortmodule_tests.py'
-      condition: succeededOrFailed()
-      timeoutInMinutes: 60
+      - script: |
+          docker run \
+            --user 0 \
+            --gpus all \
+            --shm-size=1024m \
+            --rm \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /mnist:/mnist \
+            --volume /bert_data:/bert_data \
+            --volume /hf_models_cache:/hf_models_cache \
+            onnxruntimetraininggpubuild \
+              bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; rm -rf /build/RelWithDebInfo/onnxruntime/ ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/RelWithDebInfo" \
+        displayName: 'Run orttraining_ortmodule_tests.py'
+        condition: succeededOrFailed()
+        timeoutInMinutes: 60
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
