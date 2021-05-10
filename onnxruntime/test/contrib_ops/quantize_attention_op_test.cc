@@ -933,7 +933,7 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
   tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
-  const auto& weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
+  auto weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
   tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
 
   tester.AddInput<float>("bias", bias_dims, bias_data);
@@ -948,7 +948,8 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
 
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
-                                           weight_data_converted_to_int.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+                                           weight_data_converted_to_int.data(),
+                                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
 
   weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
