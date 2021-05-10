@@ -192,7 +192,7 @@ final class OnnxRuntime {
       if (is == null) {
         // 3a) Not found in resources, load from library path
         if (!systemLoad) {
-          return; // Failure is expected if we try to pull in optional components we don't need to load
+          return; // Failure is expected for optional components we don't need to load
         }
         logger.log(
             Level.FINE, "Attempting to load native library '" + library + "' from library path");
