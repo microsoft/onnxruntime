@@ -560,8 +560,8 @@ stages:
       # TODO: run ortmodule test.
       # without run_dockerbuild (build.py instead), /build/RelWithDebInfo/ is not available after build.py step. need to find a way to do module test within packaging pipeline
       - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
-      displayName: 'Mount MNIST'
-      condition: succeededOrFailed()
+        displayName: 'Mount MNIST'
+        condition: succeededOrFailed()
 
       - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
         displayName: 'Mount bert-data'
