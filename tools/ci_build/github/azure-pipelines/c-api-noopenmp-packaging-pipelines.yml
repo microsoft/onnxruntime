@@ -40,7 +40,7 @@ jobs:
   timeoutInMinutes:  120
   pool: 'Onnxruntime-Linux-GPU'
   variables:
-    CUDA_VERSION: '11.0'
+    CUDA_VERSION: '11.1'
   steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
@@ -94,7 +94,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: gpu-x64
-    buildparameter: --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --enable_onnx_tests --enable_wcos --build_java
+    buildparameter: --use_cuda --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.1-windows-x64-v8.0.5.39\cuda" --enable_onnx_tests --enable_wcos --build_java
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
