@@ -1,19 +1,30 @@
 ---
-title: ARM Compute Library (ACL)
+title: ARM Compute Library
 parent: Execution Providers
 grand_parent: Reference
 nav_order: 8
 ---
 
 # ACL Execution Provider
+{: .no_toc }
 
 [Arm Compute Library](https://github.com/ARM-software/ComputeLibrary) is an open source inference engine maintained by Arm and Linaro companies. The integration of ACL as an execution provider (EP) into ONNX Runtime accelerates performance of ONNX model workloads across Armv8 cores.
 
-## Build ACL execution provider
-For build instructions, please see the [BUILD page](../../how-to/build.md#ARM-Compute-Library).
 
-## Using the ACL execution provider
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+
+## Build
+For build instructions, please see the [BUILD page](../../how-to/build/eps.md#arm-compute-library).
+
+## Usage
 ### C/C++
+{: .no_toc }
+
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;

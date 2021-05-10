@@ -1,7 +1,6 @@
 ---
 title: Use the PyOp operator
-parent: How to
-nav_order: 6
+nav_exclude: true
 ---
 
 # How to use the Python Operator (PyOp)

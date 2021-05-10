@@ -99,7 +99,7 @@ ONNX Runtime defines the `GraphOptimizationLevel` enum to determine which of the
 **Online/Offline Mode**:
 To enable serialization of the optimized model to disk, set the SessionOptions option `optimized_model_path` to the desired path where the optimized model will be stored.
 
-### Python API Usage
+### Python API Example
 ```python
 import onnxruntime as rt
 
@@ -114,7 +114,7 @@ sess_options.optimized_model_filepath = "<model_output_path\optimized_model.onnx
 session = rt.InferenceSession("<model_path>", sess_options)
 ```
 
-### C API Example:
+### C API Example
 ```c
   const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
   OrtEnv* env;
@@ -134,7 +134,7 @@ session = rt.InferenceSession("<model_path>", sess_options)
   g_ort->CreateSession(env, model_path, session_option, &session);
 ```
 
-### C# API Example:
+### C# API Example
 ```c#
 SessionOptions so = new SessionOptions();
 
@@ -147,7 +147,7 @@ so.OptimizedModelFilePath = "model_output_path\optimized_model.onnx"
 var session = new InferenceSession(modelPath, so);
 ```
 
-### C++ API Example:
+### C++ API Example
 ```c++
 Ort::SessionOptions session_options;
 

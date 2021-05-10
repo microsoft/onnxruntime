@@ -20,9 +20,11 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 
 ## Build
 
+See [Build instructions](../../how-to/build/eps.md#tensorrt).
+
 The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.1.3.4.
 
-## Using the TensorRT execution provider
+## Usage
 ### C/C++
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
@@ -38,35 +40,12 @@ The C API details are [here](../api/c-api.md).
 #### Shape Inference for TensorRT Subgraphs
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py).
 
-#### Sample
-This example shows how to run Faster R-CNN model on TensorRT execution provider,
-
-First, download Faster R-CNN onnx model from onnx model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
-
-Second, infer shapes in the model by running shape inference script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py),
-```
-python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
-```
-
-Third, replace original model with the new model and run onnx_test_runner tool under ONNX Runtime build directory,
-```
-./onnx_test_runner -e tensorrt /path/to/onnx/model/
-```
 
 ### Python
-When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider. Python APIs details are .
+When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider.
 
-#### Python Sample
 
-Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
-
-## Performance Tuning
-
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
-
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
-
-## Configuring environment variables
+## Configuration Options
 There are several environment variables for TensorRT execution provider.
 
 * ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
@@ -98,13 +77,13 @@ There are several environment variables for TensorRT execution provider.
 One can override default values by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE, ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_INT8_ENABLE, ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME, ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE, ORT_TENSORRT_CACHE_PATH and ORT_TENSORRT_DUMP_SUBGRAPHS.
 e.g. on Linux
 
-### override default max workspace size to 2GB
+### Override default max workspace size to 2GB
 export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
 
-### override default maximum number of iterations to 10 
+### Override default maximum number of iterations to 10 
 export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
         
-### override default minimum subgraph node size to 5
+### Override default minimum subgraph node size to 5
 export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 
 ### Enable FP16 mode in TensorRT
@@ -126,3 +105,29 @@ export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
 
 ### Dump out subgraphs to run on TensorRT
 export ORT_TENSORRT_DUMP_SUBGRAPHS = 1
+
+## Performance Tuning
+
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
+
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
+
+## Samples
+
+This example shows how to run the Faster R-CNN model on TensorRT execution provider.
+
+1. Download the Faster R-CNN onnx model from the ONNX model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
+
+2. Infer shapes in the model by running the [shape inference script](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py)
+    ```
+    python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
+    ```
+
+3. Replace the original model with the new model and run the 
+    onnx_test_runner tool under ONNX Runtime build directory.
+    ```
+    ./onnx_test_runner -e tensorrt /path/to/onnx/model/
+    ```
+
+Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
+
