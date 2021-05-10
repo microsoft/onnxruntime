@@ -191,7 +191,7 @@ final class OnnxRuntime {
     try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
       if (is == null) {
         // 3a) Not found in resources, load from library path
-        if( !systemLoad ) {
+        if (!systemLoad) {
           return; // Failure is expected if we try to pull in optional components we don't need to load
         }
         logger.log(
