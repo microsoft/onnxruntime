@@ -94,7 +94,8 @@ class InferenceManager(GraphExecutionManager):
                                                                              self._input_info,
                                                                              self._flattened_module.named_buffers(),
                                                                              inputs,
-                                                                             kwargs))
+                                                                             kwargs,
+                                                                             self._device))
 
         return _io.unflatten_user_output(self._module_output_schema,
                                          self._graph_info.user_output_names,
