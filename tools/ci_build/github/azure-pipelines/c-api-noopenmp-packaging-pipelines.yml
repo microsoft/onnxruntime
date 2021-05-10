@@ -53,10 +53,10 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda11build \
           /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc
+          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc
         workingDirectory: $(Build.SourcesDirectory)
 
     - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
