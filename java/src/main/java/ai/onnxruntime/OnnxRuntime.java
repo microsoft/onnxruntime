@@ -215,8 +215,7 @@ final class OnnxRuntime {
         if (systemLoad) {
           System.load(tempFile.getAbsolutePath());
           logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
-        }
-        else {
+        } else {
           logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
         }
       }
