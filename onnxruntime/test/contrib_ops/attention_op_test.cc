@@ -1601,6 +1601,7 @@ TEST(AttentionTest, AttentionPrunedModel) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskRaw, input_hidden_size);
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(AttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -1679,7 +1680,7 @@ TEST(AttentionTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
                nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
   // Session 2
@@ -1687,9 +1688,10 @@ TEST(AttentionTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
                nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(1));  // One pre-packed weight has been shared thus far
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

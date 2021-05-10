@@ -1205,6 +1205,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(LSTMTest, SharedPrepackedWeights) {
   int64_t seq_length = 2;
   int batch_size = 2;
@@ -1315,7 +1316,7 @@ TEST(LSTMTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
              nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
   // Session 2
@@ -1323,9 +1324,10 @@ TEST(LSTMTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
              nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 2);  // Two pre-packed weights (R and W) have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(2));  // Two pre-packed weights (R and W) have been shared thus far
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

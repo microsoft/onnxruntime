@@ -46,6 +46,9 @@ class PrepackedWeightsContainer final {
   OrtMutex mutex_;
 
  private:
+  std::string GenerateKeyFromOpTypeAndInitializerData(const std::string& op_type,
+                                                      const void* const_initialized_tensor_data);
+
   // Define allocators ahead of the container containing tensors because the allocators
   // needs to destructed after the container containing the pre-packed cached tensors
   // because the Tensor buffers will be de-allocated using these allocators

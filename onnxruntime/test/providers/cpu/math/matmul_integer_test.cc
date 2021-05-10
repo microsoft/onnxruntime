@@ -343,10 +343,11 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RUN_MATMUL_INTEGER_U8X8(4, 8, 68);
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {1, 1}, {11});
-  test.AddInput<uint8_t>("T2", {1, 1}, {13}, true);
+  test.AddInput<uint8_t>("T2", {1, 1}, {13}, true);  // Trigger pre-packing
   test.AddInput<uint8_t>("a_zero_point", {}, {12});
   test.AddInput<uint8_t>("b_zero_point", {}, {12});
   test.AddOutput<int32_t>("T3", {1, 1}, {-1});
@@ -383,7 +384,7 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
              &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
   // Session 2
@@ -391,9 +392,10 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
              &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(1));  // One pre-packed weight has been shared thus far
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

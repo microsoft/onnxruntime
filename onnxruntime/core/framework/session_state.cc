@@ -357,8 +357,8 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                       // static attributes of the node - for example, the node's attributes, the model's opset version etc.
                       // We log this occurrence for the user.
                       if (prepacked_weights_container_->HasPrepackedWeightForOpTypeAndConstantInitializer(op_type, const_initialized_tensor.DataRaw())) {
-                        LOGS(logger_, WARNING) << "The pre-packed weights cache has (atleast one) pre-packed weight corresponding to this op_type: " << node.Name()
-                                               << " and this shared initializer but the pre-packed weight computed using this instance of the op_type and the "
+                        LOGS(logger_, WARNING) << "The pre-packed weights container has (atleast one) pre-packed weight corresponding to this op_type: " << node.Name()
+                                               << " and this shared initializer but the pre-packed weight computed using this instance of the op_type and the"
                                                   " same shared initializer has different contents than what exists in the cache";
                       }
 

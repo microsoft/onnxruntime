@@ -602,8 +602,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names,
-    const std::string& provider_type,
-    /*out*/ size_t* used_cached_pre_packed_weights_counter) {
+    const std::string& provider_type) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
@@ -619,14 +618,6 @@ std::vector<MLValue> OpTester::ExecuteModel(
   }
 
   status = session_object.Initialize();
-
-  // After the model has initialized, we should be able to tell how many cached prepacked weights
-  // this model has used.
-  // Populate the value if the user has request this information.
-  if (used_cached_pre_packed_weights_counter) {
-    *used_cached_pre_packed_weights_counter =
-        session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
-  }
 
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
@@ -871,9 +862,16 @@ void OpTester::Run(
 
       fetches_ = ExecuteModel<InferenceSession>(
           *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types,
-          used_cached_pre_packed_weights_counter);
+          run_options, feeds, output_names, provider_types);
 
+      // After the model has initialized (happens in ExecuteModel),
+      // we should be able to tell how many cached prepacked weights
+      // this model has used.
+      // Populate the value if the user has request this information.
+      if (used_cached_pre_packed_weights_counter) {
+        *used_cached_pre_packed_weights_counter =
+            session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
+      }
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -963,7 +961,16 @@ void OpTester::Run(
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type, used_cached_pre_packed_weights_counter);
+            run_options, feeds, output_names, provider_type);
+
+        // After the model has initialized (happens in ExecuteModel),
+        // we should be able to tell how many cached prepacked weights
+        // this model has used.
+        // Populate the value if the user has request this information.
+        if (used_cached_pre_packed_weights_counter) {
+          *used_cached_pre_packed_weights_counter =
+              session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
+        }
 
         cur_provider = "not set";
       }

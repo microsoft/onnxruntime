@@ -362,6 +362,7 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
 
@@ -490,7 +491,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
              nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
   // Session 2
@@ -498,9 +499,10 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
              nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 2);  // Two pre-packed weights (R and W) have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(2));  // Two pre-packed weights (R and W) have been shared thus far
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

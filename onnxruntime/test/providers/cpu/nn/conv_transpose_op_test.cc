@@ -996,6 +996,7 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
                       OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(ConvTransposeTest, SharedPrepackedWeights) {
   OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
@@ -1147,7 +1148,7 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
              &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 0);  // No pre-packed weights have been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
   // Session 2
@@ -1155,9 +1156,10 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
              &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, 1);  // One pre-packed weight has been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(1));  // One pre-packed weight has been shared thus far
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

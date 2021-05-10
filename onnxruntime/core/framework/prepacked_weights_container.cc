@@ -46,21 +46,18 @@ bool PrepackedWeightsContainer::HasCachedWeight(const std::string& key) {
 
 bool PrepackedWeightsContainer::HasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
                                                                                   const void* const_initialized_tensor_data) {
-  std::ostringstream ss_2;
-  ss_2 << op_type;
-  ss_2 << "+";
-  // TODO: Should we hash the contents of the data buffer instead of looking at just the data buffer pointer ?
-  // For now, this seems like a reasonable approach given that for shared initializers, users are likely to
-  // use the same memory across different shared initializers.
-  ss_2 << reinterpret_cast<uintptr_t>(const_initialized_tensor_data);
-
-  const std::string& key = ss_2.str();
-
+  const std::string& key = GenerateKeyFromOpTypeAndInitializerData(op_type, const_initialized_tensor_data);
   return op_type_tensor_data_memory_map_.find(key) != op_type_tensor_data_memory_map_.end();
 }
 
 void PrepackedWeightsContainer::MarkHasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
                                                                                       const void* const_initialized_tensor_data) {
+  const std::string& key = GenerateKeyFromOpTypeAndInitializerData(op_type, const_initialized_tensor_data);
+  op_type_tensor_data_memory_map_.insert(key);
+}
+
+std::string PrepackedWeightsContainer::GenerateKeyFromOpTypeAndInitializerData(const std::string& op_type,
+                                                                               const void* const_initialized_tensor_data) {
   std::ostringstream ss_2;
   ss_2 << op_type;
   ss_2 << "+";
@@ -69,9 +66,7 @@ void PrepackedWeightsContainer::MarkHasPrepackedWeightForOpTypeAndConstantInitia
   // use the same memory across different shared initializers.
   ss_2 << reinterpret_cast<uintptr_t>(const_initialized_tensor_data);
 
-  const std::string& key = ss_2.str();
-
-  op_type_tensor_data_memory_map_.insert(key);
+  return ss_2.str();
 }
 
 }  // namespace onnxruntime

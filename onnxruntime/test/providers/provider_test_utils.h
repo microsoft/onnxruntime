@@ -513,8 +513,7 @@ class OpTester {
                                     const RunOptions* run_options,
                                     const std::unordered_map<std::string, OrtValue>& feeds,
                                     const std::vector<std::string>& output_names,
-                                    const std::string& provider_type,
-                                    /*out*/ size_t* used_cached_pre_packed_weights_counter = nullptr);
+                                    const std::string& provider_type);
 
   const char* op_;
   std::vector<Data> input_data_;
