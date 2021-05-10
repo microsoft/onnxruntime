@@ -493,6 +493,10 @@ class OpTester {
     add_prepacked_shared_container_to_sessions_ = true;
   }
 
+  size_t GetNumberOfElementsInPrePackedSharedContainer() const {
+    return prepacked_weights_container_.GetNumberOfElements();
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,

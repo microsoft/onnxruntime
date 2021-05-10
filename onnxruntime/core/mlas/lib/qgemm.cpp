@@ -3081,8 +3081,6 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    memset(PackedB, 0, MlasGemmPackBSize(N, K, BIsSigned));
-
     const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
 
     size_t PackedK = GemmU8X8Dispatch->PackedK;

@@ -92,6 +92,12 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   }
 
   auto* packed_b_data = alloc->Alloc(packed_b_size);
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_b_data, 0, packed_b_size);
+
   packed_b = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
   MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
                 N,

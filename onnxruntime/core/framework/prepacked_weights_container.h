@@ -29,13 +29,16 @@ class PrepackedWeightsContainer final {
 
   void WriteCachedWeight(const std::string& key, PrePackedWeights&& packed_weight);
 
-  bool HasCachedWeight(const std::string& key);
+  bool HasCachedWeight(const std::string& key) const;
 
   bool HasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
-                                                         const void* const_initialized_tensor_data);
+                                                         const void* const_initialized_tensor_data) const;
 
   void MarkHasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
                                                              const void* const_initialized_tensor_data);
+
+  // Not thread-safe
+  size_t GetNumberOfElements() const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);
 
@@ -47,7 +50,7 @@ class PrepackedWeightsContainer final {
 
  private:
   std::string GenerateKeyFromOpTypeAndInitializerData(const std::string& op_type,
-                                                      const void* const_initialized_tensor_data);
+                                                      const void* const_initialized_tensor_data) const;
 
   // Define allocators ahead of the container containing tensors because the allocators
   // needs to destructed after the container containing the pre-packed cached tensors

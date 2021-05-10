@@ -189,6 +189,12 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
 
   size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size) * num_directions_;
   auto* packed_weights_data = alloc->Alloc(packed_weights_data_size);
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   packed_weights.buffer_size_ = packed_weights_data_size;
   packed_weights.weights_size_ = packed_weights_size;

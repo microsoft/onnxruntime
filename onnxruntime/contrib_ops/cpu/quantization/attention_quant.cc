@@ -92,6 +92,12 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
   const size_t loop_len = 3 * num_heads_;
   size_t packed_weights_data_size = packed_weights_size_ * loop_len;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {

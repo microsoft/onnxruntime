@@ -39,13 +39,14 @@ void PrepackedWeightsContainer::WriteCachedWeight(const std::string& key, PrePac
   initialized_tensor_name_to_prepacked_weights_.insert({key, std::move(packed_weight)});
 }
 
-bool PrepackedWeightsContainer::HasCachedWeight(const std::string& key) {
+bool PrepackedWeightsContainer::HasCachedWeight(const std::string& key) const {
   return initialized_tensor_name_to_prepacked_weights_.find(key) !=
          initialized_tensor_name_to_prepacked_weights_.end();
 }
 
-bool PrepackedWeightsContainer::HasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
-                                                                                  const void* const_initialized_tensor_data) {
+bool PrepackedWeightsContainer::HasPrepackedWeightForOpTypeAndConstantInitializer(
+    const std::string& op_type,
+    const void* const_initialized_tensor_data) const {
   const std::string& key = GenerateKeyFromOpTypeAndInitializerData(op_type, const_initialized_tensor_data);
   return op_type_tensor_data_memory_map_.find(key) != op_type_tensor_data_memory_map_.end();
 }
@@ -56,8 +57,9 @@ void PrepackedWeightsContainer::MarkHasPrepackedWeightForOpTypeAndConstantInitia
   op_type_tensor_data_memory_map_.insert(key);
 }
 
-std::string PrepackedWeightsContainer::GenerateKeyFromOpTypeAndInitializerData(const std::string& op_type,
-                                                                               const void* const_initialized_tensor_data) {
+std::string PrepackedWeightsContainer::GenerateKeyFromOpTypeAndInitializerData(
+    const std::string& op_type,
+    const void* const_initialized_tensor_data) const {
   std::ostringstream ss_2;
   ss_2 << op_type;
   ss_2 << "+";
@@ -67,6 +69,10 @@ std::string PrepackedWeightsContainer::GenerateKeyFromOpTypeAndInitializerData(c
   ss_2 << reinterpret_cast<uintptr_t>(const_initialized_tensor_data);
 
   return ss_2.str();
+}
+
+size_t PrepackedWeightsContainer::GetNumberOfElements() const {
+  return initialized_tensor_name_to_prepacked_weights_.size();
 }
 
 }  // namespace onnxruntime

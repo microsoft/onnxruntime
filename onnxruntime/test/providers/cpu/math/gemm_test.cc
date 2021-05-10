@@ -504,12 +504,18 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
     ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
   }
 
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // in the shared container will be zero in which case this test will be a no-op
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumberOfElementsInPrePackedSharedContainer();
+
   // Session 2
   {
     auto ep_vec = cpu_ep();
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
              &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(1));  // One pre-packed weight has been shared thus far
+    ASSERT_EQ(used_cached_pre_packed_weights_counter,
+              static_cast<size_t>(number_of_elements_in_shared_prepacked_buffers_container));
   }
 }
 #endif
