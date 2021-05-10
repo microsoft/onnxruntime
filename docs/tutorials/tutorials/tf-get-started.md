@@ -5,9 +5,11 @@ parent: Accelerate TensorFlow
 grand_parent: Inferencing
 ---
 
-# Getting Started: Converting TensorFlow to ONNX
+# Getting Started Converting TensorFlow to ONNX
 
 TensorFlow models (including keras and TFLite models) can be converted to ONNX using the [tf2onnx](https://github.com/onnx/tensorflow-onnx) tool.
+
+Full code for this tutorial is available [here](https://github.com/onnx/tensorflow-onnx/blob/master/examples/getting_started.py).
 
 ## Installation
 
@@ -53,7 +55,7 @@ See the [CLI Reference](https://github.com/onnx/tensorflow-onnx#cli-reference) f
 
 ### TFLite
 
-tf2onnx has support for converting tflite models. Add the optional `--dequantize` flag to remove quantization.
+tf2onnx has support for converting tflite models.
 
 `python -m tf2onnx.convert --tflite path/to/model.tflite --output dst/path/model.onnx --opset 13`
 
@@ -92,13 +94,9 @@ for ort_res, tf_res in zip(results_ort, results_tf):
 print("Results match")
 ```
 
-## Viewing an ONNX Model
-
-ONNX models can be viewed in the open-source [Netron](https://github.com/lutzroeder/Netron) tool. The tool can be used in-browser at [netron.app](https://netron.app/).
-
 ## Conversion Failures
 
-If your model fails to convert please read the [README](https://github.com/onnx/tensorflow-onnx#readme) and [Troubleshooting guide](https://github.com/onnx/tensorflow-onnx/blob/master/Troubleshooting.md). If that fails feel free to [open an issue on GitHub](https://github.com/onnx/tensorflow-onnx/issues).  Contributions to tf2onnx are welcome!
+If your model fails to convert please read our [README](https://github.com/onnx/tensorflow-onnx#readme) and [Troubleshooting guide](https://github.com/onnx/tensorflow-onnx/blob/master/Troubleshooting.md). If that fails feel free to [open an issue on GitHub](https://github.com/onnx/tensorflow-onnx/issues).  Contributions to tf2onnx are welcome!
 
 ## Next Steps
 
