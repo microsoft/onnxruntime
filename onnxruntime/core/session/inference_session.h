@@ -569,6 +569,22 @@ class InferenceSession {
   // Updates all providers with the allocators from the env based on OrtMemoryInfo
   void UpdateProvidersWithSharedAllocators();
 
+  /*
+   * Validate and parses the shrink arena request string from the user
+   * List format: "device_0:device_id_0;device_1:device_id_1"
+   * If we encounter an invalid request, we return an error
+   * back to the user.
+   */
+
+  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+
+  /*
+   * Performs the shrinkage of arenas requested to be shrunk by the user
+   * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
+   */
+  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
+
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                          TransformerLevel graph_optimization_level);

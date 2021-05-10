@@ -172,10 +172,11 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
-  if (num_of_partitions > 1)
+  if (num_of_partitions > 1) {
     LOGS_DEFAULT(WARNING) << summary_msg;
-  else
+  } else {
     LOGS_DEFAULT(INFO) << summary_msg;
+  }
 
   return result;
 }

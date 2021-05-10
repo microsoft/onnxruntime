@@ -385,6 +385,11 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
+inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddRunConfigEntry(p_, config_key, config_value));
+  return *this;
+}
+
 inline RunOptions& RunOptions::SetTerminate() {
   ThrowOnError(GetApi().RunOptionsSetTerminate(p_));
   return *this;

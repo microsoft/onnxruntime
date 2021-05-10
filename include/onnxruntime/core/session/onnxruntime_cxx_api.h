@@ -284,6 +284,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
+  RunOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
   // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
   RunOptions& SetTerminate();
   // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
