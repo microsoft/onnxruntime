@@ -47,6 +47,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
@@ -74,7 +75,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
       rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-      rule_transformer->Register(std::make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(std::make_unique<BatchNormReplacement>());
       rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
       rule_transformer->Register(std::make_unique<ExpandElimination>());
       rule_transformer->Register(std::make_unique<CastElimination>());
