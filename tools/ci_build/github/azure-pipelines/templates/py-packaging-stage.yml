@@ -354,6 +354,8 @@ stages:
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
+          Python37:
+            PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
       variables:
