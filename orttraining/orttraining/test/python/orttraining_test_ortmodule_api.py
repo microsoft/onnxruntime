@@ -538,10 +538,10 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
-# Before exporter using ATenOp instead of Gather, padding_idx=1 won't work.
-# Will add 1 to padding_idx after exporter has the fix.
+# Before exporter using ATenOp instead of Gather, non-None padding_idx won't work.
+# TODO: add non-None value to padding_idx after exporter has the fix.
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
-@pytest.mark.parametrize("padding_idx", [-1])
+@pytest.mark.parametrize("padding_idx", [None])
 def test_gradient_correctness_embedding(device, padding_idx):
     class NeuralNetEmbedding(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim, hidden_size):
@@ -563,7 +563,6 @@ def test_gradient_correctness_embedding(device, padding_idx):
         return prediction
 
     for _ in range(10):
-        # It's very unlikely that no value from input is equal to padding_idx when padding_idx is 1 given N is 64.
         input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
         pt_prediction = run_step(pt_model, input)
         ort_prediction = run_step(ort_model, input)
