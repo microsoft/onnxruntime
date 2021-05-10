@@ -6,7 +6,6 @@
 #include <cmath>
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/common.h"
@@ -20,7 +19,13 @@ struct PoolAttributes {
     return op_name == "GlobalAveragePool" || op_name == "GlobalMaxPool" || op_name == "GlobalLpPool";
   }
 
+#ifdef SHARED_PROVIDER
+  // Shared providers don't know about OpNodeProtoHelper
   PoolAttributes(const OpKernelInfo& info,
+#else
+  // Providers like Nuphar don't know about OpKernelInfo
+  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
+#endif
                  const std::string& op_name, int start_version)
       : global_pooling(IsGlobalPooling(op_name)) {
     if (global_pooling) {
