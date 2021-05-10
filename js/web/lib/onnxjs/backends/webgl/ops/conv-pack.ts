@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Attribute} from '../../../attribute';
 import {Logger} from '../../../instrument';
 import {Conv} from '../../../ops/conv';
 import {Tensor} from '../../../tensor';
@@ -36,6 +37,11 @@ export class WebGLConvPacked extends Conv {
     const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
     const im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
     const matmul = new WebGLMatMulPacked();
+    if (this.activation) {
+      const attributes = new Attribute(undefined);
+      attributes.set('__internal_activation', 'string', (this.activation));
+      matmul.initialize(attributes);
+    }
     const reshape = new WebGLReshapePacked();
     // shape for kernel reshape
     const shape =
