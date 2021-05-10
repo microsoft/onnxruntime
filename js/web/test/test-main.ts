@@ -10,10 +10,10 @@ import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-const ONNX_JS_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
+const ORT_WEB_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
 
 // Set logging configuration
-for (const logConfig of ONNX_JS_TEST_CONFIG.log) {
+for (const logConfig of ORT_WEB_TEST_CONFIG.log) {
   Logger.set(logConfig.category, logConfig.config);
 }
 
@@ -21,15 +21,14 @@ import {ModelTestContext, OpTestContext, runModelTestSet, runOpTest} from './tes
 import {readJsonFile} from './test-shared';
 
 // Unit test
-if (ONNX_JS_TEST_CONFIG.unittest) {
-  // tslint:disable-next-line:no-require-imports
+if (ORT_WEB_TEST_CONFIG.unittest) {
   require('./unittests');
 }
 
 // Set file cache
-if (ONNX_JS_TEST_CONFIG.fileCacheUrls) {
+if (ORT_WEB_TEST_CONFIG.fileCacheUrls) {
   before('prepare file cache', async () => {
-    const allJsonCache = await Promise.all(ONNX_JS_TEST_CONFIG.fileCacheUrls!.map(readJsonFile)) as Test.FileCache[];
+    const allJsonCache = await Promise.all(ORT_WEB_TEST_CONFIG.fileCacheUrls!.map(readJsonFile)) as Test.FileCache[];
     for (const cache of allJsonCache) {
       ModelTestContext.setCache(cache);
     }
@@ -52,7 +51,7 @@ function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
 }
 
 // ModelTests
-for (const group of ONNX_JS_TEST_CONFIG.model) {
+for (const group of ORT_WEB_TEST_CONFIG.model) {
   describe(`#ModelTest# - ${group.name}`, () => {
     for (const test of group.tests) {
       const describeTest = shouldSkipTest(test) ? describe.skip : describe;
@@ -60,7 +59,7 @@ for (const group of ONNX_JS_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
-          context = await ModelTestContext.create(test, ONNX_JS_TEST_CONFIG.profile);
+          context = await ModelTestContext.create(test, ORT_WEB_TEST_CONFIG.profile);
         });
 
         after('release session', () => {
@@ -71,7 +70,7 @@ for (const group of ONNX_JS_TEST_CONFIG.model) {
 
         for (const testCase of test.cases) {
           it(testCase.name, async () => {
-            await runModelTestSet(context, testCase);
+            await runModelTestSet(context, testCase, test.name);
           });
         }
       });
@@ -80,7 +79,7 @@ for (const group of ONNX_JS_TEST_CONFIG.model) {
 }
 
 // OpTests
-for (const group of ONNX_JS_TEST_CONFIG.op) {
+for (const group of ORT_WEB_TEST_CONFIG.op) {
   describe(`#OpTest# - ${group.name}`, () => {
     for (const test of group.tests) {
       const describeTest = shouldSkipTest(test) ? describe.skip : describe;
@@ -90,13 +89,13 @@ for (const group of ONNX_JS_TEST_CONFIG.op) {
         before('Initialize Context', async () => {
           context = new OpTestContext(test);
           await context.init();
-          if (ONNX_JS_TEST_CONFIG.profile) {
+          if (ORT_WEB_TEST_CONFIG.profile) {
             OpTestContext.profiler.start();
           }
         });
 
         after('Dispose Context', () => {
-          if (ONNX_JS_TEST_CONFIG.profile) {
+          if (ORT_WEB_TEST_CONFIG.profile) {
             OpTestContext.profiler.stop();
           }
           context.dispose();

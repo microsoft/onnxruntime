@@ -53,15 +53,17 @@ namespace onnxruntime {
 class BFCArena : public IArenaAllocator {
  public:
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
-  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
+  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+  static const int DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
   BFCArena(std::unique_ptr<IAllocator> resource_allocator,
            size_t total_memory,
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
-           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK);
+           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+           int initial_regrowth_chunk_size_bytes = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
@@ -72,6 +74,14 @@ class BFCArena : public IArenaAllocator {
 
   //If p is NULL, no operation is performed.
   void Free(void* p) override;
+
+  // Frees all allocation regions in which no chunk is in use.
+  // Does not free any reserved chunks.
+  // Resets the size that the arena will grow by in the next allocation to
+  // `initial_regrowth_chunk_size_bytes_` but ultimately all
+  // future allocation sizes are determined by the arena growth strategy
+  // and the allocation request.
+  Status Shrink() override;
 
   void* Reserve(size_t size) override;
 
@@ -200,11 +210,12 @@ class BFCArena : public IArenaAllocator {
   // This class is thread-compatible.
   class AllocationRegion {
    public:
-    AllocationRegion(void* ptr, size_t memory_size)
+    AllocationRegion(void* ptr, size_t memory_size, int64_t id)
         : ptr_(ptr),
           memory_size_(memory_size),
           end_ptr_(
-              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)) {
+              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)),
+          id_(id) {
       ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
@@ -228,6 +239,7 @@ class BFCArena : public IArenaAllocator {
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
     size_t memory_size() const { return memory_size_; }
+    int64_t id() const { return id_; }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -239,6 +251,7 @@ class BFCArena : public IArenaAllocator {
       std::swap(ptr_, other.ptr_);
       std::swap(memory_size_, other.memory_size_);
       std::swap(end_ptr_, other.end_ptr_);
+      std::swap(id_, other.id_);
       std::swap(handles_, other.handles_);
     }
 
@@ -254,6 +267,9 @@ class BFCArena : public IArenaAllocator {
     void* ptr_ = nullptr;
     size_t memory_size_ = 0;
     void* end_ptr_ = nullptr;
+    // A unique identifier for this allocation region
+    // (May be used by the client to track which allocation region was allocated first, second, and so on)
+    int64_t id_ = -1;
 
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
@@ -273,11 +289,20 @@ class BFCArena : public IArenaAllocator {
     RegionManager() = default;
     ~RegionManager() = default;
 
-    void AddAllocationRegion(void* ptr, size_t memory_size) {
+    void AddAllocationRegion(void* ptr, size_t memory_size, int64_t id) {
       // Insert sorted by end_ptr
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
-      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+      regions_.insert(entry, AllocationRegion(ptr, memory_size, id));
+    }
+
+    void RemoveAllocationRegion(void* ptr) {
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+
+      ORT_ENFORCE(entry != regions_.end(), "Could not find Region for: ", ptr);
+
+      regions_.erase(entry);
     }
 
     ChunkHandle get_handle(const void* p) const {
@@ -450,6 +475,12 @@ class BFCArena : public IArenaAllocator {
 
   const int initial_chunk_size_bytes_;
   const int max_dead_bytes_per_chunk_;
+  const int initial_regrowth_chunk_size_bytes_;
+
+  // This flag is only relevant if Shrink() is invoked.
+  // This is a boolean flag that controls whether the first allocation region
+  // is to be considered for shrinkage or not.
+  bool consider_first_allocation_region_for_shrinkage_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

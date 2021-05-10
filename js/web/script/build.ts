@@ -9,29 +9,51 @@ import * as path from 'path';
 
 // CMD args
 const args = minimist(process.argv);
-const MODE = args.config || 'prod';  // prod|dev|test
-if (['prod', 'dev', 'test'].indexOf(MODE) === -1) {
+
+// --bundle-mode=prod (default)
+// --bundle-mode=dev
+// --bundle-mode=perf
+const MODE = args['bundle-mode'] || 'prod';
+if (['prod', 'dev', 'perf'].indexOf(MODE) === -1) {
   throw new Error(`unknown build mode: ${MODE}`);
 }
 
+// --wasm (default)
+// --no-wasm
+const WASM = typeof args.wasm === 'undefined' ? true : !!args.wasm;
+
 // Path variables
 const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding');
-const WASM_JS_PATH = path.join(WASM_BINDING_FOLDER, 'onnxruntime_wasm.js');
+const WASM_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
+const WASM_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
 const WASM_DIST_FOLDER = path.join(__dirname, '..', 'dist');
-const WASM_DIST_PATH = path.join(WASM_DIST_FOLDER, 'onnxruntime_wasm.wasm');
+const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
+const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
+const WASM_THREADED_WORKER_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.worker.js');
 
-try {
-  npmlog.info('Build', `Ensure file: ${WASM_JS_PATH}`);
-  if (!fs.pathExistsSync(WASM_JS_PATH)) {
-    throw new Error(`file does not exist: ${WASM_JS_PATH}`);
+function validateFile(path: string): void {
+  npmlog.info('Build', `Ensure file: ${path}`);
+  if (!fs.pathExistsSync(path)) {
+    throw new Error(`file does not exist: ${path}`);
   }
-  npmlog.info('Build', `Ensure file: ${WASM_DIST_PATH}`);
-  if (!fs.pathExistsSync(WASM_DIST_PATH)) {
-    throw new Error(`file does not exist: ${WASM_DIST_PATH}`);
+  if (fs.statSync(path).size === 0) {
+    throw new Error(`file is empty: ${path}`);
   }
-} catch (e) {
-  npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
-  throw e;
+}
+
+if (WASM) {
+  npmlog.info('Build', 'Validating WebAssembly artifacts...');
+  try {
+    validateFile(WASM_JS_PATH);
+    validateFile(WASM_THREADED_JS_PATH);
+    validateFile(WASM_WASM_PATH);
+    validateFile(WASM_THREADED_WASM_PATH);
+    validateFile(WASM_THREADED_WORKER_JS_PATH);
+  } catch (e) {
+    npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
+    throw e;
+  }
+  npmlog.info('Build', 'Validating WebAssembly artifacts... DONE');
 }
 
 npmlog.info('Build', 'Building bundle...');

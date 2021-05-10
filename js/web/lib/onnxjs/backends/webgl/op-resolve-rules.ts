@@ -22,6 +22,7 @@ import {WebGLPad} from './ops/pad';
 import {WebGLAveragePool, WebGLGlobalAveragePool, WebGLGlobalMaxPool, WebGLMaxPool} from './ops/pool';
 import * as reduceOps from './ops/reduce';
 import {WebGLReshape} from './ops/reshape';
+import {WebGLResizePacked} from './ops/resize-packed';
 import {WebGLSlice, WebGLSliceV10} from './ops/slice';
 import {WebGLSoftmax} from './ops/softmax';
 import {WebGLSplit} from './ops/split';
@@ -84,6 +85,8 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['ReduceSumSquare', '', '1+', () => new reduceOps.WebGLReduceSumSquare()],
   ['Relu', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslRelu())],
   ['Reshape', '', '5+', () => new WebGLReshape()],
+  ['Resize', '', '10', () => new WebGLResizePacked(10)],
+  ['Resize', '', '11+', () => new WebGLResizePacked(11)],
   ['Sigmoid', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSigmoid())],
   ['Sin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSin())],
   ['Slice', '', '10+', () => new WebGLSliceV10()],  // TODO: support 'steps' for Slice-10
@@ -102,7 +105,8 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Tanh', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslTanh())],
   ['Tile', '', '6+', () => new WebGLTile()],
   ['Transpose', '', '1+', () => new WebGLTranspose()],
-  ['Upsample', '', '7-8', () => new WebGLUpsample()],
+  ['Upsample', '', '7-8', () => new WebGLUpsample(7)],
+  ['Upsample', '', '9', () => new WebGLUpsample(9)],
   ['Unsqueeze', '', '1+', () => new WebGLUnsqueeze()],
   ['Xor', '', '7+', () => new binaryOps.WebGLBinaryOp(['bool'], binaryOps.glslXor())],
 ];

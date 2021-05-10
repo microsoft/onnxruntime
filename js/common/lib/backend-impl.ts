@@ -80,5 +80,5 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
     }
   }
 
-  throw new Error(`no available backend found. ERR: ${errors.join(', ')}`);
+  throw new Error(`no available backend found. ERR: ${errors.map(e => `[${e.name}] ${e.err}`).join(', ')}`);
 };

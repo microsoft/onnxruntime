@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 from logging import getLogger
-from onnx_model import OnnxModel
 from typing import Tuple
-from onnx import helper, TensorProto
+from onnx import helper, numpy_helper, TensorProto
+from numpy import ndarray
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
@@ -55,3 +56,14 @@ class FusionUtils:
                     output_name = node.output[0]
                     self.model.remove_node(node)
                     self.model.replace_input_of_all_nodes(output_name, input_name)
+
+class NumpyHelper:
+    @staticmethod    
+    def to_array(tensor:TensorProto, fill_zeros:bool = False) -> ndarray:
+        # When weights are in external data format but not presented, we can still test the optimizer with two changes:
+        # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
+        if fill_zeros:
+            from onnx import mapping
+            return ndarray(shape=tensor.dims, dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type])
+
+        return numpy_helper.to_array(tensor)
