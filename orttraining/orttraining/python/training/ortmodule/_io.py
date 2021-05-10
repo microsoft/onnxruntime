@@ -102,7 +102,7 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
                     input_idx = input_info.names.index(name)
                 inp = non_none_inputs[input_idx]
             except (IndexError, ValueError):
-                # input is not present in input_info.names.
+                # ONNX input name is not present in input_info.names.
                 pass
 
         if inp is None:
@@ -110,7 +110,7 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
             try:
                 inp = buffer_names_dict[name]
             except KeyError:
-                # input is not present in the buffer dict.
+                # ONNX input name is not present in the registered buffer dict.
                 pass
 
         if inp is not None:
