@@ -786,75 +786,72 @@ void RegisterTrainingOpSchemas() {
             int64_t weight_decay_mode_ = ctx.GetAttrOrDefault("weight_decay_mode", static_cast<int64_t>(0));
             ORT_ENFORCE(weight_decay_mode_ == 0 || weight_decay_mode_ == 1, "Only 0 and 1 are supported for weight decay mode.");
 
-            const auto eta = "R";        // T1 (*float* or ...)
-            const auto step = "T";       // T2 (int64)
-            const auto W = "weights";    // T3 (double or *float*)
-            const auto G = "gradients";  // T_GRAD (float/mlfloat or ...)
-            const auto M1 = "moment_1";  // T4 (float/mlfloat or ...)
-            const auto M2 = "moment_2";  // T4
-
             // Update exponentially-averaged historical gradient
             // new_moment_1 = alpha * moment_1 + (1 - alpha) * gradients
 
             bldr.Constant("alpha", alpha);
             bldr.Constant("one_minus_alpha", 1.0f - alpha);
-            bldr.add("moment_1f", "Cast", "moment_1");
-            bldr.add("gradients_f", "Cast", "gradients");
-            bldr.add("T1", "Mul", "alpha", "moment_1f");
-            bldr.add("T2", "Mul", "one_minus_alpha", "gradients_f");
-            bldr.add("new_moment_1f", "Add", "T1", "T2");
+            bldr.Assign("moment_1f", "Cast", "moment_1");
+            bldr.Assign("gradients_f", "Cast", "gradients");
+            bldr.Assign("T1", "Mul", "alpha", "moment_1f");
+            bldr.Assign("T2", "Mul", "one_minus_alpha", "gradients_f");
+            bldr.Assign("new_moment_1f", "Add", "T1", "T2");
 
             // Update exponentially-averaged historical squared gradient
             // new_moment_2 = beta * moment_2 + ((1 - beta) *  gradients) * gradients)
+            bldr.Assign("new_moment_2f", "Add", bldr.Mul("beta", "moment_2f"), bldr.Mul(bldr.Mul("one_minus_beta", "gradients_f"), "gradients_f");
 
             if (do_bias_correction_) {
-              bldr.add("Tfloat", "Cast", "T");
-              
+      bldr.Assign("Tfloat", "Cast", "T");
+      auto cond = bldr.Eval("Greater", "T", bldr.Const(0));
+      auto alpha_exp1 = bldr.Sub(bldr.Const(1.0f), bldr.Pow("alpha", "Tfloat"));
+      auto beta_exp1 = bldr.Sub(bldr.Const(1.0f), bldr.Pow("beta", "Tfloat"));
+      auto exp2 = bldr.Const(1.0f);
+      bldr.Assign("alpha_correction", "Where", cond, alpha_exp1, exp2);
+      bldr.Assign("beta_correction", "Where", cond, beta_exp1, exp2);
             } else {
-              bldr.Constant("alpha_correction", 1.0f);
-              bldr.Constant("beta_correction", 1.0f);
+      bldr.Constant("alpha_correction", 1.0f);
+      bldr.Constant("beta_correction", 1.0f);
             }
-            const float alpha_correction = do_bias_correction_ ? where("T" > 0, 1.0f - pow(alpha, cast<float>("T")), 1.0f) : 1.0f;  // float?
-            const float beta_correction = do_bias_correction_ ? where("T" > 0, 1.0f - pow(beta, cast<float>("T")), 1.0f) : 1.0f;    // float?
 
             // Currently two modes of Adamw are supported:
 
             if (weight_decay_mode_ == 0) {
-              // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
-              //         bias correction is applied on m and v individually,
-              //         weight decay is applied before weight is updated.
+      // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
+      //         bias correction is applied on m and v individually,
+      //         weight decay is applied before weight is updated.
 
-              const auto& denom = sqrt("new_moment_2" / beta_correction) + epsilon_;                       // T4
-              const auto& update = (("new_moment_1" / alpha_correction) / denom) + (lambda_ * "weights");  //  T4 u T3
-              const auto& delta = -"R" * update;                                                           // T1 u T3 u T4
+      bldr.Assign("denom", "Add", bldr.Eval("Sqrt", bldr.Div("new_moment_2f", "beta_correction")), "epsilon");
+      bldr.Assign("update", "Add", bldr.Div(bldr.Div("new_moment_1f", "alpha_correction"), "denom"), bldr.Mul("lambda", "weights"));
+      bldr.Assign("delta", "Neg", bldr.Mul("R", "update"));
 
             } else {
-              // (weight_decay_mode_ == 1)
-              // Mode 1: Huggingface https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.,
-              //         bias correction is applied on learning rate,
-              //         weight decay is applied after weight is updated.
-              const auto& denom = sqrt("new_moment_2") + epsilon_;                          // T4
-              const auto& step_size = "R" * std::sqrt(beta_correction) / alpha_correction;  //  T1 u float
+      // (weight_decay_mode_ == 1)
+      // Mode 1: Huggingface https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.,
+      //         bias correction is applied on learning rate,
+      //         weight decay is applied after weight is updated.
+      bldr.Assign("denom", "Add", bldr.Eval("Sqrt", "new_moment_2f"), "epsilon");
+      bldr.Assign("step_size", "Div", bldr.Mul("R", bldr.Sqrt("beta_correction")), "alpha_correction");
 
-              // Huggingface updates weights in the following logic:
-              // param' = param - step_size * m1o / denom
+      // Huggingface updates weights in the following logic:
+      // param' = param - step_size * m1o / denom
 
-              // param_out = param' - original_lr * lambda * param'
-              // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
-              // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
-              const auto& delta = -step_size * "new_moment_1" / denom - eta * lambda_ * ("weights" - step_size * "new_moment_1" / denom);  // T1 u T3 u T4
+      // param_out = param' - original_lr * lambda * param'
+      // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+      // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+      const auto& delta = -step_size * "new_moment_1" / denom - eta * lambda_ * ("weights" - step_size * "new_moment_1" / denom);
             }
 
             // Weight, gradient, and "T" update.
             if (ctx.hasOutput(4)) {
-              bldr.add("new_gradients", "Identity", "delta");
+      bldr.Assign("new_gradients", "Identity", "delta");
             }
             if (ctx.hasOutput(3)) {
-              bldr.add("new_weights", "Add", "weights", "delta");
+      bldr.Assign("new_weights", "Add", "weights", "delta");
             }
 
             bldr.Constant("one", 1);
-            bldr.add("new_T", "Add", "T", "one");
+            bldr.Assign("new_T", "Add", "T", "one");
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
