@@ -195,6 +195,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetCurrentGpuDeviceId;
         public IntPtr KernelInfoGetAttributeArray_float;
         public IntPtr KernelInfoGetAttributeArray_int64;
+        public IntPtr CreateArenaCfgV2;
+        public IntPtr AddRunConfigEntry;
         public IntPtr CreatePrepackedWeightsContainer;
         public IntPtr ReleasePrepackedWeightsContainer;
         public IntPtr CreateSessionWithPrepackedWeightsContainer;
