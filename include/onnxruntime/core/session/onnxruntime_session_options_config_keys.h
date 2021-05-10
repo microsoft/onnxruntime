@@ -60,7 +60,3 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
-
-// Key for disabling the option to load tensors from external files in model definition.
-// If the config value is set to "1" then loading external data is disabled, otherwise it is enabled (default value)
-static const char* const kOrtSessionOptionsConfigDisableExternalData = "session.disable_external_data";

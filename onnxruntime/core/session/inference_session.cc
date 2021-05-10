@@ -1146,12 +1146,15 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
-    if (session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigDisableExternalData, "0") == "1") {
-      const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
-      for (auto& it: initializers) {
-        ORT_ENFORCE(!utils::HasExternalData(*it.second), "Initializer tensors with external data is not allowed.");
+#ifdef DISABLE_EXTERNAL_INITIALIZERS
+    const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
+    for (auto& it: initializers) {
+      if (utils::HasExternalData(*it.second)) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL,
+                  "Initializer tensors with external data is not allowed.");
       }
     }
+#endif
 
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
