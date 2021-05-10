@@ -2533,7 +2533,7 @@ Return true if all elements are true and false otherwise.
                     "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
         // Set inferred output types.
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints().at(i)));
+          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
         }
       });
 }
