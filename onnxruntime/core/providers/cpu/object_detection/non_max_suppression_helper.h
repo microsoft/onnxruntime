@@ -70,6 +70,10 @@ inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t b
   float y2_min{};
   float x2_max{};
   float y2_max{};
+  float intersection_x_min{};
+  float intersection_x_max{};
+  float intersection_y_min{};
+  float intersection_y_max{};
 
   const float* box1 = boxes_data + 4 * box_index1;
   const float* box2 = boxes_data + 4 * box_index2;
@@ -77,9 +81,19 @@ inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t b
   if (0 == center_point_box) {
     // boxes data format [y1, x1, y2, x2],
     MaxMin(box1[1], box1[3], x1_min, x1_max);
-    MaxMin(box1[0], box1[2], y1_min, y1_max);
     MaxMin(box2[1], box2[3], x2_min, x2_max);
+
+    intersection_x_min = HelperMax(x1_min, x2_min);
+    intersection_x_max = HelperMin(x1_max, x2_max);
+    if (intersection_x_max <= intersection_x_min)
+      return false;
+
+    MaxMin(box1[0], box1[2], y1_min, y1_max);
     MaxMin(box2[0], box2[2], y2_min, y2_max);
+    intersection_y_min = HelperMax(y1_min, y2_min);
+    intersection_y_max = HelperMin(y1_max, y2_max);
+    if (intersection_y_max <= intersection_y_min)
+      return false;
   } else {
     // 1 == center_point_box_ => boxes data format [x_center, y_center, width, height]
     float box1_width_half = box1[2] / 2;
@@ -89,22 +103,27 @@ inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t b
 
     x1_min = box1[0] - box1_width_half;
     x1_max = box1[0] + box1_width_half;
-    y1_min = box1[1] - box1_height_half;
-    y1_max = box1[1] + box1_height_half;
-
     x2_min = box2[0] - box2_width_half;
     x2_max = box2[0] + box2_width_half;
+
+    intersection_x_min = HelperMax(x1_min, x2_min);
+    intersection_x_max = HelperMin(x1_max, x2_max);
+    if (intersection_x_max <= intersection_x_min)
+      return false;
+
+    y1_min = box1[1] - box1_height_half;
+    y1_max = box1[1] + box1_height_half;
     y2_min = box2[1] - box2_height_half;
     y2_max = box2[1] + box2_height_half;
+
+    intersection_y_min = HelperMax(y1_min, y2_min);
+    intersection_y_max = HelperMin(y1_max, y2_max);
+    if (intersection_y_max <= intersection_y_min)
+      return false;
   }
 
-  const float intersection_x_min = HelperMax(x1_min, x2_min);
-  const float intersection_y_min = HelperMax(y1_min, y2_min);
-  const float intersection_x_max = HelperMin(x1_max, x2_max);
-  const float intersection_y_max = HelperMin(y1_max, y2_max);
-
-  const float intersection_area = HelperMax(intersection_x_max - intersection_x_min, .0f) *
-                                  HelperMax(intersection_y_max - intersection_y_min, .0f);
+  const float intersection_area = (intersection_x_max - intersection_x_min) *
+                                  (intersection_y_max - intersection_y_min);
 
   if (intersection_area <= .0f) {
     return false;
@@ -123,7 +142,7 @@ inline bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t b
   return intersection_over_union > iou_threshold;
 }
 #ifdef __NVCC__
-} // namespace cuda
+}  // namespace cuda
 #endif
-}  // nms_helpers
+}  // namespace nms_helpers
 }  // namespace onnxruntime

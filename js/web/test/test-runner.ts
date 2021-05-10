@@ -7,7 +7,6 @@ import {onnx as onnxProto} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
 import {inspect, promisify} from 'util';
-import {flags as webglFlags} from '../lib/backend-onnxjs';
 
 import {Attribute} from '../lib/onnxjs/attribute';
 import {InferenceHandler, resolveBackend, SessionHandler} from '../lib/onnxjs/backend';
@@ -69,7 +68,9 @@ async function loadMlProto(_uriOrData: string|Uint8Array): Promise<Test.NamedTen
   return Promise.reject('not supported');
 }
 
-async function loadTensors(testCase: Test.ModelTestCase, fileCache?: FileCacheBuffer) {
+async function loadTensors(
+    modelMetaData: {inputNames: readonly string[]; outputNames: readonly string[]}, testCase: Test.ModelTestCase,
+    fileCache?: FileCacheBuffer) {
   const inputs: Test.NamedTensor[] = [];
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
@@ -98,6 +99,14 @@ async function loadTensors(testCase: Test.ModelTestCase, fileCache?: FileCacheBu
     } else {
       throw new Error(`${ext} file is not supported now`);
     }
+  }
+
+  // if model has single input/output, and tensor name is empty, we assign model's input/output names to it.
+  if (modelMetaData.inputNames.length === 1 && inputs.length === 1 && !inputs[0].name) {
+    inputs[0].name = modelMetaData.inputNames[0];
+  }
+  if (modelMetaData.outputNames.length === 1 && outputs.length === 1 && !outputs[0].name) {
+    outputs[0].name = modelMetaData.outputNames[0];
   }
 
   testCase.inputs = inputs;
@@ -199,7 +208,7 @@ export class ModelTestContext {
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
-        await loadTensors(testCase, this.cache);
+        await loadTensors(session, testCase, this.cache);
       }
 
       return new ModelTestContext(
@@ -250,7 +259,7 @@ export class TensorResultValidator {
       this.relativeThreshold = CPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'webgl') {
       if (TensorResultValidator.isHalfFloat === undefined) {
-        TensorResultValidator.isHalfFloat = !createWebGLContext(webglFlags.contextId).isRenderFloat32Supported;
+        TensorResultValidator.isHalfFloat = !createWebGLContext(ort.env.webgl.contextId).isRenderFloat32Supported;
       }
       if (TensorResultValidator.isHalfFloat) {
         this.maxFloatValue = 65504;
@@ -424,13 +433,46 @@ export class TensorResultValidator {
   }
 }
 
+// TODO fix the reshape and flatten ops to be compatible with webgl1
+const UNSUPPORTED_WEBGL_1_TESTS = [
+  'test_flatten_axis0',          'test_flatten_axis1',         'test_flatten_axis2',
+  'test_flatten_default_axis',   'test_reshape_extended_dims', 'test_reshape_negative_dim',
+  'test_reshape_one_dim',        'test_reshape_reduced_dims',  'test_flatten_axis0',
+  'test_flatten_axis1',          'test_flatten_axis2',         'test_flatten_default_axis',
+  'test_reshape_extended_dims',  'test_reshape_negative_dim',  'test_reshape_one_dim',
+  'test_reshape_reduced_dims',   'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims', 'test_flatten_axis0',         'test_flatten_axis1',
+  'test_flatten_axis2',          'test_flatten_default_axis',  'test_reshape_extended_dims',
+  'test_reshape_negative_dim',   'test_reshape_one_dim',       'test_reshape_reduced_dims',
+  'test_reshape_reordered_dims',
+];
+
 /**
  * run a single model test case. the inputs/outputs tensors should already been prepared.
  */
-export async function runModelTestSet(context: ModelTestContext, testCase: Test.ModelTestCase): Promise<void> {
+export async function runModelTestSet(
+    context: ModelTestContext, testCase: Test.ModelTestCase, testName: string): Promise<void> {
+  Logger.verbose('TestRunner', `Start to run test data from folder: ${testName}/${testCase.name}`);
   Logger.verbose('TestRunner', `Start to run test data from folder: ${testCase.name}`);
   const validator = new TensorResultValidator(context.backend);
   try {
+    if (context.backend === 'webgl') {
+      // TODO skipping incompatible tests for now
+      if (createWebGLContext(ort.env.webgl.contextId).version === 1 &&
+          UNSUPPORTED_WEBGL_1_TESTS.indexOf(testName) !== -1) {
+        Logger.info('TestRunner', `Found incompatible test on webgl 1: ${testName} - ${testCase.name}. Skipping.`);
+        return;
+      }
+    }
+
     const feeds: Record<string, ort.Tensor> = {};
     testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
     const start = now();

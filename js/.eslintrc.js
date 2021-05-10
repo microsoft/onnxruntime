@@ -4,10 +4,19 @@ module.exports = {
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
-  plugins: ['@typescript-eslint', 'prefer-arrow', 'import', 'jsdoc'],
+  plugins: ['@typescript-eslint', 'prefer-arrow', 'header', 'import', 'unicorn', 'jsdoc'],
   rules: {
+    'unicorn/filename-case': 'error',
+    'header/header': [
+      2, 'line', [
+        ' Copyright (c) Microsoft Corporation. All rights reserved.',
+        ' Licensed under the MIT License.'
+      ], 2
+    ],
     'import/no-extraneous-dependencies': ['error', { 'devDependencies': false }],
-    'import/no-internal-modules': 'error',
+    'import/no-internal-modules': ['error', {
+      'allow': ['**/lib/**'],
+    }],
     'import/no-unassigned-import': 'error',
     '@typescript-eslint/array-type': ['error', { 'default': 'array-simple' }],
     '@typescript-eslint/await-thenable': 'error',
@@ -35,11 +44,11 @@ module.exports = {
     '@typescript-eslint/no-for-in-array': 'error',
     '@typescript-eslint/no-inferrable-types': 'error',
     '@typescript-eslint/no-misused-new': 'error',
-    '@typescript-eslint/no-namespace': ['error', { "allowDeclarations": true }],
-    '@typescript-eslint/no-non-null-assertion': 'error',
+    '@typescript-eslint/no-namespace': ['error', { 'allowDeclarations': true }],
+    '@typescript-eslint/no-non-null-assertion': 'off',
     '@typescript-eslint/no-require-imports': 'error',
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-    '@typescript-eslint/no-unused-vars': ["error", { "argsIgnorePattern": "^_" }],
+    '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
     '@typescript-eslint/promise-function-async': 'error',
     '@typescript-eslint/quotes': ['error', 'single'],
     '@typescript-eslint/restrict-plus-operands': 'error',
@@ -77,7 +86,7 @@ module.exports = {
     'no-octal-escape': 'error',
     'no-param-reassign': 'error',
     'no-redeclare': 'off',
-    "@typescript-eslint/no-redeclare": ["error"],
+    '@typescript-eslint/no-redeclare': ['error'],
     'no-regex-spaces': 'error',
     'no-return-await': 'error',
     'no-sparse-arrays': 'error',
@@ -114,7 +123,6 @@ module.exports = {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-var-requires': 'off',
-      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       'camelcase': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
@@ -134,7 +142,6 @@ module.exports = {
       // TODO: those rules are useful. should turn on them in future (webgl refactor)
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-use-before-define': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/restrict-plus-operands': 'off',

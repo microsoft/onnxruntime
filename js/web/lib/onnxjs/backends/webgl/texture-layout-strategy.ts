@@ -196,7 +196,6 @@ export function parseAxisParam(axis: number|number[], shape: number[]): number[]
   // Handle negative axis.
   return axis.map(a => a < 0 ? rank + a : a);
 }
-
 export function isInt(a: number): boolean {
   return a % 1 === 0;
 }

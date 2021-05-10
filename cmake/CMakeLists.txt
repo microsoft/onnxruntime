@@ -270,11 +270,13 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  # Enable LTO for release build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
-    # currently, wasm-ld does not work correctly with "-flto=thin"
-    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+  # Enable LTO for release single-thread build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    # NOTES:
+    # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
+    # (2) "-flto=thin" does not work correctly for wasm-ld.
+    #     we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    #     instead, we manually set CMAKE_CXX_FLAGS "-flto"
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
@@ -282,7 +284,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     # Build with sourcemap support
     set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load 
+    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
     set(CMAKE_CXX_FLAGS_DEBUG "-g2")
   endif()
 
@@ -833,7 +835,7 @@ if (WIN32)
     if(onnxruntime_USE_OPENMP)
       list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
     endif()
-    
+
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
@@ -988,7 +990,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (MSVC)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
-      set_target_properties(${target_name} 
+      set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         target_compile_options(${target_name} PRIVATE  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:stacksize 131072>")
@@ -997,7 +999,7 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
- 
+
       if(onnxruntime_DEV_MODE)
           target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Werror>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Werror>")
       endif()
@@ -1018,26 +1020,26 @@ function(onnxruntime_set_compile_flags target_name)
       endif()
     endif()
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")      
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
     endforeach()
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})  
-  onnxruntime_set_compile_flags(${target_name})  
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
-  endif() 
+  endif()
 endfunction()
 
 function(onnxruntime_add_static_library target_name)
   add_library(${target_name} ${ARGN})
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1054,9 +1056,9 @@ function(onnxruntime_add_shared_library_module target_name)
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
     add_library(${target_name} MODULE ${ARGN})
   endif()
-  
+
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1072,7 +1074,7 @@ function(onnxruntime_add_executable target_name)
   endif()
   add_executable(${target_name} ${ARGN})
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})  
+  onnxruntime_set_compile_flags(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1297,9 +1299,6 @@ if(onnxruntime_USE_OPENVINO)
   if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
-  elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
-    set(OPENVINO_VERSION "2020.4")
-    add_definitions(-DOPENVINO_2020_4=1)
   elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
     set(OPENVINO_VERSION "2021.1")
     add_definitions(-DOPENVINO_2021_1=1)
@@ -1311,6 +1310,10 @@ if(onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_2021_3=1)
   elseif (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
     set(OPENVINO_VERSION "2021.4")
+    add_definitions(-DOPENVINO_2021_4=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)
     add_definitions(-DOPENVINO_2021_4=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
@@ -1609,7 +1612,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
 endif()
 foreach(target_name ${ONNXRUNTIME_TARGETS})
-  include(${target_name}.cmake)  
+  include(${target_name}.cmake)
 endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
