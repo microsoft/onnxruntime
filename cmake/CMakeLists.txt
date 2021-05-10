@@ -90,7 +90,6 @@ option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code cov
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
-option(onnxruntime_SHARED_FULL_PROTOBUF_IS_OK "Acknowledge that you understand the implication of linking against a shared protobuf system lib" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
@@ -686,10 +685,10 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
     set(PROTOBUF_LIB protobuf::libprotobuf)
     #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
-    if(NOT Protobuf_USE_STATIC_LIBS AND NOT onnxruntime_SHARED_FULL_PROTOBUF_IS_OK)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
-      #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
+    if(NOT Protobuf_USE_STATIC_LIBS)
+      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
+      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
+      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
