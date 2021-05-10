@@ -65,7 +65,6 @@ def validate_build_package_info():
         has_ortmodule = True
     except ImportError:
         has_ortmodule = False
-        print("no ortmodule")
     except: # noqa
         # this may happen if Cuda is not installed
         has_ortmodule = True
@@ -80,47 +79,60 @@ def validate_build_package_info():
             from .build_and_package_info import package_name
             from .build_and_package_info import __version__ as version
 
-            cuda_version = None
             try:
                 from .build_and_package_info import cuda_version
             except: # noqa
                 pass
 
-            print('onnxruntime training package info: package_name:', package_name, file=sys.stderr)
-            print('onnxruntime training package info: __version__:', version, file=sys.stderr)
-
             if cuda_version:
-                print('onnxruntime training package info: cuda_version:', cuda_version, file=sys.stderr)
-
                 # collect cuda library build info. the library info may not be available
                 # when the build environment has none or multiple libraries installed
                 try:
                     from .build_and_package_info import cudart_version
-                    print('onnxruntime build info: cudart_version:', cudart_version, file=sys.stderr)
                 except: # noqa
                     print('WARNING: failed to get cudart_version from onnxruntime build info.', file=sys.stderr)
                     cudart_version = None
 
-                try:
-                    from .build_and_package_info import cudnn_version
-                    print('onnxruntime build info: cudnn_version:', cudnn_version, file=sys.stderr)
-                except: # noqa
-                    print('WARNING: failed to get cudnn_version from onnxruntime build info', file=sys.stderr)
-                    cudnn_version = None
+                def print_build_package_info():
+                    print('onnxruntime training package info: package_name:', package_name, file=sys.stderr)
+                    print('onnxruntime training package info: __version__:', version, file=sys.stderr)
+                    print('onnxruntime training package info: cuda_version:', cuda_version, file=sys.stderr)
+                    print('onnxruntime build info: cudart_version:', cudart_version, file=sys.stderr)
 
                 # collection cuda library info from current environment.
-                from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions, find_cudnn_versions
+                from onnxruntime.capi.onnxruntime_collect_build_info \
+                    import find_cudart_versions, find_cudnn_supported_cuda_versions
                 local_cudart_versions = find_cudart_versions(build_env=False)
                 if cudart_version and cudart_version not in local_cudart_versions:
+                    print_build_package_info()
                     print('WARNING: failed to find cudart version that matches onnxruntime build info', file=sys.stderr)
                     print('WARNING: found cudart versions: ', local_cudart_versions, file=sys.stderr)
 
-                local_cudnn_versions = find_cudnn_versions(build_env=False)
-                if cudnn_version and cudnn_version not in local_cudnn_versions:
-                    # need to be soft on cudnn version
-                    # very likely there is a mismatch but onnxruntime works just fine.
-                    print('INFO: failed to find cudnn version that matches onnxruntime build info', file=sys.stderr)
-                    print('INFO: found cudnn versions: ', local_cudnn_versions, file=sys.stderr)
+                # https://docs.nvidia.com/deeplearning/cudnn/support-matrix/index.html
+                # https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnGetCudartVersion
+                # it is tricky to validate local cudnn support.
+                # There is a case when onnxruntime-training is built with Cuda 11.1.
+                # It however works with cudnn 8.0.3 (8003) which by cudnnGetCudartVersion and
+                # cudnn support-matrix, only support Cuda 11.0.
+                # to avoid false warning, we only post a message if there is no cudnn installed at all,
+                # hoping meanful error message is posted when runtime does not find a compatible cudnn library.
+                local_cudnn_supported_cuda_versions = find_cudnn_supported_cuda_versions(build_env=False)
+                if len(local_cudnn_supported_cuda_versions) == 0:
+                    print_build_package_info()
+                    print('WARNING: cudnn is not installed: ', file=sys.stderr)
+
+                # if cuda_version not in local_cudnn_supported_cuda_versions:
+                #     print_build_package_info()
+
+                #     # need to be soft on cudnn version
+                #     # very likely there is a mismatch but onnxruntime works just fine.
+                #     print(
+                #         'INFO: failed to find cudnn that is compatible with the cuda version',
+                #         file=sys.stderr)
+                #     print(
+                #         'INFO: cuda version cupported by installed cudnns: ',
+                #         local_cudnn_supported_cuda_versions,
+                #         file=sys.stderr)
             else:
                 # TODO: rcom
                 pass

@@ -58,7 +58,7 @@ def find_cudart_versions(build_env=False):
     return [ver for ver in cudart_found_versions if ver]
 
 
-def find_cudnn_versions(build_env=False):
+def find_cudnn_supported_cuda_versions(build_env=False):
     # comments in get_cudart_version apply here
     if 'linux' not in sys.platform:
         warnings.warn('find_cudnn_versions only works on Linux')
@@ -77,20 +77,23 @@ def find_cudnn_versions(build_env=False):
             '7.3.1', '7.3.0',
         })
 
-    def get_cudnn_version(find_cudnn_version=None):
+    def get_cudnn_supported_cuda_version(find_cudnn_version=None):
         cudnn_lib_filename = 'libcudnn.so'
         if find_cudnn_version:
             cudnn_lib_filename = cudnn_lib_filename + '.' + find_cudnn_version
 
+        # in cudnn.h cudnn version are calculated as:
+        # #define CUDNN_VERSION (CUDNN_MAJOR * 1000 + CUDNN_MINOR * 100 + CUDNN_PATCHLEVEL)
         try:
             cudnn = ctypes.CDLL(cudnn_lib_filename)
-            cudnn_ver = cudnn.cudnnGetVersion()
-            return cudnn_ver
+            # cudnn_ver = cudnn.cudnnGetVersion()
+            cuda_ver = cudnn.cudnnGetCudartVersion()
+            return cuda_ver
         except: # noqa
             return None
 
     # use set to avoid duplications
-    cudnn_found_versions = {get_cudnn_version(cudnn_version) for cudnn_version in cudnn_possible_versions}
+    cuda_found_versions = {get_cudnn_supported_cuda_version(cudnn_version) for cudnn_version in cudnn_possible_versions}
 
     # convert to list and remove None
-    return [ver for ver in cudnn_found_versions if ver]
+    return [ver for ver in cuda_found_versions if ver]
