@@ -188,7 +188,8 @@ class TrainingManager(GraphExecutionManager):
                                         self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                self._flattened_module.named_parameters(),
+                                                [self._flattened_module.get_parameter(name)
+                                                    for name in self._graph_info.initializer_names],
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),
