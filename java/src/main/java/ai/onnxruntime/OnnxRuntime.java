@@ -121,12 +121,12 @@ final class OnnxRuntime {
    *
    * @param file The file to remove.
    */
-  private static void cleanUp(File file, boolean on_exit_only) {
+  private static void cleanUp(File file, boolean onExitOnly) {
     if (!file.exists()) {
       return;
     }
     logger.log(Level.FINE, "Deleting " + file);
-    if (on_exit_only || !file.delete()) {
+    if (onExitOnly || !file.delete()) {
       logger.log(Level.FINE, "Deleting " + file + " on exit");
       file.deleteOnExit();
     }
@@ -148,7 +148,7 @@ final class OnnxRuntime {
    * @param library The bare name of the library.
    * @throws IOException If the file failed to read or write.
    */
-  private static void load(Path tempDirectory, String library, boolean system_load)
+  private static void load(Path tempDirectory, String library, boolean systemLoad)
       throws IOException {
     // On Android, we simply use System.loadLibrary
     if (isAndroid()) {
@@ -212,11 +212,16 @@ final class OnnxRuntime {
             os.write(buffer, 0, readBytes);
           }
         }
-        if (system_load) System.load(tempFile.getAbsolutePath());
-        logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
+        if (systemLoad) {
+          System.load(tempFile.getAbsolutePath());
+          logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
+        }
+        else {
+          logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
+        }
       }
     } finally {
-      cleanUp(tempFile, !system_load);
+      cleanUp(tempFile, !systemLoad);
     }
   }
 
