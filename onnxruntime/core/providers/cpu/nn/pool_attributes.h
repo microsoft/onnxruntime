@@ -6,6 +6,7 @@
 #include <cmath>
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/common.h"
