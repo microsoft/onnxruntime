@@ -6,6 +6,7 @@ import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {getActicationSnippet} from './fuse-utils';
 
 export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -25,8 +26,11 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     const aRank = aShape.length;
     const bRank = bShape.length;
     const sharedDim = aShape[aShape.length - 1];
+
+    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
     // TODO:fix broadcasting
     const shaderSource = `
+      ${activationFunction}
       vec4 process(int indices[${rank}]) {
           int a[${aRank}];
           int b[${bRank}];
@@ -41,6 +45,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
               value += ${getA(aRank)}.ggaa * ${getB(bRank)}.baba;
           }
           ${processBias}
+          ${applyActivation}
           return value;
       }`;
     return {
