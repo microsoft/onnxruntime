@@ -492,7 +492,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 
   if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
   return (*id_to_allocator_map)[id];
@@ -2155,4 +2155,3 @@ onnxruntime::Environment& GetEnv() {
 
 }  // namespace python
 }  // namespace onnxruntime
-

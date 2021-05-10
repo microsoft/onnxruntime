@@ -219,6 +219,9 @@ final class OnnxRuntime {
           logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
         }
       }
+    } catch(Exception e) {
+      if(systemLoad) // We only throw if we're loading the library, otherwise failure is okay
+        throw e;
     } finally {
       cleanUp(tempFile, !systemLoad);
     }
