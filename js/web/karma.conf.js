@@ -3,6 +3,7 @@
 
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
+const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
 const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
 const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 
@@ -59,7 +60,7 @@ module.exports = function (config) {
       '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
-    client: { captureConsole: true, mocha: { expose: ['body'], timeout: 60000 } },
+    client: { captureConsole: true, mocha: { expose: ['body'], timeout: timeoutMocha } },
     preprocessors: { mainFile: ['sourcemap'] },
     reporters: ['mocha', 'BrowserStack'],
     browsers: [],

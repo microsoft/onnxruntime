@@ -491,6 +491,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
 
   if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
     id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
@@ -580,7 +581,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
-          if (option.first == "has_trt_options") {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              params.device_id = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "has_trt_options") {
             if (option.second == "True" || option.second == "true") {
               params.has_trt_options = true;
             } else if (option.second == "False" || option.second == "false") {
@@ -1744,7 +1751,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             //config_key and config_value will be copied
-            const Status status = options->AddConfigEntry(config_key, config_value);
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1754,7 +1761,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
-            if (!options->TryGetConfigEntry(key, value))
+            if (!options->config_options.TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return value;
@@ -2148,3 +2155,4 @@ onnxruntime::Environment& GetEnv() {
 
 }  // namespace python
 }  // namespace onnxruntime
+

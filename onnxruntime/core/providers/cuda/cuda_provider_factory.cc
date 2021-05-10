@@ -153,6 +153,7 @@ struct CUDA_Provider : Provider {
     info.do_copy_in_default_stream = params->do_copy_in_default_stream;
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
+    info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -171,3 +172,4 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
 }
+

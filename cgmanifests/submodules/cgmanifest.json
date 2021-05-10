@@ -352,7 +352,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "436bd7880e458532901c58f4d9d1ea23fa7edd52",
+          "commitHash": "2dc747c574b68a808ea4699d26942c8132fe2b09",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"

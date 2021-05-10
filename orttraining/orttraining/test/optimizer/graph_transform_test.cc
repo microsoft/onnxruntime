@@ -81,8 +81,7 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
@@ -93,8 +92,7 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
-  auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
@@ -103,8 +101,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
-  ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "mlp_megatron_basic_test_partition_rank0.onnx";
   Model::Save(*p_model, model_uri2);
@@ -165,8 +162,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
-  auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -176,8 +172,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
-  ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "mlp_megatron_basic_test_partition_rank1.onnx";
   Model::Save(*p_model, model_uri2);
@@ -238,8 +233,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
-  auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unordered_map<std::string, std::string> updated_weight_names;
@@ -248,8 +242,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
-  ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "self_attention_megatron_basic_test_partition_rank0.onnx";
   Model::Save(*p_model, model_uri2);
@@ -307,8 +300,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
-  auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -318,8 +310,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
   graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
-  ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "self_attention_megatron_basic_test_partition_rank1.onnx";
   Model::Save(*p_model, model_uri2);
@@ -384,8 +375,7 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
   graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::make_unique<GeluRecompute>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
-  ASSERT_TRUE(ret.IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
