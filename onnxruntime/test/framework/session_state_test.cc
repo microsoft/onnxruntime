@@ -655,7 +655,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   {
     SessionOptions sess_options;
     // Enable pre-packing
-    sess_options.config_options[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
     // First session/model
     Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -714,7 +714,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   {
     SessionOptions sess_options;
     // Enable pre-packing
-    sess_options.config_options[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
@@ -787,7 +787,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   {
     SessionOptions sess_options;
     // Enable pre-packing
-    sess_options.config_options[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
