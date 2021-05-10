@@ -177,14 +177,14 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda11build
 
       - task: CmdLine@2
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+            docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -199,9 +199,9 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -256,6 +256,10 @@ stages:
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root 
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
           Repository: onnxruntimetrainingrocmbuild
 
       - task: CmdLine@2
@@ -267,7 +271,7 @@ stages:
               --network=host \
               --cap-add=SYS_PTRACE \
               --security-opt seccomp=unconfined \
-              -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --workdir /onnxruntime_src \
@@ -484,34 +488,50 @@ stages:
             PythonVersion: '3.6'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            C_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/c++'
           Python36 Cuda11.1:
             PythonVersion: '3.6'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+            C_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/c++'
           Python37 Cuda10.2:
             PythonVersion: '3.7'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            C_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/c++'
           Python37 Cuda11.1:
             PythonVersion: '3.7'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+            C_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/c++'
           Python38 Cuda10.2:
             PythonVersion: '3.8'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            C_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/c++'
           Python38 Cuda11.1:
             PythonVersion: '3.8'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+            C_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/c++'
           Python39 Cuda10.2:
             PythonVersion: '3.9'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            C_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-8/root/usr/bin/c++'
           Python39 Cuda11.1:
             PythonVersion: '3.9'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+            C_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/cc'
+            CXX_COMPILER: '/opt/rh/devtoolset-9/root/usr/bin/c++'
       steps:
 
       - checkout: self
@@ -535,7 +555,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+            docker run --rm --gpus all -e CC=$(C_COMPILER) -e CXX=$(CXX_COMPILER) -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -553,7 +573,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=$(C_COMPILER)  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
           workingDirectory: $(Build.SourcesDirectory)
 
@@ -793,7 +813,7 @@ stages:
       pool: 'onnxruntime-gpu-winbuild'
       timeoutInMinutes:  240
       variables:
-        CUDA_VERSION: '11.0'
+        CUDA_VERSION: '11.1'
         buildArch: x64
         EnvSetupScript: setup_env_cuda_11.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
