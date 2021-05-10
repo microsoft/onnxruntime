@@ -191,6 +191,9 @@ final class OnnxRuntime {
     try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
       if (is == null) {
         // 3a) Not found in resources, load from library path
+        if( !systemLoad ) {
+          return; // Failure is expected if we try to pull in optional components we don't need to load
+        }
         logger.log(
             Level.FINE, "Attempting to load native library '" + library + "' from library path");
         System.loadLibrary(library);
@@ -218,11 +221,6 @@ final class OnnxRuntime {
         } else {
           logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
         }
-      }
-    } catch (Exception e) {
-      if (systemLoad) {
-        // We only throw if we're loading the library, otherwise failure is okay
-        throw e;
       }
     } finally {
       cleanUp(tempFile, !systemLoad);
