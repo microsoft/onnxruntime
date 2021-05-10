@@ -73,7 +73,9 @@ class TrainingManager(GraphExecutionManager):
                                                       kwargs)
 
         # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+        # Order of or operation is important here because we always need to call
+        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
+        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
         # Build the gradient graph
         if build_gradient_graph:
@@ -191,7 +193,8 @@ class TrainingManager(GraphExecutionManager):
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),
                                                 inputs,
-                                                kwargs)))
+                                                kwargs,
+                                                self._device)))
 
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
