@@ -176,6 +176,7 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
           0,
           true,
           0,
+          nullptr,
           nullptr};
 
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
