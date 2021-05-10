@@ -710,6 +710,7 @@ def test_TwoOutputFunction():
 
     run_evalue_test_and_compare(model_builder, input_generator, label_input)
 
+test_GeLU()
 test_MegatronF()
 test_ScalarAndTuple()
 
