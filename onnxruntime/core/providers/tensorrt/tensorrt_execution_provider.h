@@ -6,6 +6,7 @@
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
+#include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
 
@@ -68,20 +69,6 @@ struct TensorrtInferDeleter {
 template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
-
-// Information needed to construct trt execution providers.
-struct TensorrtExecutionProviderInfo {
-  int device_id{0};
-  bool has_user_compute_stream{false};
-  void* user_compute_stream{nullptr};
-  bool has_trt_options{false};
-  size_t max_workspace_size{1 << 30};
-  bool fp16_enable{false};
-  bool int8_enable{false}; 
-  std::string int8_calibration_table_name{""};
-  bool int8_use_native_calibration_table{false};
-  bool force_sequential_engine_build{false};
-};
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
