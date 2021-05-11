@@ -46,6 +46,10 @@ def _parse_build_settings(args):
 
 
 def _build_package(args):
+    _include_ops_by_config_file = args.include_ops_by_config.resolve()
+    if not _include_ops_by_config_file.is_file():
+        raise FileNotFoundError('Include ops config file {} is not a file.'.format(_include_ops_by_config_file))
+
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
 
@@ -70,7 +74,7 @@ def _build_package(args):
         ]
 
         if args.include_ops_by_config is not None:
-            _build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]
+            _build_command += ['--include_ops_by_config=' + str(_include_ops_by_config_file)]
 
         # the actual build process for current arch
         subprocess.run(_build_command, shell=False, check=True, cwd=REPO_DIR)
@@ -114,7 +118,7 @@ def parse_args():
         '''
     )
 
-    parser.add_argument('--build_dir', type=str, default=os.path.join(REPO_DIR, 'build/iOS_framework'),
+    parser.add_argument('--build_dir', type=pathlib.Path, default=os.path.join(REPO_DIR, 'build/iOS_framework'),
                         help='Provide the root directory for build output')
 
     parser.add_argument(
