@@ -2,14 +2,21 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <Python.h>
 #include "core/platform/env.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/language_interop_ops/torch/object_pointer.h"
+
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
 using OnnxAttrs = std::unordered_map<std::string, std::string>;
+
+// PyObject RAII wrapper
+using PythonObjectPtr = ObjectPointer<PyObject>;
+template class ObjectPointer<PyObject>;
 
 class TorchProxy {
  public:
@@ -39,8 +46,8 @@ class TorchProxy {
   void PutGil(int32_t) const;
 
  private:
-  TorchProxy();
-  ~TorchProxy();
+  TorchProxy(){};
+  ~TorchProxy(){};
   bool initialized_ = false;
 };
 }  // namespace torch

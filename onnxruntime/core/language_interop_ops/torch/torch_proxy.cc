@@ -4,6 +4,7 @@
 #include <Python.h>
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/object_pointer.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/platform/env.h"
 #include "core/util/dlpack_convertor.h"
@@ -11,27 +12,12 @@
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
-class Scope {
- public:
-  Scope(const std::vector<PyObject*>& objs = {}) : objs_(objs) {
-    mtx_.lock();
-  }
-  ~Scope() {
-    for (auto obj : objs_) {
-      Py_XDECREF(obj);
-    }
-    mtx_.unlock();
-  }
-  void Add(PyObject* obj) {
-    objs_.push_back(obj);
-  }
 
- private:
-  static std::mutex mtx_;
-  std::vector<PyObject*> objs_;
-};
-
-std::mutex Scope::mtx_;
+template <>
+void ObjectPointer<PyObject>::free() {
+  if (ptr)
+    Py_DECREF(ptr);
+}
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
@@ -55,13 +41,6 @@ bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
 TorchProxy& TorchProxy::GetInstance() {
   static TorchProxy proxy;
   return proxy;
-}
-
-TorchProxy::TorchProxy() {
-  Scope scope;
-}
-
-TorchProxy::~TorchProxy() {
 }
 
 int32_t TorchProxy::GetGil() const {
@@ -166,23 +145,36 @@ PyObject* CreateForwardArguments(
     const std::vector<int64_t>& obj_indices,
     bool is_training_mode) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
-  PyObject* args = PyTuple_New(4 + len);
+  int64_t num_args_without_inputs = 4;
+  PyObject* args = PyTuple_New(num_args_without_inputs + len);
   PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
   PyObject* requires_grad_flags = CreateRequiresGradFlags(requires_grads);
+  Py_INCREF(callback);
   PyTuple_SetItem(args, 0, callback);
+  Py_INCREF(requires_grad_flags);
   PyTuple_SetItem(args, 1, requires_grad_flags);
+  Py_INCREF(tensor_flags);
   PyTuple_SetItem(args, 2, tensor_flags);
+
+  if (is_training_mode) {
+    Py_INCREF(Py_True);
+  } else {
+    Py_INCREF(Py_False);
+  }
   PyTuple_SetItem(args, 3, is_training_mode ? Py_True : Py_False);
 
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    PyTuple_SetItem(args, 4 + tensor_indices[i], dltensor);
+    Py_INCREF(dltensor);
+    PyTuple_SetItem(args, num_args_without_inputs + tensor_indices[i], dltensor);
   }
 
   for (size_t i = 0; i < obj_args.size(); ++i) {
-    PyTuple_SetItem(args, 4 + obj_indices[i], reinterpret_cast<PyObject*>(obj_args[i]));
+    PyObject* pyobj = reinterpret_cast<PyObject*>(obj_args[i]);
+    Py_INCREF(pyobj);
+    PyTuple_SetItem(args, num_args_without_inputs + obj_indices[i], pyobj);
   }
 
   return args;
@@ -200,7 +192,7 @@ void Invoke(
     bool is_training_mode) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
-  PyObject* args = CreateForwardArguments(
+  PythonObjectPtr args_ptr = PythonObjectPtr(CreateForwardArguments(
       callback,
       len,
       requires_grads,
@@ -208,10 +200,8 @@ void Invoke(
       tensor_indices,
       obj_args,
       obj_indices,
-      is_training_mode);
-  InvokeRunner(runner, args, returned_args);
-  // TODO: Free Python objects.
-  // DestoryForwardArguments(args);
+      is_training_mode));
+  InvokeRunner(runner, args_ptr.get(), returned_args);
 }
 
 void TorchProxy::Forward(
