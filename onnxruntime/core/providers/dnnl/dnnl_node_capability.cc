@@ -42,8 +42,8 @@ bool DnnlPoolNodeCapability::Supported(const Node* node) const {
 }
 
 bool DnnlPoolNodeCapability::IsAttributeSupported(const Node* node) const {
+  const NodeAttributes& attributes = node->GetAttributes();
   if (node->OpType() == "MaxPool") {
-    const NodeAttributes& attributes = node->GetAttributes();
     auto attr = attributes.find("dilations");
     if (attr != attributes.end()) {
       for (int i = 0; i < attr->second().ints_size(); ++i) {
@@ -51,6 +51,12 @@ bool DnnlPoolNodeCapability::IsAttributeSupported(const Node* node) const {
           return false;
         }
       }
+    }
+  }
+  auto attr = attributes.find("ceil_mode");
+  if (attr != attributes.end()) {
+    if (attr->second().i() != 0) {
+      return false;
     }
   }
   return true;
