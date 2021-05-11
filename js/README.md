@@ -30,6 +30,10 @@ are used for code-formatting and linting features for developers:
 
 To populate typescript type declarations, in each projects, run `npm ci`.
 
+#### Run code formatter and linter manually
+
+in `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run clang-format.
+
 ## onnxruntime-common
 
 > language: typescript

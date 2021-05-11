@@ -2108,6 +2108,71 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormInternal)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Variant of BatchNormalization with additional output for saved_mean/inv_std_dev.")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("epsilon", "epsilon value", AttributeProto::FLOAT, 1e-5f)
+      .Attr("momentum", "momentum value", AttributeProto::FLOAT, 0.9f)
+      .Attr("training_mode", "true if training", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "X", "Input tensor.", "T",  OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "scale", "Scale tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "Bias tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(3, "input_mean", "running mean tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(4, "input_var", "running variance tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "The output tensor of the same shape as X", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1,"running_mean", "The running mean after BN.", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(2, "running_var", "Running var after BN", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(3, "saved_mean", "Mean of the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+            "T",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+            "U",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain mean and variance types to float tensors. It allows all float type for U.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          Dim num_channels;
+
+          unifyInputDim(ctx, 0, 1, num_channels);
+          unifyInputDim(ctx, 1, 0, num_channels);
+          unifyInputDim(ctx, 2, 0, num_channels);
+          unifyInputDim(ctx, 3, 0, num_channels);
+          unifyInputDim(ctx, 4, 0, num_channels);
+
+          if (ctx.getAttribute("training_mode") &&
+               static_cast<int>(ctx.getAttribute("training_mode")->i()) != 0) {
+            if (ctx.getNumOutputs() != 5)
+              fail_shape_inference(
+                "This number of op outputs should be 5 when Training_mode = True, but it is not.");
+          } else {
+            if (ctx.getNumOutputs() != 1)
+              fail_shape_inference(
+                "This number of op outputs should be 1 when Training_mode = False, but it is not.");
+          }
+
+          if (ctx.getNumOutputs() > 1) {
+            ONNX_NAMESPACE::TensorShapeProto outputs_shape;
+            *outputs_shape.add_dim() = num_channels; // channel
+
+            propagateElemTypeFromInputToOutput(ctx, 3, 1);
+            updateOutputShape(ctx, 1, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 2);
+            updateOutputShape(ctx, 2, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            updateOutputShape(ctx, 3, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 4);
+            updateOutputShape(ctx, 4, outputs_shape);
+          }
+        });
+
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

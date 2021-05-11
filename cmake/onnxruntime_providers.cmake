@@ -579,6 +579,10 @@ if (onnxruntime_USE_OPENVINO)
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
 
+  if (WIN32)
+    unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
+  endif()
+
   if (OPENVINO_VERSION VERSION_EQUAL "2020.3")
     list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ${PYTHON_LIBRARIES})
   else()
