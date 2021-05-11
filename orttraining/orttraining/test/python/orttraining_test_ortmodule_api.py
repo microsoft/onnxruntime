@@ -2372,10 +2372,12 @@ def test_unused_parameters():
             self.relu = torch.nn.ReLU()
             # fc2 is an unused initializer which will be dropped after export
             self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.register_buffer("buffer", torch.ones(hidden_size))
 
         def forward(self, input1):
             out = self.fc1(input1)
             out = self.relu(out)
+            out = out + self.buffer
             return out
 
     device = 'cuda'
