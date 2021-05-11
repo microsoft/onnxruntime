@@ -905,17 +905,25 @@ class TestInferenceSession(unittest.TestCase):
         # exclude for macos and linux
         if not sys.platform.startswith("win"):
             return
-        
+
+        # Exclude for training
+        training_enabled = false
+        try:
+            from onnxruntime.capi.ort_trainer import ORTTrainer
+            training_enabled = true
+        except:
+
+        if training_enabled
+            return
+
         shared_library = 'test_execution_provider.dll'
         if not os.path.exists(shared_library):
             raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
-
         
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
-
 
         from onnxruntime.capi import _pybind_state as C
         session_options = C.get_default_session_options()
