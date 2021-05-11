@@ -10,10 +10,10 @@ var supportedOperatingSystemsNew = [
 ]
 
 var opts = {
-    os: getAnchorSelectedOS() || getDefaultSelectedOS(),
-    architecture: 'X64',
-    language: 'Python(3.6-3.9)',
-    hardwareAcceleration: 'DefaultCPU',
+    os: '',
+    architecture: '',
+    language: '',
+    hardwareAcceleration: '',
 };
 var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
@@ -30,10 +30,14 @@ var language = $(".language > .r-option");
 var hardwareAcceleration = $(".hardwareAcceleration > .r-option");
 
 var ot_os = $(".ot_os > .r-option");
+var ot_tab = $('#OT_tab');
 
 var ot_architecture = $(".ot_architecture > .r-option");
 var ot_language = $(".ot_language > .r-option");
 var ot_hardwareAcceleration = $(".ot_hardwareAcceleration > .r-option");
+
+var supported = true;
+var ot_defaultSelection = true;
 
 function checkKeyPress(event) {
     var keycode = (event.keyCode ? event.keyCode : event.which);
@@ -45,9 +49,10 @@ function checkKeyPress(event) {
 }
 
 
+
 os.on("click", function () {
     selectedOption(os, this, "os");
-    
+
 });
 os.on("keypress keyup", function (event) {
     if (checkKeyPress(event)) {
@@ -56,12 +61,14 @@ os.on("keypress keyup", function (event) {
 });
 ot_os.on("click", function () {
     ot_selectedOption(ot_os, this, "ot_os");
-    
 });
 ot_os.on("keypress keyup", function (event) {
     if (checkKeyPress(event)) {
         ot_selectedOption(ot_os, this, "ot_os");
     }
+});
+ot_tab.on("click", function() {
+    ot_commandMessage(ot_buildMatcher());
 });
 architecture.on("click", function () {
     selectedOption(architecture, this, "architecture");
@@ -111,63 +118,375 @@ ot_hardwareAcceleration.on("keypress keyup", function (event) {
         ot_selectedOption(ot_hardwareAcceleration, this, "ot_hardwareAcceleration");
     }
 });
-// Pre-select user's operating system
-$(document).ready(function () {
-    var userOsOption = document.getElementById(opts.os);
-    var ot_userOsOption = document.getElementById(ot_opts.ot_os);
 
-    if (userOsOption) {
-        selectedOption(os, userOsOption, "os");
-    }
-    if (ot_userOsOption) {
-        ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
-    }
-});
+
+
+// Pre-select user's operating system
+// $(document).ready(function () {
+//     var userOsOption = document.getElementById(opts.os);
+//     var ot_userOsOption = document.getElementById(ot_opts.ot_os);
+//     if (userOsOption) {
+//         selectedOption(os, userOsOption, "os");
+        
+//     }
+//     if (ot_userOsOption) {
+//         ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
+//     }
+// });
 
 
 // determine os (mac, linux, windows) based on user's platform
-function getDefaultSelectedOS() {
-    var platform = navigator.platform.toLowerCase();
-    for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-        if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-            return supportedOperatingSystemsNew[idx].value;
-        }
-    }
-    // Just return something if user platform is not in our supported map
-    return supportedOperatingSystemsNew[0].value;
-}
+// function getDefaultSelectedOS() {
+//     var platform = navigator.platform.toLowerCase();
+//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
+//         if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
+//             return supportedOperatingSystemsNew[idx].value;
+//         }
+//     }
+//     // Just return something if user platform is not in our supported map
+//     return supportedOperatingSystemsNew[0].value;
+// }
 
 // determine os based on location hash
-function getAnchorSelectedOS() {
-    var anchor = location.hash; 
-    var ANCHOR_REGEX = /^#[^ ]+$/;
-    // Look for anchor in the href
-    if (!ANCHOR_REGEX.test(anchor)) {
-        return false;
-    }
-    // Look for anchor with OS in the first portion
-    var testOS = anchor.slice(1).split("-")[0];
-    for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-        if (testOS.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-            return supportedOperatingSystemsNew[idx].value;
+// function getAnchorSelectedOS() {
+//     var anchor = location.hash; 
+//     var ANCHOR_REGEX = /^#[^ ]+$/;
+//     // Look for anchor in the href
+//     if (!ANCHOR_REGEX.test(anchor)) {
+//         return false;
+//     }
+//     // Look for anchor with OS in the first portion
+//     var testOS = anchor.slice(1).split("-")[0];
+//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
+//         if (testOS.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
+//             return supportedOperatingSystemsNew[idx].value;
+//         }
+//     }
+//     return false;
+// }
+
+function checkValidity(){
+    var current_os = opts['os'];
+    var current_lang = opts['language'];
+    var current_arch = opts['architecture'];
+    var current_hw = opts['hardwareAcceleration'];
+    
+    // console.log("current: "+current_os);
+    // console.log("current: "+current_arch);
+    // console.log("current: "+current_lang);
+    // console.log("current: "+current_hw);
+
+    var valid = Object.getOwnPropertyNames(validCombos);
+  
+    //os section
+    for(var i =0; i<os.length; i++){
+        //disable other selections once item in category selected
+        // if(os[i].id!=current_os && current_os!=''){
+        //     $(os[i]).addClass("gray");
+        //     continue;
+        // }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && os[i].id!=current_os){
+            $(os[i]).addClass("gray"); 
         }
     }
-    return false;
+
+        //language section
+        for(var i =0; i<language.length; i++){
+               //disable other selections once item in category selected
+            //  if(language[i].id!=current_lang && current_lang!=''){
+            //     $(language[i]).addClass("gray");
+            //      continue;
+            //   }   
+            var isvalidcombo=false;
+            for(var k=0; k<valid.length;k++){
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+            }
+            if(isvalidcombo==false && language[i].id!=current_lang){
+                $(language[i]).addClass("gray"); 
+            }
+        }
+
+       //architecture section
+       for(var i =0; i<architecture.length; i++){
+             //disable other selections once item in category selected
+    //     if(architecture[i].id!=current_arch && current_arch!=''){
+    //         $(architecture[i]).addClass("gray");
+    //         continue;
+    //     }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && architecture[i].id!=current_arch){
+            $(architecture[i]).addClass("gray"); 
+        }
+    }
+
+          //accelerator section
+          for(var i =0; i<hardwareAcceleration.length; i++){
+                //disable other selections once item in category selected
+        //      if(hardwareAcceleration[i].id!=current_hw && current_hw!=''){
+        //       $(hardwareAcceleration[i]).addClass("gray");
+        //       continue;
+        // }
+            var isvalidcombo=false;
+    
+
+            //go thru all valid options
+            for(var k=0; k<valid.length;k++){
+   
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(hardwareAcceleration[i].id)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+
+            }
+
+            if(isvalidcombo==false && hardwareAcceleration[i].id!=current_hw){
+                // console.log(hardwareAcceleration[i]);
+                $(hardwareAcceleration[i]).addClass("gray"); 
+            }
+        } 
+}
+
+function ot_checkValidity(){
+    var current_os = ot_opts['ot_os'];
+    var current_lang = ot_opts['ot_language'];
+    var current_arch = ot_opts['ot_architecture'];
+    var current_hw = ot_opts['ot_hardwareAcceleration'];
+    
+    // console.log("current: "+current_os);
+    // console.log("current: "+current_arch);
+    // console.log("current: "+current_lang);
+    // console.log("current: "+current_hw);
+
+    
+    var valid = Object.getOwnPropertyNames(ot_validCombos);
+
+    //os section
+    for(var i =0; i<ot_os.length; i++){
+        //disable other selections once item in category selected
+        // if(ot_os[i].id!=current_os && current_os!=''){
+        //     $(ot_os[i]).addClass("gray");
+        //     continue;
+        // }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && ot_os[i].id!=current_os){
+            $(ot_os[i]).addClass("gray"); 
+        }
+    }
+
+        //language section
+        for(var i =0; i<ot_language.length; i++){
+               //disable other selections once item in category selected
+            //  if(ot_language[i].id!=current_lang && current_lang!=''){
+            //     $(ot_language[i]).addClass("gray");
+            //      continue;
+            //   }   
+            var isvalidcombo=false;
+            for(var k=0; k<valid.length;k++){
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+            }
+            if(isvalidcombo==false && ot_language[i].id!=current_lang){
+                $(ot_language[i]).addClass("gray"); 
+            }
+        }
+
+       //architecture section
+       for(var i =0; i<ot_architecture.length; i++){
+        //      //disable other selections once item in category selected
+        // if(ot_architecture[i].id!=current_arch && current_arch!=''){
+        //     $(ot_architecture[i]).addClass("gray");
+        //     continue;
+        // }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && ot_architecture[i].id!=current_arch){
+            $(ot_architecture[i]).addClass("gray"); 
+        }
+    }
+
+          //accelerator section
+          for(var i =0; i<ot_hardwareAcceleration.length; i++){
+                //disable other selections once item in category selected
+        //      if(ot_hardwareAcceleration[i].id!=current_hw && current_hw!=''){
+        //       $(ot_hardwareAcceleration[i]).addClass("gray");
+        //       continue;
+        // }
+            var isvalidcombo=false;
+            for(var k=0; k<valid.length;k++){
+                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1){
+                    isvalidcombo=true;
+                    break;       
+                }
+            }
+            
+            if(isvalidcombo==false && ot_hardwareAcceleration[i].id!=current_hw){
+                $(ot_hardwareAcceleration[i]).addClass("gray"); 
+            }
+        } 
+}
+
+
+
+function mark_unsupported(selection, training){
+    
+    if(training==true){
+        for(var i = 0; i<selection.length; i++){
+            if(selection[i].id.indexOf('ot_') != -1){
+                 $(selection[i]).addClass("unsupported");
+            }
+        }
+
+    }
+    else{
+        for(var i = 0; i<selection.length; i++){
+            if(selection[i].id.indexOf('ot_') == -1){
+                    $(selection[i]).addClass("unsupported");
+            }
+        }
+    }
 }
 
 function selectedOption(option, selection, category) {
-    $(option).removeClass("selected");
-    $(selection).addClass("selected");
-    opts[category] = selection.id;
-    commandMessage(buildMatcher());
+    //allow deselect   
+   if(selection.id==opts[category]){
+       $(selection).removeClass("selected");
+       $(selection).removeClass("unsupported");
+       opts[category] = '';
+   }
+   else{
+       $(option).removeClass("selected");
+       $(option).removeClass("unsupported");
+       $(selection).addClass("selected");
+       opts[category] = selection.id;
+   }
+
+   resetOptions();
+
+   var all_selected = document.getElementsByClassName('selected r-option');
+
+   //get list of supported combos
+   var isSupported = commandMessage(buildMatcher());
+ 
+   //mark unsupported for selected elements
+   if (isSupported==false){
+       mark_unsupported(all_selected, false);
+   }
+   else{
+       for(var i = 0; i<all_selected.length; i++){
+           $(all_selected[i]).removeClass("unsupported");
+       }
+   }
+
+   checkValidity();
+
+   //if full selection is valid, don't gray out other options
+   if(opts['os']!="" && opts['architecture']!="" && opts['hardwareAcceleration']!="" && opts['language']!="" && isSupported==true){
+       // console.log(opts);
+      resetOptions();
+
+   }
 }
 
 function ot_selectedOption(option, selection, category) {
-    $(option).removeClass("selected");
-    $(selection).addClass("selected");
-    ot_opts[category] = selection.id;
-    ot_commandMessage(ot_buildMatcher());
+
+    //allow deselect, disable for architecture since they only have 1 item
+    if(selection.id==ot_opts[category] && ot_defaultSelection==false && category!='ot_architecture'){
+        $(selection).removeClass("selected");
+        $(selection).removeClass("unsupported");
+        ot_opts[category] = '';
+    }
+    else{
+        $(option).removeClass("selected");
+        $(option).removeClass("unsupported");
+        $(selection).addClass("selected");
+        ot_opts[category] = selection.id;
+    }
+
+    ot_resetOptions();
+
+    var all_selected = document.getElementsByClassName('selected r-option');
+    var isSupported = ot_commandMessage(ot_buildMatcher());
+  
+    //mark unsupported combos
+    if (isSupported==false){
+        mark_unsupported(all_selected, true);
+    }
+    else{
+        for(var i = 0; i<all_selected.length; i++){
+            $(all_selected[i]).removeClass("unsupported");
+        }
+    }
+
+    ot_checkValidity();  
+
+        //if full selection is valid, don't gray out other options
+        if(ot_opts['os']!="" && ot_opts['architecture']!="" && ot_opts['hardwareAcceleration']!="" && ot_opts['language']!="" && isSupported==true){
+            // console.log(opts);
+            // ot_resetOptions();
+    
+        }
 }
+
+function resetOptions(){
+    for(var i=0; i<os.length;i++){
+      $(os[i]).removeClass("gray");
+    }
+    for(var i=0; i<language.length;i++){
+      $(language[i]).removeClass("gray");
+    }
+    for(var i=0; i<architecture.length;i++){
+      $(architecture[i]).removeClass("gray");
+    }
+    for(var i=0; i<hardwareAcceleration.length;i++){
+      $(hardwareAcceleration[i]).removeClass("gray");
+    }
+  
+  }
+
+  function ot_resetOptions(){
+    for(var i=0; i<ot_os.length;i++){
+      $(ot_os[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_language.length;i++){
+      $(ot_language[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_architecture.length;i++){
+      $(ot_architecture[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_hardwareAcceleration.length;i++){
+      $(ot_hardwareAcceleration[i]).removeClass("gray");
+    }
+    ot_defaultSelection = false;
+  }
 
 function display(selection, id, category) {
     var container = document.getElementById(id);
@@ -209,885 +528,616 @@ function ot_buildMatcher() {
     );
 }
 
-function ot_commandMessage(key) {
-    //console.log('key- '+key);
-     var ot_object = {
-        "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
-            "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+var ot_validCombos = {
+   //linux
+    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
+    "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-        "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
-            "Coming Soon",
-     };
-     if (!ot_object.hasOwnProperty(key)) {
+    "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+
+    "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_C++,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_linux,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    
+    //windows
+    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_windows,ot_C++,ot_X64,ot_CUDA":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    //mac
+    "ot_mac,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+
+    "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>."
+};
+
+function ot_commandMessage(key) {
+    $("#ot_command").removeClass("valid");
+    $("#ot_command").removeClass("invalid");
+
+    if(ot_opts['ot_os']=='' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
+        // console.log(ot_opts);
         $("#ot_command span").html(
-            "Coming Soon"
-        );
-    } else {
-        $("#ot_command span").html(ot_object[key]);
+            "Please select a combination of resources"
+        ) 
     }
+    else if (!ot_validCombos.hasOwnProperty(key)) {
+        $("#ot_command span").html(
+            "This combination is not supported. De-select to make another selection."
+        ) 
+        $("#ot_command").addClass("invalid");
+        return false;
+    }
+    else {
+        $("#ot_command span").html(ot_validCombos[key]);
+        $("#ot_command").addClass("valid");
+        return true;
+    }
+
+    // //console.log('key- '+key);
+    //  var ot_object = {
+    //     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
+    //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+
+    //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
+    //         "Coming Soon",
+    //  };
+    //  if (!ot_object.hasOwnProperty(key)) {
+    //     $("#ot_command span").html(
+    //         "Coming Soon"
+    //     );
+    // } else {
+    //     $("#ot_command span").html(ot_object[key]);
+    // }
 }
+
+var validCombos = {
+       
+    "windows,C-API,X64,CUDA":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+
+    "windows,C++,X64,CUDA":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+
+    "windows,C#,X64,CUDA":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+
+    "windows,Python(3.6-3.9),X64,CUDA":
+        "pip install onnxruntime-gpu",
+
+    "linux,Python(3.6-3.9),ARM64,CUDA":
+        "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
+    
+    "linux,C-API,X64,CUDA":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "linux,C++,X64,CUDA":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+
+    "linux,C#,X64,CUDA":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+
+    "linux,Python(3.6-3.9),X64,CUDA":
+        "pip install onnxruntime-gpu",
+
+    "linux,C-API,ARM32,DefaultCPU":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+    "linux,C++,ARM32,DefaultCPU":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),ARM32,DefaultCPU":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+    "windows,C-API,X64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "windows,C-API,X86,DefaultCPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "windows,C-API,ARM32,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C++,ARM32,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C#,ARM32,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C-API,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+     
+    "windows,C++,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C#,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C++,X64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C++,X86,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+    
+    "windows,C#,X64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+        
+    "windows,C#,X86,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "linux,C-API,X64,DefaultCPU":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "linux,C++,X64,DefaultCPU":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "linux,C#,X64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "mac,C-API,X64,DefaultCPU":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "mac,C++,X64,DefaultCPU":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "mac,C#,X64,DefaultCPU":
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+    "windows,Python(3.6-3.9),X64,DefaultCPU":
+        "pip install onnxruntime",
+
+    "mac,Python(3.6-3.9),X64,DefaultCPU":
+        "pip install onnxruntime",
+
+    "linux,Python(3.6-3.9),X64,DefaultCPU":
+        "pip install onnxruntime",
+
+    "linux,Python(3.6-3.9),ARM64,DefaultCPU":
+        "pip install onnxruntime",
+
+    "windows,C-API,X64,DNNL":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "windows,C++,X64,DNNL": 
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "windows,C#,X64,DNNL":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "windows,Python(3.6-3.9),X64,DNNL":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "linux,C-API,X64,DNNL": 
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "linux,C++,X64,DNNL":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "linux,C#,X64,DNNL":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),X64,DNNL": 
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+    "linux,C-API,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "linux,C++,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "linux,C#,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "windows,C-API,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "windows,C++,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "windows,C#,X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "windows,Python(3.6-3.9),X64,nGraph":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
+
+    "windows,C-API,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "windows,C++,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "windows,C#,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "windows,Python(3.6-3.9),X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "linux,C-API,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "linux,C++,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "linux,C#,X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),X64,NUPHAR":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+
+    "linux,C-API,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "linux,C++,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "linux,C#,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "windows,C-API,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "windows,C++,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "windows,C#,X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "windows,Python(3.6-3.9),X64,OpenVINO":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+    "windows,C-API,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "windows,C++,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "windows,C#,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "windows,Python(3.6-3.9),X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C-API,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C++,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C#,X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),X64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C-API,ARM64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C++,ARM64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,C#,ARM64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "linux,Python(3.6-3.9),ARM64,TensorRT":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+
+    "mac,C-API,X86,DefaultCPU":
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        
+    "mac,C++,X86,DefaultCPU":
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+    
+    "mac,C#,X86,DefaultCPU":
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        
+    "mac,Python(3.6-3.9),X86,DefaultCPU":
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+
+    "windows,C-API,X86,DirectML":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+    
+    "windows,C++,X86,DirectML":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+    "windows,C#,X86,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+    "windows,Python(3.6-3.9),X86,DirectML":
+    "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+    
+    "windows,C-API,X64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+        
+    "windows,C++,X64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+    
+    "windows,C#,X64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+    
+    "windows,Python(3.6-3.9),X64,DirectML":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+        
+    "linux,Java,X64,DefaultCPU":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+        
+    "linux,Java,X64,CUDA":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
+        
+    "linux,Javascript,X64,DefaultCPU":
+        "npm install onnxruntime",
+    
+    "mac,Java,X64,DefaultCPU":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+    "mac,Javascript,X64,DefaultCPU":
+        "npm install onnxruntime",
+
+    "windows,WinRT,X86,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,WinRT,X64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,WinRT,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,WinRT,ARM32,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,WinRT,X86,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,WinRT,X64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+    "windows,Java,X64,DefaultCPU":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+    "windows,Java,X64,CUDA":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
+
+    "windows,Java,X64,TensorRT":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "windows,Java,X64,DNNL":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "windows,Java,X64,MKL-ML":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "windows,Java,X64,nGraph":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "windows,Java,X64,NUPHAR":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "windows,Java,X64,OpenVINO":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,TensorRT":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,DNNL":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,MKL-ML":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,nGraph":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,NUPHAR":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "linux,Java,X64,OpenVINO":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+    
+    "windows,Javascript,X64,DefaultCPU":
+        "npm install onnxruntime",
+    
+    "android,C-API,ARM64,NNAPI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
+    
+    "android,C++,ARM64,NNAPI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
+    
+    "android,Java,ARM64,NNAPI":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+    
+    "android,C-API,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,ARM64,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "android,C-API,ARM32,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,ARM32,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,ARM32,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "android,C-API,X86,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,X86,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,X86,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+    
+    "android,C-API,X64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,C++,X64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+    
+    "android,Java,X64,DefaultCPU":
+        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+    "ios,C-API,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
+    
+    "ios,C++,ARM64,DefaultCPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
+    
+    "ios,C-API,ARM64,CoreML":
+        "<i>Coming soon!</i>",
+    
+    "ios,C++,ARM64,CoreML":
+        "<i>Coming soon!</i>",
+    
+    "windows,Python(3.6-3.9),X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "windows,C-API,X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "windows,C++,X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "linux,C-API,X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "linux,C++,X86,VitisAI":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+    
+    "windows,Python(3.6-3.9),X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "windows,C-API,X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "windows,C++,X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "linux,C-API,X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "linux,C++,X86,MIGraphX":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),ARM64,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,C-API,ARM64,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,C++,ARM64,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),ARM32,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,C-API,ARM32,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,C++,ARM32,ACL":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),ARM64,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,C-API,ARM64,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,C++,ARM64,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),ARM32,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,C-API,ARM32,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,C++,ARM32,ArmNN":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+    
+    "linux,Python(3.6-3.9),ARM64,RockchipNPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+    
+    "linux,C-API,ARM64,RockchipNPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+    
+    "linux,C++,ARM64,RockchipNPU":
+        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+
+    
+    "mac,C-API,ARM64,CoreML":
+        "<i>Coming soon!</i>",
+
+    "mac,C++,ARM64,CoreML":
+        "<i>Coming soon!</i>",
+
+    "mac,Java,ARM64,CoreML":
+        "<i>Coming soon!</i>",
+    
+    "mac,C-API,ARM64,CoreML":
+        "<i>Coming soon!</i>"
+    
+};
 
 function commandMessage(key) {
    // console.log('key- '.key);
-    var object = {
-       
-        "windows,C,X64,CUDA":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-        "windows,C++,X64,CUDA":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+   $("#command").removeClass("valid");
+   $("#command").removeClass("invalid");
 
-        "windows,C#,X64,CUDA":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-        "windows,Python(3.6-3.9),X64,CUDA":
-            "pip install onnxruntime-gpu",
-	
-	"linux,Python(3.6-3.9),ARM64,CUDA":
-            "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
-	    
-        "linux,C,X64,CUDA":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "linux,C++,X64,CUDA":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
-
-        "linux,C#,X64,CUDA":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
-
-        "linux,Python(3.6-3.9),X64,CUDA":
-            "pip install onnxruntime-gpu",
-
-        "windows,C,ARM32,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,C++,ARM32,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,C#,ARM32,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),ARM32,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "mac,C,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C++,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C#,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,Python(3.6-3.9),ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "windows,C,ARM64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,C++,ARM64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,C#,ARM64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),ARM64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "linux,C,ARM32,DefaultCPU":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-        "linux,C++,ARM32,DefaultCPU":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),ARM32,DefaultCPU":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-        "windows,C,X64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-        "windows,C,X86,DefaultCPU":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-	
-	"windows,C,ARM32,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-        
-	"windows,C++,ARM32,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-	    
-	"windows,C#,ARM32,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-	    
-	"windows,C,ARM64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-         
-	"windows,C++,ARM64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-	    
-	"windows,C#,ARM64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-	    
-	"windows,C++,X64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-        "windows,C++,X86,DefaultCPU":
-        	"Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-        
-        "windows,C#,X64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-            
-        "windows,C#,X86,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-
-        "linux,C,X64,DefaultCPU":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "linux,C++,X64,DefaultCPU":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "linux,C#,X64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-        "mac,C,X64,DefaultCPU":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "mac,C++,X64,DefaultCPU":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "mac,C#,X64,DefaultCPU":
-            "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-        "windows,Python(3.6-3.9),X64,DefaultCPU":
-            "pip install onnxruntime",
-
-        "mac,Python(3.6-3.9),X64,DefaultCPU":
-            "pip install onnxruntime",
-
-        "linux,Python(3.6-3.9),X64,DefaultCPU":
-            "pip install onnxruntime",
-
-        "linux,Python(3.6-3.9),ARM64,DefaultCPU":
-            "pip install onnxruntime",
-
-        "windows,C,X64,DNNL":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "windows,C++,X64,DNNL": 
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "windows,C#,X64,DNNL":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,DNNL":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "linux,C,X64,DNNL": 
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "linux,C++,X64,DNNL":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "linux,C#,X64,DNNL":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),X64,DNNL": 
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-        "windows,C,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "windows,C++,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "windows,C#,X64,MKL-ML": "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "linux,C,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "linux,C++,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "linux,C#,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "mac,C,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "mac,C++,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-        
-        "mac,C#,X64,MKL-ML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML' target='_blank'>Microsoft.ML.OnnxRuntime.MKLML</a>",
-
-        "linux,C,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "linux,C++,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "linux,C#,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "windows,C,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "windows,C++,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "windows,C#,X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,nGraph":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-        "windows,C,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "windows,C++,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "windows,C#,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "linux,C,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "linux,C++,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "linux,C#,X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),X64,NUPHAR":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-        "linux,C,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "linux,C++,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "linux,C#,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "windows,C,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "windows,C++,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "windows,C#,X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,OpenVINO":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-        "windows,C,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "windows,C++,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "windows,C#,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C++,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C#,X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),X64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C,ARM64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C++,ARM64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,C#,ARM64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "linux,Python(3.6-3.9),ARM64,TensorRT":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
-
-        "mac,C,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C++,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C#,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,Python(3.6-3.9),ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "windows,C,X64,DirectML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-        "windows,C++,X64,DirectML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-        "mac,Python(3.6-3.9),ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "windows,C#,X64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "mac,C++,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C++,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,Python(3.6-3.9),X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C,ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,Python(3.6-3.9),X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,Python(3.6-3.9),X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C++,ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "mac,C#,ARM64,OpenVINO":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,Python(3.6-3.9),ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C,X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C++,X86,NUPHAR":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C#,X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,Python(3.6-3.9),X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C,X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C++,X86,DefaultCPU":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C#,X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,Python(3.6-3.9),X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C,X86,MKL-ML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C++,X86,MKL-ML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C#,X86,MKL-ML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,Python(3.6-3.9),X86,MKL-ML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C,X86,DNNL":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C++,X86,DNNL":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C#,X86,DNNL":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,Python(3.6-3.9),X86,DNNL":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "linux,C,X64,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "linux,C++,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "linux,C#,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "linux,Python(3.6-3.9),X64,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "windows,C,X86,DirectML":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-        
-        "windows,C++,X86,DirectML":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-        "windows,C#,X86,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "windows,Python(3.6-3.9),X86,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-        "mac,C,X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "mac,C++,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,C#,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "mac,Python(3.6-3.9),X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-
-        "linux,C,X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-        
-        "linux,C++,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "linux,C#,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-            
-        "linux,Python(3.6-3.9),X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
-		
-		"linux,Java,X64,DefaultCPU":
-			"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-			
-		"linux,Java,X64,CUDA":
-			"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
-			
-        "linux,Javascript,X64,DefaultCPU":
-            "npm install onnxruntime",
-        
-        "mac,Java,X64,DefaultCPU":
-			"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-        "mac,Javascript,X64,DefaultCPU":
-            "npm install onnxruntime",
-
-        "windows,WinRT,X86,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,WinRT,X64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,WinRT,ARM64,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,WinRT,ARM32,DefaultCPU":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,WinRT,X86,DirectML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,WinRT,X64,DirectML":
-            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-        "windows,Java,X64,DefaultCPU":
-            "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-        "windows,Java,X64,CUDA":
-            "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
-
-        "windows,Java,X64,TensorRT":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "windows,Java,X64,DNNL":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "windows,Java,X64,MKL-ML":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "windows,Java,X64,nGraph":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "windows,Java,X64,NUPHAR":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "windows,Java,X64,OpenVINO":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,TensorRT":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,DNNL":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,MKL-ML":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,nGraph":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,NUPHAR":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-        "linux,Java,X64,OpenVINO":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-        
-        "windows,Javascript,X64,DefaultCPU":
-            "npm install onnxruntime",
-
-        "android,C,X86,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
-        
-        "android,C++,X86,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
-        
-        "android,Java,X86,DefaultCPU":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-        
-        "android,C,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
-        
-        "android,C++,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
-        
-        "android,Java,ARM64,DefaultCPU":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-        
-        "android,C,X86,NNAPI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
-        
-        "android,C++,X86,NNAPI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
-        
-        "android,Java,X86,NNAPI":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-        
-        "android,C,ARM64,NNAPI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
-        
-        "android,C++,ARM64,NNAPI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
-        
-        "android,Java,ARM64,NNAPI":
-            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-        
-        "ios,C,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
-        
-        "ios,C++,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
-        
-        "windows,Python(3.6-3.9),X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "windows,C,X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "windows,C++,X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "linux,C,X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "linux,C++,X86,VitisAI":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
-        
-        "windows,Python(3.6-3.9),X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "windows,C,X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "windows,C++,X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "linux,C,X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "linux,C++,X86,MIGraphX":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),ARM64,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,C,ARM64,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,C++,ARM64,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),ARM32,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,C,ARM32,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,C++,ARM32,ACL":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),ARM64,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,C,ARM64,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,C++,ARM64,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),ARM32,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,C,ARM32,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,C++,ARM32,ArmNN":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
-        
-        "linux,Python(3.6-3.9),ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
-        
-        "linux,C,ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
-        
-        "linux,C++,ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
-        
-        
-    };
-
-    if (!object.hasOwnProperty(key)) {
+    if(opts['os']=='' || opts['architecture'] == '' || opts['language']=='' || opts['hardwareAcceleration'] == ''){
         $("#command span").html(
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>."
-        );
+            "Please select a combination of resources"
+        ) 
+       
+    }
+    else if (!validCombos.hasOwnProperty(key)) {
+        $("#command span").html(
+            "This combination is not supported. De-select to make another selection."
+        ) 
+        $("#command").addClass("invalid");
+        return false;
     } else {
-        $("#command span").html(object[key]);
+        $("#command span").html(validCombos[key]);
+        // console.log(element);
+        $("#command").addClass("valid");
+        return true;
     }
 }
-
 
 //Accesibility Get started tabel
 var KEYCODE = {

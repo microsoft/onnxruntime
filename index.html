@@ -14,8 +14,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <title>ONNX Runtime | Home</title>
     <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:100,100i,300,300i,400,400i,700,700i,900,900i&display=swap">
+    <link rel="stylesheet" href="css/fonts.css">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <link rel="stylesheet" href="css/custom.css?v1.6">
@@ -67,7 +66,7 @@
 					<h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">Optimize and Accelerate Machine Learning Inferencing and Training</h1>
 				</div>
 
-	
+				
 	            <div class="outer-container mx-auto pt-md-5 pt-3">
 
 	                <section class="py-md-5 pt-3 pb-4 blue-title-columns">
@@ -115,8 +114,18 @@
 	                            </div>
 	                        </div>
 	                    </div>
+
+						<div class="pt-1 pb-1 pt-md-3 pb-lg-3 px-5 mt-5 mb-0 alert alert-dark alert-dismissible fade show" role="alert">
+							Please help us improve ONNX Runtime by participating in our <a href="https://ncv.microsoft.com/UySXuzobM9">customer survey.</a>
+							<button type="button" class="close" data-dismiss="alert" aria-label="Close">
+							  <span aria-hidden="true">&times;</span>
+							</button>
+						  </div>
+						  
 	                </section>
 	
+					
+
 	                <section class="py-md-5 pb-4 pt-4 get-started-section border-top" id="getStartedTable">
 	                    <div class="container-fluid">
 							<noscript>
@@ -161,7 +170,7 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
 													<div class="row os">
-														<div class="col-lg-2dot4 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="windows">
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="0" aria-selected="false" id="windows">
 															<span>Windows</span>
 														</div>
 														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
@@ -188,12 +197,12 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
 													<div class="row language">
-														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="Python(3.6-3.9)"><span>Python (3.6-3.9)</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="Python(3.6-3.9)"><span>Python (3.6-3.9)</span></div>
 														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
 														<div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C"><span>C</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C-API"><span>C</span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Java"><span>Java</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Javascript"><span>Javascript (Node.js)</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Javascript"><span>Node.js</span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="WinRT"><span>WinRT</span></div>
 														
 			
@@ -208,7 +217,7 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
 													<div class="row architecture">
-														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="X64">
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="X64">
 															<span><abbr>X64</abbr></span></div>
 														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
 															<span><abbr>X86</abbr></span></div>
@@ -227,30 +236,33 @@
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
 													<div class="row hardwareAcceleration">
-														<div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="0" aria-selected="false" id="DefaultCPU">
 															<span>Default&nbsp; <abbr>CPU</abbr></span></div>
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
-															<span>ACL (Preview)</span></div>	
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
-															<span>ArmNN (Preview)</span></div>	
+														
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
 															<span><abbr>CUDA</abbr></span></div>
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
 															<span>Direct<abbr>ML</abbr></span></div>
 														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
-															<span><abbr>DNNL</abbr></span></div>
+															<span><abbr>oneDNN</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
+															<span>OpenVINO</span></div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
+															<span>Tensor<abbr>RT</abbr></span></div>
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
+															<span>ACL (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
+															<span>ArmNN (Preview)</span></div>	
+														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="CoreML">
+															<span>CoreML (Preview)</span></div>		
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MIGraphX">
 															<span>MIGraphX (Preview)</span></div>
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NNAPI">
 															<span>NNAPI (Preview)</span></div>	
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
-															<span><abbr>NUPHAR (Preview)</abbr></span></div>
-														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
-															<span>OpenVINO</span></div>
+															<span><abbr>NUPHAR (Preview)</abbr></span></div>		
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="RockchipNPU">
 															<span>Rockchip NPU (Preview)</span></div>	
-														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
-															<span>Tensor<abbr>RT</abbr></span></div>
 														<div class="col-lg-2dot5 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="VitisAI">
 															<span>Vitis AI (Preview)</span></div>	
 														</div>
@@ -265,7 +277,7 @@
 													<div class="row">
 														<div class="col r-option command-container" id="command" role="status">
 															<span>
-																Please select a combination of resources.
+																Please select a combination of resources
 															</span>
 														</div>
 													</div>
@@ -283,13 +295,13 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="ot_selectOS"><abbr title="Operating System">OS</abbr></h3>
-													<p id="ot_decriptionOS" class="sr-only"><abbr>OS</abbr> list contains one item</p>
+													<p id="ot_decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-1" aria-labelledby="ot_selectOS" aria-describedby="ot_decriptionOS">
 													<div class="row ot_os">
-														<div class="col r-option" role="option" tabindex="0" aria-selected="true" id="ot_linux">
-															<span>Linux</span>
-														</div>
+														<div class="col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_linux"><span>Linux</span></div>
+														<div class="col r-option" role="option" tabindex="-1" aria-selected="false" id="ot_windows"><span>Windows</span></div>
+														<div class="col r-option" role="option" tabindex="-1" aria-selected="false" id="ot_mac"><span>Mac</span></div>
 													</div>
 												</div>
 											</div>
@@ -302,7 +314,7 @@
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-2" aria-labelledby="ot_selectLanguage" aria-describedby="ot_decriptionLanguage">
 													<div class="row ot_language">
 														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_PyTorch"><span>PyTorch</span></div>
-														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="ot_TensorFlow"><span>TensorFlow</span></div>
+														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="ot_C++"><span>C++</span></div>
 													</div>
 												</div>
 											</div>
@@ -323,13 +335,14 @@
 											<div class="row r-wrap mb-1 mb-md-0 mr-0">
 												<div class="col-md-3 r-heading">
 													<h3 id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
-													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains one item</p>
+													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains four items</p>
 												</div>
 												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration" aria-describedby="ot_decriptionHardwareAcceleration">
 													<div class="row ot_hardwareAcceleration">
-														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA">
-															<span><abbr>CUDA</abbr></span>
-														</div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_DefaultCPU"><span><abbr>Default CPU</abbr></span></div>
+														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA"><span><abbr>CUDA</abbr></span></div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_AMD"><span><abbr>AMD GPU</abbr></span></div>
+														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_DNNL"><span><abbr>oneDNN</abbr></span></div>
 													</div>
 												</div>
 											</div>
@@ -342,7 +355,7 @@
 													<div class="row">
 														<div class="col r-option command-container" id="ot_command" role="status">
 															<span>
-																Please select a combination of resources.
+																Please select a combination of resources
 															</span>
 														</div>
 													</div>
@@ -359,36 +372,67 @@
 	
 					<section class="py-md-5 pb-4 pt-4 border-top">
 						<div class="container-fluid">
+							<div class="row ml-0">
+	
+							</div>
 							<div class="row equalHeight-1 blue-title-columns">
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
 									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
-										<img class="peakSpeed-logo" src="./images/PeakSpeed_logo.png" alt="PeakSpeed logo">
+										<img class="huggingface-logo" src="./images/logos/huggingface-logo.png" alt="Hugging Face logo">
 									</div>
-									<h3 class="mr-xl-5 mb-3">&ldquo;Using a common model and code base, the ONNX Runtime allows Peakspeed to easily flip between platforms to help our customers choose the most cost-effective solution based on their infrastructure and requirements.&rdquo;</h3>
-									<p>&ndash; Oscar Kramer, Chief Geospatial Scientist, Peakspeed</p>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;We use ONNX Runtime to easily deploy thousands of open-source state-of-the-art models in the Hugging Face model hub and accelerate private models for customers of the Accelerated Inference API on CPU and GPU.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Morgan Funtowicz, Machine Learning Engineer, Hugging Face</span></h3>
 								</div>
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
 									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
-										<img class="office365-logo" src="./images/oracle-logo.png" alt="Oracle Logo">
+										<img class="sas-logo" src="./images/logos/sas-logo.png" alt="SAS logo">
 									</div>
-									<h3 class="mr-xl-5 mb-3">&ldquo;The ONNX Runtime API for Java enables Java developers and Oracle customers to seamlessly consume and execute ONNX machine-learning models, while taking advantage of the expressive power, high performance, and scalability of Java.&rdquo;</h3>
-									<p class="overview mb-0">&ndash; Stephen Green, Director of Machine Learning Research Group, Oracle</p>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;The unique combination of ONNX Runtime and SAS Event Stream Processing changes the game for developers and systems integrators by supporting flexible pipelines and enabling them to target multiple hardware platforms for the same AI models without bundling and packaging changes. This is crucial considering the additional build and test effort saved on an ongoing basis.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Saurabh Mishra, Senior Manager, Product Management, Internet of Things, SAS</span></h3>
 								</div>
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
 									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
-										<img src="./images/visual-studio-logo.png" alt="visual-studio logo">
+										<img class="oracle-logo" src="./images/logos/oracle-logo.png" alt="Oracle Logo">
 									</div>
-									<h3 class="mr-xl-4 mb-3">&ldquo;We use ONNX Runtime to accelerate model training for a 300M+ parameters model that powers code autocompletion in Visual Studio IntelliCode.&rdquo;</h3>
-									<p>&ndash; Neel Sundaresan, Director SW Engineering, Data & AI, Developer Division, Microsoft</p>
-								</div>
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
-										<img class="vespa-logo" src="./images/vespa-logo.png" alt="Vespa logo">
-									</div>
-									<h3 class="mr-xl-5 mb-3">&ldquo;ONNX Runtime has vastly increased Vespa.ai’s capacity for evaluating large models, both in performance and model types we support.&rdquo;</h3>
-									<p>&ndash; Lester Solbakken, Principal Engineer, Vespa.ai, Verizon Media</p>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;The ONNX Runtime API for Java enables Java developers and Oracle customers to seamlessly consume and execute ONNX machine-learning models, while taking advantage of the expressive power, high performance, and scalability of Java.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Stephen Green, Director of Machine Learning Research Group, Oracle</span></h3>
 								</div>
 							</div>
+							<div class="row equalHeight-2 blue-title-columns">
+								
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+										<img class="vespa-logo" src="./images/logos/vespa-logo.png" alt="Vespa logo">
+									</div>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;ONNX Runtime has vastly increased Vespa.ai’s capacity for evaluating large models, both in performance and model types we support.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Lester Solbakken, Principal Engineer, Vespa.ai, Verizon Media</span></h3>
+								</div>
+								
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+										<img class="visual-studio-logo" src="./images/logos/visual-studio-logo.png" alt="Visual Studio logo">
+									</div>
+									<h3 class="mr-xl-4 mb-3 quote">&ldquo;We use ONNX Runtime to accelerate model training for a 300M+ parameters model that powers code autocompletion in Visual Studio IntelliCode.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Neel Sundaresan, Director SW Engineering, Data & AI, Developer Division, Microsoft</span></h3>
+								</div>
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+										<img class="peakSpeed-logo" src="./images/logos/PeakSpeed_logo.png" alt="PeakSpeed logo">
+									</div>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;Using a common model and code base, the ONNX Runtime allows Peakspeed to easily flip between platforms to help our customers choose the most cost-effective solution based on their infrastructure and requirements.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; Oscar Kramer, Chief Geospatial Scientist, Peakspeed</span></h3>
+								</div>
+							</div>
+							<div class="row equalHeight-3 blue-title-columns">
+								<div class="col-12 col-md-12 mb-4 mb-md-0">
+									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+										<img class="atlas-logo" src="./images/logos/ATLAS-logo.png" alt="ATLAS logo">
+									</div>
+									<h3 class="mr-xl-5 mb-3 quote">&ldquo;At CERN in the ATLAS experiment, we have integrated the C++ API of ONNX Runtime into our software framework: Athena. We are currently performing inferences using ONNX models especially in the reconstruction of electrons and muons. We are benefiting from its C++ compatibility, platform*-to-ONNX converters (* Keras, TensorFlow, PyTorch, etc) and its thread safety.&rdquo;<br/><br/>
+									<span class="quote-attribution">&ndash; ATLAS Experiment team, CERN (European Organization for Nuclear Research)</span></h3>
+								</div>
+							</div>
+
 						</div>
 					</section>
 
@@ -401,33 +445,62 @@
 									</div>
 								</div>
 							</div>
-						
-							<div class="row equalHeight-2 blue-title-columns">
-								<div class="col-12 col-md-4 mb-4 mb-md-0">
-									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
-										<img src="./images/skl-ort.png" alt="SKL and ORT logos">
-									</div>
-									<h3 class="blue-text mr-xl-5 mb-3">Accelerate and simplify Scikit-learn model inference with ONNX Runtime</h3>
-									<div><a href="https://cloudblogs.microsoft.com/opensource/2020/12/17/accelerate-simplify-scikit-learn-model-inference-onnx-runtime/" target="_blank" class="link"><span class="link-content">Read
-												more</span><span class="link-arrow fa fa-angle-right"></span></a></div>
+
+							<div class="news row blue-title-columns ">
+								<div class="col-12 col-md-8 mb-4 mb-md-0 blue-text">
+									<h3 class="mr-xl-5 mb-3">SAS and Microsoft collaborate to democratize the use of Deep Learning Models</h3>
+									<span class="article-blurb">
+									Artificial Intelligence (AI) developers enjoy the flexibility of choosing a model training framework of their choice. This includes both open-source frameworks as well as vendor-specific ones. While this is great for innovation, it does introduce the challenge of operationalization across different hardware platforms...</span><br/><br/><a href="https://communities.sas.com/t5/SAS-Communities-Library/SAS-and-Microsoft-collaborate-to-democratize-the-use-of-Deep/ta-p/730072" target="_blank" class="link"><span class="link-content">Read
+										more</span><span class="link-arrow fa fa-angle-right"></span></a>
 								</div>
-								<div class="col-12 col-md-4 mb-4 mb-md-0">
-									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
-										<img src="./images/vespa-logo.png" alt="Vespa logo">
-									</div>
-									<h3 class="blue-text mr-xl-5 mb-3">ONNX Runtime scenario highlight: Vespa.ai integration</h3>
-									<div><a href="https://cloudblogs.microsoft.com/opensource/2020/12/14/onnx-runtime-vespa-ai-integration/" target="_blank" class="link"><span class="link-content">Read
-												more</span><span class="link-arrow fa fa-angle-right"></span></a></div>
+								<div class="col-12 col-md-4 mb-4 mb-md-0 text-center">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center"><img src="./images/sas-ort.png" alt="ORT and SAS"></div>
 								</div>
-								<div class="col-12 col-md-4 mb-4 mb-md-0">
-									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
-										<img src="./images/ORT-Mobile.png" alt="ORT Mobile diagram">
-									</div>
-									<h3 class="blue-text mr-xl-5 mb-3">Introducing ONNX Runtime mobile – a reduced size, high performance package for edge devices</h3>
-									<div><a href="https://cloudblogs.microsoft.com/opensource/2020/10/12/introducing-onnx-runtime-mobile-reduced-size-high-performance-package-edge-devices/" target="_blank" class="link"><span class="link-content">Read
-												more</span><span class="link-arrow fa fa-angle-right"></span></a></div> 
+							
+							</div>
+
+							<div class="news row blue-title-columns">
+								<div class="col-12 col-md-8 mb-4 mb-md-0 blue-text">
+									<h3 class="mr-xl-5 mb-3">Optimizing BERT model for Intel CPU Cores using ONNX runtime default execution provider</h3>
+									<span class="article-blurb">
+									The performance improvements provided by ONNX Runtime powered by Intel® Deep Learning Boost: Vector Neural Network Instructions (Intel® DL Boost: VNNI) greatly improves performance of machine learning model execution for developers...
+									</span><br/><br/><a href="https://cloudblogs.microsoft.com/opensource/2021/03/01/optimizing-bert-model-for-intel-cpu-cores-using-onnx-runtime-default-execution-provider/" target="_blank" class="link"><span class="link-content">Read
+										more</span><span class="link-arrow fa fa-angle-right"></span></a>
+								</div>
+
+								<div class="col-12 col-md-4 mb-4 mb-md-0 text-center">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center"><img src="./images/ort_intel.png" alt="ORT and Intel AI"></div>
 								</div>
 							</div>
+
+							<div class="news row blue-title-columns">
+								<div class="col-12 col-md-8 mb-4 mb-md-0 blue-text">
+									<h3 class="mr-xl-5 mb-3">Accelerate and simplify Scikit-learn model inference with ONNX Runtime</h3>
+									<span class="article-blurb">
+									Scikit-learn is one of the most useful libraries for general machine learning in Python. To minimize the cost of deployment and avoid discrepancies, deploying scikit-learn models to production usually leverages Docker containers and pickle, the object serialization module of the Python standard library...
+									</span><br/><br/><a href="https://cloudblogs.microsoft.com/opensource/2020/12/17/accelerate-simplify-scikit-learn-model-inference-onnx-runtime/" target="_blank" class="link"><span class="link-content">Read
+										more</span><span class="link-arrow fa fa-angle-right"></span></a>
+								</div>
+
+								<div class="col-12 col-md-4 mb-4 mb-md-0 text-center">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center"><img src="./images/skl-ort.png" alt="SKL and ORT logos"></div>
+								</div>
+							</div>
+
+							<div class="news row blue-title-columns">
+								<div class="col-12 col-md-8 mb-4 mb-md-0 blue-text">
+									<h3 class="mr-xl-5 mb-3">ONNX Runtime scenario highlight: Vespa.ai integration</h3>
+									<span class="article-blurb">
+									Since its open source debut two years ago, ONNX Runtime has seen strong growth with performance improvements, expanded platform and device compatibility, hardware accelerator support, an extension to training acceleration, and more...
+									</span><br/><br/><a href="https://cloudblogs.microsoft.com/opensource/2020/12/14/onnx-runtime-vespa-ai-integration/" target="_blank" class="link"><span class="link-content">Read
+										more</span><span class="link-arrow fa fa-angle-right"></span></a>
+								</div>
+								<div class="col-12 col-md-4 mb-4 mb-md-0 text-center">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center"><img src="./images/logos/vespa-logo.png" alt="Vespa logo"></div>
+								</div>
+							</div>
+
+							
 						</div>
 					</section>
 
@@ -441,6 +514,7 @@
 								</div>
 							</div>
 							<div class="row blue-title-columns">
+								
 								<div class="col-12 col-md-3 mb-4 mb-md-0">
 									<button class="resources-img text-center p-0 border-0" data-src="WDww8ce12Mc" aria-label="Faster and Lighter Model Inference with ONNX Runtime from Cloud to Client">
 										<img class="btn-trigger" src="./images/video-model-inference-cloud-to-client.jpg" alt="Tech Community" />
@@ -471,80 +545,54 @@
 					
 					<section  class="pt-md-5 pt-4 border-top">
 						<div class="container-fluid">
-							<div class="row">
-								<div class="col-12 custom-tab">
-
-								<ul class="nav nav-tabs">
-									<li class="nav-item mb-0">
-										<a class="nav-link active" data-toggle="tab" href="#tabpanel-0-0" role="tab" aria-selected="true">Nvidia</a>
-									</li>
-									<li class="nav-item mb-0">
-										<a class="nav-link" data-toggle="tab" href="#tabpanel-0-1" role="tab" aria-selected="false">Intel</a>
-									</li>
-									<li class="nav-item mb-0">
-										<a class="nav-link" data-toggle="tab" href="#tabpanel-0-2" role="tab" aria-selected="false">Rockchip</a>
-									</li>
-									<li class="nav-item mb-0">
-										<a class="nav-link" data-toggle="tab" href="#tabpanel-0-3" role="tab" aria-selected="false">Xilinx</a>
-									</li>
-								</ul><!-- Tab panes -->
-
-								<div class="tab-content mt-4 mb-md-3 mb-4 px-3 tab-wrapper">       
-									<div class="tab-pane fade show active" role="tabpanel" id="tabpanel-0-0" aria-labelledby="tab-0-0" style="min-height: 250px;">
-										<div class="media row align-items-center">
-											<div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3  mb-4">
-												<img src="./images/nvidia.png" alt="NVIDIA logo">
-											</div>
-											<div class="media-body col-12 col-md-10 col-xl-9">
-												<div class="testimonial">
-													<p class="mb-1">“ONNX Runtime enables our customers to easily apply NVIDIA TensorRT’s powerful optimizations to machine learning models, irrespective of the training framework, and deploy across NVIDIA <abbr title="Graphics Processing Unit">GPUs</abbr> and edge devices.”</p>
-													<p class="overview mb-0">– Kari Ann Briski, Sr. Director, Accelerated Computing Software and <abbr>AI</abbr> Product, NVIDIA</p>
-												</div>
-											</div>
-										</div>
+							<div class="row ml-0">
+								<div class="col">
+									<div class="text-center pb-3">
+										<h2 class="section-heading">Hardware Ecosystem</h2>
 									</div>
-									<div class="tab-pane fade" role="tabpanel" id="tabpanel-0-1" aria-labelledby="tab-0-1" style="min-height: 250px;">
-										<div class="media row align-items-center">
-											<div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3  mb-4">
-												<img src="./images/intel-logo.png" alt="Intel logo">
-											</div>
-											<div class="media-body col-12 col-md-10 col-xl-9">
-												<div class="testimonial">
-													<p class="mb-1">“We are excited to support ONNX Runtime on the Intel® Distribution of OpenVINO™. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from <abbr title="Central Processing Unit">CPU</abbr> to <abbr title="Vision Processing Unit">VPU</abbr> or <abbr title="Field Programmable Gate Array">FPGA</abbr>.”</p>
-													<p class="overview mb-0">– Jonathan Ballon, Vice President and General Manager, Intel Internet of Things Group</p>
-												</div>
-											</div>
-										</div>
-									</div>
-									<div class="tab-pane fade" role="tabpanel" id="tabpanel-0-2" aria-labelledby="tab-0-2" style="min-height: 250px;">
-										<div class="media row align-items-center">
-											<div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3  mb-4">
-												<img src="./images/Rockhip-logo.png" alt="Rockhip logo">
-											</div>
-											<div class="media-body col-12 col-md-10 col-xl-9">
-												<div class="testimonial">
-													<p class="mb-1">“With support for ONNX Runtime, our customers and developers can cross the boundaries of the model training framework, easily deploy ML models in Rockchip NPU powered devices.”</p>
-													<p class="overview mb-0">– Feng Chen, Senior Vice President, Rockchip</p>
-												</div>
-											</div>
-										</div>
-									</div>
-									<div class="tab-pane fadem" role="tabpanel" id="tabpanel-0-3" aria-labelledby="tab-0-3" style="min-height: 250px;">
-										<div class="media row align-items-center">
-											<div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3  mb-4">
-												<img src="./images/xilinx-logo.png" alt="xilinx logo">
-											</div>
-											<div class="media-body col-12 col-md-10 col-xl-9">
-												<div class="testimonial">
-													<p class="mb-1">“Xilinx is excited that Microsoft has announced Vitis™ AI interoperability and runtime support for ONNX Runtime, enabling developers to deploy machine learning models for inference to FPGA IaaS such as Azure NP series VMs and Xilinx edge devices.”</p>
-													<p class="overview mb-0">– Sudip Nag, Corporate Vice President, Software &amp; AI Products, at Xilinx</p>
-												</div>
-											</div>
-										</div>
-									</div>
-															
-														
 								</div>
+							</div>
+
+									<div class="row blue-title-columns">
+										<div class="col-12 col-md-2 mb-4 mb-md-0"><div class="hw-logo pb-4 pb-md-5 mr-xl-5 text-center">
+											<img class="hardware-nvidia-logo" src="./images/logos/nvidia.png" alt="NVIDIA logo">
+										</div></div>
+										<div class="col-12 col-md-10 mb-4 mb-md-0">
+											<h3 class="mr-xl-5 mb-3 hardware">&ldquo;ONNX Runtime enables our customers to easily apply NVIDIA TensorRT’s powerful optimizations to machine learning models, irrespective of the training framework, and deploy across NVIDIA <abbr title="Graphics Processing Unit">GPUs</abbr> and edge devices.&rdquo;<br/><br/>
+											<span class="quote-attribution">&ndash; Kari Ann Briski, Sr. Director, Accelerated Computing Software and <abbr>AI</abbr> Product, NVIDIA</span></h3>
+										</div>
+									</div>
+
+									<div class="row blue-title-columns">
+										<div class="col-12 col-md-2 mb-4 mb-md-0"><div class="hw-logo pb-4 pb-md-5 mr-xl-5 text-center">
+											<img class="intel-logo" src="./images/logos/intel-logo.png" alt="Intel logo">
+										</div></div>
+										<div class="col-12 col-md-10 mb-4 mb-md-0">
+											<h3 class="mr-xl-5 mb-3 hardware">&ldquo;We are excited to support ONNX Runtime on the Intel® Distribution of OpenVINO™. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from <abbr title="Central Processing Unit">CPU</abbr> to <abbr title="Vision Processing Unit">VPU</abbr> or <abbr title="Field Programmable Gate Array">FPGA</abbr>.&rdquo;<br/><br/>
+											<span class="quote-attribution">&ndash; Jonathan Ballon, Vice President and General Manager, Intel Internet of Things Group</span></h3>
+										</div>
+									</div>
+									
+									<div class="row blue-title-columns">
+										<div class="col-12 col-md-2 mb-4 mb-md-0"><div class="hw-logo pb-4 pb-md-5 mr-xl-5 text-center">
+											<img class="Rockchip-logo" src="./images/logos/Rockchip-logo.png" alt="Rockchip logo">
+										</div></div>
+										<div class="col-12 col-md-10 mb-4 mb-md-0">
+											<h3 class="mr-xl-5 mb-3 hardware">&ldquo;With support for ONNX Runtime, our customers and developers can cross the boundaries of the model training framework, easily deploy ML models in Rockchip NPU powered devices.&rdquo;<br/><br/>
+											<span class="quote-attribution">&ndash; Feng Chen, Senior Vice President, Rockchip</span></h3>
+										</div>
+									</div>
+
+									<div class="row blue-title-columns">
+										<div class="col-12 col-md-2 mb-4 mb-md-0"><div class="hw-logo pb-4 pb-md-5 mr-xl-5 text-center">
+											<img class="xilinx-logo" src="./images/logos/xilinx-logo.png" alt="Xilinx logo">
+										</div></div>
+										<div class="col-12 col-md-10 mb-4 mb-md-0">
+											<h3 class="mr-xl-5 mb-3 hardware">&ldquo;Xilinx is excited that Microsoft has announced Vitis™ AI interoperability and runtime support for ONNX Runtime, enabling developers to deploy machine learning models for inference to FPGA IaaS such as Azure NP series VMs and Xilinx edge devices.&rdquo;<br/><br/>
+											<span class="quote-attribution">&ndash; Sudip Nag, Corporate Vice President, Software &amp; AI Products, Xilinx</span></h3>
+										</div>
+									</div>	
+
 
 							</div>
 						</div>
@@ -634,7 +682,7 @@
             <a id="back-to-top" href="JavaScript:void(0);" class="btn btn-lg back-to-top" role="button" aria-label="Back to top"><span class="fa fa-angle-up"></span></a>
         </div>
     </div>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
     <script src="./js/custom.js?v1.6"></script>
     <script src="./js/script.js?v1.6"></script>

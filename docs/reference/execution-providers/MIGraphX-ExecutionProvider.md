@@ -8,7 +8,7 @@ nav_order: 7
 # MIGraphX Execution Provider
 {: .no_toc }
 
-ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
+The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
 
 ## Contents
 {: .no_toc }
@@ -17,9 +17,9 @@ ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) 
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build.md#AMD-MIGraphX). 
+For build instructions, please see the [BUILD page](../../how-to/build/eps.md#amd-migraphx). 
 
-## Using the MIGraphX execution provider
+## Usage
 
 ### C/C++
 
@@ -42,10 +42,10 @@ provider. Python APIs details are [here](/python/api_summary).
 You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_onnx) for a python script to run an
 model on either the CPU or MIGraphX Execution Provider.
 
+## Configuration Options
+MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.
+
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e migraphx` 
-
-## Configuring environment variables
-MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.

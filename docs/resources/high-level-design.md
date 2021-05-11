@@ -1,5 +1,5 @@
 ---
-title: High level design
+title: Technical design
 parent: Resources
 nav_order: 2
 ---
@@ -7,7 +7,7 @@ nav_order: 2
 # ONNX Runtime High Level Design
 {: .no_toc }
 
-This document outlines the high level design of ONNX Runtime - a high performance, cross platform engine.
+This document outlines the high level design of ONNX Runtime.
 
 ## Contents
 {: .no_toc }
@@ -38,41 +38,22 @@ rules](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime
 
 ## High-level system architecture
 
-The flow is quite simple. Starting from an ONNX model, ONNXRuntime first
-converts the model graph into its in-memory graph representation. It then
-applies a number of graph transformations that a) perform a set of provider
-independent optimizations such cast transformations between float16 and float32, and b) partition the
-graph into a set of subgraphs based on the available execution providers. Each
-subgraph is assigned to an execution provider. We ensure that a subgraph can be
-executed by an execution provider by querying the capability of the execution
-provider using the GetCapability() API.
+The flow is quite simple. 
+1. Starting from an ONNX model, ONNX Runtime first
+converts the model graph into its in-memory graph representation. 
+2. It then applies a number of graph transformations that a) perform a set of provider independent optimizations such cast transformations between float16 and float32, and b) partition the graph into a set of subgraphs based on the available execution providers.
+3. Each subgraph is assigned to an execution provider. We ensure that a subgraph can be executed by an execution provider by querying the capability of the execution provider using the GetCapability() API.
 
 ![ONNXRuntime high level system architecture](https://azurecomcdn.azureedge.net/mediahandler/acomblog/media/Default/blog/228d22d3-6e3e-48b1-811c-1d48353f031c.png)
 
 ### More about partitioning
+{: .no_toc }
+ONNX Runtime partitions a model graph into subgraphs based on the available execution providers, one for each distinct provider. ONNXRuntime provides a default execution provider that is used as the fallback execution for the
+operators that cannot be pushed onto the more specialized but more efficient execution providers. Intuitively we want to push computation to more specialized execution providers whenever possible.
 
-ONNXRuntime partitions a model graph into subgraphs based on the available execution providers, one for each distinct provider. ONNXRuntime provides
-a default execution provider that is used as the fallback execution for the
-operators that cannot be pushed onto the more specialized but more efficient
-execution providers. Intuitively we want to push computation to more
-specialized execution providers whenever possible.
+We use a simple graph partitioning technique. The available execution providers will be considered in a specific order, and each will be assigned the maximal subgraphs (possibly more than one) that it is able to handle. The ONNXRuntime-provided default execution provider will be the last one considered, and it ensures completeness. More sophisticated optimizations can be considered in the future (or can even be implemented as a composite execution provider).
 
-We use a simple graph partitioning technique. The available execution providers
-will be considered in a specific order, and each will be assigned the maximal
-subgraphs (possibly more than one) that it is able to handle. The
-ONNXRuntime-provided default execution provider will be the last one
-considered, and it ensures completeness. More sophisticated optimizations can be
-considered in the future (or can even be implemented as a composite execution
-provider).
-
-Conceptually, each partition is reduced to a single fused operator. It is
-created by invoking the execution provider's Compile() method and wraps it as a
-custom operator. Currently we support only synchronous mode of execution. An execution
-provider exposes its memory allocator, which is used to allocate the input
-tensors for the execution provider. The rewriting and partitioning transform the
-initial model graph into a new graph composed of operators assigned to either
-the default execution provider or other registered execution
-providers. The ONNXRuntime execution engine is responsible for running this graph.
+Conceptually, each partition is reduced to a single fused operator. It is created by invoking the execution provider's Compile() method and wraps it as a custom operator. Currently we support only synchronous mode of execution. An execution provider exposes its memory allocator, which is used to allocate the input tensors for the execution provider. The rewriting and partitioning transform the initial model graph into a new graph composed of operators assigned to either the default execution provider or other registered execution providers. The ONNXRuntime execution engine is responsible for running this graph.
 
 ## Key design decisions
 
@@ -85,34 +66,31 @@ kernels. Each execution provider supports a subset of the (ONNX)
 operators/kernels.
 * The ONNX Runtime guarantees that all operators are supported by the default
 execution provider.
-* Tensor representation: ONNXRuntime will utilize a standard representation for
+* Tensor representation: ONNX Runtime will utilize a standard representation for
 the tensor runtime values. The execution providers can internally use a
-different representation if they choose to, but it is their responsibility to
-convert the values from/to the standard representation at the boundaries of
-their subgraph.
+different representation if they choose to, but it is their responsibility to convert the values from/to the standard representation at the boundaries of their subgraph.
 
 ## Extensibility Options
 
 * [Add a custom operator/kernel](../how-to/add-custom-op.md)
 * [Add an execution provider](../how-to/add-execution-provider.md)
-* [Add a new graph
-transform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new graphtransform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
 
 ## The ONNX Runtime and Windows OS integration
 
-The ONNX runtime shipped with the Windows operating system in build 1809 (RS5).  The runtime was embedded inside the Windows.AI.MachineLearning.dll and was exposed via that WinRT API (WinML for short).  It includes CPU support and a DirectML execution provider for GPU support.   Since then it has continued to ship in every version of Windows.
+ ONNX Runtime is available in the Windows operating system starting with build 1809 (RS5)+. The runtime is embedded inside the Windows.AI.MachineLearning.dll and was exposed via the WinRT API (WinML for short). It includes CPU support and a DirectML execution provider for GPU support.
 
-Starting with the ONNX Runtime 1.2 release we are bringing a new layered architecture to the ONNX Runtime and Windows ML.
-*Note:  This feature is preview as of the 1.2 release*
+The udpated layered architecture to ONNX Runtime and Windows ML is available since ONNX Runtime 1.2.
 
 The high level design looks like this
 
-![ONNX + WinML layered architecture](/images/layered-architecture.png)
+![ONNX + WinML layered architecture](../../images/layered-architecture.png)
 
-You can see we replaced the embedded ONNX runtime with the new ONNXRuntime.dll.  With this new approach customers have flexibility on which API they choose to use and on how they want to distribute the binaries.
+We replaced the embedded ONNX Runtime with the new ONNXRuntime.dll. With this new approach customers have flexibility on which API they choose to use and on how they want to distribute the binaries.
 
 ### API choice
+{: .no_toc }
 
 Developers can now choose which API works best for their scenario.
 
@@ -123,6 +101,7 @@ Developers can now choose which API works best for their scenario.
 |Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
 
 ### Distribution choice
+{: .no_toc }
 
 You can also choose to use runtimes included in the Windows OS, or use the redist nuget to ship the runtime with the app.
 
@@ -135,6 +114,7 @@ You can also choose to use runtimes included in the Windows OS, or use the redis
 |Opset| Refreshed in OS updates| App chooses|
 
 ### Using the NuGet WinRT API with other C-API distributions
+{: .no_toc }
 
 The WinRT API NuGet is distributed with a curated build of the OnnxRuntime engine. App developers may wish to use the WinRT API, but find themselves limited to the functionality provided by the curated OnnxRuntime engine distributed as part of the WinRT API NuGet package. This can happen because the OnnxRuntime engine shipped with the WinRT API NuGet package only contains the CPU and DML execution providers.
 
@@ -146,7 +126,6 @@ Please refer to the following table listing the distributions with compatible On
 
 * [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)
 * [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML/)
-* [Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML)
 
 Note that compatible distributions must match in release version.
 
