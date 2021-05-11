@@ -2362,3 +2362,53 @@ def test_model_with_registered_buffer_and_dropped_parameters():
 
     # Ensure that no exceptions are raised
     out = model(bool_argument, x)
+
+def test_unused_parameters():
+    class UnusedParameterNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(UnusedParameterNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            # fc2 is an unused initializer which will be dropped after export
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.register_buffer("buffer", torch.ones(hidden_size))
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = out + self.buffer
+            return out
+
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = UnusedParameterNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+
+    # Make sure model runs without any exception
+    for _ in range(5):
+        x = torch.randn(N, D_in, device=device)
+        y = copy.deepcopy(x)
+
+        out_pt = model(x)
+        out_ort = ort_model(y)
+        loss_pt = out_pt.sum()
+        loss_pt.backward()
+        loss_ort = out_ort.sum()
+        loss_ort.backward()
+        _test_helpers.assert_values_are_close(out_ort, out_pt)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, model,
+            none_pt_params=['fc2.weight', 'fc2.bias'])
+
+    # Also try in eval mode
+    model.eval()
+    ort_model.eval()
+
+    x = torch.randn(N, D_in, device=device)
+    y = copy.deepcopy(x)
+
+    # Make sure model runs without any exception
+    out_pt = model(x)
+    out_ort = ort_model(y)
+    _test_helpers.assert_values_are_close(out_ort, out_pt)

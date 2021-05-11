@@ -282,10 +282,15 @@ class GraphExecutionManager(ABC):
     def _initialize_graph_builder(self, training):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
+        # All initializer names along with user inputs are a part of the onnx graph inputs
+        # since the onnx model was exported with the flag keep_initializers_as_inputs=True
+        onnx_initializer_names = {p.name for p in self._onnx_model.graph.input}
+
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [name for name, _ in self._flattened_module.named_parameters()]
-        initializer_names_to_train = [name for name,
-                                      param in self._flattened_module.named_parameters() if param.requires_grad]
+        initializer_names = [name for name, _ in self._flattened_module.named_parameters()
+                             if name in onnx_initializer_names]
+        initializer_names_to_train = [name for name, param in self._flattened_module.named_parameters()
+                                      if param.requires_grad and name in onnx_initializer_names]
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()
