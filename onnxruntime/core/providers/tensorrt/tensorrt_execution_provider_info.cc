@@ -13,12 +13,12 @@ namespace tensorrt {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasTrtOptions = "has_trt_options";
-constexpr const char* kMaxWorkspaceSize = "max_workspace_size";
-constexpr const char* kFp16Enable = "fp16_enable";
-constexpr const char* kInt8Enable = "int8_enable";
-constexpr const char* kInt8CalibTable = "int8_calibration_table_name";
-constexpr const char* kInt8UseNativeCalibTable = "int8_use_native_calibration_table";
-constexpr const char* kForceSequentialEngineBuild = "force_sequential_engine_build";
+constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
+constexpr const char* kFp16Enable = "trt_fp16_enable";
+constexpr const char* kInt8Enable = "trt_int8_enable";
+constexpr const char* kInt8CalibTable = "trt_int8_calibration_table_name";
+constexpr const char* kInt8UseNativeCalibTable = "trt_int8_use_native_calibration_table";
+//constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
 }  // namespace provider_option_names
 }  // namespace tensorrt 
 
@@ -46,7 +46,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8Enable, info.int8_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8CalibTable, info.int8_calibration_table_name)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8UseNativeCalibTable, info.int8_use_native_calibration_table)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
+          //.AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
           .Parse(options));
 
   return info;
@@ -61,7 +61,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)},
       {tensorrt::provider_option_names::kInt8CalibTable, MakeStringWithClassicLocale(info.int8_calibration_table_name)},
       {tensorrt::provider_option_names::kInt8UseNativeCalibTable, MakeStringWithClassicLocale(info.int8_use_native_calibration_table)},
-      {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
+      //{tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
   };
 
   return options;
