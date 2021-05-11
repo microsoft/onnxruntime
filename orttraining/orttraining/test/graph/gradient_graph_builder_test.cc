@@ -404,7 +404,6 @@ static void RunBertTrainingWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info;
   ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ROCMExecutionProviderInfo xp_info;

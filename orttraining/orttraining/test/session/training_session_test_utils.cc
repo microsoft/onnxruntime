@@ -181,7 +181,6 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info;
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ROCMExecutionProviderInfo xp_info;
