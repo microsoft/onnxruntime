@@ -449,5 +449,7 @@ class ThreadPool {
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
 };
 
+ptrdiff_t GetBlockSize(ptrdiff_t n, const TensorOpCost& c, int num_threads);
+
 }  // namespace concurrency
 }  // namespace onnxruntime

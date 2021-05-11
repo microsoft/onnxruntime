@@ -189,7 +189,8 @@ std::string ThreadPoolLite2<ThreadPerPool, PoolSize>::StopProfiling() {
 //#define BLOCK_SIZE 32
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
-void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, double, const Fn& fn) {
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, double c, const Fn& fn) {
+  /*
   std::atomic<std::ptrdiff_t> iter{0};
   std::ptrdiff_t dop = num_sub_threads_ + 1;
   auto block_size = total / dop + (total % dop ? 1 : 0);
@@ -200,32 +201,38 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total,
     }
   };
   SimpleParallelForImpl(schd_fn);
+  */
+  TensorOpCost cost{0, 0, c};
+  ParallelFor(total, cost, fn);
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
-void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
-  double cost = 0;
-  ParallelFor(total, cost, fn);
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost, const Fn& fn) {
+  std::ptrdiff_t block_size = GetBlockSize(total, cost, num_sub_threads_ + 1);
+  std::atomic<std::ptrdiff_t> iter{0};
+  SchdFn schd_fn = [&]() {
+    std::ptrdiff_t i{0};
+    while ((i = iter.fetch_add(block_size, std::memory_order_relaxed)) < total) {
+      fn(i, std::min(total, i + block_size));
+    }
+  };
+  ParallelForImpl(schd_fn);
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
   std::atomic<std::ptrdiff_t> iter{0};
-  std::ptrdiff_t dop = num_sub_threads_ + 1;
-  auto block_size = total / dop + (total % dop ? 1 : 0);
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
-    while ((i = iter.fetch_add(block_size, std::memory_order_relaxed)) < total) {
-      for (auto j = i; j < std::min(total, i + block_size); ++j) {
-        fn(j);
-      }
+    while ((i = iter.fetch_add(1, std::memory_order_relaxed)) < total) {
+      fn(i);
     }
   };
-  SimpleParallelForImpl(schd_fn);
+  ParallelForImpl(schd_fn);
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
-void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelForImpl(const SchdFn& schd_fn) {
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelForImpl(const SchdFn& schd_fn) {
   std::vector<int32_t> pushed;
   for (int32_t i = 0; i < num_pools_; i++) {
     auto at_from = i * PoolSize;
