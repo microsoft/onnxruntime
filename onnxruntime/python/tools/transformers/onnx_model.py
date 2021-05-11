@@ -37,7 +37,7 @@ class OnnxModel:
                 return shape_infer_helper
         except:
              print("failed in shape inference", sys.exc_info()[0])
-    
+
         return None
 
     def input_name_to_nodes(self):
@@ -644,6 +644,10 @@ class OnnxModel:
 
         remaining_input_names = []
         for node in graph.node:
+            if node.op_type in ['Loop', 'Scan', 'If']:
+                # TODO: handle inner graph
+                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
+                return
             if node.op_type != "Constant":
                 for input_name in node.input:
                     if input_name not in remaining_input_names:
