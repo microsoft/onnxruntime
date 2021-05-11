@@ -331,6 +331,8 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument("--apple_disable_bitcode", action='store_true',
+                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -879,6 +881,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
