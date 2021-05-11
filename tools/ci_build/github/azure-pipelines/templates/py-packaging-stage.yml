@@ -480,38 +480,38 @@ stages:
       pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
-          # Python36 Cuda10.2:
-          #   PythonVersion: '3.6'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python36 Cuda11.1:
-          #   PythonVersion: '3.6'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
-          # Python37 Cuda10.2:
-          #   PythonVersion: '3.7'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python37 Cuda11.1:
-          #   PythonVersion: '3.7'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
-          # Python38 Cuda10.2:
-          #   PythonVersion: '3.8'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python36 Cuda10.2:
+            PythonVersion: '3.6'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python36 Cuda11.1:
+            PythonVersion: '3.6'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python37 Cuda10.2:
+            PythonVersion: '3.7'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python37 Cuda11.1:
+            PythonVersion: '3.7'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python38 Cuda10.2:
+            PythonVersion: '3.8'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
           Python38 Cuda11.1:
             PythonVersion: '3.8'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
-          # Python39 Cuda10.2:
-          #   PythonVersion: '3.9'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python39 Cuda11.1:
-          #   PythonVersion: '3.9'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python39 Cuda10.2:
+            PythonVersion: '3.9'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python39 Cuda11.1:
+            PythonVersion: '3.9'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
       steps:
 
       - checkout: self
@@ -530,18 +530,6 @@ stages:
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
-        displayName: 'Mount MNIST'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
-        displayName: 'Mount bert-data'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-        displayName: 'Mount hf-models-cache'
-        condition: succeededOrFailed()
 
       - task: CmdLine@2
         inputs:
@@ -566,34 +554,40 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) && \
-                python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && \
-                rm -rf /build/RelWithDebInfo/onnxruntime/ && \
-                /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/RelWithDebInfo
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
           workingDirectory: $(Build.SourcesDirectory)
 
-      # TODO: run ortmodule test.
-      # without run_dockerbuild (build.py instead), /build/RelWithDebInfo/ is not available after build.py step. need to find a way to do module test within packaging pipeline
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+        displayName: 'Mount MNIST'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+        displayName: 'Mount bert-data'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+        displayName: 'Mount hf-models-cache'
+        condition: succeededOrFailed()
 
       # Entry point for all ORTModule tests
       # The onnxruntime folder is deleted in the build directory
       # to enforce use of the onnxruntime wheel
       - script: |
-          docker run \
-            --user 0 \
-            --gpus all \
-            --shm-size=1024m \
-            --rm \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume /mnist:/mnist \
-            --volume /bert_data:/bert_data \
-            --volume /hf_models_cache:/hf_models_cache \
-            onnxruntimetraininggpubuild \
-              bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl" \
-        displayName: 'Run orttraining_ortmodule_tests.py'
-        condition: succeededOrFailed()
-        timeoutInMinutes: 60
+        docker run \
+          --user 0 \
+          --gpus all \
+          --shm-size=1024m \
+          --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /mnist:/mnist \
+          --volume /bert_data:/bert_data \
+          --volume /hf_models_cache:/hf_models_cache \
+          onnxruntimetraininggpubuild \
+            bash -c "python3 -m pip install /build/Release/dist/onnxruntime*.whl ; rm -rf /build/Release/onnxruntime/ ; /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
+      displayName: 'Run orttraining_ortmodule_tests.py'
+      condition: succeededOrFailed()
+      timeoutInMinutes: 60
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
