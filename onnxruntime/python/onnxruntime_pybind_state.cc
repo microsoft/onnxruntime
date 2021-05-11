@@ -2104,10 +2104,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
-
-  atexit([] {
-    UnloadSharedProviders();
-  });
 #endif
 
 #ifdef ENABLE_TRAINING
