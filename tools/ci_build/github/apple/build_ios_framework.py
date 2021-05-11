@@ -23,12 +23,7 @@ DEFAULT_BUILD_OSX_ARCHS = [
 
 
 def _parse_build_settings(args):
-    setting_file = args.build_settings_file.resolve()
-
-    if not setting_file.is_file():
-        raise FileNotFoundError('Build config file {} is not a file.'.format(setting_file))
-
-    with open(setting_file) as f:
+    with open(args.build_settings_file.resolve()) as f:
         build_settings_data = json.load(f)
 
     build_settings = {}
@@ -46,10 +41,6 @@ def _parse_build_settings(args):
 
 
 def _build_package(args):
-    include_ops_by_config_file = args.include_ops_by_config.resolve()
-    if not include_ops_by_config_file.is_file():
-        raise FileNotFoundError('Include ops config file {} is not a file.'.format(include_ops_by_config_file))
-
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
 
@@ -74,7 +65,7 @@ def _build_package(args):
         ]
 
         if args.include_ops_by_config is not None:
-            build_command += ['--include_ops_by_config=' + str(include_ops_by_config_file)]
+            build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]
 
         # the actual build process for current arch
         subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
@@ -132,7 +123,17 @@ def parse_args():
     parser.add_argument('build_settings_file', type=pathlib.Path,
                         help='Provide the file contains settings for building iOS framework')
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if not args.build_settings_file.resolve().is_file():
+        raise FileNotFoundError('Build config file {} is not a file.'.format(args.build_settings_file.resolve()))
+
+    if args.include_ops_by_config is not None:
+        include_ops_by_config_file = args.include_ops_by_config.resolve()
+        if not include_ops_by_config_file.is_file():
+            raise FileNotFoundError('Include ops config file {} is not a file.'.format(include_ops_by_config_file))
+
+    return args
 
 
 def main():
