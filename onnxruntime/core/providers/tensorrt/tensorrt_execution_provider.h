@@ -128,6 +128,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
+  ProviderOptions GetProviderOptions() const override {
+    return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
+  }
+
  private:
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
