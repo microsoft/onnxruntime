@@ -584,7 +584,9 @@ stages:
             --volume /bert_data:/bert_data \
             --volume /hf_models_cache:/hf_models_cache \
             onnxruntimetraininggpubuild \
-              $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && \
+              files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+              echo ${files[0]} && \
+              $(PythonManylinuxDir)/bin/python3 -m pip install ${files[0]} && \
               rm -rf /build/Release/onnxruntime/
         displayName: 'install onnxruntime*.whl'
         condition: succeededOrFailed()
@@ -604,7 +606,9 @@ stages:
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && \
+                files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+                echo ${files[0]} && \
+                $(PythonManylinuxDir)/bin/python3 -m pip install ${files[0]} && \
                 rm -rf /build/Release/onnxruntime/
         displayName: 'install onnxruntime*.whl'
         condition: succeededOrFailed()
@@ -622,7 +626,7 @@ stages:
             --volume /bert_data:/bert_data \
             --volume /hf_models_cache:/hf_models_cache \
             onnxruntimetraininggpubuild \
-               $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
+               $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release \
         displayName: 'Run orttraining_ortmodule_tests.py'
         condition: succeededOrFailed()
         timeoutInMinutes: 60
@@ -641,7 +645,7 @@ stages:
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
+                $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release \
         displayName: 'Run orttraining_ortmodule_tests.py'
         condition: succeededOrFailed()
         timeoutInMinutes: 60
