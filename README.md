@@ -20,13 +20,23 @@ Common use cases for ONNX Runtime:
 ## Get Started
 
 **http://onnxruntime.ai/**
-* [Install](https://www.onnxruntime.ai/docs/get-started/install.html)
-* [Inference](https://www.onnxruntime.ai/docs/get-started/inference.html)
-* [Training](https://www.onnxruntime.ai/docs/get-started/training.html)
-* [Documentation](https://www.onnxruntime.ai/docs/)
-* [Samples and Tutorials](https://www.onnxruntime.ai/docs/tutorials/)
-* [Build Instructions](https://www.onnxruntime.ai/docs/how-to/build.html)
-* [Frequently Asked Questions](./docs/FAQ.md)
+* [Tutorials](https://www.onnxruntime.ai/docs/tutorials/)
+  * [Inferencing](https://www.onnxruntime.ai/docs/tutorials/inferencing/)
+  * [Training](https://www.onnxruntime.ai/docs/tutorials/training/)
+* [How To](https://www.onnxruntime.ai/docs/how-to)
+  * [Install](https://www.onnxruntime.ai/docs/how-to/install.html)
+  * [Build](https://www.onnxruntime.ai/docs/how-to/build/)
+  * [Tune performance](https://www.onnxruntime.ai/docs/how-to/tune-performance.html)
+  * [Quantize models](https://www.onnxruntime.ai/docs/how-to/quantization.html)
+  * [Deploy on mobile](https://www.onnxruntime.ai/docs/how-to/deploy-on-mobile.html)
+  * [Use custom ops](https://www.onnxruntime.ai/docs/how-to/add-custom-op.html)
+  * [Add a new EP](https://www.onnxruntime.ai/docs/how-to/add-execution-provider.html)
+* [Reference](https://www.onnxruntime.ai/docs/reference)
+  * [API documentation](https://www.onnxruntime.ai/docs/reference/api/)
+  * [Execution Providers](https://www.onnxruntime.ai/docs/reference/execution-providers/)
+  * [Releases and servicing](https://www.onnxruntime.ai/docs/reference/releases-servicing.html)
+  * [Citing](https://www.onnxruntime.ai/docs/reference/citing.html)
+* [Additional resources](https://www.onnxruntime.ai/docs/resources/)
 
 ## Build Pipeline Status
 |System|CPU|GPU|EPs|
