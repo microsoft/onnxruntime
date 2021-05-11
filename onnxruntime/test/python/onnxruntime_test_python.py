@@ -914,7 +914,7 @@ class TestInferenceSession(unittest.TestCase):
         except:
             pass
 
-        if training_enabled
+        if training_enabled:
             return
 
         shared_library = 'test_execution_provider.dll'
