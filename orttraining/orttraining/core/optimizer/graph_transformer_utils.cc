@@ -59,7 +59,7 @@ namespace transformer_utils {
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
-    const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
+    const TrainingGraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
@@ -119,10 +119,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
       }
-      if (config.propagate_cast_ops_level >= 0) {
+      if (config.propagate_cast_ops_config.level >= 0) {
         std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
-        transformers.emplace_back(std::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
-                                                                             config.propagate_cast_ops_allow,
+        transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
+                                                                             static_cast<size_t>(config.propagate_cast_ops_config.level),
+                                                                             config.propagate_cast_ops_config.allow,
                                                                              cuda_execution_provider));
       }
     } break;
