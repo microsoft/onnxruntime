@@ -365,6 +365,10 @@ void HostApplyLayerNorm(
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
 
   const dim3 threads(warp_size, 4, 1);
+#ifdef HIP_VERSION
+  // Optimization for ROCm MI100
+  threads.y = 2;
+#endif
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;

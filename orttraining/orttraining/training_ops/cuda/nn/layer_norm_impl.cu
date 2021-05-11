@@ -306,6 +306,7 @@ __global__ void cuComputeGradInput(
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     if (use_gamma) {
+#ifndef HIP_VERSION
       int l = 4 * thrx;
       for (; l + 3 < n2; l += 4 * numx) {
         for (int k = 0; k < 4; ++k) {
@@ -331,7 +332,24 @@ __global__ void cuComputeGradInput(
           sum_loss2 += c_loss * (c_output - U(beta[l]));
         }
       }
+#else
+      // Optimization for ROCm MI100
+      for( int l = 0; l < n2 ; l += numx) {
+        int idx = l + thrx;
+        T gamma_idx = (idx<n2)?gamma[ idx ]:T(0); 
+        const U c_loss = static_cast<U>( (idx<n2)?k_dout[ idx ]:T(0) );
+        sum_loss1 += c_loss * U( gamma_idx );
+        if (use_mean) {
+          const U c_h = static_cast<U>( (idx<n2)?k_input[ idx ]:T(0) );
+          sum_loss2 += c_loss * U(gamma_idx) * (c_h - c_mean) * c_invvar;
+        } else {
+          const U c_output = static_cast<U>( (idx<n2)?k_output[idx]:T(0) );
+          sum_loss2 += c_loss * (c_output - U( (idx<n2)?beta[idx]:T(0) ));
+        }
+      }
+#endif
     } else {
+#ifndef HIP_VERSION
       int l = 4 * thrx;
       for (; l + 3 < n2; l += 4 * numx) {
         for (int k = 0; k < 4; ++k) {
@@ -357,6 +375,21 @@ __global__ void cuComputeGradInput(
           sum_loss2 += c_loss * c_output;
         }
       }
+#else
+      // Optimization for ROCm MI100
+      for( int l = 0; l < n2 ; l += numx) {
+          int idx = l + thrx;
+          const U c_loss = static_cast<U>((idx<n2)?k_dout[idx]:T(0));
+          sum_loss1 += c_loss;
+          if (use_mean) {
+            const U c_h = static_cast<U>((idx<n2)?k_input[idx]:T(0));
+            sum_loss2 += c_loss * (c_h - c_mean) * c_invvar;
+          } else {
+            const U c_output = static_cast<U>((idx<n2)?k_output[idx]:T(0));
+            sum_loss2 += c_loss * c_output;
+          }
+      }
+#endif
     }
     // intra-warp reductions
     for (int mask = blockDim.x / 2; mask > 0; mask /= 2) {
