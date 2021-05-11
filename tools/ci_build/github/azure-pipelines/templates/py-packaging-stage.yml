@@ -1144,4 +1144,3 @@ stages:
           condition: 'succeeded'
 
       - template: clean-agent-build-directory-step.yml
-      
