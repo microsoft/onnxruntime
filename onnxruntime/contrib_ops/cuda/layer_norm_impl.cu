@@ -367,7 +367,7 @@ void HostApplyLayerNorm(
   dim3 threads(warp_size, 4, 1);
 #ifdef HIP_VERSION
   // Optimization for ROCm MI100
-  threads.y = 2;
+  threads.y = 1;
 #endif
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
