@@ -537,7 +537,11 @@ void HostLayerNormGradient(
   // compute grad_input
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min<unsigned int>(static_cast<unsigned int>(n1), static_cast<unsigned int>(maxGridY)), 1);
-  const dim3 threads1(warp_size, 4, 1);
+  dim3 threads1(warp_size, 4, 1);
+#ifdef HIP_VERSION
+  // Optimization for ROCm MI100
+  threads1.y = 2;
+#endif
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
   if (mean == nullptr && !simplified) {
