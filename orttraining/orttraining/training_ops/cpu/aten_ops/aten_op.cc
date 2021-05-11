@@ -11,15 +11,13 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_OPERATOR_KERNEL_EX(
-    ATenOp, kMSDomain, 1, kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    ATenOpBase<false>);
+ONNX_OPERATOR_KERNEL_EX(ATenOp, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                        ATenOpBase<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    ATenOpGrad, kMSDomain, 1, kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    ATenOpBase<true>);
+ONNX_OPERATOR_KERNEL_EX(ATenOpGrad, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                        ATenOpBase<true>);
 
 template <bool is_backward>
 ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {

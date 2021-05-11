@@ -17,8 +17,7 @@ class ATenOpBase final : public OpKernel {
  private:
   std::string op_name_;
 
-  // tensor_argument_indices_[i] means the i-th input tensor
-  // is the tensor_argument_indices_[i]-th argument of the ATen Op.
+  // The values in the array are the tensor-type argument indices of Aten Op.
   std::vector<size_t> tensor_argument_indices_;
 
   // The size_t value below are the argument indices of the ATen Op.

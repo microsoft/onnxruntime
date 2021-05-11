@@ -18,13 +18,9 @@ typedef std::vector<DLManagedTensor*> (*ExecuteATenOperatorFunc)(
 
 class ATenOperatorExecutor {
  public:
-  static ATenOperatorExecutor& Instance() {
-    return InstanceImpl();
-  }
+  static ATenOperatorExecutor& Instance() { return InstanceImpl(); }
 
-  static void Initialize(void* p_func_raw) {
-    InstanceImpl(p_func_raw);
-  }
+  static void Initialize(void* p_func_raw) { InstanceImpl(p_func_raw); }
 
   std::vector<DLManagedTensor*> operator()(const std::string& op_name,
                                            const std::vector<std::tuple<size_t, DLManagedTensor*>>& tensor_arguments,

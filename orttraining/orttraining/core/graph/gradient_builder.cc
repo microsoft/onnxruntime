@@ -1647,8 +1647,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     }
   }
 
-  for (size_t i = 0; i < op_config.backward_output_configs.size(); i++) {
-    size_t index = static_cast<size_t>(op_config.backward_output_configs[i]);
+  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
+    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
     if (IsGradientRequiredForSrcNodeInput(index)) {
       output_args.emplace_back(GI(index));
     } else {

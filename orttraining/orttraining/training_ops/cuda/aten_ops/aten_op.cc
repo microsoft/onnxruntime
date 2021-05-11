@@ -7,15 +7,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
-    ATenOp, kMSDomain, 1, kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    onnxruntime::contrib::ATenOpBase<false>);
+ONNX_OPERATOR_KERNEL_EX(ATenOp, kMSDomain, 1, kCudaExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                        onnxruntime::contrib::ATenOpBase<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    ATenOpGrad, kMSDomain, 1, kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()).ExternalOutputs(),
-    onnxruntime::contrib::ATenOpBase<true>);
+ONNX_OPERATOR_KERNEL_EX(ATenOpGrad, kMSDomain, 1, kCudaExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                        onnxruntime::contrib::ATenOpBase<true>);
 
 }  // namespace cuda
 }  // namespace onnxruntime

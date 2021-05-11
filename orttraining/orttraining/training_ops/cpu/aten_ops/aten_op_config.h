@@ -17,15 +17,15 @@ namespace aten_ops {
 
 // To indicate how to infer outputs' types.
 enum OutputTypeInferKind {
-  PROPAGATE_FROM_INPUT, // Propagate current output's type from i-th input.
-  CONCRETE_TYPE,        // Current output's type is concrete type with value of i (i.e., float if i = 1).
+  PROPAGATE_FROM_INPUT,  // Propagate current output's type from i-th input.
+  CONCRETE_TYPE,         // Current output's type is concrete type with value of i (i.e., float if i = 1).
 };
 
 // To indicate the source of backward Op inputs.
 enum BackwardInputSourceKind {
-  GRAD_OUTPUT,    // Current input is i-th output grad, i.e., GO(i) in gradient builder.
-  FORWARD_INPUT,  // Current input is i-th forward input, i.e., I(i) in gradient builder.
-  FORWARD_OUTPUT, // Current input is i-th forward output, i.e., O(i) in gradient builder.
+  GRAD_OUTPUT,     // Current input is i-th output grad, i.e., GO(i) in gradient builder.
+  FORWARD_INPUT,   // Current input is i-th forward input, i.e., I(i) in gradient builder.
+  FORWARD_OUTPUT,  // Current input is i-th forward output, i.e., O(i) in gradient builder.
 };
 
 // To indicete the argument kind of ATen Op.
@@ -49,22 +49,22 @@ struct ATenOperatorConfig {
   // The output type infer config of outputs of com.microsoft::ATenOp.
   std::vector<std::tuple<OutputTypeInferKind, int>> forward_output_type_infer_configs;
   // The mapping between com.microsoft::ATenOpGrad's outputs and com.microsoft::ATenOp's inputs,
-  // i.e., backward_output_configs[i] means GI(backward_output_configs[i]) in gradient builder.
-  std::vector<int> backward_output_configs;
+  // i.e., gradient_input_indices[i] means GI(gradient_input_indices[i]) in gradient builder.
+  std::vector<int> gradient_input_indices;
 
-  ATenOperatorConfig(const std::string& i_backward_op_name,
+  ATenOperatorConfig(const std::string& _backward_op_name,
                      const std::vector<std::tuple<ArgumentKind, std::string>>& _forward_argument_configs,
                      const std::vector<std::tuple<ArgumentKind, std::string>>& _backward_argument_configs,
                      const std::vector<std::tuple<BackwardInputSourceKind, int>>& _backward_input_source_configs,
                      const std::vector<std::tuple<OutputTypeInferKind, int>>& _forward_output_type_infer_configs,
-                     const std::vector<int>& i_backward_output_configs) {
-    backward_op_name = i_backward_op_name;
+                     const std::vector<int>& _gradient_input_indices) {
+    backward_op_name = _backward_op_name;
     forward_argument_configs.assign(_forward_argument_configs.begin(), _forward_argument_configs.end());
     backward_argument_configs.assign(_backward_argument_configs.begin(), _backward_argument_configs.end());
     backward_input_source_configs.assign(_backward_input_source_configs.begin(), _backward_input_source_configs.end());
     forward_output_type_infer_configs.assign(_forward_output_type_infer_configs.begin(),
                                              _forward_output_type_infer_configs.end());
-    backward_output_configs.assign(i_backward_output_configs.begin(), i_backward_output_configs.end());
+    gradient_input_indices.assign(_gradient_input_indices.begin(), _gradient_input_indices.end());
   }
 };
 
@@ -86,11 +86,8 @@ static const std::unordered_map<std::string, ATenOperatorConfig> ATEN_OPERATORS 
 };
 
 inline const ATenOperatorConfig* GetATenOperatorConfig(const std::string& op_name) {
-  if (ATEN_OPERATORS.find(op_name) == ATEN_OPERATORS.end()) {
-    return nullptr;
-  }
-
-  return &ATEN_OPERATORS.at(op_name);
+  auto it = ATEN_OPERATORS.find(op_name);
+  return it != ATEN_OPERATORS.end() ? &it->second : nullptr;
 }
 
 }  // namespace aten_ops
