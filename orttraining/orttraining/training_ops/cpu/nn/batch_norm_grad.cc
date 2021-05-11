@@ -32,40 +32,35 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(1);
   const Tensor* Scale = ctx->Input<Tensor>(2);
   const Tensor* saved_mean = ctx->Input<Tensor>(3);
-  const Tensor* saved_inv_variance = ctx->Input<Tensor>(4);
+  const Tensor* saved_inv_std = ctx->Input<Tensor>(4);
 
-  const TensorShape input_shape = X->Shape();
+  const TensorShape X_shape = X->Shape();
   const TensorShape channel_shape = saved_mean->Shape();
 
   // no B here, but B has same size as Scale, so can validate inputs for gradient with this substitute
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_inv_variance));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_inv_std));
 
   const auto* dY_data = dY->template Data<T>();
   const auto* X_data = X->template Data<T>();
   const auto* Scale_data = Scale->template Data<T>();
   const auto* saved_mean_data = saved_mean->template Data<T>();
-  const auto* saved_inv_variance_data = saved_inv_variance->template Data<T>();
+  const auto* saved_inv_std_data = saved_inv_std->template Data<T>();
 
-  auto* dX_data = ctx->Output(0, input_shape)->template MutableData<T>();
+  auto* dX_data = ctx->Output(0, X_shape)->template MutableData<T>();
   auto* dScale_data = ctx->Output(1, channel_shape)->template MutableData<T>();
   auto* dBias_data = ctx->Output(2, channel_shape)->template MutableData<T>();
 
-  const TensorShape& x_shape = X->Shape();
-  const auto& dims_vec = x_shape.GetDims();
+  const auto& dims_vec = X_shape.GetDims();
   const size_t N = dims_vec[0];
   const size_t C = dims_vec[1];  // assume NCHW as per the spec
 
   // calculate sample_size (per individual channel)
-  size_t sample_size = 1;
-  for (size_t i = 2; i < dims_vec.size(); ++i) {
-    sample_size *= gsl::narrow<size_t>(dims_vec[i]);
-  }
-
+  size_t sample_size = X_shape.SizeFromDimension(2);
   size_t scale_tensor_size = C;
 
   ConstEigenVectorArrayMap<T> scale_arr(Scale_data, scale_tensor_size);
   ConstEigenVectorArrayMap<T> mean_arr(saved_mean_data, scale_tensor_size);
-  ConstEigenVectorArrayMap<T> inv_var_arr(saved_inv_variance_data, scale_tensor_size);
+  ConstEigenVectorArrayMap<T> inv_std_arr(saved_inv_std_data, scale_tensor_size);
 
   EigenVectorArrayMap<T> dBias_arr(dBias_data, scale_tensor_size);
   EigenVectorArrayMap<T> dScale_arr(dScale_data, scale_tensor_size);
@@ -73,25 +68,23 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   dBias_arr.setZero();
   dScale_arr.setZero();
 
-  const auto scaleInvVarNHW = scale_arr * inv_var_arr / (N * sample_size);
+  const auto scaled_inv_std = scale_arr * inv_std_arr / (N * sample_size);
 
   ConstEigenArrayMap<T> X_arr(X_data, sample_size, N * C);
   ConstEigenArrayMap<T> dY_arr(dY_data, sample_size, N * C);
   EigenArrayMap<T> dX_arr(dX_data, sample_size, N * C);
-  dX_arr.setZero();
 
   for (size_t nc = 0; nc < N * C; ++nc) {
     int c = nc % C;
     dBias_arr(c) += dY_arr.col(nc).sum();
     dScale_arr(c) +=
-        ((X_arr.col(nc) - mean_arr(c)) * inv_var_arr(c) * dY_arr.col(nc))
-            .sum();
+        ((X_arr.col(nc) - mean_arr(c)) * inv_std_arr(c) * dY_arr.col(nc)).sum();
   }
   for (size_t nc = 0; nc < N * C; ++nc) {
     int c = nc % C;
-    dX_arr.col(nc) += scaleInvVarNHW(c) *
+    dX_arr.col(nc) = scaled_inv_std(c) *
                       (dY_arr.col(nc) * N * sample_size - dBias_arr(c) -
-                       (X_arr.col(nc) - mean_arr[c]) * dScale_arr(c) * inv_var_arr(c));
+                       (X_arr.col(nc) - mean_arr(c)) * dScale_arr(c) * inv_std_arr(c));
   }
 
   return Status::OK();
