@@ -11,40 +11,6 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-void OrtTorchFunctionPool::RegisterForward(
-    const std::string& custom_function_name,
-    PyObject* forward_fn) {
-  // This should be "apply" of
-  // class custom_function_name(autograd.Function):
-  //   @staticmethod
-  //   def forward(ctx, ...):
-  //     ...
-  //   @staticmethod
-  //   def backward(ctx, ...):
-  //     ...
-  // That is,
-  //   forward_fn = custom_function_name.apply
-  forward_pool[custom_function_name] = forward_fn;
-  Py_INCREF(forward_fn);
-}
-
-void OrtTorchFunctionPool::RegisterBackward(
-    const std::string& custom_function_name,
-    PyObject* backward_fn) {
-  // This should be "backward" of
-  // class custom_function_name(autograd.Function):
-  //   @staticmethod
-  //   def forward(ctx, ...):
-  //     ...
-  //   @staticmethod
-  //   def backward(ctx, ...):
-  //     ...
-  // That is,
-  //   backward_fn = custom_function_name.backward
-  Py_INCREF(backward_fn);
-  backward_pool[custom_function_name] = backward_fn;
-}
-
 void OrtTorchFunctionPool::RegisterObject(PyObject* obj) {
   Py_INCREF(obj);
   obj_pool.push_back(obj);
@@ -77,25 +43,15 @@ void OrtTorchFunctionPool::RegisterBackwardCore(const std::string& key, PyObject
 }
 
 PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
+  auto it = forward_core_pool.find(key);
+  ORT_ENFORCE(it != forward_core_pool.end(), "No custom forward function registered for ", key);
   return forward_core_pool.at(key);
 }
 
 PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
+  auto it = backward_core_pool.find(key);
+  ORT_ENFORCE(it != backward_core_pool.end(), "No custom backward function registered for ", key);
   return backward_core_pool.at(key);
-}
-
-PyObject* OrtTorchFunctionPool::GetForward(
-    const std::string& custom_function_name) {
-  auto it = forward_pool.find(custom_function_name);
-  ORT_ENFORCE(it != forward_pool.end(), "No custom forward function registered for ", custom_function_name);
-  return it->second;
-}
-
-PyObject* OrtTorchFunctionPool::GetBackward(
-    const std::string& custom_function_name) {
-  auto it = backward_pool.find(custom_function_name);
-  ORT_ENFORCE(it != backward_pool.end(), "No custom backward function registered for ", custom_function_name);
-  return it->second;
 }
 
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
@@ -110,6 +66,7 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
 
 PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   auto ctx = func_context_pool.find(context_index);
+  ORT_ENFORCE(ctx != func_context_pool.end(), "No auto grad function context registered for ", context_index);
   return ctx->second;
 }
 

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#ifdef ENABLE_TRAINING
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
 
@@ -19,3 +19,4 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
 }  // namespace python
 }  // namespace onnxruntime
+#endif
