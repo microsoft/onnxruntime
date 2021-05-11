@@ -64,10 +64,13 @@ class UpsampleBase {
 
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
-    // Coordinate transformation mode attr was introduced in version 11, before that asymmetric mode was the only available transformation mode
-    std::string coordinate_transform_mode_name = opset > 10
-                                                     ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
-                                                     : "asymmetric";
+    // Coordinate transformation mode attr was introduced in version 11.
+    // before that asymmetric mode was the only available transformation mode
+    std::string coordinate_transform_mode_name =
+        opset > 10
+            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+            : "asymmetric";
+
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
     if (opset >= 13 && coordinate_transform_mode_ == TF_HALF_PIXEL_FOR_NN) {
       LOGS_DEFAULT(WARNING)
