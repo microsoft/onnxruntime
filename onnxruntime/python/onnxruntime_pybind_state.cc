@@ -2104,6 +2104,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
+
+// It appears that only windows can safely unload the providers from python at this point
+#ifdef _WIN32
+  atexit([] {
+    UnloadSharedProviders();
+  });
+#endif
 #endif
 
 #ifdef ENABLE_TRAINING
