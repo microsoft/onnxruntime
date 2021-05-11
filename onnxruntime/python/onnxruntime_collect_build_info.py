@@ -7,7 +7,7 @@ import ctypes
 import sys
 
 
-def find_cudart_versions(build_env=False):
+def find_cudart_versions(build_env=False, build_cuda_version=None):
     # ctypes.CDLL and ctypes.util.find_library load the latest installed library.
     # it may not the the library that would be loaded by onnxruntime.
     # for example, in an environment with Cuda 11.1 and subsequently
@@ -16,21 +16,11 @@ def find_cudart_versions(build_env=False):
     # for the above reason, we need find all versions in the environment and
     # only give warnings if the expected cuda version is not found.
     # in onnxruntime build environment, we expected only one Cuda version.
-    if 'linux' not in sys.platform:
+    if not sys.platform.startswith('linux'):
         warnings.warn('find_cudart_versions only works on Linux')
         return None
 
-    cudart_possible_versions = {None}
-    if not build_env:
-        # if not in a build environment, there may be more than one installed cudart.
-        cudart_possible_versions.update({
-            '11.3',
-            '11.2',
-            '11.1',
-            '11.0',
-            '10.2',
-            '10.1',
-            '10.0'})
+    cudart_possible_versions = {None, build_cuda_version}
 
     def get_cudart_version(find_cudart_version=None):
         cudart_lib_filename = 'libcudart.so'
@@ -60,7 +50,7 @@ def find_cudart_versions(build_env=False):
 
 def find_cudnn_supported_cuda_versions(build_env=False):
     # comments in get_cudart_version apply here
-    if 'linux' not in sys.platform:
+    if not sys.platform.startswith('linux'):
         warnings.warn('find_cudnn_versions only works on Linux')
 
     cudnn_possible_versions = {None}

@@ -8,7 +8,6 @@ Check OS requirements for ONNX Runtime Python Bindings.
 import platform
 import linecache
 import warnings
-import sys
 
 
 def check_distro_info():
@@ -60,13 +59,17 @@ def check_distro_info():
 
 
 def validate_build_package_info():
+    import_ortmodule_exception = None
     try:
         from onnxruntime.training.ortmodule import ORTModule # noqa
         has_ortmodule = True
     except ImportError:
         has_ortmodule = False
-    except: # noqa
-        # this may happen if Cuda is not installed
+    except Exception as e:
+        # this may happen if Cuda is not installed, we want to raise it after
+        # for any exception other than not having ortmodule, we want to continue
+        # device version validation and raise the exception after.
+        import_ortmodule_exception = e
         has_ortmodule = True
 
     package_name = ''
@@ -90,23 +93,23 @@ def validate_build_package_info():
                 try:
                     from .build_and_package_info import cudart_version
                 except: # noqa
-                    print('WARNING: failed to get cudart_version from onnxruntime build info.', file=sys.stderr)
+                    warnings.warn('WARNING: failed to get cudart_version from onnxruntime build info.')
                     cudart_version = None
 
                 def print_build_package_info():
-                    print('onnxruntime training package info: package_name:', package_name, file=sys.stderr)
-                    print('onnxruntime training package info: __version__:', version, file=sys.stderr)
-                    print('onnxruntime training package info: cuda_version:', cuda_version, file=sys.stderr)
-                    print('onnxruntime build info: cudart_version:', cudart_version, file=sys.stderr)
+                    warnings.warn('onnxruntime training package info: package_name: %s' % package_name)
+                    warnings.warn('onnxruntime training package info: __version__: %s' % version)
+                    warnings.warn('onnxruntime training package info: cuda_version: %s' % cuda_version)
+                    warnings.warn('onnxruntime build info: cudart_version: %s' % cudart_version)
 
                 # collection cuda library info from current environment.
                 from onnxruntime.capi.onnxruntime_collect_build_info \
                     import find_cudart_versions, find_cudnn_supported_cuda_versions
-                local_cudart_versions = find_cudart_versions(build_env=False)
+                local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
                 if cudart_version and cudart_version not in local_cudart_versions:
                     print_build_package_info()
-                    print('WARNING: failed to find cudart version that matches onnxruntime build info', file=sys.stderr)
-                    print('WARNING: found cudart versions: ', local_cudart_versions, file=sys.stderr)
+                    warnings.warn('WARNING: failed to find cudart version that matches onnxruntime build info')
+                    warnings.warn('WARNING: found cudart versions: %s' % local_cudart_versions)
 
                 # https://docs.nvidia.com/deeplearning/cudnn/support-matrix/index.html
                 # https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnGetCudartVersion
@@ -118,27 +121,28 @@ def validate_build_package_info():
                 # hoping meanful error message is posted when runtime does not find a compatible cudnn library.
                 local_cudnn_supported_cuda_versions = find_cudnn_supported_cuda_versions(build_env=False)
                 if len(local_cudnn_supported_cuda_versions) == 0:
-                    print_build_package_info()
-                    print('WARNING: cudnn is not installed: ', file=sys.stderr)
+                    warnings.warn_build_package_info()
+                    warnings.warn('WARNING: cudnn is not installed.')
 
                 # if cuda_version not in local_cudnn_supported_cuda_versions:
                 #     print_build_package_info()
 
                 #     # need to be soft on cudnn version
                 #     # very likely there is a mismatch but onnxruntime works just fine.
-                #     print(
-                #         'INFO: failed to find cudnn that is compatible with the cuda version',
-                #         file=sys.stderr)
-                #     print(
-                #         'INFO: cuda version cupported by installed cudnns: ',
-                #         local_cudnn_supported_cuda_versions,
-                #         file=sys.stderr)
+                #     warnings.warn(
+                #         'INFO: failed to find cudnn that is compatible with the cuda version')
+                #     warnings.warn(
+                #         'INFO: cuda version cupported by installed cudnns: %s' %
+                #         local_cudnn_supported_cuda_versions)
             else:
                 # TODO: rcom
                 pass
 
         except: # noqa
-            print('WARNING: failed to collect onnxruntime version and build info', file=sys.stderr)
+            warnings.warn('WARNING: failed to collect onnxruntime version and build info')
+
+    if import_ortmodule_exception:
+        raise import_ortmodule_exception
 
     return has_ortmodule, package_name, version, cuda_version
 
