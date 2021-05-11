@@ -426,14 +426,6 @@ stages:
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      # Esrp signing
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
-          Pattern: '*.pyd,*.dll'
-
       - task: PythonScript@0
         displayName: 'Build wheel'
         inputs:
