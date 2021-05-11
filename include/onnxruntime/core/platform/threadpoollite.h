@@ -70,6 +70,7 @@ class ThreadPoolLite2 final : public ThreadPool {
   void ParallelFor(std::ptrdiff_t, double, const Fn&) override;
   void ParallelFor(std::ptrdiff_t, const TensorOpCost&, const Fn&) override;
   void SimpleParallelFor(std::ptrdiff_t, const SimpleFn&) override;
+  void SimpleParallelForImpl(const SchdFn&);
   void Schedule(SchdFn) override;
   void StartProfiling() override;
   void MainLoop(int);

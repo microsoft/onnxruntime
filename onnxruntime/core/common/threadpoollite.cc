@@ -186,14 +186,18 @@ std::string ThreadPoolLite2<ThreadPerPool, PoolSize>::StopProfiling() {
   return profiler_.Stop();
 }
 
+#define BLOCK_SIZE 2
+
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, double, const Fn& fn) {
-  SimpleFn simple_fn = [&](std::ptrdiff_t i) {
-    if (i < total) {
-      fn(i, i + 1);
-    };
+  std::atomic<std::ptrdiff_t> iter{0};
+  SchdFn schd_fn = [&]() {
+    std::ptrdiff_t i{0};
+    while ((i = iter.fetch_add(BLOCK_SIZE, std::memory_order_relaxed)) < total) {
+      fn(i, std::min(total, i + BLOCK_SIZE));
+    }
   };
-  SimpleParallelFor(total, simple_fn);
+  SimpleParallelForImpl(schd_fn);
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
@@ -207,10 +211,17 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t 
   std::atomic<std::ptrdiff_t> iter{0};
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
-    while ((i = iter.fetch_add(1, std::memory_order_relaxed)) < total) {
-      fn(i);
+    while ((i = iter.fetch_add(BLOCK_SIZE, std::memory_order_relaxed)) < total) {
+      for (auto j = i; j < std::min(total, i + BLOCK_SIZE); ++j) {
+        fn(j);
+      }
     }
   };
+  SimpleParallelForImpl(schd_fn);
+}
+
+template <int32_t ThreadPerPool, int32_t PoolSize>
+void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelForImpl(const SchdFn& schd_fn) {
   std::vector<int32_t> pushed;
   for (int32_t i = 0; i < num_pools_; i++) {
     auto at_from = i * PoolSize;
