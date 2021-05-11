@@ -14,7 +14,8 @@ from onnxruntime.capi._pybind_state import get_all_providers, get_available_prov
     RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
     NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
     OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator, \
-    register_python_object, register_forward_runner, register_backward_runner, register_forward_core, register_backward_core
+    register_python_object, register_forward_runner, register_backward_runner, register_forward_core, \
+    register_backward_core
 
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 from onnxruntime.capi import onnxruntime_validation
