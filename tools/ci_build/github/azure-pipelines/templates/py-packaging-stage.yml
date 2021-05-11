@@ -646,7 +646,7 @@ stages:
         condition: succeededOrFailed()
         timeoutInMinutes: 60
 
-        - task: CopyFiles@2
+      - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)'
