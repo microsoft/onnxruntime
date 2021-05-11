@@ -2106,10 +2106,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   }
 
 // It appears that only windows can safely unload the providers from python at this point
+#if 0
 #ifdef _WIN32
   atexit([] {
     UnloadSharedProviders();
   });
+#endif
 #endif
 #endif
 
