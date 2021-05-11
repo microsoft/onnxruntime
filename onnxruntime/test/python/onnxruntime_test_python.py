@@ -912,6 +912,7 @@ class TestInferenceSession(unittest.TestCase):
             from onnxruntime.capi.ort_trainer import ORTTrainer
             training_enabled = true
         except:
+            pass
 
         if training_enabled
             return
