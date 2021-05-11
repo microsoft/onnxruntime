@@ -15,7 +15,11 @@ uint64_t PrePackedWeights::GetHash() {
 
   ORT_ENFORCE(buffers_.size() == buffer_sizes_.size());
   for (size_t iter = 0; iter < buffers_.size(); ++iter) {
-    hash_int8_t_buffer(buffers_[iter].get(), static_cast<int>(buffer_sizes_[iter]));
+    // some pre-packed buffers may be null if they were just "place-holders" occupying an index
+    // in the "buffers_" vector
+    if (buffers_[iter].get() != nullptr) {
+      hash_int8_t_buffer(buffers_[iter].get(), static_cast<int>(buffer_sizes_[iter]));
+    }
   }
 
   uint64_t returned_hash = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future

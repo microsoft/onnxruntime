@@ -947,7 +947,6 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
   tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
                                            weight_data_converted_to_int.data(),
                                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));

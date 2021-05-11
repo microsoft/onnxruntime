@@ -1649,7 +1649,6 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   tester.AddOutput<float>("output", output_dims, output_data);
   tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
                                            weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;

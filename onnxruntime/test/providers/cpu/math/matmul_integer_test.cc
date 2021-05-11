@@ -354,7 +354,6 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 
   std::vector<uint8_t> t2_init_values(1, 13);
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
                                            t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue t2;

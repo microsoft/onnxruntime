@@ -174,12 +174,14 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
     } else {
       if (share_prepacked_weights) {
         prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+        prepacked_weight_for_caching->buffer_sizes_.push_back(0);
         prepacked_weight_for_caching->is_filled_ = true;
       }
     }
   } else {
     if (share_prepacked_weights) {
       prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+      prepacked_weight_for_caching->buffer_sizes_.push_back(0);
       prepacked_weight_for_caching->is_filled_ = true;
     }
   }

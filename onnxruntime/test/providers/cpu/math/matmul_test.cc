@@ -161,7 +161,6 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
                                            b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue b;

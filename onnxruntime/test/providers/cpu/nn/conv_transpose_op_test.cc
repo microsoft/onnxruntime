@@ -1118,7 +1118,6 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
   };
   test.AddOutput<float>("Y", {1, 6, 4, 4}, expected_vals);
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
   auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
                                            W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue w;

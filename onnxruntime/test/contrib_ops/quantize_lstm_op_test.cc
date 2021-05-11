@@ -452,8 +452,6 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-
   auto W_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(W_dims),
                                                  w_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue W;

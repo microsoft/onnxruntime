@@ -1272,8 +1272,6 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   // Y_c
   test.AddMissingOptionalOutput<float>();
 
-  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-
   // W
   auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
                                            W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
