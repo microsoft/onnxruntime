@@ -133,6 +133,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
  private:
+  TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
