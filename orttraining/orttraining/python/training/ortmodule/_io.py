@@ -91,19 +91,27 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
         if name in kwargs and kwargs[name] is not None:
             # Only use keywords coming from user that are expected by ONNX model
             inp = kwargs[name]
-        elif input_idx < len(non_none_inputs):
-            # Only use positionals coming from user that are expected by ONNX model
-            if name != input_info.names[input_idx]:
-                # When ONNX drops unused inputs, get correct index from user input
-                input_idx = input_info.names.index(name)
-            inp = non_none_inputs[input_idx]
 
-        elif input_idx >= len(non_none_inputs):
+        if inp is None:
+            try:
+                # Only use positionals coming from user that are expected by ONNX model
+                # if input_idx >= len(input_info.names), IndexError will be thrown
+                if name != input_info.names[input_idx]:
+                    # When ONNX drops unused inputs, get correct index from user input
+                    # if name is not in input_info.names, ValueError will be thrown
+                    input_idx = input_info.names.index(name)
+                inp = non_none_inputs[input_idx]
+            except (IndexError, ValueError):
+                # ONNX input name is not present in input_info.names.
+                pass
+
+        if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
             try:
                 inp = buffer_names_dict[name]
             except KeyError:
-                raise KeyError(f'Registered buffer name {name} not found.')
+                # ONNX input name is not present in the registered buffer dict.
+                pass
 
         if inp is not None:
             if _PrimitiveType.is_primitive_type(inp):
@@ -111,6 +119,7 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
             result.append(inp)
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
+
     # Initializers
     result.extend([param[1] for param in param_names])
     return result
@@ -255,7 +264,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
         if output is None:
             return
         elif isinstance(output, torch.Tensor):
-            output_name = f'output{output_idx[0]}'
+            # Naming the outputs with a hyphen ensures that there can be no input with the same
+            # name, preventing collisions with other NodeArgs (for example an input to forward called output0)
+            output_name = f'output-{output_idx[0]}'
             output_idx[0] += 1
             output_names.append(output_name)
             output_dynamic_axes[output_name] = {}
