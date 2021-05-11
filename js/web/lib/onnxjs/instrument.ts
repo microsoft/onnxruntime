@@ -202,7 +202,6 @@ namespace log {
 
   export function reset(config?: Logger.Config): void {
     LOGGER_CONFIG_MAP = {};
-    // tslint:disable-next-line:no-backbone-get-set-outside-model
     set('', config || {});
   }
   export function set(category: string, config: Logger.Config): void {

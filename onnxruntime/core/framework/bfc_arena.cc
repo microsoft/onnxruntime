@@ -9,7 +9,8 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
-                   int max_dead_bytes_per_chunk)
+                   int max_dead_bytes_per_chunk,
+                   int initial_regrowth_chunk_size_bytes)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -19,12 +20,15 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
-      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk) {
+      max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
+      initial_regrowth_chunk_size_bytes_(initial_regrowth_chunk_size_bytes) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
+                     << " initial_regrowth_chunk_size_bytes: " << initial_regrowth_chunk_size_bytes_
                      << " memory limit: " << total_memory
-                     << " arena_extend_strategy " << static_cast<int32_t>(arena_extend_strategy);
+                     << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy);
+
   // static_cast<std::underlying_type_t<ArenaExtendStrategy>>(arena_extend_strategy); doesn't work on this compiler
 
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(initial_chunk_size_bytes_)));
@@ -33,6 +37,22 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
 
   arena_extend_strategy_ = arena_extend_strategy;
+
+  // We never want to shrink the initial allocation if the arena extend strategy is kNextPowerOfTwo.
+  // This could seem confusingly arbitrary but the rationale is as follows:
+  // The user selected initial allocation chunk is only valid for the arena extend strategy kNextPowerOfTwo
+  // and the user has likely chosen this initial value so that any ad-hoc arena extensions/shrinkages could potentially
+  // be avoided. So we do not consider the initial allocation for shrinkage whatever its usage status.
+  // On the other hand, if the arena extension strategy is kSameAsRequested, any initial chunk set by the user or otherwise,
+  // is moot and the arena will only extend based on the request size. In these cases, we consider any allocation for shrinkage
+  // if it is left unused (even if it is the first allocation).
+  if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+    // Consider all allocation regions (including first allocation region) for shrinkage
+    consider_first_allocation_region_for_shrinkage_ = true;
+  } else {  // arena_extend_strategy_ == kNextPowerOfTwo
+    // Do not consider the first allocation region for shrinkage
+    consider_first_allocation_region_for_shrinkage_ = false;
+  }
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
@@ -170,7 +190,8 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
                      << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+  region_manager_.AddAllocationRegion(mem_addr, bytes, stats_.num_arena_extensions);
+  stats_.num_arena_extensions += 1;
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -282,7 +303,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   }
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
-                     << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
+                     << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
 
   // Try to extend
   auto status = Extend(rounded_bytes);
@@ -409,6 +430,70 @@ void BFCArena::Free(void* p) {
   } else {
     DeallocateRawInternal(p);
   }
+}
+
+Status BFCArena::Shrink() {
+  std::lock_guard<OrtMutex> lock(lock_);
+  auto num_regions = region_manager_.regions().size();
+  std::vector<void*> region_ptrs;
+  std::vector<size_t> region_sizes;
+  region_ptrs.reserve(num_regions);
+  region_sizes.reserve(num_regions);
+
+  for (const auto& region : region_manager_.regions()) {
+    if (consider_first_allocation_region_for_shrinkage_ || region.id() != 0) {
+      region_ptrs.push_back(region.ptr());
+      region_sizes.push_back(region.memory_size());
+    }
+  }
+
+  size_t i = 0;
+  for (void* region_ptr : region_ptrs) {
+    bool deallocate_region = true;
+    ChunkHandle region_begin_chunk = region_manager_.get_handle(region_ptr);
+    ChunkHandle h = region_begin_chunk;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        // at-least one used chunk found in the allocation region -
+        // so we cannot deallocate it
+        deallocate_region = false;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (deallocate_region) {
+      auto shrink_size = region_sizes[i];
+      stats_.num_arena_shrinkages += 1;
+      stats_.total_allocated_bytes -= shrink_size;
+
+      LOGS_DEFAULT(VERBOSE) << device_allocator_->Info().name << " BFC Arena shrunk by "
+                            << shrink_size << " bytes. "
+                            << " The total allocated bytes is now " << stats_.total_allocated_bytes;
+
+      h = region_begin_chunk;
+      ChunkHandle temp = region_begin_chunk;
+      while (h != kInvalidChunkHandle) {
+        const Chunk* c = ChunkFromHandle(h);
+        temp = c->next;
+        RemoveFreeChunkFromBin(h);
+        DeleteChunk(h);
+        h = temp;
+      }
+
+      device_allocator_->Free(region_ptr);
+      region_manager_.RemoveAllocationRegion(region_ptr);
+    }
+
+    ++i;
+  }
+
+  // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
+  // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
+  curr_region_allocation_bytes_ = initial_regrowth_chunk_size_bytes_;
+
+  return Status::OK();
 }
 
 void BFCArena::DeallocateRawInternal(void* ptr) {

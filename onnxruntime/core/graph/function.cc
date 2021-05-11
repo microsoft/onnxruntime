@@ -152,6 +152,11 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
   op_schema->SetDomain(meta_def->domain);
   op_schema->SetDoc(meta_def->doc_string);
   op_schema->SinceVersion(meta_def->since_version);
+
+  if (meta_def->type_and_shape_inference_function) {
+    op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
+  }
+
   int i = 0;
 
   for (auto& input : meta_def->inputs) {
