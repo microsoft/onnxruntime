@@ -221,9 +221,7 @@ class TrainingManager(GraphExecutionManager):
 
         self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                               fw_feed_names,
-                                              self._graph_info.user_output_names,
                                               fw_outputs_device_info,
-                                              self._graph_info.module_output_gradient_name,
                                               bw_fetches_names,
                                               bw_outputs_device_info,
                                               session_options,
