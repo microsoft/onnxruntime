@@ -149,13 +149,13 @@ ThreadPoolLite2<ThreadPerPool, PoolSize>::ThreadPoolLite2(Env*,
                                                           const NAME_CHAR_TYPE*,
                                                           int num_threads,
                                                           bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
-  int num_sub_threads = num_threads - 1;
-  num_pools_ = num_sub_threads / ThreadPerPool + (num_sub_threads % ThreadPerPool ? 1 : 0);
+  num_sub_threads_ = num_threads - 1;
+  num_pools_ = num_sub_threads_ / ThreadPerPool + (num_sub_threads_ % ThreadPerPool ? 1 : 0);
   num_slots_ = num_pools_ * PoolSize;
   slots_.reset(new Slot[num_slots_]);
   set_denormal_as_zero_ = options.set_denormal_as_zero;
   size_t affinity_mask = 3;
-  for (int i = 0; i < num_sub_threads; ++i) {
+  for (int i = 0; i < num_sub_threads_; ++i) {
     sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
     SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask);
     affinity_mask <<= 2;
@@ -186,15 +186,17 @@ std::string ThreadPoolLite2<ThreadPerPool, PoolSize>::StopProfiling() {
   return profiler_.Stop();
 }
 
-#define BLOCK_SIZE 2
+//#define BLOCK_SIZE 32
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, double, const Fn& fn) {
   std::atomic<std::ptrdiff_t> iter{0};
+  std::ptrdiff_t dop = num_sub_threads_ + 1;
+  auto block_size = total / dop + (total % dop ? 1 : 0);
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
-    while ((i = iter.fetch_add(BLOCK_SIZE, std::memory_order_relaxed)) < total) {
-      fn(i, std::min(total, i + BLOCK_SIZE));
+    while ((i = iter.fetch_add(block_size, std::memory_order_relaxed)) < total) {
+      fn(i, std::min(total, i + block_size));
     }
   };
   SimpleParallelForImpl(schd_fn);
@@ -209,10 +211,12 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total,
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
   std::atomic<std::ptrdiff_t> iter{0};
+  std::ptrdiff_t dop = num_sub_threads_ + 1;
+  auto block_size = total / dop + (total % dop ? 1 : 0);
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
-    while ((i = iter.fetch_add(BLOCK_SIZE, std::memory_order_relaxed)) < total) {
-      for (auto j = i; j < std::min(total, i + BLOCK_SIZE); ++j) {
+    while ((i = iter.fetch_add(block_size, std::memory_order_relaxed)) < total) {
+      for (auto j = i; j < std::min(total, i + block_size); ++j) {
         fn(j);
       }
     }

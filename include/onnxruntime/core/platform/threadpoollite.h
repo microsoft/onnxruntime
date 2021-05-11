@@ -80,6 +80,7 @@ class ThreadPoolLite2 final : public ThreadPool {
   ThreadPoolProfiler profiler_;
   int32_t num_pools_{0};
   int32_t num_slots_{0};
+  int32_t num_sub_threads_{0};
   bool set_denormal_as_zero_{false};
 };
 
