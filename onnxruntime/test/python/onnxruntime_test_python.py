@@ -907,10 +907,10 @@ class TestInferenceSession(unittest.TestCase):
             return
 
         # Exclude for training
-        training_enabled = false
+        training_enabled = False
         try:
             from onnxruntime.capi.ort_trainer import ORTTrainer
-            training_enabled = true
+            training_enabled = True
         except:
             pass
 
