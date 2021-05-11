@@ -44,11 +44,11 @@ struct GraphInfo {
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
   std::unordered_map<std::string, std::string> user_input_grad_names{};
   // All initializers (trainable as well as non trainable).
-  std::vector<std::string> initializer_names{};
+  std::unordered_set<std::string> initializer_names{};
   // Trainable initializers.
-  std::vector<std::string> initializer_names_to_train{};
+  std::unordered_set<std::string> initializer_names_to_train{};
   // Trainable initializer grad names, ordered according to initializer_names_to_train.
-  std::vector<std::string> initializer_grad_names_to_train{};
+  std::unordered_set<std::string> initializer_grad_names_to_train{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
   // Indices of output grads that are non-differentiable.

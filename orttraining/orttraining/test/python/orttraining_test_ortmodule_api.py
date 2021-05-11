@@ -2384,16 +2384,20 @@ def test_unused_parameters():
     model = UnusedParameterNet(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(model))
 
-    x = torch.randn(N, D_in, device=device)
-    y = copy.deepcopy(x)
-
     # Make sure model runs without any exception
-    out_pt = model(x)
-    out_ort = ort_model(y)
-    assert out_ort is not None
-    assert torch.equal(out_ort, out_pt)
-    out_ort = out_ort.sum()
-    out_ort.backward()
+    for _ in range(5):
+        x = torch.randn(N, D_in, device=device)
+        y = copy.deepcopy(x)
+
+        out_pt = model(x)
+        out_ort = ort_model(y)
+        loss_pt = out_pt.sum()
+        loss_pt.backward()
+        loss_ort = out_ort.sum()
+        loss_ort.backward()
+        _test_helpers.assert_values_are_close(out_ort, out_pt)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, model,
+            none_pt_params=['fc2.weight', 'fc2.bias'])
 
     # Also try in eval mode
     model.eval()
@@ -2405,8 +2409,4 @@ def test_unused_parameters():
     # Make sure model runs without any exception
     out_pt = model(x)
     out_ort = ort_model(y)
-    assert out_ort is not None
-    assert torch.equal(out_ort, out_pt)
-
-test_unused_parameters()
-
+    _test_helpers.assert_values_are_close(out_ort, out_pt)
