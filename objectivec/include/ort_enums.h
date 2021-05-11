@@ -32,7 +32,10 @@ typedef NS_ENUM(int32_t, ORTValueType) {
 typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
   ORTTensorElementDataTypeUndefined,
   ORTTensorElementDataTypeFloat,
+  ORTTensorElementDataTypeInt8,
+  ORTTensorElementDataTypeUInt8,
   ORTTensorElementDataTypeInt32,
+  ORTTensorElementDataTypeUInt32,
 };
 
 NS_ASSUME_NONNULL_END
