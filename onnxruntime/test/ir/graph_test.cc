@@ -446,8 +446,8 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 }
 
 // Tests the case where function op and function body ops belong to different domains.
-// Tests that such a model can be loaded successfully, function body initialization is 
-// successful and domain and verison mapping for each node is successful (by verifying 
+// Tests that such a model can be loaded successfully, function body initialization is
+// successful and domain and verison mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -932,7 +932,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
                                  node_9 (Merge)                
                                       |                   
   */
-  
+
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -962,10 +962,10 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
 
   auto& compress_node1 = graph.AddNode("compress_1", "Identity_Fake", "compress node 1", {&output_arg1}, {&output_arg5});
   compress_node1.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
-  
+
   auto& decompress_node1 = graph.AddNode("decompress_1", "Identity_Fake", "decompress node 1", {&output_arg5}, {&output_arg6});
-  decompress_node1.SetPriority(10); // lower number means high priority
-  
+  decompress_node1.SetPriority(10);  // lower number means high priority
+
   graph.AddNode("node_7", "Identity_Fake", "node 7", {&output_arg4}, {&output_arg7});
   graph.AddNode("node_8", "Merge_Fake", "node 8", {&output_arg7, &output_arg6}, {&output_arg8});
   graph.AddNode("node_9", "Merge_Fake", "node 9", {&output_arg8, &output_arg3}, {&output_arg9});
@@ -1879,6 +1879,23 @@ TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   outputs = graph.GetOutputs();
   ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
       << "expected new output sum_with_z";
+}
+
+// if an initializer is backing an optional graph input, it can't be removed even if unused in the graph.
+TEST_F(GraphTest, DontRemoveUnusedInitializerWithGraphInput) {
+  const std::string unused_initializer_name("truncation:0");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/unused_initializer.onnx"), model, nullptr, *logger_));
+
+  auto& graph = model->MainGraph();
+  const auto& inputs_including_initializers = graph.GetInputsIncludingInitializers();
+  auto j = std::find_if(inputs_including_initializers.cbegin(), inputs_including_initializers.cend(),
+                        [&unused_initializer_name](const NodeArg* input) {
+                          return input->Name() == unused_initializer_name;
+                        });
+
+  ASSERT_NE(j, inputs_including_initializers.cend()) << "Unused initializer was incorrectly removed.";
 }
 }  // namespace test
 }  // namespace onnxruntime
