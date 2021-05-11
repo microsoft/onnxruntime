@@ -45,6 +45,8 @@ QLinearOpsRegistry = {
     "Pad": QPad,
     "Reshape": Direct8BitOp,
     "Transpose" : Direct8BitOp,
+    "Squeeze" : Direct8BitOp,
+    "Unsqueeze" : Direct8BitOp,
     "Resize": QResize,
     "AveragePool" : QLinearPool,
 }
@@ -56,6 +58,8 @@ QDQRegistry = {
     "Relu": QDQRemovableActivation,
     "Reshape": QDQDirect8BitOp,
     "Transpose" : QDQDirect8BitOp,
+    "Squeeze" : QDQDirect8BitOp,
+    "Unsqueeze" : QDQDirect8BitOp,
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool" : QDQDirect8BitOp,
