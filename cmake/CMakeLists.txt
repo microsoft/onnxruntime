@@ -1501,7 +1501,7 @@ if (onnxruntime_ENABLE_TRAINING)
       set(MPI_HOME "/bert_ort/openmpi")
     endif()
 
-    find_package(MPI REQUIRED)
+    find_package(MPI)
 
     if (MPI_CXX_FOUND)
       message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
