@@ -584,12 +584,69 @@ stages:
             --volume /bert_data:/bert_data \
             --volume /hf_models_cache:/hf_models_cache \
             onnxruntimetraininggpubuild \
-              bash -c "python3 -m pip install /build/Release/dist/onnxruntime*.whl ; rm -rf /build/Release/onnxruntime/ ; /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
+              $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && \
+              rm -rf /build/Release/onnxruntime/
+        displayName: 'install onnxruntime*.whl'
+        condition: succeededOrFailed()
+        timeoutInMinutes: 60
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            docker run \
+              --user 0 \
+              --gpus all \
+              --shm-size=1024m \
+              --rm \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && \
+                rm -rf /build/Release/onnxruntime/
+        displayName: 'install onnxruntime*.whl'
+        condition: succeededOrFailed()
+        timeoutInMinutes: 60
+
+      - script: |
+          docker run \
+            --user 0 \
+            --gpus all \
+            --shm-size=1024m \
+            --rm \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /mnist:/mnist \
+            --volume /bert_data:/bert_data \
+            --volume /hf_models_cache:/hf_models_cache \
+            onnxruntimetraininggpubuild \
+               $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
+        displayName: 'Run orttraining_ortmodule_tests.py'
+        condition: succeededOrFailed()
+        timeoutInMinutes: 60
+      
+      - task: CmdLine@2
+        inputs:
+          script: |
+            docker run \
+              --user 0 \
+              --gpus all \
+              --shm-size=1024m \
+              --rm \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" \
         displayName: 'Run orttraining_ortmodule_tests.py'
         condition: succeededOrFailed()
         timeoutInMinutes: 60
 
-      - task: CopyFiles@2
+        - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)'
