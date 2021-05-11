@@ -584,7 +584,7 @@ stages:
             --volume /bert_data:/bert_data \
             --volume /hf_models_cache:/hf_models_cache \
             onnxruntimetraininggpubuild \
-              files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+              files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
               echo ${files[0]} && \
               $(PythonManylinuxDir)/bin/python3 -m pip install ${files[0]} && \
               rm -rf /build/Release/onnxruntime/
@@ -606,13 +606,26 @@ stages:
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
-                files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+                files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
                 echo ${files[0]} && \
                 $(PythonManylinuxDir)/bin/python3 -m pip install ${files[0]} && \
                 rm -rf /build/Release/onnxruntime/
         displayName: 'install onnxruntime*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 60
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            $(PythonManylinuxDir)/bin/python3 -m pip install ${files[0]} && \
+            rm -rf /build/Release/onnxruntime/
+          condition: succeededOrFailed()
+          displayName: 
 
       - script: |
           docker run \
