@@ -230,6 +230,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
     });
   }
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
