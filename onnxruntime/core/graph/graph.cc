@@ -3168,12 +3168,20 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
+  // anything that provides a required graph input (GetInputs), an optional graph input (GetOverridableInitializers)
+  // or a graph output (GetOutputs) cannot be removed
   const auto& inputs = GetInputs();
+  const auto& overridable_initializers = GetOverridableInitializers();
   const auto& outputs = GetOutputs();
 
   std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
   });
+
+  std::for_each(overridable_initializers.cbegin(), overridable_initializers.cend(),
+                [&used_args](const NodeArg* input) {
+                  ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+                });
 
   std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
@@ -3214,23 +3222,28 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
                 [this](const std::string& name) {
                   RemoveInitializedTensor(name);
 
-                  // handle edge case where the unused initializer has a matching graph input
-                  auto& proto_inputs = *graph_proto_->mutable_input();
-                  auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
-                                        [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
-                                          return input.name() == name;
-                                        });
+                  // handle edge case where the unused initializer has a matching graph input.
+                  // this can only happen when initializers cannot be overridden via an optional graph input.
+                  // (otherwise this initializer wouldn't be allowed to be removed due to it backing an optional
+                  // graph input).
+                  if (CanOverrideInitializer() == false) {
+                    auto& proto_inputs = *graph_proto_->mutable_input();
+                    auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
+                                          [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
+                                            return input.name() == name;
+                                          });
 
-                  if (i != proto_inputs.end()) {
-                    RemoveRepeatedFieldEntry(proto_inputs, i);
-                  }
+                    if (i != proto_inputs.end()) {
+                      RemoveRepeatedFieldEntry(proto_inputs, i);
+                    }
 
-                  auto& inputs_including_initializers = graph_inputs_including_initializers_;
-                  auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
-                                        [&name](const NodeArg* input) { return input->Name() == name; });
+                    auto& inputs_including_initializers = graph_inputs_including_initializers_;
+                    auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
+                                          [&name](const NodeArg* input) { return input->Name() == name; });
 
-                  if (j != inputs_including_initializers.end()) {
-                    inputs_including_initializers.erase(j);
+                    if (j != inputs_including_initializers.end()) {
+                      inputs_including_initializers.erase(j);
+                    }
                   }
                 });
 }
