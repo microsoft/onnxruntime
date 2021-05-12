@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 import onnxruntime
 import sys
 import torch
@@ -6,8 +11,10 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state
 
+
 def _ortvalue_from_dlpack(dlpack_tensor):
     return OrtValue(_pybind_state.OrtValue.from_dlpack(dlpack_tensor, False))
+
 
 def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
     try:
@@ -36,7 +43,6 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                     new_wrapped_args.append(arg.view(arg.shape))
                 else:
                     new_wrapped_args.append(arg)
-            onnxruntime.register_python_object(new_wrapped_args)
             result = forward_function(*new_wrapped_args)
 
             if isinstance(result, torch.Tensor):
@@ -47,35 +53,33 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                 for value in result:
                     unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
                     unwrapped_values.append(unwrapped_value)
-                    if ctx is None and unwrapped_value is not None and hasattr(unwrapped_value, 'grad_fn'):
-                        ctx = unwrapped_value.grad_fn
+                    if ctx is None and value is not None and hasattr(value, 'grad_fn'):
+                        ctx = value.grad_fn
             else:
-                raise Exception('Unsupported returned type: ', type(result), ' by calling ', forward_function)
+                raise Exception('Unsupported returned type: ', type(
+                    result), ' by calling ', forward_function)
 
         if is_training_mode:
             # Must extract one valid context from result tensors.
             assert ctx is not None
 
-        for i, value in enumerate(unwrapped_values):
-            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
         onnxruntime.register_python_object(result)
         for value in unwrapped_values:
             # Maintain their life time.
             # This causes memory leak.
             onnxruntime.register_python_object(value)
 
-        for i, value in enumerate(unwrapped_values):
-            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
-
         unwrapped_ptrs = [int(id(ctx))]
         for v in unwrapped_values:
             unwrapped_ptrs.append(int(v.ortvalue_ptr()))
+
         return tuple(unwrapped_ptrs)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         sys.stdout.flush()
         sys.stderr.flush()
         raise
+
 
 def call_python_backward_function(backward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
     try:
@@ -108,11 +112,13 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
                 if value is None:
                     continue
                 if not isinstance(value, torch.Tensor):
-                    raise Exception('Unsupported returned element type: ', type(value), ' by calling ', backward_function)
+                    raise Exception('Unsupported returned element type: ', type(
+                        value), ' by calling ', backward_function)
                 unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
                 unwrapped_values.append(unwrapped_value)
         else:
-            raise Exception('Unsupported returned type: ', type(result), ' by calling ', backward_function)
+            raise Exception('Unsupported returned type: ', type(
+                result), ' by calling ', backward_function)
 
         # TODO: release resource at the beginning of each kernel computation.
         onnxruntime.register_python_object(result)
