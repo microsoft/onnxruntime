@@ -402,7 +402,17 @@ struct ProviderHost {
 
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
+  virtual MLDataType DataTypeImpl__GetType_bool() = 0;
+  virtual MLDataType DataTypeImpl__GetType_int8() = 0;
+  virtual MLDataType DataTypeImpl__GetType_uint8() = 0;
+  virtual MLDataType DataTypeImpl__GetType_int16() = 0;
+  virtual MLDataType DataTypeImpl__GetType_uint16() = 0;
+  virtual MLDataType DataTypeImpl__GetType_int32() = 0;
+  virtual MLDataType DataTypeImpl__GetType_uint32() = 0;
+  virtual MLDataType DataTypeImpl__GetType_int64() = 0;
+  virtual MLDataType DataTypeImpl__GetType_uint64() = 0;
   virtual MLDataType DataTypeImpl__GetType_float() = 0;
+  virtual MLDataType DataTypeImpl__GetType_double() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;

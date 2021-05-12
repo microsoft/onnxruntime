@@ -69,7 +69,27 @@ AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 template <>
+MLDataType DataTypeImpl::GetType<bool>() { return Provider_GetHost()->DataTypeImpl__GetType_bool(); }
+template <>
+MLDataType DataTypeImpl::GetType<int8_t>() { return Provider_GetHost()->DataTypeImpl__GetType_int8(); }
+template <>
+MLDataType DataTypeImpl::GetType<uint8_t>() { return Provider_GetHost()->DataTypeImpl__GetType_uint8(); }
+template <>
+MLDataType DataTypeImpl::GetType<int16_t>() { return Provider_GetHost()->DataTypeImpl__GetType_int16(); }
+template <>
+MLDataType DataTypeImpl::GetType<uint16_t>() { return Provider_GetHost()->DataTypeImpl__GetType_uint16(); }
+template <>
+MLDataType DataTypeImpl::GetType<int32_t>() { return Provider_GetHost()->DataTypeImpl__GetType_int32(); }
+template <>
+MLDataType DataTypeImpl::GetType<uint32_t>() { return Provider_GetHost()->DataTypeImpl__GetType_uint32(); }
+template <>
+MLDataType DataTypeImpl::GetType<int64_t>() { return Provider_GetHost()->DataTypeImpl__GetType_int64(); }
+template <>
+MLDataType DataTypeImpl::GetType<uint64_t>() { return Provider_GetHost()->DataTypeImpl__GetType_uint64(); }
+template <>
 MLDataType DataTypeImpl::GetType<float>() { return Provider_GetHost()->DataTypeImpl__GetType_float(); }
+template <>
+MLDataType DataTypeImpl::GetType<double>() { return Provider_GetHost()->DataTypeImpl__GetType_double(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>

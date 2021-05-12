@@ -481,7 +481,17 @@ struct ProviderHostImpl : ProviderHost {
 
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
+  MLDataType DataTypeImpl__GetType_bool() override { return DataTypeImpl::GetType<bool>(); }
+  MLDataType DataTypeImpl__GetType_int8() override { return DataTypeImpl::GetType<int8_t>(); }
+  MLDataType DataTypeImpl__GetType_uint8() override { return DataTypeImpl::GetType<uint8_t>(); }
+  MLDataType DataTypeImpl__GetType_int16() override { return DataTypeImpl::GetType<int16_t>(); }
+  MLDataType DataTypeImpl__GetType_uint16() override { return DataTypeImpl::GetType<uint16_t>(); }
+  MLDataType DataTypeImpl__GetType_int32() override { return DataTypeImpl::GetType<int32_t>(); }
+  MLDataType DataTypeImpl__GetType_uint32() override { return DataTypeImpl::GetType<uint32_t>(); }
+  MLDataType DataTypeImpl__GetType_int64() override { return DataTypeImpl::GetType<int64_t>(); }
+  MLDataType DataTypeImpl__GetType_uint64() override { return DataTypeImpl::GetType<uint64_t>(); }
   MLDataType DataTypeImpl__GetType_float() override { return DataTypeImpl::GetType<float>(); }
+  MLDataType DataTypeImpl__GetType_double() override { return DataTypeImpl::GetType<double>(); }
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
   MLDataType DataTypeImpl__GetTensorType_int8() override { return DataTypeImpl::GetTensorType<int8_t>(); }
   MLDataType DataTypeImpl__GetTensorType_uint8() override { return DataTypeImpl::GetTensorType<uint8_t>(); }
