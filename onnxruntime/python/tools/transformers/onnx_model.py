@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import onnx_pb, ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class OnnxModel:
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
-        for node in self.model.graph.node:
+        for node in self.get_all_nodes():
             for input_name in node.input:
                 if input_name not in input_name_to_nodes:
                     input_name_to_nodes[input_name] = [node]
@@ -52,7 +52,7 @@ class OnnxModel:
 
     def output_name_to_node(self):
         output_name_to_node = {}
-        for node in self.model.graph.node:
+        for node in self.get_all_nodes():
             for output_name in node.output:
                 output_name_to_node[output_name] = node
         return output_name_to_node
@@ -60,12 +60,35 @@ class OnnxModel:
     def nodes(self):
         return self.model.graph.node
 
+    def get_all_nodes(self):
+        all_nodes = []
+        for graph in self.get_all_graphs():
+            for node in graph.node:
+                all_nodes.append(node)
+        return all_nodes
+
     def graph(self):
         return self.model.graph
 
+    def get_all_graphs(self):
+        all_graphs = []
+        graph_queue = [self.model.graph]
+        while graph_queue:
+            graph = graph_queue.pop(0)
+            all_graphs.append(graph)
+            for node in graph.node:
+                for attr in node.attribute:
+                    if isinstance(attr.g, onnx_pb.GraphProto) and attr.type == 5:
+                        graph_queue.append(attr.g)
+                    for g in attr.graphs:
+                        if isinstance(g, onnx_pb.GraphProto) and attr.type == 10:
+                            graph_queue.append(g)
+        return all_graphs
+
     def remove_node(self, node):
-        if node in self.model.graph.node:
-            self.model.graph.node.remove(node)
+        for graph in self.get_all_graphs():
+            if node in graph.node:
+                graph.node.remove(node)
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
@@ -106,13 +129,18 @@ class OnnxModel:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
     def get_initializer(self, name):
-        for tensor in self.model.graph.initializer:
-            if tensor.name == name:
-                return tensor
+        for graph in self.get_all_graphs():
+            for tensor in graph.initializer:
+                if tensor.name == name:
+                    return tensor
         return None
 
     def get_nodes_by_op_type(self, op_type):
-        return [n for n in self.model.graph.node if n.op_type == op_type]
+        nodes = []
+        for node in self.get_all_nodes():
+            if node.op_type == op_type:
+                nodes.append(node)
+        return nodes
 
     def get_children(self, node, input_name_to_nodes=None):
         if (input_name_to_nodes is None):
