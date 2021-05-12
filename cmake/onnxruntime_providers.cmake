@@ -314,6 +314,7 @@ if (onnxruntime_USE_CUDA)
 
     if (onnxruntime_USE_NCCL)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
     endif()
   endif()
 
