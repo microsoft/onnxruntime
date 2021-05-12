@@ -1055,6 +1055,7 @@ namespace cuda {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA()->GetINcclService();
 }
+}  // namespace cuda
 #endif
 
 }  // namespace onnxruntime
