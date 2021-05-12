@@ -1,28 +1,98 @@
-jobs:
+
+parameters:
+
+- name: BuildORT
+  displayName: Build Latest ORT (specify branch variable if false + choosing docker)
+  type: boolean
+  default: true
+
+- name: RunOnnxZoo
+  displayName: Onnx Zoo Models
+  type: boolean
+  default: true
+
+- name: RunMany
+  displayName: Many Models 
+  type: boolean
+  default: true
+
+- name: RunPartner
+  displayName: Partner Models
+  type: boolean
+  default: true
+
+- name: PostToDashboard
+  displayName: Post to Dashboard
+  type: boolean
+  default: true
+  
+- name: RunDocker
+  displayName: Run in Docker (CUDA 11.0)
+  type: boolean
+  default: false
+
+- name: RunSelected
+  displayName: Selected Models (set ModelsPath variable)
+  type: boolean
+  default: false
+
+- name: ConfigureEPs
+  displayName: Configure EPs (set ep_list variable - separate by spaces)
+  type: boolean
+  default: false
+
+jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
   pool: Linux-GPU-TensorRT-Perf 
   variables:
-    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-    branch: 'master'
+    - name: runenv
+      ${{ if eq(parameters.RunDocker, true) }}:
+        value: _docker.sh -d ort-$(branch) 
+      ${{ if ne(parameters.RunDocker, true) }}:
+        value: _machine.sh
+    - name: args
+      value: $(runenv) -e "$(ep_list)" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf
   timeoutInMinutes: 3000 
+      
   steps:
-  
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
-      displayName: 'Build latest ORT Images'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - ${{ if eq(parameters.BuildORT, true) }}:
+      - ${{ if eq(parameters.RunDocker, true) }}:
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
+          displayName: 'Build latest ORT Images'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - ${{ if eq(parameters.RunDocker, false) }}:
+        - script: 'sudo python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ~/TensorRT-7.2.2.3'
+          displayName: 'Build latest ORT'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      
+    - ${{ if eq(parameters.RunOnnxZoo, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "onnx-zoo-models" '
+        displayName: 'Onnx Zoo Models Perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        env:
+          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
+          
+    - ${{ if eq(parameters.RunMany, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "many-models" '
+        displayName: 'Many Models Perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        env:
+          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d ort-$(branch) -o "onnx-zoo-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
-      displayName: 'Onnx Zoo Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - ${{ if eq(parameters.RunPartner, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "partner-models" '
+        displayName: 'Partner Models Perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        env:
+          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "many-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
-      displayName: 'Many Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "partner-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
-      displayName: 'Partner Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
+    - ${{ if eq(parameters.RunSelected, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "selected-models" -m $(ModelsPath) '
+        displayName: 'Selected Models Perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        env:
+          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
+    
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
@@ -32,12 +102,12 @@ jobs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result'
     
-
-    - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
-      displayName: 'Post to Dashboard'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      env:
-        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+    - ${{ if eq(parameters.PostToDashboard, true) }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+        displayName: 'Post to Dashboard'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        env:
+          DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
     - script: sudo rm -rf $(Agent.BuildDirectory)
       displayName: Clean build files (POSIX)

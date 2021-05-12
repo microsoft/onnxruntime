@@ -103,11 +103,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info(result)
     return result
 
-def get_trtexec_path(): 
-    trtexec_options = get_output(["find", "/", "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/workspace/.*/bin/trtexec', trtexec_options).group()
-    return trtexec_path
-
 def get_latency_result(runtimes, batch_size, mem_mb=None):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
     latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
@@ -222,14 +217,12 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             else: 
                 runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
 
-            runtimes += runtime
+            runtimes += runtime[1:] # remove warmup
 
         except Exception as e:
             logger.error(e)
             return None
 
-    logger.info(runtimes)
-    runtimes[:] = runtimes[1:]
     logger.info(runtimes)
 
     result = {}
@@ -329,7 +322,6 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 input_data_pb.append(tensor_to_array)
 
-                # print(np.array(input_data_pb[-1]).shape)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
@@ -654,9 +646,11 @@ def get_cuda_version():
     version = re.search(r'CUDA Version: \d\d\.\d', nvidia_strings).group(0) 
     return version
     
-def get_trt_version():
-    nvidia_strings = get_output(["dpkg", "-l"])
-    version = re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings).group(0)
+def get_trt_version(workspace):
+    libnvinfer = get_output(["find", workspace, "-name", "libnvinfer.so.*"])
+    nvinfer = re.search(r'.*libnvinfer.so.*', libnvinfer).group(0)
+    trt_strings = get_output(["nm", "-D", nvinfer])
+    version = re.search(r'tensorrt_version.*', trt_strings).group(0)
     return version
  
 def get_linux_distro(): 
@@ -694,10 +688,10 @@ def get_gpu_info():
     infos = re.findall('NVIDIA.*', info)
     return infos
 
-def get_system_info():
+def get_system_info(workspace):
     info = {}
     info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version()
+    info["trt"] = get_trt_version(workspace)
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
     info["gpu_info"] = get_gpu_info()
@@ -806,7 +800,7 @@ def parse_models_info_from_file(root_dir, path, models):
                 if os.path.isabs(row['working_directory']):
                     model['working_directory'] = row['working_directory']
                 else:
-                    model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
+                    model['working_directory'] = os.path.join(root_working_directory, row['working_directory'])
             else:
                 logger.error('Model path must be provided in models_info.json')
                 raise
@@ -1549,7 +1543,7 @@ def parse_arguments():
     
     parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
 
-    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path")
+    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path with models")
     
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
@@ -1559,9 +1553,13 @@ def parse_arguments():
 
     parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
     
+    parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt")
+    
     parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
+    
+    parser.add_argument("--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
@@ -1608,7 +1606,7 @@ def main():
     args = parse_arguments()
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
-
+    
     logger.info("\n\nStart perf run ...\n")
 
     models = {}
@@ -1682,17 +1680,6 @@ def main():
             csv_filename = args.benchmark_metrics_csv if args.benchmark_metrics_csv else f"benchmark_metrics_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
-
-    if False:
-        logger.info("\n===========================================")
-        logger.info("=========== System information  ===========")
-        logger.info("===========================================")
-        info = get_system_info()
-        pp.pprint(info)
-        csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
-        csv_filename = os.path.join(path, csv_filename)
-        output_system_info(info, csv_filename)
-
 
 if __name__ == "__main__":
     main()

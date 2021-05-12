@@ -21,13 +21,29 @@ def get_ep_list(comparison):
         ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
     return ep_list
 
+def resolve_trtexec_path(workspace): 
+    trtexec_options = get_output(["find", workspace, "-name", "trtexec"])
+    trtexec_path = re.search(r'.*/bin/trtexec', trtexec_options).group(0)
+    logger.info("using trtexec {}".format(trtexec_path))
+    return trtexec_path
+
 def main():
     args = parse_arguments()
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
 
+    # create ep list to iterate through
+    if args.ep_list:
+        ep_list = args.ep_list
+    else:
+        ep_list = get_ep_list(args.comparison)
+
+    if standalone_trt in ep_list or standalone_trt_fp16 in ep_list: 
+        trtexec = resolve_trtexec_path(args.workspace)
+
     models = {}
     parse_models_helper(args, models)
+    print(models)
 
     model_to_fail_ep = {}
 
@@ -47,11 +63,6 @@ def main():
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
         
-        if args.ep: 
-            ep_list = [args.ep]
-        else:
-            ep_list = get_ep_list(args.comparison)
-        
         for ep in ep_list:
             
             command =  ["python3",
@@ -65,8 +76,7 @@ def main():
                 if args.running_mode == "validate": 
                     continue 
                 else:
-                    trtexec_path = get_trtexec_path()    
-                    command.extend(["--trtexec", trtexec_path])
+                    command.extend(["--trtexec", trtexec])
                     ep = trt_fp16 if "fp16" in ep else trt 
 
             command.extend(["--ep", ep])
@@ -81,7 +91,7 @@ def main():
                                 "--write_test_result", "false",
                                 "--benchmark_latency_csv", benchmark_latency_csv,
                                 "--benchmark_success_csv", benchmark_success_csv]) 
-            
+           
             p = subprocess.run(command)
             logger.info(p)
 
@@ -156,7 +166,7 @@ def main():
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info()
+    info = get_system_info(args.workspace)
     pretty_print(pp, info)
 
 if __name__ == "__main__":
