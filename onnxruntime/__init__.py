@@ -29,7 +29,6 @@ except Exception as e:
     import_capi_exception = e
 
 from onnxruntime.capi import onnxruntime_validation
-from onnxruntime.capi.onnxruntime_validation import has_ortmodule
 
 if import_capi_exception:
     raise import_capi_exception
@@ -44,10 +43,8 @@ try:
 except ImportError:
     pass
 
-package_name, cuda_version = '', ''
-if has_ortmodule:
-    from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
-    if version:
-        __version__ = version
+from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
+if version:
+    __version__ = version
 
 onnxruntime_validation.check_distro_info()
