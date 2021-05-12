@@ -3,6 +3,9 @@ types/
 
 tsconfig.tsbuildinfo
 
+tool/benchmark/**/node_modules/
+tool/benchmark/**/dist/
+
 *.d.ts
 
 *.tgz
