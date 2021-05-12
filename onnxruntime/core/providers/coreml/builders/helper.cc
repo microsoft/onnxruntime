@@ -68,12 +68,6 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
                             << ", actual dim: " << dim.dim_value();
       return false;
     }
-
-    if (dim.dim_value() == 0) {
-      LOGS(logger, WARNING) << "CoreML does not support 0 as input dim, input:" << input_name
-                            << ", actual dim: " << dim.dim_value();
-      return false;
-    }
   }
 
   return true;
