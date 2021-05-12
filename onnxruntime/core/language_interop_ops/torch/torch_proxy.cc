@@ -16,11 +16,12 @@ namespace torch {
 // It automatically acquire the state upon creation and
 // release the acquired state after being destroyed.
 class GilGuard {
-public:
-    GilGuard() : state_(PyGILState_Ensure()) {};
-    ~GilGuard() { PyGILState_Release(state_); };
-private:
-    PyGILState_STATE state_;
+ public:
+  GilGuard() : state_(PyGILState_Ensure()){};
+  ~GilGuard() { PyGILState_Release(state_); };
+
+ private:
+  PyGILState_STATE state_;
 };
 
 void DlpackCapsuleDestructor(PyObject* data) {

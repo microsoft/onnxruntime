@@ -9,8 +9,6 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-using OnnxAttrs = std::unordered_map<std::string, std::string>;
-
 class TorchProxy {
  public:
   static TorchProxy& GetInstance();
