@@ -59,8 +59,8 @@ class GraphExecutionManager(ABC):
         self._execution_agent = None
 
         # Debug flags
-        self._save_onnx = True
-        self._save_onnx_prefix = 'bypass'
+        self._save_onnx = False
+        self._save_onnx_prefix = ''
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -96,7 +96,7 @@ class GraphExecutionManager(ABC):
         self._module_output_schema = None
 
         # Log level
-        self._loglevel = _logger.LogLevel.INFO
+        self._loglevel = _logger.LogLevel.WARNING
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
