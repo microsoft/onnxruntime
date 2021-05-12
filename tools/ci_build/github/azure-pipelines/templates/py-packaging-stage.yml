@@ -578,16 +578,14 @@ stages:
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      # Entry point for all ORTModule tests
-      # The onnxruntime folder is deleted in the build directory
-      # to enforce use of the onnxruntime wheel
       - task: CmdLine@2
         inputs:
-        - script: |
+          script: |
             docker run \
               --volume $(Build.BinariesDirectory):/build \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl
+          workingDirectory: $(Build.SourcesDirectory)
           displayName: 'install onnxruntime*.whl'
           condition: succeededOrFailed()
           timeoutInMinutes: 60
