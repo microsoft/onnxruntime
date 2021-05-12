@@ -538,10 +538,8 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
-# Before exporter using ATenOp instead of Gather, non-None padding_idx won't work.
-# TODO: add non-None value to padding_idx after exporter has the fix.
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
-@pytest.mark.parametrize("padding_idx", [None])
+@pytest.mark.parametrize("padding_idx", [None, 1])
 def test_gradient_correctness_embedding(device, padding_idx):
     class NeuralNetEmbedding(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim, hidden_size):

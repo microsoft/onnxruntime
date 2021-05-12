@@ -4,12 +4,13 @@
 # Register pytorch symbolic for export using ONNX Runtime contrib ops
 
 from torch.onnx import register_custom_op_symbolic
+from torch.onnx.symbolic_helper import parse_args
 
 
 _onnx_opset_version = 1
 
 
-def register_custom_op():
+def register_custom_op(is_ortmodule=False):
     """
     This function registers symbolic functions for
     custom ops that are implemented as part of ONNX Runtime
@@ -33,6 +34,21 @@ def register_custom_op():
     register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
+
+    if is_ortmodule:
+        @parse_args('v', 'v', 'i', 'b', 'b')
+        def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
+            custom_attributes_json = (
+                '{'
+                f'"padding_idx":{str(padding_idx)},'
+                f'"scale_grad_by_freq":{str(scale_grad_by_freq).lower()},'
+                f'"sparse":{str(sparse).lower()}'
+                '}'
+            )
+            return g.op("com.microsoft::ATenOp", weight, indices, name_s='aten::embedding',
+                        custom_attributes_json_s=custom_attributes_json)
+
+        register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
 
 
 def unregister_custom_op():
