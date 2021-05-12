@@ -571,6 +571,13 @@ stages:
         displayName: 'Mount hf-models-cache'
         condition: succeededOrFailed()
 
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
       # Entry point for all ORTModule tests
       # The onnxruntime folder is deleted in the build directory
       # to enforce use of the onnxruntime wheel
@@ -589,13 +596,6 @@ stages:
         displayName: 'install onnxruntime*.whl'
         condition: succeededOrFailed()
         timeoutInMinutes: 60
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
