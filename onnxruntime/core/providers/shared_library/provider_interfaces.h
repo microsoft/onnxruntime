@@ -387,6 +387,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, const std::vector<std::pair<int, int>>& aliases) = 0;
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
+  virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;
 
@@ -1171,6 +1172,11 @@ struct KernelDefBuilder final {
 
   KernelDefBuilder& ExternalOutputs() {
     g_host->KernelDefBuilder__ExternalOutputs(this);
+    return *this;
+  }
+
+  KernelDefBuilder& AllocateInputsContiguously() {
+    g_host->KernelDefBuilder__AllocateInputsContiguously(this);
     return *this;
   }
 
