@@ -10,6 +10,7 @@ from torch.onnx import symbolic_helper
 def _export(g, n, *args, **kwargs):
     try:
         name = kwargs['name']
+        inplace = kwargs['inplace']
         training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
         input_tensor_types = []
@@ -91,11 +92,11 @@ def _export(g, n, *args, **kwargs):
             requires_grad = 1 if arg.requires_grad() else 0
             output_tensor_requires_grads.append(requires_grad)
 
-        # TODO: add inplace flag.
         # TODO: add fully-qualified name.
         attrs = {
-            'call_convention_s': cconv,
             'name_s': name,
+            'inplace_i': inplace,
+            'call_convention_s': cconv,
             'outputs': n.outputsSize(),
             'input_tensor_types_i': input_tensor_types,
             'input_tensor_requires_grads_i': input_tensor_requires_grads,
