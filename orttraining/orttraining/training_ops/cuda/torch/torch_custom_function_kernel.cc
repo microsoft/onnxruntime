@@ -222,11 +222,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   // Invoke python calls.
   std::string err;
-  auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
       callback, input_tensor_requires_grads_, args, arg_positions_, const_args_, const_arg_positions_, returned_args, is_training_mode_);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
 
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -294,11 +292,9 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::vector<void*> returned_args;
 
   std::string err;
-  auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
   void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(
       callback, input_tensor_requires_grads_, args, arg_positions_, const_args, const_arg_positions_, returned_args);
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 

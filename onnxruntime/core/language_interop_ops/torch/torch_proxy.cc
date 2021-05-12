@@ -11,27 +11,17 @@
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
-class Scope {
- public:
-  Scope(const std::vector<PyObject*>& objs = {}) : objs_(objs) {
-    mtx_.lock();
-  }
-  ~Scope() {
-    for (auto obj : objs_) {
-      Py_XDECREF(obj);
-    }
-    mtx_.unlock();
-  }
-  void Add(PyObject* obj) {
-    objs_.push_back(obj);
-  }
 
- private:
-  static std::mutex mtx_;
-  std::vector<PyObject*> objs_;
+// Holder of GIL state.
+// It automatically acquire the state upon creation and
+// release the acquired state after being destroyed.
+class GilGuard {
+public:
+    GilGuard() : state_(PyGILState_Ensure()) {};
+    ~GilGuard() { PyGILState_Release(state_); };
+private:
+    PyGILState_STATE state_;
 };
-
-std::mutex Scope::mtx_;
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
@@ -47,7 +37,6 @@ void DlpackCapsuleDestructor(PyObject* data) {
 
 bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   void* prt = PyLong_AsVoidPtr(pyObj);
-  // std::cout << "ExtractPointerOutput:" << prt << std::endl;
   outputs.push_back(prt);
   return true;
 }
@@ -58,18 +47,17 @@ TorchProxy& TorchProxy::GetInstance() {
 }
 
 TorchProxy::TorchProxy() {
-  Scope scope;
+  if (Py_IsInitialized()) {
+    initialized_ = false;
+  }
+  Py_Initialize();
+  initialized_ = true;
 }
 
 TorchProxy::~TorchProxy() {
-}
-
-int32_t TorchProxy::GetGil() const {
-  return PyGILState_Ensure();
-}
-
-void TorchProxy::PutGil(int32_t state) const {
-  PyGILState_Release((PyGILState_STATE)state);
+  if (initialized_) {
+    Py_Finalize();
+  }
 }
 
 void CheckArguments(
@@ -144,6 +132,7 @@ void InvokeRunner(
     PyObject* callback_runner,
     PyObject* args,
     std::vector<void*>& returned_args) {
+  GilGuard guard;
   PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
   if (PyErr_Occurred()) {
     PyErr_Print();

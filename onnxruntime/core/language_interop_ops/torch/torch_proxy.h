@@ -34,13 +34,12 @@ class TorchProxy {
       const std::vector<int64_t>& obj_indices,
       std::vector<void*>& outputs);
 
-  bool Initialized() const { return initialized_; };
-  int32_t GetGil() const;
-  void PutGil(int32_t) const;
-
  private:
   TorchProxy();
   ~TorchProxy();
+  TorchProxy(const TorchProxy&) = delete;
+  TorchProxy& operator=(const TorchProxy&) = delete;
+
   bool initialized_ = false;
 };
 }  // namespace torch
