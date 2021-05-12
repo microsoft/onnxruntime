@@ -65,6 +65,22 @@ NS_ASSUME_NONNULL_BEGIN
   return ortValue;
 }
 
++ (ORTSessionOptions*)makeSessionOptions {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&err];
+  XCTAssertNotNil(sessionOptions);
+  XCTAssertNil(err);
+  return sessionOptions;
+}
+
++ (ORTRunOptions*)makeRunOptions {
+  NSError* err = nil;
+  ORTRunOptions* runOptions = [[ORTRunOptions alloc] initWithError:&err];
+  XCTAssertNotNil(runOptions);
+  XCTAssertNil(err);
+  return runOptions;
+}
+
 - (void)testInitAndRunWithPreallocatedOutputOk {
   NSMutableData* aData = [ORTSessionTest dataWithScalarFloat:1.0f];
   NSMutableData* bData = [ORTSessionTest dataWithScalarFloat:2.0f];
@@ -77,12 +93,14 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
   XCTAssertNotNil(session);
   XCTAssertNil(err);
 
   BOOL runResult = [session runWithInputs:@{@"A" : a, @"B" : b}
                                   outputs:@{@"C" : c}
+                               runOptions:[ORTSessionTest makeRunOptions]
                                     error:&err];
   XCTAssertTrue(runResult);
   XCTAssertNil(err);
@@ -103,6 +121,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
   XCTAssertNotNil(session);
   XCTAssertNil(err);
@@ -110,6 +129,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSDictionary<NSString*, ORTValue*>* outputs =
       [session runWithInputs:@{@"A" : a, @"B" : b}
                  outputNames:[NSSet setWithArray:@[ @"C" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
                        error:&err];
   XCTAssertNotNil(outputs);
   XCTAssertNil(err);
@@ -132,6 +152,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:invalidModelPath
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
   XCTAssertNil(session);
   XCTAssertNotNil(err);
@@ -147,12 +168,14 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
   XCTAssertNotNil(session);
   XCTAssertNil(err);
 
   BOOL runResult = [session runWithInputs:@{@"D" : d}
                                   outputs:@{@"C" : c}
+                               runOptions:[ORTSessionTest makeRunOptions]
                                     error:&err];
   XCTAssertFalse(runResult);
   XCTAssertNotNil(err);

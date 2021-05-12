@@ -43,8 +43,7 @@ struct TensorElementTypeInfo {
 };
 
 // supported ORT tensor element data types
-// define the mapping from ORTTensorElementDataType to C API
-// ONNXTensorElementDataType here
+// define the mapping from ORTTensorElementDataType to C API ONNXTensorElementDataType here
 constexpr TensorElementTypeInfo kElementTypeInfos[]{
     {ORTTensorElementDataTypeUndefined, ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, 0},
     {ORTTensorElementDataTypeFloat, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
@@ -52,6 +51,20 @@ constexpr TensorElementTypeInfo kElementTypeInfos[]{
     {ORTTensorElementDataTypeUInt8, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
     {ORTTensorElementDataTypeInt32, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
     {ORTTensorElementDataTypeUInt32, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
+};
+
+struct GraphOptimizationLevelInfo {
+  ORTGraphOptimizationLevel opt_level;
+  GraphOptimizationLevel capi_opt_level;
+};
+
+// ORT graph optimization levels
+// define the mapping from ORTGraphOptimizationLevel to C API GraphOptimizationLevel here
+constexpr GraphOptimizationLevelInfo kGraphOptimizationLevelInfos[]{
+    {ORTGraphOptimizationLevelNone, ORT_DISABLE_ALL},
+    {ORTGraphOptimizationLevelBasic, ORT_ENABLE_BASIC},
+    {ORTGraphOptimizationLevelExtended, ORT_ENABLE_EXTENDED},
+    {ORTGraphOptimizationLevelAll, ORT_ENABLE_ALL},
 };
 
 template <typename Container, typename SelectFn, typename TransformFn>
@@ -72,12 +85,8 @@ auto SelectAndTransform(
 OrtLoggingLevel PublicToCAPILoggingLevel(ORTLoggingLevel logging_level) {
   return SelectAndTransform(
       kLoggingLevelInfos,
-      [logging_level](const auto& logging_level_info) {
-        return logging_level_info.logging_level == logging_level;
-      },
-      [](const auto& logging_level_info) {
-        return logging_level_info.capi_logging_level;
-      },
+      [logging_level](const auto& logging_level_info) { return logging_level_info.logging_level == logging_level; },
+      [](const auto& logging_level_info) { return logging_level_info.capi_logging_level; },
       "unsupported logging level");
 }
 
@@ -111,4 +120,12 @@ size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
       [capi_type](const auto& type_info) { return type_info.capi_type == capi_type; },
       [](const auto& type_info) { return type_info.element_size; },
       "unsupported tensor element type");
+}
+
+GraphOptimizationLevel PublicToCAPIGraphOptimizationLevel(ORTGraphOptimizationLevel opt_level) {
+  return SelectAndTransform(
+      kGraphOptimizationLevelInfos,
+      [opt_level](const auto& opt_level_info) { return opt_level_info.opt_level == opt_level; },
+      [](const auto& opt_level_info) { return opt_level_info.capi_opt_level; },
+      "unsupported graph optimization level");
 }

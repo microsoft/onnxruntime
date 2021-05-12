@@ -61,7 +61,7 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
   std::optional<Ort::TypeInfo> _typeInfo;
 }
 
-#pragma mark Public
+#pragma mark - Public
 
 - (nullable instancetype)initTensorWithData:(NSMutableData*)tensorData
                                 elementType:(ORTTensorElementDataType)elementType
@@ -94,45 +94,40 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
 }
 
 - (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error {
-  try {
-    return CXXAPIToPublicValueTypeInfo(*_typeInfo);
-  } catch (const Ort::Exception& e) {
-    ORTSaveExceptionToError(e, error);
-    return nil;
-  }
+  ORT_OBJC_API_IMPL_BEGIN
+  return CXXAPIToPublicValueTypeInfo(*_typeInfo);
+  ORT_OBJC_API_IMPL_END_NULLABLE(error)
 }
 
 - (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error {
-  try {
-    const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
-    return CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
-  } catch (const Ort::Exception& e) {
-    ORTSaveExceptionToError(e, error);
-    return nil;
-  }
+  ORT_OBJC_API_IMPL_BEGIN
+  const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+  return CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
+  ORT_OBJC_API_IMPL_END_NULLABLE(error)
 }
 
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error {
-  try {
-    const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
-    const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
-    const size_t elementSize = SizeOfCAPITensorElementType(tensorTypeAndShapeInfo.GetElementType());
-    size_t rawDataLength;
-    if (!SafeMultiply(elementCount, elementSize, rawDataLength)) {
-      throw Ort::Exception{"failed to compute tensor data length", ORT_RUNTIME_EXCEPTION};
-    }
-    void* rawData;
-    Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(*_value, &rawData));
-    return [NSMutableData dataWithBytesNoCopy:rawData
-                                       length:rawDataLength
-                                 freeWhenDone:NO];
-  } catch (const Ort::Exception& e) {
-    ORTSaveExceptionToError(e, error);
-    return nil;
+  ORT_OBJC_API_IMPL_BEGIN
+
+  const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+  const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
+  const size_t elementSize = SizeOfCAPITensorElementType(tensorTypeAndShapeInfo.GetElementType());
+  size_t rawDataLength;
+  if (!SafeMultiply(elementCount, elementSize, rawDataLength)) {
+    throw Ort::Exception{"failed to compute tensor data length", ORT_RUNTIME_EXCEPTION};
   }
+
+  void* rawData;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(*_value, &rawData));
+
+  return [NSMutableData dataWithBytesNoCopy:rawData
+                                     length:rawDataLength
+                               freeWhenDone:NO];
+
+  ORT_OBJC_API_IMPL_END_NULLABLE(error)
 }
 
-#pragma mark Internal
+#pragma mark - Internal
 
 - (nullable instancetype)initWithCAPIOrtValue:(OrtValue*)CAPIOrtValue
                            externalTensorData:(nullable NSMutableData*)externalTensorData
