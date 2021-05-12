@@ -103,37 +103,12 @@ def validate_build_package_info():
                     warnings.warn('onnxruntime build info: cudart_version: %s' % cudart_version)
 
                 # collection cuda library info from current environment.
-                from onnxruntime.capi.onnxruntime_collect_build_info \
-                    import find_cudart_versions, find_cudnn_supported_cuda_versions
+                from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions
                 local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
                 if cudart_version and cudart_version not in local_cudart_versions:
                     print_build_package_info()
                     warnings.warn('WARNING: failed to find cudart version that matches onnxruntime build info')
                     warnings.warn('WARNING: found cudart versions: %s' % local_cudart_versions)
-
-                # https://docs.nvidia.com/deeplearning/cudnn/support-matrix/index.html
-                # https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnGetCudartVersion
-                # it is tricky to validate local cudnn support.
-                # There is a case when onnxruntime-training is built with Cuda 11.1.
-                # It however works with cudnn 8.0.3 (8003) which by cudnnGetCudartVersion and
-                # cudnn support-matrix, only support Cuda 11.0.
-                # to avoid false warning, we only post a message if there is no cudnn installed at all,
-                # hoping meanful error message is posted when runtime does not find a compatible cudnn library.
-                local_cudnn_supported_cuda_versions = find_cudnn_supported_cuda_versions(build_env=False)
-                if len(local_cudnn_supported_cuda_versions) == 0:
-                    warnings.warn_build_package_info()
-                    warnings.warn('WARNING: cudnn is not installed.')
-
-                # if cuda_version not in local_cudnn_supported_cuda_versions:
-                #     print_build_package_info()
-
-                #     # need to be soft on cudnn version
-                #     # very likely there is a mismatch but onnxruntime works just fine.
-                #     warnings.warn(
-                #         'INFO: failed to find cudnn that is compatible with the cuda version')
-                #     warnings.warn(
-                #         'INFO: cuda version cupported by installed cudnns: %s' %
-                #         local_cudnn_supported_cuda_versions)
             else:
                 # TODO: rcom
                 pass
