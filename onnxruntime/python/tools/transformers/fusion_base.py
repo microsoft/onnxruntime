@@ -22,6 +22,7 @@ class Fusion:
         self.nodes_to_remove: List = []
         self.nodes_to_add: List = []
         self.prune_graph: bool = False
+        self.node_to_graph: dict = {}
 
     def apply(self):
         logger.debug(f"start {self.description} fusion...")
@@ -44,4 +45,4 @@ class Fusion:
         if self.prune_graph:
             self.model.prune_graph()
         elif self.nodes_to_remove or self.nodes_to_add:
-            self.model.update_graph()
+           self.model.update_graph()
