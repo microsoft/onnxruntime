@@ -23,6 +23,16 @@
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+namespace onnxruntime {
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+
+namespace cuda {
+INcclService& INcclService::GetInstance() {
+  return GetProviderInfo_CUDA()->GetINcclService();
+}
+}  // namespace cuda
+}  // namespace onnxruntime
 #endif
 #include "nlohmann/json.hpp"
 #include "test/perftest/utils.h"
@@ -764,7 +774,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   // Create communication plan.
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
 
   nccl_service.PlanStart();
   for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {

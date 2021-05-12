@@ -18,6 +18,12 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+namespace cuda {
+cuda::INcclService& GetINcclService();
+}
+#endif
+
 void Shutdown_DeleteRegistry();
 
 struct CUDAProviderFactory : IExecutionProviderFactory {
@@ -39,9 +45,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(c
   return std::make_shared<onnxruntime::CUDAProviderFactory>(info);
 }
 
-}  // namespace onnxruntime
-
-namespace onnxruntime {
 struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
@@ -128,6 +131,12 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }
+
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+  cuda::INcclService& GetINcclService() override {
+    return cuda::GetINcclService();
+  }
+#endif
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const CUDAExecutionProviderInfo& info) override {
     return std::make_shared<CUDAProviderFactory>(info);
