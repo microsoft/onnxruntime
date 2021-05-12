@@ -10,6 +10,7 @@ import threading
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
+from functools import wraps
 
 
 def _ortvalue_to_torch_tensor(ortvalue):
@@ -106,24 +107,25 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
-def aten_op_executor_cpp_extension_run_once(f):
+def run_once_aten_op_executor(f):
     """
     Decorator to run a function only once.
     :param f: function to be run only once during execution time despite the number of calls
     :return: The original function with the params passed to it if it hasn't already been run before
     """
-    def aten_op_executor_cpp_extension_wrapper(*args, **kwargs):
-        if not aten_op_executor_cpp_extension_wrapper.has_run:
-            with aten_op_executor_cpp_extension_wrapper.lock:
-                if not aten_op_executor_cpp_extension_wrapper.has_run:
-                    aten_op_executor_cpp_extension_wrapper.has_run = True
+    @wraps(f)
+    def aten_op_executor_wrapper(*args, **kwargs):
+        if not aten_op_executor_wrapper.has_run:
+            with aten_op_executor_wrapper.lock:
+                if not aten_op_executor_wrapper.has_run:
+                    aten_op_executor_wrapper.has_run = True
                     return f(*args, **kwargs)
 
-    aten_op_executor_cpp_extension_wrapper.lock = threading.Lock()
-    aten_op_executor_cpp_extension_wrapper.has_run = False
-    return aten_op_executor_cpp_extension_wrapper
+    aten_op_executor_wrapper.lock = threading.Lock()
+    aten_op_executor_wrapper.has_run = False
+    return aten_op_executor_wrapper
 
-@aten_op_executor_cpp_extension_run_once
+@run_once_aten_op_executor
 def _load_aten_op_executor_cpp_extension(verbosity, is_rocm_pytorch):
     aten_op_executor_cpp_source = """
 #include <torch/torch.h>
@@ -238,6 +240,6 @@ size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&Execut
 
 def _load_aten_op_executor_cpp_extension_if_needed(onnx_model, verbosity, is_rocm_pytorch):
     for node in onnx_model.graph.node:
-        if node.op_type == 'ATenOp':
+        if node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
             _load_aten_op_executor_cpp_extension(verbosity, is_rocm_pytorch)
             break
