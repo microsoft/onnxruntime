@@ -572,12 +572,15 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
             files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             whlfilename=$(basename ${files[0]}) && \
             echo $whlfilename && \
             files2=($(Build.BinariesDirectory)/Release/launch_test.py) && \
             echo ${files2[0]} && \
+            files3=($(Build.BinariesDirectory)/Release/orttraining_ortmodule_tests.py) && \
+            echo ${files3[0]} && \
             docker run \
               --volume $(Build.BinariesDirectory):/build \
               --volume /mnist:/mnist \
@@ -585,7 +588,6 @@ stages:
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && \
-                rm -rf /build/Release/onnxruntime/ && \
                 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release
           workingDirectory: $(Build.SourcesDirectory)
 

@@ -247,12 +247,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
   )
-else()
-  file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/test/python/*.py"
-      "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
-      "${ORTTRAINING_SOURCE_DIR}/test/python/*.json"
-  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -404,13 +398,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
-  )
-else()
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>
   )
 endif()
 
