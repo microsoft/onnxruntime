@@ -968,7 +968,8 @@ def test_model_with_bypass_input(device):
 
         def forward(self, input1, bypass_input):
             out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
-            # out2 = bypass_input
+            # use shape from bypass_input
+            out1 = out1.view(bypass_input.size()[0], -1)
             return out1, bypass_input
 
     def run_step(model, x1, x2):
@@ -981,8 +982,8 @@ def test_model_with_bypass_input(device):
     pt_model = NeuralNetWithBypassInput(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=False)
-    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=True)
     ort_x1 = pt_x1.clone()
     ort_x2 = pt_x2.clone()
 
