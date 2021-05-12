@@ -283,6 +283,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status,
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
 
+static Logger* LoggingManager::s_default_logger_ = nullptr;  // TODO: Figure out where this is referenced
+
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
   return g_host->CopyOpKernelInfo(info);
 }

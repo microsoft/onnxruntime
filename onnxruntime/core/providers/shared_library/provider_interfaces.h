@@ -796,6 +796,8 @@ struct Logger final {
 struct LoggingManager final {
   static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
 
+  static Logger* s_default_logger_;
+
   PROVIDER_DISALLOW_ALL(LoggingManager)
 };
 
