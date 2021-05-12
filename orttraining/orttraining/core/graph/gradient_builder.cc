@@ -1345,7 +1345,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
   std::vector<NodeDef> result;
-  //const int64_t data_type = static_cast<int64_t>(IElemType(1));
   NodeDef zero_constant_node = ZeroConstantNode(OElemType(0));
   ArgDef ZERO = zero_constant_node.output_args[0];
   result.push_back(zero_constant_node);
