@@ -188,6 +188,8 @@ using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
 using DeleteFunc = void (*)(void*);
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
+
+using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
@@ -203,6 +205,23 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 #include "core/util/math.h"
 
 namespace onnxruntime {
+
+// From Tensor.h
+class BufferDeleter {
+ public:
+  BufferDeleter() : alloc_(nullptr) {}
+  BufferDeleter(AllocatorPtr alloc) : alloc_(alloc) {}
+
+  void operator()(void* p) const {
+    if (alloc_)
+      alloc_->Free(p);
+  }
+
+ private:
+  AllocatorPtr alloc_;
+};
+
+using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
 
 // The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
 // Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.

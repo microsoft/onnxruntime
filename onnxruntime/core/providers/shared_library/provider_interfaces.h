@@ -542,16 +542,20 @@ struct ProviderHost {
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
+  virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) = 0;
   virtual bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) = 0;
+  virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
+  virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
+  virtual AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, int device_id, OrtMemType mem_type) = 0;
   virtual const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
@@ -1406,12 +1410,18 @@ struct OpKernelContext final {
   const T* Input(int index) const;
   int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
+  template <typename T>
+  T* Output(int index);
+
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
 
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
+
+  bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
+  bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
@@ -1422,12 +1432,19 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
 }
 
 template <>
+inline Tensor* OpKernelContext::Output<Tensor>(int index) {
+  return g_host->OpKernelContext__Output_Tensor(this, index);
+}
+
+template <>
 inline const Tensor& OpKernelContext::RequiredInput(int index) const {
   return g_host->OpKernelContext__RequiredInput_Tensor(this, index);
 }
 
 struct OpKernelInfo final {
   static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
+
+  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, device_id, mem_type); }
 
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
 
