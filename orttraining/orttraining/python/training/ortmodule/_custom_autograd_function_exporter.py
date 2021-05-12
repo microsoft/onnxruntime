@@ -6,6 +6,7 @@
 import sys
 from torch.onnx import symbolic_helper
 
+
 def _export(g, n, *args, **kwargs):
     try:
         name = kwargs['name']
@@ -65,7 +66,8 @@ def _export(g, n, *args, **kwargs):
                     elif all(isinstance(ele, float) for ele in arg):
                         # A tuple of floats.
                         input_float_tuple_positions.append(i)
-                        input_float_tuple_begins.append(len(input_float_tuples))
+                        input_float_tuple_begins.append(
+                            len(input_float_tuples))
                         input_float_tuples.extend(list(arg))
                     else:
                         raise Exception(
