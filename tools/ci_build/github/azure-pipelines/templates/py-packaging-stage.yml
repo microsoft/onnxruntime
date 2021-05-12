@@ -576,6 +576,8 @@ stages:
             echo ${files[0]} && \
             whlfilename=$(basename ${files[0]}) && \
             echo $whlfilename && \
+            files2=($(Build.BinariesDirectory)/Release/launch_test.py) && \
+            echo ${files2[0]} && \
             docker run \
               --volume $(Build.BinariesDirectory):/build \
               --volume /mnist:/mnist \
