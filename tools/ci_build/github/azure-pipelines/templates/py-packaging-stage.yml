@@ -579,7 +579,6 @@ stages:
             --user 0 \
             --gpus all \
             --shm-size=1024m \
-            --rm \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume /mnist:/mnist \
