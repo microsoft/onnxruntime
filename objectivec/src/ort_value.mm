@@ -63,7 +63,7 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
 
 #pragma mark - Public
 
-- (nullable instancetype)initTensorWithData:(NSMutableData*)tensorData
+- (nullable instancetype)initWithTensorData:(NSMutableData*)tensorData
                                 elementType:(ORTTensorElementDataType)elementType
                                       shape:(NSArray<NSNumber*>*)shape
                                       error:(NSError**)error {

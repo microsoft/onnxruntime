@@ -56,7 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (ORTValue*)ortValueWithScalarFloatData:(NSMutableData*)data {
   NSArray<NSNumber*>* shape = @[ @1 ];
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
                                                 elementType:ORTTensorElementDataTypeFloat
                                                       shape:shape
                                                       error:&err];
