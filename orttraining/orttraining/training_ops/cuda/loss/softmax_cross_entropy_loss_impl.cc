@@ -4,6 +4,7 @@
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cuda/loss/softmax_cross_entropy_loss_impl.h"
@@ -164,13 +165,26 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   if (reduction_ != ReductionType::NONE) {
     // ReduceSum on loss_per_sample
-    ORT_RETURN_IF_ERROR(reduce_sum(
-        Stream(),
-        reinterpret_cast<CudaT*>(tmp_loss_sample_buffer),
-        reinterpret_cast<CudaT*>(total_loss_data),
-        static_cast<int>(N_D),
-        reduction_buffer.get(),
-        buffer_size));
+    if (!std::is_same<T, TBuf>::value) {
+      ORT_RETURN_IF_ERROR(reduce_sum(
+          Stream(),
+          reinterpret_cast<CudaT*>(tmp_loss_sample_buffer),
+          normalize_factor_data.get(),
+          static_cast<int>(N_D),
+          reduction_buffer.get(),
+          buffer_size));
+      // Convert from accumulation type to output type
+      // Need a better way to do this cast as this is a single element cast
+      Impl_Cast<TBuf, CudaT>(Stream(), normalize_factor_data.get(), reinterpret_cast<CudaT*>(total_loss_data), 1);
+    } else {
+      ORT_RETURN_IF_ERROR(reduce_sum(
+          Stream(),
+          reinterpret_cast<CudaT*>(tmp_loss_sample_buffer),
+          total_loss_data,
+          static_cast<int>(N_D),
+          reduction_buffer.get(),
+          buffer_size));
+    }
   }
 
   return Status::OK();

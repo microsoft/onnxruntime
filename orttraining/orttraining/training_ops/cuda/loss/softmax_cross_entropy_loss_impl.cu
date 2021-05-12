@@ -61,7 +61,7 @@ __global__ void _WeightedSoftmaxCrossEntropyLoss(
     output_data[i] = 0;
   } else {
     CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < C);
-    output_data[i] = -log_prob_data[i * C + label_data[i]] * weight_data[i] / static_cast<T>(*normalize_factor_data);
+    output_data[i] = static_cast<T>(static_cast<TAcc>(-log_prob_data[i * C + label_data[i]] * weight_data[i]) / *normalize_factor_data);
   }
 }
 
