@@ -533,6 +533,18 @@ stages:
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
 
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+        displayName: 'Mount MNIST'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+        displayName: 'Mount bert-data'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+        displayName: 'Mount hf-models-cache'
+        condition: succeededOrFailed()
+
       - task: CmdLine@2
         inputs:
           script: |
@@ -543,6 +555,9 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
@@ -557,19 +572,20 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $whlfilename && \
+            docker run \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && \
+                rm -rf /build/Release/onnxruntime/ && \
+                /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release
           workingDirectory: $(Build.SourcesDirectory)
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
-        displayName: 'Mount MNIST'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
-        displayName: 'Mount bert-data'
-        condition: succeededOrFailed()
-
-      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-        displayName: 'Mount hf-models-cache'
-        condition: succeededOrFailed()
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
