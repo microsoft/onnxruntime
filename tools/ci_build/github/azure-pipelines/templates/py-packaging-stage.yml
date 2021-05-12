@@ -579,24 +579,12 @@ stages:
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: CmdLine@2
-        inputs:
-          script: |
-            docker run \
-              --volume $(Build.BinariesDirectory):/build \
-              onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl
-          workingDirectory: $(Build.SourcesDirectory)
-          displayName: 'install onnxruntime*.whl'
-          condition: succeededOrFailed()
-          timeoutInMinutes: 60
-
-      - task: CmdLine@2
         displayName: 'Build Python Documentation'
         condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm \
+            docker run \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -643,7 +631,30 @@ stages:
                 --python_wheel_path ${files[0]} \
                 --account_name onnxruntimepackages \
                 --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web'
+                --container_name '$web' && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $(whlfilename) && \
+            docker run \
+              --volume $(Build.ArtifactStagingDirectory):/artifact \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 -m pip install /artifact/Release/dist/$(whlfilename)
+          condition: succeededOrFailed()
+          displayName: 
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $(whlfilename) && \
+            docker run \
+              --volume $(Build.BinariesDirectory):/build \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$(whlfilename)
           condition: succeededOrFailed()
           displayName: 
 
@@ -654,7 +665,6 @@ stages:
               --user 0 \
               --gpus all \
               --shm-size=1024m \
-              --rm \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume /mnist:/mnist \
