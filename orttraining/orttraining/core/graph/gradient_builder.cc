@@ -1349,12 +1349,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
   ArgDef ZERO = zero_constant_node.output_args[0];
   result.push_back(zero_constant_node);
   if (IsGradientRequiredForSrcNodeInput(1)) {
-    result.push_back(NodeDef("Where", {I(0),GO(0),ZERO}, {GI(1)}));
+    result.push_back(NodeDef("Where", {I(0), GO(0), ZERO}, {GI(1)}));
   }
 
   if (IsGradientRequiredForSrcNodeInput(2)) {
     result.push_back(NodeDef("Not", {I(0)}, {IA("Not_Condition", IType(0))}));
-    result.push_back(NodeDef("Where", {IA("Not_Condition"),GO(0),ZERO}, {GI(2)}));
+    result.push_back(NodeDef("Where", {IA("Not_Condition"), GO(0), ZERO}, {GI(2)}));
   }
   return result;
 }
