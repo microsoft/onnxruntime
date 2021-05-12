@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-INcclService& GetINcclService {
+INcclService& GetINcclService() {
   return NcclService::GetInstance();
 }
 
