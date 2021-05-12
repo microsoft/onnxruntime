@@ -62,6 +62,9 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #endif
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
 
 namespace ONNX_NAMESPACE {
 // We use these names in the provider API because we don't have the protobuf definitions of the RepeatedField* types
@@ -1046,6 +1049,13 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
     return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
+
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+namespace cuda {
+INcclService& INcclService::GetInstance() {
+  return GetProviderInfo_CUDA()->GetINcclService();
+}
+#endif
 
 }  // namespace onnxruntime
 
