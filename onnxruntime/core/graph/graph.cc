@@ -3067,66 +3067,6 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                       size_t initializer_size_threshold) const {
-  GraphProto result;
-  ToGraphProtoInternal(result);
-  const auto& model_path = ModelPath();
-
-  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
-  ORT_ENFORCE(external_stream.is_open());
-  int64_t external_offset = 0;
-
-  // Add the initializers to the result graph.
-  const auto sparse_end = sparse_tensor_names_.end();
-  for (const auto& initializer : graph_proto_->initializer()) {
-    if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
-      // Sparse tensors are added to the ONNX file.
-      auto& sparse_initializer = *result.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
-      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
-    } else {
-      // Dense tensors larger than the threshold are added to the external file.
-      TensorProto* output_proto = result.add_initializer();
-
-      size_t tensor_bytes_size = 0;
-      std::unique_ptr<uint8_t[]> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
-
-      if (tensor_bytes_size < initializer_size_threshold) {
-        *output_proto = initializer;
-        continue;
-      }
-
-      for (size_t index = 0; index != tensor_bytes_size; ++index) {
-        external_stream << raw_data[index];
-      }
-
-      output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
-      ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
-      location->set_key("location");
-      location->set_value(external_file_name);
-      ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
-      offset->set_key("offset");
-      offset->set_value(std::to_string(external_offset));
-      ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
-      length->set_key("length");
-      length->set_value(std::to_string(tensor_bytes_size));
-
-      output_proto->set_name(initializer.name());
-      output_proto->set_data_type(initializer.data_type());
-      for (int i = 0; i != initializer.dims_size(); ++i) {
-        output_proto->add_dims(initializer.dims(i));
-      }
-      output_proto->set_doc_string(initializer.doc_string());
-
-      external_offset += tensor_bytes_size;
-    }
-  }
-
-  return result;
-}
-
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
   graph_proto_->clear_node();
   graph_proto_->clear_input();

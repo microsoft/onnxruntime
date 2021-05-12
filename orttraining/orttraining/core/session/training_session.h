@@ -331,19 +331,6 @@ class TrainingSession : public InferenceSession {
   */
   common::Status Save(const PathString& model_uri, SaveOption opt);
 
-  /** Save the model using an external file for initializers larger than the threshold (in bytes).
-  This function is useful to avoid hitting the size limit for protobufs when using large models, in
-  particular after auto-diff.
-  @param model_uri the path for the new model.
-  @param external_file_uri the name for the external initializers file. This is a plain string because
-  it needs to be saved into the onnx protobuf, where wchar is not supported.
-  @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
-  in the external file. Initializer smaller than this threshold are included in the onnx file.
-  */
-  common::Status SaveWithExternalInitializers(const PathString& model_uri,
-                                              const std::string& external_file_name,
-                                              size_t initializer_size_threshold);
-
   /** Update the session initializers with passed-in state tensors
    * @param state_tensors A map of state tensors to set, usually loaded from a checkpoint.
    * @param strict Whether entries in state_tensors which are unknown or not present in the model are treated as an error or ignored.
