@@ -331,6 +331,8 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument("--apple_disable_bitcode", action='store_true',
+                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -879,6 +881,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
@@ -1176,7 +1179,7 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def run_android_tests(args, source_dir, config, cwd):
+def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
@@ -1185,6 +1188,9 @@ def run_android_tests(args, source_dir, config, cwd):
 
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
+
+    def adb_install(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'install', *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1223,6 +1229,20 @@ def run_android_tests(args, source_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.build_java:
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "debug", "app-debug.apk"))
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "androidTest", "debug", "app-debug-androidTest.apk"))
+                adb_shell(
+                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
+                    )
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1364,7 +1384,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         cwd = os.path.abspath(cwd)
 
         if args.android:
-            run_android_tests(args, source_dir, config, cwd)
+            run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
         elif args.ios:
             run_ios_tests(args, source_dir, config, cwd)

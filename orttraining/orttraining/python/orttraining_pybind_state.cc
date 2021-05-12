@@ -72,6 +72,8 @@ struct TrainingParameters {
   // transformation
   int propagate_cast_ops_level = -1;
   std::vector<std::string> propagate_cast_ops_allow;
+  GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
   bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
@@ -236,8 +238,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
-  config.graph_transformer_config.propagate_cast_ops_level = parameters.propagate_cast_ops_level;
-  config.graph_transformer_config.propagate_cast_ops_allow = parameters.propagate_cast_ops_allow;
+  config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
+  config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
+  config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
   config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
@@ -517,18 +520,46 @@ void addObjectMethodsForTraining(py::module& m) {
         }
       });
 
-  py::class_<TrainingSession::TrainingConfiguration::GraphTransformerConfiguration> graph_transformer_config(
+  py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
+      .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
+      .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
+      .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
+      .value("REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts)
+      .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
+      .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator&))
+      .def("__eq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator==))
+      .def("__neq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator!=));
+
+  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration>
+      propagate_cast_ops_config(
+          m, "PropagateCastOpsConfiguration",
+          R"pbdoc(Propagate cast ops configuration.)pbdoc");
+  propagate_cast_ops_config.def(py::init())
+      .def_readwrite("strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
+      .def_readwrite("level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
+      .def_readwrite("allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
+
+  py::class_<GraphTransformerConfiguration> graph_transformer_config(
       m, "GraphTransformerConfiguration",
       R"pbdoc(Graph transformer configuration.)pbdoc");
   graph_transformer_config.def(py::init())
-      .def_readwrite("enable_gelu_approximation", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::enable_gelu_approximation)
-      .def_readwrite("attn_dropout_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::attn_dropout_recompute)
-      .def_readwrite("gelu_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::gelu_recompute)
-      .def_readwrite("transformer_layer_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::transformer_layer_recompute)
-      .def_readwrite("number_recompute_layers", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("propagate_cast_ops_level", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_config", &GraphTransformerConfiguration::propagate_cast_ops_config);
+
+  py::class_<TrainingGraphTransformerConfiguration, GraphTransformerConfiguration> training_graph_transformer_config(
+      m, "TrainingGraphTransformerConfiguration",
+      R"pbdoc(Training Graph transformer configuration.)pbdoc");
+  training_graph_transformer_config.def(py::init())
+      .def_readwrite("enable_gelu_approximation", &TrainingGraphTransformerConfiguration::enable_gelu_approximation)
+      .def_readwrite("attn_dropout_recompute", &TrainingGraphTransformerConfiguration::attn_dropout_recompute)
+      .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
+      .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
+      .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
+      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
+      .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",

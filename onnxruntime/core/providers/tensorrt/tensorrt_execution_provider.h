@@ -25,6 +25,8 @@ static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUEN
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -95,14 +97,15 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, int>> output_info;
   std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool* fp16_enable_ptr = nullptr;
-  bool* int8_enable_ptr = nullptr;
+  bool fp16_enable;
+  bool int8_enable;
+  bool dla_enable;
+  int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
@@ -146,6 +149,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
+  bool dla_enable_ = false;
+  int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
   std::string int8_calibration_cache_name_ = "INT8_calibration_table";
   bool int8_use_native_tensorrt_calibration_table_ = false;

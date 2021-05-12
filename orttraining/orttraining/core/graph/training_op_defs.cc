@@ -1507,8 +1507,7 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
-      .Output(0, "Y", "uncompressed output", "T")
-      .Output(1, "Y1", "compressed output", "T1")
+      .Output(0, "Y", "compressed output", "T1")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1516,14 +1515,20 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(bool)"},
-          "Binarize tensors.");
+          "Binarize tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X1", "dummy input for late decoding", "T")
-      .Input(1, "X", "compresssed input", "T1")
+      .Input(0, "X", "compresssed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1531,7 +1536,162 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(bool)"},
-          "Binarize tensors.");
+          "Binarize tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "1 bit compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)", "tensor(float)"},
+          "boolean or float uncompressed tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 8 1-bit compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "1 bit compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 8 1-bit compressed tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)", "tensor(float)"},
+          "boolean or float uncompressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)"},
+          "16 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT16);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compressed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)"},
+          "16 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
       .SetDomain(kOnnxDomain)
@@ -1946,6 +2106,71 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormInternal)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Variant of BatchNormalization with additional output for saved_mean/inv_std_dev.")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("epsilon", "epsilon value", AttributeProto::FLOAT, 1e-5f)
+      .Attr("momentum", "momentum value", AttributeProto::FLOAT, 0.9f)
+      .Attr("training_mode", "true if training", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "X", "Input tensor.", "T",  OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "scale", "Scale tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "Bias tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(3, "input_mean", "running mean tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(4, "input_var", "running variance tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "The output tensor of the same shape as X", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1,"running_mean", "The running mean after BN.", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(2, "running_var", "Running var after BN", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(3, "saved_mean", "Mean of the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+            "T",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+            "U",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain mean and variance types to float tensors. It allows all float type for U.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          Dim num_channels;
+
+          unifyInputDim(ctx, 0, 1, num_channels);
+          unifyInputDim(ctx, 1, 0, num_channels);
+          unifyInputDim(ctx, 2, 0, num_channels);
+          unifyInputDim(ctx, 3, 0, num_channels);
+          unifyInputDim(ctx, 4, 0, num_channels);
+
+          if (ctx.getAttribute("training_mode") &&
+               static_cast<int>(ctx.getAttribute("training_mode")->i()) != 0) {
+            if (ctx.getNumOutputs() != 5)
+              fail_shape_inference(
+                "This number of op outputs should be 5 when Training_mode = True, but it is not.");
+          } else {
+            if (ctx.getNumOutputs() != 1)
+              fail_shape_inference(
+                "This number of op outputs should be 1 when Training_mode = False, but it is not.");
+          }
+
+          if (ctx.getNumOutputs() > 1) {
+            ONNX_NAMESPACE::TensorShapeProto outputs_shape;
+            *outputs_shape.add_dim() = num_channels; // channel
+
+            propagateElemTypeFromInputToOutput(ctx, 3, 1);
+            updateOutputShape(ctx, 1, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 2);
+            updateOutputShape(ctx, 2, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            updateOutputShape(ctx, 3, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 4);
+            updateOutputShape(ctx, 4, outputs_shape);
+          }
+        });
+
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
       .SetDomain(kMSDomain)
