@@ -406,9 +406,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
   )
 else()
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>
+  )
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
