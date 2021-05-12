@@ -33,19 +33,6 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-// TODO, move this to shared_library
-bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger) {
-  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  const auto* type_proto = node_arg.TypeAsProto();
-  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
-    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
-    return false;
-  }
-
-  type = type_proto->tensor_type().elem_type();
-  return true;
-}
-
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
@@ -78,6 +65,12 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
     // See this issue, https://github.com/apple/coremltools/issues/1003
     if (dim.dim_value() > 16384) {
       LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
+                            << ", actual dim: " << dim.dim_value();
+      return false;
+    }
+
+    if (dim.dim_value() == 0) {
+      LOGS(logger, WARNING) << "CoreML does not support 0 as input dim, input:" << input_name
                             << ", actual dim: " << dim.dim_value();
       return false;
     }
