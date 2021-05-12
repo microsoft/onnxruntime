@@ -41,7 +41,7 @@ struct ProviderInfo_CUDA {
   virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  virtual cuda::INcclService& GetINcclService() = 0;
+  virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
 #endif
 
   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
