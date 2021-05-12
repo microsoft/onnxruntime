@@ -625,6 +625,28 @@ stages:
           scriptType: 'bash'
           scriptLocation: 'inlineScript'
           inlineScript: |
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $whlfilename && \
+            docker run \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && \
+                rm -rf /build/Release/onnxruntime/ && \
+                /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release
+          condition: succeededOrFailed()
+          displayName: 
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
             files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             tools/ci_build/upload_python_package_to_azure_storage.py \
@@ -638,23 +660,6 @@ stages:
               --volume $(Build.ArtifactStagingDirectory):/artifact \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 -m pip install /artifact/Release/dist/$whlfilename
-          condition: succeededOrFailed()
-          displayName: 
-
-      - task: AzureCLI@2
-        inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
-            echo ${files[0]} && \
-            whlfilename=$(basename ${files[0]}) && \
-            echo $whlfilename && \
-            docker run \
-              --volume $(Build.BinariesDirectory):/build \
-              onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename
           condition: succeededOrFailed()
           displayName: 
 
