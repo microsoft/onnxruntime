@@ -3063,6 +3063,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>coordinate_transformation_mode</tt> : string</dt>
+<dd></dd>
+<dt><tt>mode</tt> : string</dt>
+<dd></dd>
 <dt><tt>scales</tt> : list of ints</dt>
 <dd></dd>
 </dl>
