@@ -261,8 +261,7 @@ class GraphExecutionManager(ABC):
                     exported_model.opset_import[1].domain = 'com.microsoft'
                 index = 0
                 for node in exported_model.graph.node:
-                    if node.domain == 'prim':
-                        node.domain = 'com.microsoft'
+                    if node.domain == 'com.microsoft':
                         output_names = list(node.output)
                         del node.output[:]
                         node.output.append(output_names[0] + '_ctx')
@@ -272,16 +271,12 @@ class GraphExecutionManager(ABC):
                         node.name = node.op_type + "_id_" + str(index)
                         index += 1
 
-                def fullname(kclass):
-                    module = kclass.__module__
-                    if module == 'builtins':
-                        return kclass.__qualname__ # avoid outputs like 'builtins.str'
-                    return module + '.' + kclass.__qualname__
-                print([fullname(cls) for cls in torch.autograd.Function.__subclasses__()])
+                def shortname(kclass):
+                    return kclass.__qualname__
                 for kclass in torch.autograd.Function.__subclasses__():
-                    print("Registering apply and backward for ", fullname(kclass))
-                    onnxruntime.register_forward_core(fullname(kclass), getattr(kclass, "apply"))
-                    onnxruntime.register_backward_core(fullname(kclass), getattr(kclass, "backward"))
+                    print("Registering apply and backward for ", shortname(kclass))
+                    onnxruntime.register_forward_core(shortname(kclass), getattr(kclass, "apply"))
+                    onnxruntime.register_backward_core(shortname(kclass), getattr(kclass, "backward"))
             else:
                 with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                     torch.onnx.export(self._flattened_module,
