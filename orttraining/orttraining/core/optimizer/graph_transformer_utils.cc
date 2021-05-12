@@ -120,7 +120,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                              static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                              config.propagate_cast_ops_config.allow,
