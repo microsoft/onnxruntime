@@ -633,11 +633,11 @@ stages:
                 --account_key $(orttrainingpackagestorageaccountkey) \
                 --container_name '$web' && \
             whlfilename=$(basename ${files[0]}) && \
-            echo $(whlfilename) && \
+            echo $whlfilename && \
             docker run \
               --volume $(Build.ArtifactStagingDirectory):/artifact \
               onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /artifact/Release/dist/$(whlfilename)
+                $(PythonManylinuxDir)/bin/python3 -m pip install /artifact/Release/dist/$whlfilename
           condition: succeededOrFailed()
           displayName: 
 
@@ -650,11 +650,11 @@ stages:
             files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             whlfilename=$(basename ${files[0]}) && \
-            echo $(whlfilename) && \
+            echo $whlfilename && \
             docker run \
               --volume $(Build.BinariesDirectory):/build \
               onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$(whlfilename)
+                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename
           condition: succeededOrFailed()
           displayName: 
 
