@@ -114,6 +114,7 @@ PyObject* CreateTensorFlags(
   return flags;
 }
 
+// flags[i] corresponds to the i-th input of apply/backward.
 PyObject* CreateRequiresGradFlags(
     const std::vector<int64_t>& requires_grads) {
   PyObject* flags = PyList_New(requires_grads.size());

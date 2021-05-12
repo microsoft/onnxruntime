@@ -16,8 +16,6 @@ class OrtTorchFunctionPool final {
     static OrtTorchFunctionPool instance_;
     return instance_;
   }
-  void RegisterForward(const std::string& custom_function_name, PyObject* forward_fn);
-  void RegisterBackward(const std::string& custom_function_name, PyObject* backward_fn);
   void RegisterObject(PyObject* obj);
   void RegisterForwardCore(const std::string& key, PyObject* obj);
   void RegisterBackwardCore(const std::string& key, PyObject* obj);
@@ -27,8 +25,6 @@ class OrtTorchFunctionPool final {
   PyObject* GetBackwardRunner();
   PyObject* GetForwardCore(const std::string& key);
   PyObject* GetBackwardCore(const std::string& key);
-  PyObject* GetForward(const std::string& custom_function_name);
-  PyObject* GetBackward(const std::string& custom_function_name);
 
   int64_t RegisterContext(PyObject* auto_grad_context);
 
@@ -47,9 +43,6 @@ class OrtTorchFunctionPool final {
   PyObject* backward_runner;
   std::unordered_map<std::string, PyObject*> forward_core_pool;
   std::unordered_map<std::string, PyObject*> backward_core_pool;
-
-  std::unordered_map<std::string, PyObject*> forward_pool;
-  std::unordered_map<std::string, PyObject*> backward_pool;
 
   std::unordered_map<int64_t, PyObject*> func_context_pool;
   std::mutex func_context_pool_mutex_;
