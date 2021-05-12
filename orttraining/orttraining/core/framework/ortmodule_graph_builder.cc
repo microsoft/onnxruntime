@@ -31,10 +31,6 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   for (auto& node_arg : graph_inputs) {
     if (initializer_names.find(node_arg->Name()) == initializer_names.end()) {
       graph_info_.user_input_names.emplace_back(node_arg->Name());
-
-      std::cout << "graph_info_.user_input_names: " << node_arg->Name() << "\n";
-
-      
     }
   }
 
@@ -44,11 +40,11 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph_info_.initializer_names_to_train = std::unordered_set<std::string>(
-                                                        config_.initializer_names_to_train.begin(),
-                                                        config_.initializer_names_to_train.end());
+      config_.initializer_names_to_train.begin(),
+      config_.initializer_names_to_train.end());
   graph_info_.initializer_names = std::unordered_set<std::string>(
-                                                config_.initializer_names.begin(),
-                                                config_.initializer_names.end());
+      config_.initializer_names.begin(),
+      config_.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : graph_info_.user_input_names) {
@@ -282,7 +278,7 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
     }
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
-      yield_output_node_args.emplace_back(&(gradient_graph.GetOrCreateNodeArg(grad_name, nullptr)));
+      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
