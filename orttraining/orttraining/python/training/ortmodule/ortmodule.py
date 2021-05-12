@@ -83,7 +83,10 @@ class ORTModule(torch.nn.Module):
 
         elif isinstance(module, onnx.ModelProto):
             self._onnx_model = module
-            self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, device)
+            self._onnx_model_parameters = [
+                (initializer.name, torch.nn.Parameter(torch.as_tensor(copy.deepcopy(onnx.numpy_helper.to_array(initializer)))))
+                        for initializer in self._onnx_model.graph.initializer]
+            self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, self._onnx_model_parameters, device)
 
     def __call__(self, *inputs, **kwargs):
         return self.forward(*inputs, **kwargs)
@@ -135,9 +138,8 @@ class ORTModule(torch.nn.Module):
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         if self._onnx_model:
-            for initializer in self._onnx_model.graph.initializer:
-                nparr = copy.deepcopy(onnx.numpy_helper.to_array(initializer))
-                yield torch.nn.Parameter(torch.as_tensor(nparr))
+            for _, parameter in self._onnx_model_parameters:
+                yield parameter
         else:
             """Override original method to delegate execution to the base module"""
             yield from self._original_module.parameters(recurse=recurse)

@@ -21,8 +21,8 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model, device=None):
-        super().__init__(model)
+    def __init__(self, model, onnx_model_parameters=None, device=None):
+        super().__init__(model, onnx_model_parameters)
         self._device = device
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
@@ -191,8 +191,7 @@ class TrainingManager(GraphExecutionManager):
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
                                                 [p[1] for p in self._flattened_module.named_parameters()] if self._flattened_module else \
-                                                    [torch.nn.Parameter(torch.as_tensor(copy.deepcopy(onnx.numpy_helper.to_array(p)))) \
-                                                        for p in self._onnx_model.graph.initializer],
+                                                    [p[1] for p in self._onnx_model_parameters],
                                                 self._graph_info.user_input_names,
                                                 self._input_info.names if self._input_info else self._graph_info.user_input_names,
                                                 self._flattened_module.named_buffers() if self._flattened_module else {},

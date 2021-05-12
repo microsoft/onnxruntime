@@ -187,7 +187,7 @@ def main():
                               training=TrainingMode.TRAINING,
                               dynamic_axes={'input1': {0: 'input1_dim0', 1: 'input1_dim1'}, 'output0': {0: 'output0_dim0', 1: 'output0_dim1'}},
                               export_params=True,
-                              keep_initializers_as_inputs=False)
+                              keep_initializers_as_inputs=True)
         model = onnx.load_model_from_string(f.getvalue())
         onnx.checker.check_model(model)
         

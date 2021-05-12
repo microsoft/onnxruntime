@@ -32,7 +32,7 @@ class RunStateInfo(object):
         self.output_info = output_info
 
 class GraphExecutionManager(ABC):
-    def __init__(self, module):
+    def __init__(self, module, onnx_model_parameters=None):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -57,6 +57,7 @@ class GraphExecutionManager(ABC):
             self._onnx_model = module
             # Model after inference optimization or gradient building.
             self._optimized_onnx_model = module
+            self._onnx_model_parameters = onnx_model_parameters
 
         self._graph_builder = None
         self._graph_info = None
@@ -293,8 +294,8 @@ class GraphExecutionManager(ABC):
             initializer_names_to_train = [name for name,
                                       param in self._flattened_module.named_parameters() if param.requires_grad]
         elif self._onnx_model:
-            initializer_names = [initializer.name for initializer in self._onnx_model.graph.initializer]
-            initializer_names_to_train = [initializer.name for initializer in self._onnx_model.graph.initializer]
+            initializer_names = [name for name, _ in self._onnx_model_parameters]
+            initializer_names_to_train = [name for name, _ in self._onnx_model_parameters]
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()
