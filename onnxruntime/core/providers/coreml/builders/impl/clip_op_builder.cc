@@ -28,7 +28,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 // Add operator related
 
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  // Both min and max will be inject in the layer, no need to add to the model
+  // Both min and max values will be injected into the layer, no need to add to the model
   if (node.SinceVersion() >= 11) {
     if (node.InputDefs().size() > 1)
       model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
@@ -61,14 +61,14 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     model_builder.AddLayer(std::move(layer));
   } else {
     // The implementation of clip(min, max) is done by
-    // 1. max(input, min) is handled by
+    // 1. Clipping at min -> max(input, min) is handled by
     //    min_output = threshold(input, min)
-    // 2. min(min_output, max) is handled by
+    // 2. Clipping at max -> min(min_output, max) is handled by
     //    output = -1 * (threshold(-min_output, -max))
 
     // Now we have at least one or min or max is not default value
-    // Clipping max will need take the output of clipping min, or the node input, if min value is default
-    // If max value is default, the output of clipping min will be the output of the node
+    // Clipping at max will need take the output of clipping at min, or the node input, if min value is default
+    // If max value is default, the output of clipping at min will be the output of the node
     std::string min_output_name = output_name;
     if (has_max) {
       min_output_name = has_min
@@ -76,7 +76,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                             : input_name;
     }
 
-    // Handle min first
+    // Handle clipping at min first
     if (has_min) {
       std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> min_layer = CreateNNLayer(node);
       if (min == 0.0f) {  // If min is 0. then this min will be handled by relu
@@ -91,7 +91,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       model_builder.AddLayer(std::move(min_layer));
     }
 
-    // Max is handled by -1 * (threshold (-min_output), -max))
+    // Clipping at max is handled by -1 * (threshold (-min_output, -max))
     if (has_max) {
       const auto threshold_output_name = model_builder.GetUniqueName(node_name + "threshold_output");
       {  // Add threshold layer, which is actually max( -1 * min_output, -max)
@@ -103,7 +103,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         *threshold_layer->mutable_output()->Add() = threshold_output_name;
         model_builder.AddLayer(std::move(threshold_layer));
       }
-      {  // Add linear activation layer ( -1 * threshold_output)
+      {  // Add linear activation layer -1 * threshold_output
         std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> linear_layer = CreateNNLayer(node);
         linear_layer->mutable_activation()->mutable_linear()->set_alpha(-1.0f);
         *linear_layer->mutable_input()->Add() = threshold_output_name;
