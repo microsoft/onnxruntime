@@ -397,7 +397,8 @@ ThreadPool::ThreadPool(Env* env,
     if (!mt.empty()) {
       setMaxThreadsPerLoop = true;
       maxThreadsPerLoop = ::std::stoi(mt);
-      ::std::cerr << "Overriding dop=" << degree_of_parallelism << " to maxThreadsPerLoop=" << maxThreadsPerLoop << ::std::endl;
+      //::std::cerr << "Overriding dop=" << degree_of_parallelism << " to maxThreadsPerLoop=" << maxThreadsPerLoop << ::std::endl;
+      ::std::cout << "Overriding dop=" << degree_of_parallelism << " to maxThreadsPerLoop=" << maxThreadsPerLoop << ::std::endl;
     }
   }
 }
