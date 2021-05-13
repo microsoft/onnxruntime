@@ -160,7 +160,7 @@ def assert_gradients_match_and_reset_gradient(ort_model, pt_model, none_pt_param
         assert pt_name in ort_name
         if pt_name in none_pt_params:
             assert pt_param.grad is None
-            assert not torch.is_nonzero(torch.count_nonzero(ort_param.grad))
+            assert ort_param.grad is None or not torch.is_nonzero(torch.count_nonzero(ort_param.grad))
         else:
             assert_values_are_close(ort_param.grad, pt_param.grad, rtol=rtol, atol=atol)
 

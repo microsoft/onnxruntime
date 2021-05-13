@@ -73,7 +73,7 @@ class _InputInfo(object):
             if name in self.keyword_names}
         return args, kwargs
 
-def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
+def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -120,8 +120,9 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
 
-    # Initializers
-    result.extend([param[1] for param in param_names])
+    # params is a list of all initializers known to the onnx graph
+    result.extend(params)
+
     return result
 
 
