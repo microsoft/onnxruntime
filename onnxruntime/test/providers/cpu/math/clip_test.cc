@@ -204,7 +204,8 @@ TEST(MathOpTest, ClipDimWithZero) {
   test.AddOutput<float>("Y", dims, {});
 
   // Tensorrt does not support Clip opset 11 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // CoreML EP does not support empty inputs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 
   OpTester test1("Clip");  //
   test1.AddInput<float>("X", dims, {});
@@ -212,7 +213,8 @@ TEST(MathOpTest, ClipDimWithZero) {
   test1.AddAttribute("max", 10.0f);
   test1.AddOutput<float>("Y", dims, {});
   // TRT doesn't handle this
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // CoreML EP does not support empty inputs
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 }
 
 }  // namespace test
