@@ -35,6 +35,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int numThreads, int logging_level);
 
 /**
  * create an instance of ORT session options.
+ * @returns a pointer to a session option handle and must be freed by calling OrtReleaseSessionOptions().
  */
 ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions();
 
@@ -144,7 +145,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  * @param dims_length [out] specify the memory to write dims length
  * @remarks a temporary buffer 'dims' is allocated during the call. Caller must release the buffer after use by calling OrtFree().
  */
-void EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
+int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
 
 /**
  * release the specified tensor.
@@ -153,6 +154,7 @@ void EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
 
 /**
  * create an instance of ORT run options.
+ * @returns a pointer to a run option handle and must be freed by calling OrtReleaseRunOptions().
  */
 ort_run_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateRunOptions();
 

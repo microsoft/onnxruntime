@@ -27,7 +27,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtCreateTensor(dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number):
       number;
   _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
-      void;
+      number;
   _OrtReleaseTensor(tensorHandle: number): void;
   _OrtRun(
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
