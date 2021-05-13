@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 import {env} from 'onnxruntime-common';
+import * as path from 'path';
+
 import {OrtWasmModule} from './binding/ort-wasm';
+import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
 
@@ -15,7 +18,9 @@ const isMultiThreadSupported = (): boolean => {
   try {
     // Test for transferability of SABs (needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
-    new MessageChannel().port1.postMessage(new SharedArrayBuffer(1));
+    if (typeof MessageChannel !== 'undefined') {
+      new MessageChannel().port1.postMessage(new SharedArrayBuffer(1));
+    }
     // This typed array is a WebAssembly program containing threaded
     // instructions.
     return WebAssembly.validate(new Uint8Array([
@@ -65,9 +70,25 @@ export const initializeWebAssembly = async(): Promise<void> => {
     const config: Partial<OrtWasmModule> = {};
 
     if (useThreads) {
-      config.mainScriptUrlOrBlob = new Blob(
-          [`var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`],
-          {type: 'text/javascript'});
+      if (typeof Blob === 'undefined') {
+        config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+      } else {
+        const scriptSourceCode =
+            `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
+        config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
+        config.locateFile = (fileName: string, scriptDirectory: string) => {
+          if (fileName.endsWith('.worker.js')) {
+            return URL.createObjectURL(new Blob(
+                [
+                  // This require() function is handled by webpack to load file content of the corresponding .worker.js
+                  // eslint-disable-next-line
+                  require('../../dist/ort-wasm-threaded.worker.js')
+                ],
+                {type: 'text/javascript'}));
+          }
+          return scriptDirectory + fileName;
+        };
+      }
     }
 
     factory(config).then(
@@ -99,4 +120,16 @@ export const getInstance = (): OrtWasmModule => {
   }
 
   throw new Error('WebAssembly is not initialized yet.');
+};
+
+export const dispose = (): void => {
+  if (initialized && !initializing && !aborted) {
+    initializing = true;
+
+    (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+
+    initializing = false;
+    initialized = false;
+    aborted = true;
+  }
 };

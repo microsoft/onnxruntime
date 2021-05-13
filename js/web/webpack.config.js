@@ -64,6 +64,9 @@ function buildConfig({ filename, format, target, mode, devtool }) {
             }
           }
         ]
+      }, {
+        test: /\.worker.js$/,
+        type: 'asset/source'
       }]
     },
     mode,
@@ -108,10 +111,9 @@ function buildOrtWebConfig({
     config.externals.path = 'path';
     config.externals.fs = 'fs';
     config.externals.util = 'util';
-  }
-  // in browser, do not use those node builtin modules
-  if (format === 'umd') {
-    config.resolve.fallback = { path: false, fs: false, util: false };
+    config.externals.worker_threads = 'worker_threads';
+    config.externals.perf_hooks = 'perf_hooks';
+    config.externals.os = 'os';
   }
   return config;
 }
@@ -139,6 +141,7 @@ function buildTestRunnerConfig({
       'fs': 'fs',
       'perf_hooks': 'perf_hooks',
       'worker_threads': 'worker_threads',
+      '../../node': '../../node'
     },
     resolve: {
       extensions: ['.ts', '.js'],
@@ -161,6 +164,9 @@ function buildTestRunnerConfig({
             }
           }
         ]
+      }, {
+        test: /\.worker\.js$/,
+        type: 'asset/source'
       }]
     },
     mode: mode,
@@ -170,7 +176,7 @@ function buildTestRunnerConfig({
 
 module.exports = () => {
   const args = minimist(process.argv);
-  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|undefined;
+  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
   const builds = [];
 
   switch (bundleMode) {
@@ -193,7 +199,10 @@ module.exports = () => {
         buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
         // ort-web.es6.js
         buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+      );
 
+    case 'node':
+      builds.push(
         // ort-web.node.js
         buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
       );
