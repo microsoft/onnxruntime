@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#define SHARED_PROVIDER_TODO 0
+
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #ifndef _WIN32
 #include <chrono>
 #include <thread>
 #include <pthread.h>
 #endif
-
-#define SHARED_PROVIDER_TODO 0
 
 namespace onnxruntime {
 namespace training {

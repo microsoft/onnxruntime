@@ -85,7 +85,9 @@ class MPIContext {
   int world_size_;
   int local_size_;
 
+#if SHARED_PROVIDER_TODO
   const logging::Logger& logger_ = logging::LoggingManager::DefaultLogger();
+#endif
 };
 
 }  // namespace training
