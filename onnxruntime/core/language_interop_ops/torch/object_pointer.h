@@ -21,11 +21,11 @@ class ObjectPointer {
   T* get() { return ptr; }
   const T* get() const { return ptr; }
 
- private:
   // Disable copy constructor/assignment
   ObjectPointer(const ObjectPointer&) = delete;
   ObjectPointer operator=(const ObjectPointer&) = delete;
 
+ private:
   void free();
   T* ptr = nullptr;
 };
