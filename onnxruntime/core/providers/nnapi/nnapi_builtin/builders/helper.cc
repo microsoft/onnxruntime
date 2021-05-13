@@ -354,36 +354,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max) {
-  min = std::numeric_limits<float>::lowest();
-  max = std::numeric_limits<float>::max();
-  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
-    NodeAttrHelper helper(node);
-    min = helper.Get("min", std::numeric_limits<float>::lowest());
-    max = helper.Get("max", std::numeric_limits<float>::max());
-  } else {
-    if (node.InputDefs().size() > 1) {  // we have input min
-      const auto& min_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, min_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
-        return false;
-      }
-      min = GetTensorFloatData(*initializers.at(min_name))[0];
-    }
-
-    if (node.InputDefs().size() > 2) {  // we have input max
-      const auto& max_name = node.InputDefs()[2]->Name();
-      if (!Contains(initializers, max_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
-        return false;
-      }
-      max = GetTensorFloatData(*initializers.at(max_name))[0];
-    }
-  }
-
-  return true;
-}
-
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
   NodeAttrHelper helper(node);

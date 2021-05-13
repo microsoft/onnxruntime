@@ -290,6 +290,50 @@ TEST(NhwcTransformerTests, ConvSplit) {
   }
 }
 
+TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
+  for (int64_t axis = -4LL; axis < 4; axis++) {
+    auto build_test_case = [&, axis](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({2, 23, 16, 16}, 0, 31);
+      auto* conv_output_arg = builder.MakeIntermediate();
+      auto* split_output1_arg = builder.MakeIntermediate();
+      auto* split_output2_arg = builder.MakeIntermediate();
+      auto* qlconcat_output_arg = builder.MakeIntermediate();
+      auto* output_arg = builder.MakeOutput();
+
+      const int64_t conv1_output_channels = 32;
+      auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
+      Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                            conv1_weight_arg, .02f, 126,
+                                                            conv_output_arg, .37f, 131);
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+      Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(axis));
+
+      Node& qlconcat_node = builder.AddQLinearConcatLike(
+          "QLinearConcat", qlconcat_output_arg, .37f, 131,
+          {{split_output1_arg, .37f, uint8_t(131)}, {split_output2_arg, .37f, uint8_t(131)}});
+      qlconcat_node.AddAttribute("axis", static_cast<int64_t>(axis));
+
+      auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, conv1_output_channels, 3, 3});
+      builder.AddQLinearConvNode<uint8_t>(qlconcat_output_arg, .43f, 126,
+                                          conv2_weight_arg, .02f, 126,
+                                          output_arg, .37f, 131);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  }
+}
+
 TEST(NhwcTransformerTests, ConvPad) {
   std::vector<std::string> pad_modes{"constant", "reflect", "edge"};
   for (const auto& mode : pad_modes) {

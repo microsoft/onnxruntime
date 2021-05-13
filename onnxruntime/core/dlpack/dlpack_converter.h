@@ -9,7 +9,7 @@
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 
 namespace onnxruntime {
-namespace python {
+namespace dlpack {
 
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 
@@ -17,5 +17,5 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
-}  // namespace python
+}  // namespace dlpack
 }  // namespace onnxruntime

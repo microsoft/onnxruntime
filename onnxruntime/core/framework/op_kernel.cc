@@ -199,10 +199,6 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
                   " was specified, but " + "range is (0, " + std::to_string(OutputCount()) + ")");
   }
 
-  ORT_ENFORCE(kernel_->KernelDef().HasExternalOutputs(),
-              GetOpType() + " is trying to use SetOutputMLValue(), but its kernel_def doesn't have "
-              ".ExternalOutputs() declared.");
-
   auto output_arg_index = GetOutputArgIndex(index);
   return execution_frame_->SetOutputMLValue(output_arg_index, ort_value);
 }
