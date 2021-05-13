@@ -568,6 +568,9 @@ function saveConfig(config: Test.Config) {
   if (config.options.wasmFlags && config.options.wasmFlags.numThreads !== undefined) {
     setOptions += `ort.env.wasm.numThreads = ${JSON.stringify(config.options.wasmFlags.numThreads)};`;
   }
+  if (config.options.wasmFlags && config.options.wasmFlags.loggingLevel !== undefined) {
+    setOptions += `ort.env.wasm.loggingLevel = ${JSON.stringify(config.options.wasmFlags.loggingLevel)};`;
+  }
   if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
     setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
   }
