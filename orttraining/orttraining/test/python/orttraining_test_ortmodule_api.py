@@ -198,15 +198,15 @@ class NeuralNetPartialNoGradModel(torch.nn.Module):
         return out
 
 class UnusedEndParameterNet(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super(UnusedEndParameterNet, self).__init__()
 
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
         # fc2 is an unused initializer (which is in the end of initializer list)
         # which will be dropped after export
-        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
-        self.register_buffer("buffer", torch.ones(hidden_size))
+        self.fc2 = torch.nn.Linear(hidden_size1, hidden_size2)
+        self.register_buffer("buffer", torch.ones(hidden_size1))
 
     def forward(self, input1):
         out = self.fc1(input1)
@@ -215,15 +215,15 @@ class UnusedEndParameterNet(torch.nn.Module):
         return out
 
 class UnusedBeginParameterNet(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super(UnusedBeginParameterNet, self).__init__()
 
         # fc1 is an unused initializer (which is in the begining of initializer list)
         # which will be dropped after export
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(input_size, hidden_size)
-        self.register_buffer("buffer", torch.ones(hidden_size))
+        self.fc2 = torch.nn.Linear(input_size, hidden_size2)
+        self.register_buffer("buffer", torch.ones(hidden_size2))
 
     def forward(self, input1):
         out = self.fc2(input1)
@@ -232,15 +232,15 @@ class UnusedBeginParameterNet(torch.nn.Module):
         return out
 
 class UnusedMiddleParameterNet(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super(UnusedMiddleParameterNet, self).__init__()
 
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
         # fc2 is an unused initializer (which is in the middle of initializer list)
         # which will be dropped after export
-        self.fc2 = torch.nn.Linear(input_size, hidden_size)
-        self.fc3 = torch.nn.Linear(hidden_size, num_classes)
+        self.fc2 = torch.nn.Linear(hidden_size1, hidden_size2)
+        self.fc3 = torch.nn.Linear(hidden_size1, num_classes)
         self.register_buffer("buffer", torch.ones(num_classes))
 
     def forward(self, input1):
@@ -2447,13 +2447,13 @@ def test_model_with_registered_buffer_and_dropped_parameters():
     out = model(bool_argument, x)
 
 @pytest.mark.parametrize("model, none_pt_params",
-        [(UnusedBeginParameterNet(784, 500, 10), ['fc1.weight', 'fc1.bias']),
-         (UnusedMiddleParameterNet(784, 500, 10), ['fc2.weight', 'fc2.bias']),
-         (UnusedEndParameterNet(784, 500, 10), ['fc2.weight', 'fc2.bias'])])
+        [(UnusedBeginParameterNet(784, 500, 400, 10), ['fc1.weight', 'fc1.bias']),
+         (UnusedMiddleParameterNet(784, 500, 400, 10), ['fc2.weight', 'fc2.bias']),
+         (UnusedEndParameterNet(784, 500, 400, 10), ['fc2.weight', 'fc2.bias'])])
 def test_unused_parameters(model, none_pt_params):
     device = 'cuda'
 
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10
     model = model.to(device)
     ort_model = ORTModule(copy.deepcopy(model))
 
