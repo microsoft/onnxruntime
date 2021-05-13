@@ -12,6 +12,7 @@ OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void*
       0,
       true,
       cuda_compute_stream != nullptr ? 1 : 0,
-      cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr};
+      cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr,
+      nullptr};
   return cuda_options;
 }
