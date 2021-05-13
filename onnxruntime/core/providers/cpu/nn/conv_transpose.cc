@@ -93,7 +93,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
 }
 
 template <typename T>
-Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
                                                    int /*input_idx*/,
                                                    /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
