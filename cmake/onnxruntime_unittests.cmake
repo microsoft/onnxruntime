@@ -1022,8 +1022,8 @@ if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
     SOURCES
       "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
       "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
-      "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
       "${TEST_SRC_DIR}/framework/test_utils.cc"
+      "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
       ${onnxruntime_unittest_main_src}
     LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     DEPENDS ${all_dependencies}
