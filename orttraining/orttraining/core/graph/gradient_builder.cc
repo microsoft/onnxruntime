@@ -16,6 +16,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1611,6 +1612,54 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   }
 
   return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+  const auto& src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  const std::string name = src_attrs.at("name").s();
+  attrs.emplace_back(MakeAttribute("name", name));
+  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
+    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
+  }
+
+  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+  const auto& op_config = *op_config_ptr;
+
+  std::vector<int64_t> grad_output_types;
+  std::vector<ArgDef> input_args;
+  std::vector<ArgDef> output_args;
+
+  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
+    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
+      case contrib::aten_ops::GRAD_OUTPUT:
+        input_args.emplace_back(GO(index));
+        break;
+      case contrib::aten_ops::FORWARD_INPUT:
+        input_args.emplace_back(I(index));
+        break;
+      case contrib::aten_ops::FORWARD_OUTPUT:
+        input_args.emplace_back(O(index));
+        break;
+    }
+  }
+
+  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
+    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
+    if (IsGradientRequiredForSrcNodeInput(index)) {
+      output_args.emplace_back(GI(index));
+    } else {
+      output_args.emplace_back(ArgDef("", nullptr));
+    }
+
+    grad_output_types.emplace_back(IElemType(index));
+  }
+
+  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
 
 }  // namespace training

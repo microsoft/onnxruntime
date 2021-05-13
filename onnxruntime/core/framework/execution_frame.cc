@@ -42,11 +42,7 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  if (!IsAllocatedExternally(ort_value_idx)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetOutputMLValue() is not allowed for OrtValue index ", ort_value_idx,
-                           " as its allocation kind is not kAllocatedExternally.");
-  }
-
+  ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
   all_values_[ort_value_idx] = ort_value;
   return Status::OK();
 }
@@ -455,7 +451,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
 
-  if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
+  if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput &&
+      per_alloc_plan.alloc_kind != AllocKind::kAllocatedExternally) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
       auto block = pattern->GetBlock(ort_value_index);
@@ -740,16 +737,14 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   return alloc_plan[ort_value_idx];
 }
 
-bool ExecutionFrame::IsAllocatedExternally(int ort_value_idx) {
-  const auto& allocation_plan = GetAllocationPlan(ort_value_idx);
-  return allocation_plan.alloc_kind == AllocKind::kAllocatedExternally;
-}
-
 void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   if (planner_) {
-    // don't trace the output tensors.
+    // don't trace the output tensors or external outputs.
     auto& allocation_plan = GetAllocationPlan(ort_value_idx);
-    if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput) return;
+    if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput ||
+        allocation_plan.alloc_kind == AllocKind::kAllocatedExternally) {
+      return;
+    }
     auto status = planner_->TraceAllocation(ort_value_idx, size);
     if (!status.IsOK())
       LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for ort_value_idx=" << ort_value_idx
