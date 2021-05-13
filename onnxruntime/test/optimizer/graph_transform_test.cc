@@ -3756,6 +3756,8 @@ static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const PathSt
     execution_provider = DefaultCpuExecutionProvider();
   else if (provider_type == onnxruntime::kCudaExecutionProvider)
     execution_provider = DefaultCudaExecutionProvider();
+  else if (provider_type == onnxruntime::kRocmExecutionProvider)
+    execution_provider = DefaultRocmExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
   Status st;
@@ -3851,6 +3853,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
+#elif USE_ROCM
+      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 

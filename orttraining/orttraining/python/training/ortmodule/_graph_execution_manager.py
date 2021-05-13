@@ -202,6 +202,7 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+        _utils._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
@@ -282,10 +283,15 @@ class GraphExecutionManager(ABC):
     def _initialize_graph_builder(self, training):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
+        # All initializer names along with user inputs are a part of the onnx graph inputs
+        # since the onnx model was exported with the flag keep_initializers_as_inputs=True
+        onnx_initializer_names = {p.name for p in self._onnx_model.graph.input}
+
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [name for name, _ in self._flattened_module.named_parameters()]
-        initializer_names_to_train = [name for name,
-                                      param in self._flattened_module.named_parameters() if param.requires_grad]
+        initializer_names = [name for name, _ in self._flattened_module.named_parameters()
+                             if name in onnx_initializer_names]
+        initializer_names_to_train = [name for name, param in self._flattened_module.named_parameters()
+                                      if param.requires_grad and name in onnx_initializer_names]
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()

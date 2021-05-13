@@ -1374,7 +1374,7 @@ class ClipOpSupportChecker : public BaseOpSupportChecker {
 bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                              const OpSupportCheckParams& /* params */) const {
   float min, max;
-  if (!GetClipMinMax(initializers, node, min, max))
+  if (!GetClipMinMax(initializers, node, min, max, logging::LoggingManager::DefaultLogger()))
     return false;
 
   // We only supoort relu6 or relu1
@@ -1636,7 +1636,7 @@ bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 // This is for ops with dedicated OpSupportChecker
 #define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
   {                                                                                                           \
-    op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());            \
+    op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());                    \
     op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
   }
 
