@@ -2,10 +2,8 @@ import argparse
 import logging
 import io
 import onnx
-import os
 import torch
 import time
-import tempfile
 from torchvision import datasets, transforms
 
 import onnxruntime

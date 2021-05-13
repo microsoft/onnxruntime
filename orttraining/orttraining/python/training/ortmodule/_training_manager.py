@@ -10,7 +10,6 @@ from ._execution_agent import TrainingAgent
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-import copy
 import onnx
 import torch
 
@@ -22,8 +21,9 @@ class TrainingManager(GraphExecutionManager):
     """
 
     def __init__(self, model, onnx_model_parameters=None, device=None):
-        super().__init__(model, onnx_model_parameters)
+        super().__init__(model)
         self._device = device
+        self._onnx_model_parameters = onnx_model_parameters
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
@@ -159,9 +159,9 @@ class TrainingManager(GraphExecutionManager):
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
                 # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names if self._input_info else self._graph_info.user_input_grad_names)
+                num_user_input_grads = len(self._input_info.require_grad_names)
                 results = []
-                require_grad_names_set = set(self._input_info.require_grad_names if self._input_info else [n for n in self._graph_info.user_input_grad_names])
+                require_grad_names_set = set(self._input_info.require_grad_names)
                 require_grad_names_index = 0
                 for input_name in self._graph_info.user_input_names:
                     # Append to the results the backward output for each input that required grad
@@ -193,7 +193,7 @@ class TrainingManager(GraphExecutionManager):
                                                 [p[1] for p in self._flattened_module.named_parameters()] if self._flattened_module else \
                                                     [p[1] for p in self._onnx_model_parameters],
                                                 self._graph_info.user_input_names,
-                                                self._input_info.names if self._input_info else self._graph_info.user_input_names,
+                                                self._input_info.names,
                                                 self._flattened_module.named_buffers() if self._flattened_module else {},
                                                 inputs,
                                                 kwargs)))

@@ -42,7 +42,7 @@ class ORTModule(torch.nn.Module):
         of nested structures is not supported at the moment)
     """
 
-    def __init__(self, module, model_desc=None, device=None):
+    def __init__(self, module, device=None):
 
         """
         Initialize ORTTrainer.
@@ -56,8 +56,6 @@ class ORTModule(torch.nn.Module):
                   Outputs are a concatenation of the loss function's output and the
                   model's output.
                - a combined ONNX model and loss function.
-            model_desc: Specify input/output shapes, types, and names.
-               Must be consistent with the training model.
             device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
         """
 
@@ -69,7 +67,6 @@ class ORTModule(torch.nn.Module):
         # Support contrib OPs
         register_custom_ops_pytorch_exporter.register_custom_op()
 
-        self.model_desc_ = model_desc
         self._onnx_model = None
         self._isTrain = True
 
