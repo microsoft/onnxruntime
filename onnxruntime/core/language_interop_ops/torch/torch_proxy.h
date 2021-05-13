@@ -12,8 +12,6 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-using OnnxAttrs = std::unordered_map<std::string, std::string>;
-
 // PyObject RAII wrapper
 using PythonObjectPtr = ObjectPointer<PyObject>;
 template class ObjectPointer<PyObject>;
@@ -41,12 +39,11 @@ class TorchProxy {
       const std::vector<int64_t>& obj_indices,
       std::vector<void*>& outputs);
 
-  int32_t GetGil() const;
-  void PutGil(int32_t) const;
-
  private:
   TorchProxy(){};
   ~TorchProxy(){};
+  TorchProxy(const TorchProxy&) = delete;
+  TorchProxy& operator=(const TorchProxy&) = delete;
 };
 }  // namespace torch
 }  // namespace language_interop_ops

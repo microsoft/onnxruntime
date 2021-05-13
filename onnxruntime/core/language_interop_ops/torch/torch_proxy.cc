@@ -21,6 +21,18 @@ void ObjectPointer<PyObject>::free() {
   }
 }
 
+// Holder of GIL state.
+// It automatically acquire the state upon creation and
+// release the acquired state after being destroyed.
+class GilGuard {
+ public:
+  GilGuard() : state_(PyGILState_Ensure()){};
+  ~GilGuard() { PyGILState_Release(state_); };
+
+ private:
+  PyGILState_STATE state_;
+};
+
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
   if (dlmanged_tensor) {
@@ -42,14 +54,6 @@ bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
 TorchProxy& TorchProxy::GetInstance() {
   static TorchProxy proxy;
   return proxy;
-}
-
-int32_t TorchProxy::GetGil() const {
-  return PyGILState_Ensure();
-}
-
-void TorchProxy::PutGil(int32_t state) const {
-  PyGILState_Release((PyGILState_STATE)state);
 }
 
 #ifndef NDEBUG
@@ -128,6 +132,7 @@ PyObject* CreateTensorFlags(
   return flags;
 }
 
+// flags[i] corresponds to the i-th input of apply/backward.
 PyObject* CreateRequiresGradFlags(
     const std::vector<int64_t>& requires_grads) {
   PyObject* flags = PyList_New(requires_grads.size());
@@ -151,6 +156,7 @@ void InvokeRunner(
     PyObject* callback_runner,
     PyObject* args,
     std::vector<void*>& returned_args) {
+  GilGuard guard;
   PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
   if (PyErr_Occurred()) {
     PyErr_Print();

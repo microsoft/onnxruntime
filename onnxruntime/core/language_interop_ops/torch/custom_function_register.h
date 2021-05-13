@@ -16,7 +16,6 @@ class OrtTorchFunctionPool final {
     static OrtTorchFunctionPool instance_;
     return instance_;
   }
-
   void RegisterObject(PyObject* obj);
   void RegisterForwardCore(const std::string& key, PyObject* obj);
   void RegisterBackwardCore(const std::string& key, PyObject* obj);

@@ -26,5 +26,9 @@ try:
     onnxruntime.register_forward_runner(call_python_forward_function)
     onnxruntime.register_backward_runner(call_python_backward_function)
 
+    from torch.onnx import register_custom_op_symbolic
+    from ._custom_autograd_function_exporter import _export
+    register_custom_op_symbolic('::prim_PythonOp', _export, 1)
+
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNXRuntime ORTModule frontend!')
