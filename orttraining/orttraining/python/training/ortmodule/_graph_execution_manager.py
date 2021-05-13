@@ -202,6 +202,7 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module()
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+        _utils._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
