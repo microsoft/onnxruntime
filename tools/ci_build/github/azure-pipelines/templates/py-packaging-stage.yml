@@ -572,6 +572,7 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
+            
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
             files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
@@ -581,7 +582,11 @@ stages:
             echo ${files2[0]} && \
             files3=($(Build.BinariesDirectory)/Release/orttraining_ortmodule_tests.py) && \
             echo ${files3[0]} && \
+            ls -la /usr/local && \
+            ls -la /usr/local/cuda-11.1 && \
             docker run \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
               --volume $(Build.BinariesDirectory):/build \
               --volume /mnist:/mnist \
               --volume /bert_data:/bert_data \
@@ -589,7 +594,7 @@ stages:
               --env CUDA_HOME=/usr/local/cuda-11.1 \
               --env CUDNN_HOME=/usr/local/cuda-11.1 \
               onnxruntimetraininggpubuild \
-                bash -c "$(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release"
+                bash -c "$(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; ls -la /usr/local ; ls -la /usr/local/cuda-11.1 ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release"
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
