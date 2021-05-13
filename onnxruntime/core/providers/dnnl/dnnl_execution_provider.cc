@@ -10,6 +10,7 @@
 #include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
+#include "dnnl_node_capability.h"
 
 namespace onnxruntime {
 
@@ -85,7 +86,7 @@ bool DNNLExecutionProvider::UseSubgraph(const GraphViewer& graph_viewer) const {
       continue;
 
     if (!node->InputDefs().empty() && node->InputDefs()[0]->Type() != nullptr) {
-      FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
+      FP16_graph = node->InputDefs()[0]->Type()->find("float16") != std::string::npos;
       break;
     }
   }
@@ -96,8 +97,7 @@ bool DNNLExecutionProvider::UseSubgraph(const GraphViewer& graph_viewer) const {
       continue;
     }
 
-    auto op_it = dnnl_ops_.find(node->OpType());
-    if (op_it != dnnl_ops_.end()) {
+    if (opManager_.IsOpTypeAvalible(node->OpType())) {
       dnnl_nodes_in_the_graph = true;
       break;
     }
@@ -248,7 +248,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
       continue;
     }
 
-    if (IsDimensionSupported(node) == false) {
+    if (!opManager_.IsNodeSupported(node)) {
       node_index++;
       if (subgraph_ptr->dnnl_nodes.size() > 0) {
         CreateMetaDef(graph_viewer, *subgraph_attributes, subgraph_ptr, sub_var, result);
@@ -259,8 +259,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
       continue;
     }
 
-    auto op_it = dnnl_ops_.find(node->OpType());
-    if (op_it != dnnl_ops_.end()) {
+    if (opManager_.IsOpTypeAvalible(node->OpType())) {
       sub_var.subgraph_node_indexes.push_back(node->Index());
 
       // can we fuse (at Dnnl level) nodes?
@@ -299,8 +298,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
             temp_index++;
             next_node = graph_viewer.GetNode(temp_index);
           }
-          auto sub_it = dnnl_ops_.find(next_node->OpType());
-          if (sub_it != dnnl_ops_.end()) {
+          if (opManager_.IsOpTypeAvalible(next_node->OpType())) {
             const auto& next_node_inputs = next_node->InputDefs();
             bool input_from_subgraph = true;
             size_t inputs_count = 1;
@@ -343,8 +341,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
                 }
                 // inner nodes. if inner nodes are not  Dnnl nodes
                 // create subgraph (inception v2)
-                auto sub_it = dnnl_ops_.find(next_node->OpType());
-                if (sub_it == dnnl_ops_.end()) {
+                if (!opManager_.IsOpTypeAvalible(next_node->OpType())) {
                   // break and create a sub-graph
                   break_loop = true;
                   create_subgraph = true;
