@@ -31,16 +31,8 @@ class TrainingManager(GraphExecutionManager):
         # Assert that the input and model device match
         _utils._check_same_device(device, "Input argument to forward", *inputs)
 
-        # Make sure input are non-contiguous, as a requirement converting it to ortvalue.
-        contiguous_inputs = []
-        for idx, _input in enumerate(inputs):
-            if _input is None:
-                raise ValueError("find some of input is None")
-            elif not _input.is_contiguous():
-                _contiguous_input = _input.contiguous()
-            else:
-                _contiguous_input = _input
-            contiguous_inputs.append(_contiguous_input)
+        # Make sure inputs are contiguous, as a requirement converting it to ortvalue.
+        contiguous_inputs = _utils._to_contiguous(inputs)
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.

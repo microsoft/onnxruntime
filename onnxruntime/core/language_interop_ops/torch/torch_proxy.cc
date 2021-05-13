@@ -21,7 +21,7 @@ void ObjectPointer<PyObject>::free() {
   }
 }
 
-// Holder of GIL state.
+// Holder of GIL (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock) state.
 // It automatically acquire the state upon creation and
 // release the acquired state after being destroyed.
 class GilGuard {

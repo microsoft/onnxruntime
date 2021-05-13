@@ -36,16 +36,8 @@ class InferenceManager(GraphExecutionManager):
         io_binding = execution_session.io_binding()
         run_options = C.RunOptions()
 
-        # Make sure input are non-contiguous, as a requirement converting it to ortvalue.
-        contiguous_inputs = []
-        for idx, _input in enumerate(inputs):
-            if _input is None:
-                raise ValueError("find some of input is None")
-            elif not _input.is_contiguous():
-                _contiguous_input = _input.contiguous()
-            else:
-                _contiguous_input = _input
-            contiguous_inputs.append(_contiguous_input)
+        # Make sure inputs are contiguous, as a requirement converting it to ortvalue.
+        contiguous_inputs = _utils._to_contiguous(inputs)
 
         # Use IO binding
         _utils._create_iobinding(io_binding, contiguous_inputs, onnx_model, device)

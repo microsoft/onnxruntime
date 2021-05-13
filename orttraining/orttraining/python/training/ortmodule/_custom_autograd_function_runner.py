@@ -7,14 +7,8 @@ import onnxruntime
 import sys
 import torch
 
-from torch.utils.dlpack import from_dlpack, to_dlpack
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state
-
-
-def _ortvalue_from_dlpack(dlpack_tensor):
-    return OrtValue(_pybind_state.OrtValue.from_dlpack(dlpack_tensor, False))
-
+from torch.utils.dlpack import from_dlpack
+from . import _utils
 
 def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
     try:
@@ -48,12 +42,12 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             result = forward_function(*new_wrapped_args)
 
             if isinstance(result, torch.Tensor):
-                ort_value = _ortvalue_from_dlpack(to_dlpack(result))
+                ort_value = _utils._ortvalue_from_torch_tensor(result)
                 unwrapped_values = [ort_value]
                 ctx = result.grad_fn
             elif isinstance(result, tuple) or isinstance(result, list):
                 for value in result:
-                    unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
+                    unwrapped_value = _utils._ortvalue_from_torch_tensor(value)
                     unwrapped_values.append(unwrapped_value)
                     if ctx is None and value is not None and hasattr(value, 'grad_fn'):
                         ctx = value.grad_fn
@@ -107,7 +101,7 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
             #   1. The ownership of result is transferred to DLPack tensor from Pytorch.
             #   2. The ownership of result is transferred to ORTValue from DLPack.
             # If they are all true, we can remove the object register code below.
-            ort_value = _ortvalue_from_dlpack(to_dlpack(result))
+            ort_value = _utils._ortvalue_from_torch_tensor(result)
             unwrapped_values = [ort_value]
         elif isinstance(result, tuple) or isinstance(result, list):
             for value in result:
@@ -116,7 +110,7 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
                 if not isinstance(value, torch.Tensor):
                     raise Exception('Unsupported returned element type: ', type(
                         value), ' by calling ', backward_function)
-                unwrapped_value = _ortvalue_from_dlpack(to_dlpack(value))
+                unwrapped_value = _utils._ortvalue_from_torch_tensor(value)
                 unwrapped_values.append(unwrapped_value)
         else:
             raise Exception('Unsupported returned type: ', type(

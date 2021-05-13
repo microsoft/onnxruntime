@@ -104,3 +104,18 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+def _to_contiguous(tensors):
+    '''Make sure all tensors in the list are contiguous.
+     If a tensor is not contiguous, use result of tensor.contiguous() to replace the tensor. '''
+    contiguous_tensors = []
+    for idx, _tensor in enumerate(tensors):
+        if _tensor is None:
+            raise ValueError("find some of tensor is None")
+        elif not _tensor.is_contiguous():
+            _contiguous_tensor = _tensor.contiguous()
+        else:
+            _contiguous_tensor = _tensor
+        contiguous_tensors.append(_contiguous_tensor)
+
+    return contiguous_tensors

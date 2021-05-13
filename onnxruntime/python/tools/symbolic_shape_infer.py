@@ -333,8 +333,10 @@ class SymbolicShapeInference:
         # skip onnx shape inference for some ops, as they are handled in _infer_*
         skip_infer = node.op_type in [
             'If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', \
-            'Attention', 'BiasGelu', 'EmbedLayerNormalization', 'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', 'SkipLayerNormalization', \
-            'PythonOp' # contrib ops
+            # contrib ops
+            'Attention', 'BiasGelu', 'EmbedLayerNormalization', \
+            'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', \
+            'SkipLayerNormalization', 'PythonOp'
         ]
 
         if not skip_infer:

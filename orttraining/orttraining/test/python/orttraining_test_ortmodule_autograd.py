@@ -16,10 +16,10 @@ from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
-torch.manual_seed(1)
+import pytest
+import _test_helpers
 
-def _ortvalue_from_dlpack(dlpack_tensor):
-    return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor, False))
+torch.manual_seed(1)
 
 def run_with_pytorch_on_gpu(model, input_list, label_input, is_eval_mode=False):
     print('Use PyTorch for CUDA run....')
@@ -79,21 +79,9 @@ def run_with_ort_on_gpu(model, input_list, label_input, is_eval_mode=False):
         torch.cuda.synchronize()
     return forward_outputs, grad_outputs
 
-def compare_numpy_list(val_a, val_b):
-    for np_a, np_b in zip(val_a, val_b):
-        equal_ = np.allclose(np_a, np_b, 1e-7, 1e-6, equal_nan=True)
-        if equal_ is False:
-            print("== details ==")
-            k=np_a.reshape(-1)[:100]
-            l=np_b.reshape(-1)[:100]
-            is_equal = np.isclose(k, l, 1e-7, 1e-6, equal_nan=True)
-            res = (is_equal + 1) % 2
-            diff_indices = np.nonzero(res)
-            print(diff_indices)
-            print(k, l)
-            raise ValueError("find a diff")
-
-    print("outputs matched successfully.")
+def compare_tensor_list(val_list_a, val_list_b):
+    for val_a, val_b in zip(val_list_a,val_list_b):
+        _test_helpers.assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
 
 def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
@@ -109,15 +97,15 @@ def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generat
     outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input)
 
     torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    val_list_a = [o.detach().cpu() for o in outputs if o is not None]
+    val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
+    compare_tensor_list(val_list_a, val_list_b)
 
     # For some test, it is expected the diff might be big due to inconsistent computation orders.
     if ignore_grad_compare is False:
-        val_a = [o.detach().cpu().numpy() for o in grads if o is not None]
-        val_b = [o.detach().cpu().numpy() for o in grads_ort if o is not None]
-        compare_numpy_list(val_a, val_b)
+        val_list_a = [o.detach().cpu() for o in grads if o is not None]
+        val_list_b = [o.detach().cpu() for o in grads_ort if o is not None]
+        compare_tensor_list(val_list_a, val_list_b)
 
 def run_evalue_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
     m = pt_model_builder_func()
@@ -132,9 +120,9 @@ def run_evalue_test_and_compare(pt_model_builder_func, pt_model_inputs_generator
     outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input, is_eval_mode=True)
 
     torch.cuda.synchronize()
-    val_a = [o.detach().cpu().numpy() for o in outputs if o is not None]
-    val_b = [o.detach().cpu().numpy() for o in outputs_ort if o is not None]
-    compare_numpy_list(val_a, val_b)
+    val_list_a = [o.detach().cpu() for o in outputs if o is not None]
+    val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
+    compare_tensor_list(val_list_a, val_list_b)
 
 ###################################################################################
 
@@ -247,7 +235,6 @@ def test_MegatronF():
 
 #############################################################
 
-
 class ScalarAndTupleFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, alpha, beta, gamma):
@@ -294,7 +281,8 @@ def test_ScalarAndTuple():
 
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
-#############################################################
+####### tests below: input is in-place updated, but does not require gradient. ######
+#####################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
 # so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
 # ignore the gradient compare here.
@@ -444,7 +432,9 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
 
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
-##########################################################################################
+
+####### tests below: # input is in-place updated, but does require gradient. ########
+#####################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
 # so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
 # ignore the gradient compare here.
@@ -605,8 +595,8 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-
-###################################################################################
+## tests below: test pure inferencing scenarios, when inputs don't requires_grad. ###
+#####################################################################################
 
 class EvalTestFunction(torch.autograd.Function):
     @staticmethod
@@ -652,7 +642,7 @@ def test_EvalTest():
     label_input = torch.ones([output_size])
     run_evalue_test_and_compare(model_builder, input_generator, label_input)
 
-
+################# Multi-input and multi-output custom function. ###################
 ###################################################################################
 
 class TwoOutputFunction(torch.autograd.Function):
@@ -710,22 +700,14 @@ def test_TwoOutputFunction():
 
     run_evalue_test_and_compare(model_builder, input_generator, label_input)
 
-test_GeLU()
-test_MegatronF()
-test_ScalarAndTuple()
 
 # input is in-place updated, but does not require gradient.
 test_InplaceUpdateInputAsOutputNotRequireGrad()
 test_InplaceUpdateInputNotAsOutputNotRequireGrad()
 test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
 
-# input is in-place updated, but does require gradient.
+
 test_InplaceUpdateInputAsOutputRequireGrad()
 test_InplaceUpdateInputNotAsOutputRequireGrad()
 test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
 
-# test pure inferencing scenarios, when inputs don't requires_grad.
-test_EvalTest()
-
-# Multi-input and multi-output custom function. 
-test_TwoOutputFunction()
