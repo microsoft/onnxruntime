@@ -23,7 +23,7 @@ The CoreML Execution Provider requires iOS devices with iOS 13 or higher, or Mac
 
 ## Build CoreML Execution Provider
 
-For build instructions for iOS devices, please see the [How to: Build for mobile](../../how-to/build/android-ios.md#ios-coreml-execution-provider).
+For build instructions for iOS devices, please see the [How to: Build for Android/iOS](../../how-to/build/android-ios.md#ios-coreml-execution-provider).
 
 ## Using CoreML Execution Provider in C/C++
 
