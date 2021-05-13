@@ -202,6 +202,8 @@ if (onnxruntime_ENABLE_BITCODE)
   endif()
   set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE YES)
   set(CMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE "bitcode")
+else()
+  set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE NO)
 endif()
 
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
@@ -270,11 +272,13 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  # Enable LTO for release build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
-    # currently, wasm-ld does not work correctly with "-flto=thin"
-    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+  # Enable LTO for release single-thread build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    # NOTES:
+    # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
+    # (2) "-flto=thin" does not work correctly for wasm-ld.
+    #     we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    #     instead, we manually set CMAKE_CXX_FLAGS "-flto"
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
@@ -1491,48 +1495,27 @@ if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
-    # Find MPI
-    find_path(MPI_INCLUDE_DIR
-      NAMES mpi.h
-      HINTS
-      ${onnxruntime_MPI_HOME}/include
-      /bert_ort/openmpi/include)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
 
-    set(MPI_LIBNAME "mpi")
+    find_package(MPI)
 
-    find_library(MPI_LIBRARY
-      NAMES ${MPI_LIBNAME}
-      HINTS
-      ${onnxruntime_MPI_HOME}/lib
-      /bert_ort/openmpi/lib)
-
-    include(FindPackageHandleStandardArgs)
-    find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
-
-    if (MPI_FOUND)
-      if(NOT DEFINED onnxruntime_MPI_HOME)
-        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      else()
-        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      endif(NOT DEFINED onnxruntime_MPI_HOME)
-      string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
-      message( STATUS "MPI Version: ${MPI_VERSION}")
-
-      set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
-      set(MPI_LIBRARIES ${MPI_LIBRARY})
-      message( STATUS "MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
-      mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
-
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     else ()
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_MPI OFF)
-      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL will be disabled." )
+      message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
     endif()
 
     # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_FOUND)
+    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
       if (onnxruntime_USE_CUDA)
         set(NCCL_LIBNAME "nccl")
       elseif (onnxruntime_USE_ROCM)
@@ -1596,7 +1579,7 @@ if (onnxruntime_ENABLE_TRAINING)
     endif()
   endif()
 
-  if (onnxruntime_USE_MPI AND MPI_FOUND)
+  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
     add_definitions(-DUSE_MPI=1)
   endif()
 

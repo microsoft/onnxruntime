@@ -62,6 +62,60 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
     def testSetProvidersWithOptions(self):
+        if 'TensorrtExecutionProvider' in onnxrt.get_available_providers():
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            self.assertIn('TensorrtExecutionProvider', sess.get_providers())
+
+            options = sess.get_provider_options()
+            option = options['TensorrtExecutionProvider']
+            self.assertIn('device_id', option)
+            self.assertIn('has_trt_options', option)
+            self.assertIn('trt_max_workspace_size', option)
+            self.assertIn('trt_fp16_enable', option)
+            self.assertIn('trt_int8_enable', option)
+            self.assertIn('trt_int8_calibration_table_name', option)
+            self.assertIn('trt_int8_use_native_calibration_table', option)
+
+            ori_max_workspace_size = option['trt_max_workspace_size']
+            new_max_workspace_size = int(ori_max_workspace_size) // 2
+
+            option = {}
+            option['trt_max_workspace_size'] = new_max_workspace_size
+            trt_options = "true"
+            option['has_trt_options'] = trt_options
+            fp16_enable = "true"
+            option['trt_fp16_enable'] = fp16_enable
+            int8_enable = "false"
+            option['trt_int8_enable'] = int8_enable
+            calib_table_name = '/home/onnxruntime/table.flatbuffers'
+            option['trt_int8_calibration_table_name'] = calib_table_name
+            int8_use_native_calibration_table = "true"
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
+            sess.set_providers(['TensorrtExecutionProvider'], [option])
+
+            options = sess.get_provider_options()
+            option = options['TensorrtExecutionProvider']
+            self.assertEqual(option['trt_max_workspace_size'], str(new_max_workspace_size))
+            self.assertEqual(option['trt_int8_calibration_table_name'], str(calib_table_name))
+            self.assertEqual(option['has_trt_options'], '1')
+            self.assertEqual(option['trt_fp16_enable'], '1')
+            self.assertEqual(option['trt_int8_enable'], '0')
+            self.assertEqual(option['trt_int8_use_native_calibration_table'], '1')
+
+
+            # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
+
+            '''
+            int8_use_native_calibration_table = "false"
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            int8_enable = "true"
+            option['trt_int8_enable'] = int8_enable
+            calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
+            option['trt_int8_calibration_table_name'] = calib_table_name
+            with self.assertRaises(RuntimeError):
+                sess.set_providers(['TensorrtExecutionProvider'], [option])
+            '''
+
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             import sys
             import ctypes

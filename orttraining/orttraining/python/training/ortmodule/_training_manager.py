@@ -73,7 +73,9 @@ class TrainingManager(GraphExecutionManager):
                                                       kwargs)
 
         # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+        # Order of or operation is important here because we always need to call
+        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
+        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
         # Build the gradient graph
         if build_gradient_graph:
@@ -171,27 +173,28 @@ class TrainingManager(GraphExecutionManager):
 
                 # Append gradients of initializer to results
                 # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_names_to_train_set = set(self._graph_info.initializer_names_to_train)
                 initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in initializer_names_to_train_set:
+                for initializer_name, _ in self._flattened_module.named_parameters():
+                    if initializer_name in self._graph_info.initializer_names_to_train:
                         results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
                         initializer_index += 1
                     else:
                         results.append(None)
-                
+
                 return tuple(results)
 
         return _io.unflatten_user_output(self._module_output_schema,
                                         self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                self._flattened_module.named_parameters(),
+                                                [param for name, param in self._flattened_module.named_parameters()
+                                                    if name in self._graph_info.initializer_names],
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),
                                                 inputs,
-                                                kwargs)))
+                                                kwargs,
+                                                self._device)))
 
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
@@ -221,9 +224,7 @@ class TrainingManager(GraphExecutionManager):
 
         self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                               fw_feed_names,
-                                              self._graph_info.user_output_names,
                                               fw_outputs_device_info,
-                                              self._graph_info.module_output_gradient_name,
                                               bw_fetches_names,
                                               bw_outputs_device_info,
                                               session_options,
@@ -235,7 +236,7 @@ class TrainingManager(GraphExecutionManager):
 
         initializer_names_to_train_set_user_model = {name for name, param in
                                                      self._flattened_module.named_parameters() if param.requires_grad}
-        initializer_names_to_train_set_onnx_graph = set(self._graph_info.initializer_names_to_train) \
+        initializer_names_to_train_set_onnx_graph = self._graph_info.initializer_names_to_train \
             if self._graph_info else None
 
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
