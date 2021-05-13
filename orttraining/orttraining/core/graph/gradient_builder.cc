@@ -12,9 +12,11 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -351,9 +353,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   bool transA = static_cast<bool>(attributes.at("transA").i());
   bool transB = static_cast<bool>(attributes.at("transB").i());
 
-  ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
-         dA = GI(0), dB = GI(1), dC = GI(2);
-  int elem_type = OElemType(0);
+  ArgDef A = I(0), B = I(1), dY = GO(0),
+         dA = GI(0), dB = GI(1);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
@@ -430,6 +431,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   if (IsGradientRequiredForSrcNodeInput(2)) {
     // Y = beta * C
     // dC = beta * dY
+    ArgDef C = I(2), dC = GI(2);
+    int elem_type = OElemType(0);
     bool has_beta = attributes.at("beta").has_f();
     float beta = attributes.at("beta").f();
     ORT_ENFORCE(beta != 0.0f);
@@ -788,36 +791,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
-  std::vector<NodeDef> result;
   size_t numInputs = GetSrcNodeInputSize();
-  if (SrcNodeOpsetVersion() < 13) {  //axes attribute
+  if (SrcNodeOpsetVersion() < 13) {  // Axes attribute exists.
     auto attributes = SrcNodeAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      result.push_back(
-          NodeDef("Unsqueeze",
-                  {GO(0)},
-                  {GI(0)},
-                  {MakeAttribute("axes", axes_values)}));
+      return std::vector<NodeDef>{NodeDef("Unsqueeze",
+                                          {GO(0)},
+                                          {GI(0)},
+                                          {MakeAttribute("axes", axes_values)})};
     }
-  } else if (numInputs == 2) {  //optional input 'axes' is provided
-    result.push_back(
-        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
-                {GO(0), I(1)},
-                {GI(0)}));
-  } else {  // if axes attribute/input not provided for squeeze
-    result.push_back(
-        NodeDef("Shape",
-                {I(0)},
-                {IA("I0_shape")}));
-    result.push_back(
-        NodeDef("Reshape",
-                {GO(0), IA("I0_shape")},
-                {GI(0)}));
+  } else if (numInputs == 2) {  // Optional input 'axes' is provided
+    return std::vector<NodeDef>{NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                                        {GO(0), I(1)},
+                                        {GI(0)})};
   }
 
-  return result;
+  // If axes attribute/input is not provided for squeeze, no matter which OpSet version.
+  return std::vector<NodeDef>{NodeDef("Shape",
+                                      {I(0)},
+                                      {IA("I0_shape")}),
+                              NodeDef("Reshape",
+                                      {GO(0), IA("I0_shape")},
+                                      {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
@@ -1196,37 +1193,48 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
-  const ArgDef X = I(0);
+  const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
-  // TODO: ONNX supports unknown shape for the input feed, e.g. [1, 3, -1, 28],
-  // thus the shape of input might be missing at graph construction time.
-  // However, in practice, we haven't seen a single model with unknown input shape.
-  // We need to get the shape at runtime if this case need to be supported.
-  // One way to do it is: scale = Size_Op(X, from=2); scaled_dY = Mul_Op(dY, scale)
-  const auto& x_dims = X.type_proto->tensor_type().shape().dim();
-  ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
-  int64_t scale = 1;
-  for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
-    if (dim->has_dim_value()) {
-      scale *= dim->dim_value();
-    } else {
-      ORT_ENFORCE(false, "Dimension missing");
+  bool has_concrete_shape = true;
+  SafeInt<int64_t> scale = 1;
+  std::vector<Dimension> x_dims;
+  if (GetShape(X, x_dims).IsOK()) {
+    ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
+    for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
+      if (dim->has_dim_value()) {
+        scale *= dim->dim_value();
+      } else {
+        has_concrete_shape = false;
+        break;
+      }
     }
+  } else {
+    has_concrete_shape = false;
   }
 
-  NodeDef scale_node = ConstantScalarNode(1.0f / static_cast<float>(scale), Name("Scale"), IElemType(0));
-  ArgDef SCALE = scale_node.output_args[0];
-  return std::vector<NodeDef>{
-      scale_node,
-      NodeDef("Mul",
-              {GO(0), SCALE},
-              {IA("scaled_dY")}),
-      NodeDef("Shape",
-              {X},
-              {IA("x_shape")}),
-      NodeDef("Expand",
-              {IA("scaled_dY"), IA("x_shape")},
-              {GI(0)})};
+  std::vector<NodeDef> result;
+  ArgDef scale_argdef;
+  if (has_concrete_shape) {
+    NodeDef scale_node = ConstantScalarNode(static_cast<float>(scale), Name("Scale"), IElemType(0));
+    result.push_back(scale_node);
+
+    scale_argdef = scale_node.output_args[0];
+  } else {
+    result.push_back(NodeDef("Size", {X}, {IA("X_Size")}));
+    result.push_back(NodeDef("Size", {Y}, {IA("Y_Size")}));
+
+    scale_argdef = IA("Scale");
+    result.push_back(NodeDef("Div", {IA("X_Size"), IA("Y_Size")}, {scale_argdef}));
+  }
+
+  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1},
+                           {dY, scale_argdef},
+                           {IA("scaled_dY")},
+                           {MakeAttribute("scale_down", int64_t(1))}));
+  result.push_back(NodeDef("Shape", {X}, {IA("x_shape")}));
+  result.push_back(NodeDef("Expand", {IA("scaled_dY"), IA("x_shape")}, {dX}));
+
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
@@ -1518,7 +1526,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape, repeat_shape;
   bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
   bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
-
+  
   if (orig_has_shape || repeat_has_shape) {
     int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
     limit = 2 * limit;
@@ -1528,13 +1536,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-    NodeDef even_indices_node = ConstantVectorNode(even_indices, Name("even_indices"));
-    result.push_back(even_indices_node);
-    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
-    result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-                             {IA("reshape_tile_grad_op"), even_indices_node.output_args[0]},
-                             {GI(0)},
-                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+   
+    AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
     NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
@@ -1609,6 +1612,54 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   }
 
   return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+  const auto& src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  const std::string name = src_attrs.at("name").s();
+  attrs.emplace_back(MakeAttribute("name", name));
+  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
+    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
+  }
+
+  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+  const auto& op_config = *op_config_ptr;
+
+  std::vector<int64_t> grad_output_types;
+  std::vector<ArgDef> input_args;
+  std::vector<ArgDef> output_args;
+
+  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
+    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
+      case contrib::aten_ops::GRAD_OUTPUT:
+        input_args.emplace_back(GO(index));
+        break;
+      case contrib::aten_ops::FORWARD_INPUT:
+        input_args.emplace_back(I(index));
+        break;
+      case contrib::aten_ops::FORWARD_OUTPUT:
+        input_args.emplace_back(O(index));
+        break;
+    }
+  }
+
+  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
+    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
+    if (IsGradientRequiredForSrcNodeInput(index)) {
+      output_args.emplace_back(GI(index));
+    } else {
+      output_args.emplace_back(ArgDef("", nullptr));
+    }
+
+    grad_output_types.emplace_back(IElemType(index));
+  }
+
+  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
 
 }  // namespace training

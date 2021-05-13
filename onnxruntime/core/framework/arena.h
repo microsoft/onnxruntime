@@ -17,14 +17,19 @@ class IArenaAllocator : public IAllocator {
  public:
   IArenaAllocator(const OrtMemoryInfo& info) : IAllocator(info) {}
   ~IArenaAllocator() override = default;
-  // Alloc call need to be thread safe.
+  // Alloc call needs to be thread safe.
   void* Alloc(size_t size) override = 0;
-  // The chunck allocated by Reserve call won't be reused with other request.
-  // It will be return to the devices when it is freed.
-  // Reserve call need to be thread safe.
+  // The chunk allocated by Reserve call won't be reused with other request
+  // (i.e.) it is not maintained by the arena and
+  // it will be return to the devices when it is freed.
+  // Reserve call needs to be thread safe.
   virtual void* Reserve(size_t size) = 0;
-  // Free call need to be thread safe.
+  // Free call needs to be thread safe.
   void Free(void* p) override = 0;
+  // All unused device allocations maintained by the arena
+  // (i.e.) physical allocations with no chunks in use will be de-allocated.
+  // Shrink call needs to be thread safe.
+  virtual Status Shrink() = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
   // allocate host pinned memory?
@@ -36,6 +41,8 @@ using ArenaPtr = std::shared_ptr<IArenaAllocator>;
 struct AllocatorStats {
   int64_t num_allocs;             // Number of allocations.
   int64_t num_reserves;           // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+  int64_t num_arena_extensions;   // Number of arena extensions (Relevant only for arena based allocators)
+  int64_t num_arena_shrinkages;   // Number of arena shrinkages (Relevant only for arena based allocators)
   int64_t bytes_in_use;           // Number of bytes in use.
   int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
   int64_t max_bytes_in_use;       // The maximum bytes in use.
@@ -50,6 +57,8 @@ struct AllocatorStats {
   void Clear() {
     this->num_allocs = 0;
     this->num_reserves = 0;
+    this->num_arena_extensions = 0;
+    this->num_arena_shrinkages = 0;
     this->bytes_in_use = 0;
     this->max_bytes_in_use = 0;
     this->max_alloc_size = 0;
@@ -59,13 +68,15 @@ struct AllocatorStats {
 
   std::string DebugString() const {
     std::ostringstream ss;
-    ss << "Limit:           " << this->bytes_limit << "\n"
-       << "InUse:          " << this->bytes_in_use << "\n"
-       << "TotalAllocated: " << this->total_allocated_bytes << "\n"
-       << "MaxInUse:       " << this->max_bytes_in_use << "\n"
-       << "NumAllocs:      " << this->num_allocs << "\n"
-       << "NumReserves:    " << this->num_reserves << "\n"
-       << "MaxAllocSize:   " << this->max_alloc_size << "\n";
+    ss << "Limit:                    " << this->bytes_limit << "\n"
+       << "InUse:                    " << this->bytes_in_use << "\n"
+       << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
+       << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
+       << "NumAllocs:                " << this->num_allocs << "\n"
+       << "NumReserves:              " << this->num_reserves << "\n"
+       << "NumArenaExtensions:       " << this->num_arena_extensions << "\n"
+       << "NumArenaShrinkages:       " << this->num_arena_shrinkages << "\n"
+       << "MaxAllocSize:             " << this->max_alloc_size << "\n";
     return ss.str();
   }
 };

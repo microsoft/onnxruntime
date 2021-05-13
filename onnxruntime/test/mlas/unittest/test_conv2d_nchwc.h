@@ -105,7 +105,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
     if (DoReorderInput) {
       size_t NchwcInputElements = BatchCount * NchwcInputChannels * InputHeight * InputWidth;
       float* NchwcInput = BufferNchwcInput.GetBuffer(NchwcInputElements);
-      MlasReorderInput(InputShape, Input, NchwcInput);
+      ReorderInputNchw(InputShape, Input, NchwcInput);
       Input = NchwcInput;
       InputShape[1] = NchwcInputChannels;
     }

@@ -6,6 +6,7 @@
 
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -14,6 +15,8 @@
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+
+PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 
 namespace onnxruntime {
 namespace python {
@@ -69,6 +72,8 @@ struct TrainingParameters {
   // transformation
   int propagate_cast_ops_level = -1;
   std::vector<std::string> propagate_cast_ops_allow;
+  GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
   bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
@@ -233,8 +238,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.gelu_recompute = parameters.gelu_recompute;
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
-  config.graph_transformer_config.propagate_cast_ops_level = parameters.propagate_cast_ops_level;
-  config.graph_transformer_config.propagate_cast_ops_allow = parameters.propagate_cast_ops_allow;
+  config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
+  config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
+  config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
   config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
@@ -298,6 +304,8 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m) {
+  py::bind_vector<std::vector<OrtValue>>(m, "OrtValueVector");
+
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
@@ -380,7 +388,7 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(onnxruntime::make_unique<PipelineTrainingSession>(so, env)) {
+        : PyInferenceSession(std::make_unique<PipelineTrainingSession>(so, env)) {
     }
   };
 
@@ -388,11 +396,11 @@ void addObjectMethodsForTraining(py::module& m) {
   training_session
       .def(py::init([](const PySessionOptions& so) {
         Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, so);
+        return std::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
         Environment& env = GetEnv();
-        return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
+        return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
 #if defined(USE_MPI)
@@ -486,40 +494,72 @@ void addObjectMethodsForTraining(py::module& m) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
-py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
-      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
-      // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](PyInferenceSession * session) {
-        return onnxruntime::make_unique<TrainingAgent>(*session->GetSessionHandle());
-      }))
-      .def("run_forward", [](TrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
-        std::vector<OrtValue> module_outputs;
-        int64_t run_id;
-        Status status = agent->RunForward(run_options, *io_binding.Get(), module_outputs, run_id);
-        if (!status.IsOK()) {
-          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-        }
-        return py::make_tuple(module_outputs, run_id);
-      })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
-        Status status = agent->RunBackward(run_id, backward_output_grads);
-        if (!status.IsOK())
-          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-      ;
+  py::class_<PartialGraphExecutionState>(m, "PartialGraphExecutionState")
+      .def(py::init([]() {
+        return std::make_unique<PartialGraphExecutionState>();
+      }));
 
-  py::class_<TrainingSession::TrainingConfiguration::GraphTransformerConfiguration> graph_transformer_config(
+  py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
+      .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
+                       const std::vector<OrtDevice>& fw_outputs_device_info,
+                       const std::vector<std::string>& bw_fetches_names,
+                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+        return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
+                                               bw_fetches_names, bw_outputs_device_info);
+      }))
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
+        }
+      })
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        Status status = agent->RunBackward(feeds, fetches, *state);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
+        }
+      });
+
+  py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})
+      .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
+      .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
+      .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
+      .value("REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts)
+      .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
+      .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator&))
+      .def("__eq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator==))
+      .def("__neq__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator!=));
+
+  py::class_<GraphTransformerConfiguration::PropagateCastOpsConfiguration>
+      propagate_cast_ops_config(
+          m, "PropagateCastOpsConfiguration",
+          R"pbdoc(Propagate cast ops configuration.)pbdoc");
+  propagate_cast_ops_config.def(py::init())
+      .def_readwrite("strategy", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::strategy)
+      .def_readwrite("level", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::level)
+      .def_readwrite("allow", &GraphTransformerConfiguration::PropagateCastOpsConfiguration::allow);
+
+  py::class_<GraphTransformerConfiguration> graph_transformer_config(
       m, "GraphTransformerConfiguration",
       R"pbdoc(Graph transformer configuration.)pbdoc");
   graph_transformer_config.def(py::init())
-      .def_readwrite("enable_gelu_approximation", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::enable_gelu_approximation)
-      .def_readwrite("attn_dropout_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::attn_dropout_recompute)
-      .def_readwrite("gelu_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::gelu_recompute)
-      .def_readwrite("transformer_layer_recompute", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::transformer_layer_recompute)
-      .def_readwrite("number_recompute_layers", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("propagate_cast_ops_level", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingSession::TrainingConfiguration::GraphTransformerConfiguration::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_config", &GraphTransformerConfiguration::propagate_cast_ops_config);
+
+  py::class_<TrainingGraphTransformerConfiguration, GraphTransformerConfiguration> training_graph_transformer_config(
+      m, "TrainingGraphTransformerConfiguration",
+      R"pbdoc(Training Graph transformer configuration.)pbdoc");
+  training_graph_transformer_config.def(py::init())
+      .def_readwrite("enable_gelu_approximation", &TrainingGraphTransformerConfiguration::enable_gelu_approximation)
+      .def_readwrite("attn_dropout_recompute", &TrainingGraphTransformerConfiguration::attn_dropout_recompute)
+      .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
+      .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
+      .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
+      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
+      .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
       m, "OrtModuleGraphBuilderConfiguration",
@@ -543,7 +583,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
-                                      R"pbdoc(The information of split graphs for frontend.)pbdoc");
+                                   R"pbdoc(The information of split graphs for frontend.)pbdoc");
   graph_info.def(py::init())
       .def_readwrite("user_input_names", &GraphInfo::user_input_names)
       .def_readwrite("user_input_grad_names", &GraphInfo::user_input_grad_names)
@@ -552,10 +592,11 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("initializer_grad_names_to_train", &GraphInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &GraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
-      .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape);
+      .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
+      .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
-  ortmodule_graph_builder.def(py::init([]() { return onnxruntime::make_unique<OrtModuleGraphBuilder>(); }))
+  ortmodule_graph_builder.def(py::init([]() { return std::make_unique<OrtModuleGraphBuilder>(); }))
       .def("initialize",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder, const py::bytes& serialized_model,
               const OrtModuleGraphBuilderConfiguration& config) {

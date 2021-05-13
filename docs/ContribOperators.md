@@ -38,6 +38,7 @@
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
+  * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
   * <a href="#com.microsoft.QLinearConv">com.microsoft.QLinearConv</a>
   * <a href="#com.microsoft.QLinearGlobalAveragePool">com.microsoft.QLinearGlobalAveragePool</a>
   * <a href="#com.microsoft.QLinearLeakyRelu">com.microsoft.QLinearLeakyRelu</a>
@@ -102,7 +103,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> : T</dt>
 <dd>1D input tensor with shape (3 * hidden_size)</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, past_sequence_length + sequence_length) or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 </dl>
@@ -1823,6 +1824,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.QLinearConcat"></a><a name="com.microsoft.qlinearconcat">**com.microsoft.QLinearConcat**</a>
+
+  Concatenate a list of tensors into a single tensor.All input tensors must have the same shape, except for the dimension size of the axis to concatenate on.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int (required)</dt>
+<dd>Which axis to concat on</dd>
+</dl>
+
+#### Inputs (3 - &#8734;)
+
+<dl>
+<dt><tt>Y_scale</tt> : TF</dt>
+<dd>Y's scale.</dd>
+<dt><tt>Y_zero_point</tt> : T8</dt>
+<dd>Y's zero point.</dd>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : TV</dt>
+<dd>List of tensors/scale/zero_point for concatenation</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T8</dt>
+<dd>Concatenated tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T8</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain scale types to any float tensor type.</dd>
+<dt><tt>TV</tt> : tensor(uint8), tensor(int8), tensor(float)</dt>
+<dd>Sequence of (Tensor, Scale, ZeroPoint) tuples. The type is sequence of (T8, TF, T8).</dd>
+</dl>
+
+
 ### <a name="com.microsoft.QLinearConv"></a><a name="com.microsoft.qlinearconv">**com.microsoft.QLinearConv**</a>
 
 #### Version
@@ -2938,6 +2984,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 This version of the operator has been available since version 1 of the 'com.microsoft.nchwc' operator set.
 
+#### Attributes
+
+<dl>
+<dt><tt>channels_last</tt> : int</dt>
+<dd></dd>
+</dl>
+
 #### Inputs
 
 <dl>
@@ -3010,6 +3063,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>coordinate_transformation_mode</tt> : string</dt>
+<dd></dd>
+<dt><tt>mode</tt> : string</dt>
+<dd></dd>
 <dt><tt>scales</tt> : list of ints</dt>
 <dd></dd>
 </dl>

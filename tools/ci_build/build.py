@@ -243,6 +243,11 @@ def parse_arguments():
         "--build_nodejs", action='store_true',
         help="Build Node.js binding and NPM package.")
 
+    # Objective-C binding
+    parser.add_argument(
+        "--build_objc", action='store_true',
+        help="Build Objective-C binding.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -326,6 +331,8 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument("--apple_disable_bitcode", action='store_true',
+                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -335,6 +342,12 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
+    parser.add_argument(
+        "--enable_wasm_sourcemap", action='store_true',
+        help="Build WebAssembly with source map")
+    parser.add_argument(
+        "--wasm_sourcemap_base", default="http://localhost:9876/onnxruntime/",
+        help="Set base URL of the source map")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -499,6 +512,8 @@ def parse_arguments():
     parser.add_argument("--disable_ort_format_load", action='store_true',
                         help='Disable support for loading ORT format models in a non-minimal build.')
 
+    parser.add_argument(
+        "--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
 
@@ -506,7 +521,11 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
+
+    parser.add_argument(
+        "--build_eager_mode", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
 
     return parser.parse_args()
 
@@ -642,6 +661,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
+        "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
@@ -653,6 +673,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
+        "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
@@ -725,6 +746,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -804,7 +828,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
                 args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
-            "-DANDROID_ABI=" + str(args.android_abi)
+            "-DANDROID_ABI=" + str(args.android_abi),
+            "-DANDROID_MIN_SDK=" + str(args.android_api),
         ]
 
         if args.android_cpp_shared:
@@ -857,6 +882,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
@@ -1154,7 +1180,7 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def run_android_tests(args, source_dir, config, cwd):
+def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
@@ -1163,6 +1189,9 @@ def run_android_tests(args, source_dir, config, cwd):
 
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
+
+    def adb_install(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'install', *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1201,6 +1230,20 @@ def run_android_tests(args, source_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.build_java:
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "debug", "app-debug.apk"))
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "androidTest", "debug", "app-debug-androidTest.apk"))
+                adb_shell(
+                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
+                    )
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1216,12 +1259,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                           "-configuration", config,
                           "-scheme",  "onnxruntime_test_all_xc", "-destination",
                           "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
     if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test", "-project", "./onnxruntime.xcodeproj",
+        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                               "-configuration", config,
                               "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
                               "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
@@ -1342,7 +1385,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         cwd = os.path.abspath(cwd)
 
         if args.android:
-            run_android_tests(args, source_dir, config, cwd)
+            run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
         elif args.ios:
             run_ios_tests(args, source_dir, config, cwd)
@@ -1482,14 +1525,14 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=2000']
+    args = ['npm', 'test', '--', '--timeout=10000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
 
 
 def build_python_wheel(
-        source_dir, build_dir, configs, use_cuda, cuda_version, use_dnnl,
+        source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
@@ -1527,6 +1570,10 @@ def build_python_wheel(
             args.append('--use_cuda')
             if cuda_version:
                 args.append('--cuda_version={}'.format(cuda_version))
+        elif use_rocm:
+            args.append('--use_rocm')
+            if rocm_version:
+                args.append('--rocm_version={}'.format(rocm_version))
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:
@@ -1999,6 +2046,8 @@ def main():
                 raise BuildError("cuda_version must be specified on Windows.")
             else:
                 args.cuda_version = ""
+        if args.use_rocm and args.rocm_version is None:
+            args.rocm_version = ""
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -2037,6 +2086,8 @@ def main():
                 configs,
                 args.use_cuda,
                 args.cuda_version,
+                args.use_rocm,
+                args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,

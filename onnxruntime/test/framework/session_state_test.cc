@@ -20,6 +20,12 @@
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_execution_provider.h"
+#elif USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace std;
 namespace onnxruntime {
@@ -53,7 +59,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto& graph = model.MainGraph();
 
   ExecutionProviders execution_providers;
-  auto tmp_cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto tmp_cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   auto* cpu_execution_provider = tmp_cpu_execution_provider.get();
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
 
@@ -128,7 +134,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi{false};
   status =
-      execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+      execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
 
   KernelRegistryManager krm;
@@ -173,6 +179,94 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   }
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+static void TestCPUNodePlacement(const std::basic_string<ORTCHAR_T>& model_uri,
+                                 const std::unordered_set<std::string>& expected_cpu_nodes,
+                                 const std::unordered_set<std::string>& expected_gpu_nodes) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = model->MainGraph();
+
+  ExecutionProviders execution_providers;
+#if defined(USE_CUDA)
+  CUDAExecutionProviderInfo cuda_epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, std::make_unique<CUDAExecutionProvider>(cuda_epi)));
+#elif defined(USE_ROCM)
+  ROCMExecutionProviderInfo rocm_epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kRocmExecutionProvider, std::make_unique<ROCMExecutionProvider>(rocm_epi)));
+#endif
+  // add CPU EP
+  CPUExecutionProviderInfo epi;
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+
+  SessionState session_state(graph, execution_providers, false, nullptr, nullptr, dtm,
+                             DefaultLoggingManager().DefaultLogger(), profiler);
+
+  // Partition the graph. Here, the graph partitioner assigns EPs to the nodes
+  GraphPartitioner partitioner(krm, execution_providers);
+  ASSERT_STATUS_OK(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
+
+  // check which nodes are assigned to CPU and GPU
+  for (auto& node : graph.Nodes()) {
+    // assert that EP is assigned
+    ASSERT_TRUE(!node.GetExecutionProviderType().empty());
+    auto& ep = node.GetExecutionProviderType();
+    if (ep == onnxruntime::kCudaExecutionProvider || ep == onnxruntime::kRocmExecutionProvider) {
+      ASSERT_TRUE(expected_gpu_nodes.count(node.Name())) << "Node not found in expected gpu nodes: " << node.Name();
+    } else if (ep == onnxruntime::kCpuExecutionProvider) {
+      ASSERT_TRUE(expected_cpu_nodes.count(node.Name())) << "Node not found in expected cpu nodes: " << node.Name();
+    } else {
+      ASSERT_TRUE(false) << "Invalid execution provider assigned to node: " << node.Name() << " , value: " << ep;
+    }
+  }
+}
+
+TEST(SessionStateTest, CPUPlacementTest0) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"reshape", "shape1", "const1", "mul", "equal", "where"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "expand"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_0.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest1) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"const1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "expand"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_1.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest2) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"range"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "reduce"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_2.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest3) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"range0", "range1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "reduce0", "identity", "size1", "reduce1", "sum"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_3.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest4) {
+  // Currently, the behaviour is different for RocM and CUDA EP as Rocm EP is missing a valid kernel
+  // for ReduceSum for int64 type. This causes the backward trace in GetCpuPreferredNodes to stop
+  // earlier. The expected values can be modified to match CUDA once the RocM EP kernel is updated
+#if defined(USE_CUDA)
+  std::unordered_set<std::string> expected_cpu_nodes = {"range", "reduce", "const1"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand"};
+#elif defined(USE_ROCM)
+  std::unordered_set<std::string> expected_cpu_nodes = {"const1", "reduce"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"size0", "expand", "range"};
+#endif
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_4.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+TEST(SessionStateTest, CPUPlacementTest5) {
+  std::unordered_set<std::string> expected_cpu_nodes = {"gather0", "gather1", "concat"};
+  std::unordered_set<std::string> expected_gpu_nodes = {"shape0", "shape1", "reshape"};
+  TestCPUNodePlacement(ORT_TSTR("testdata/cpu_fallback_pattern_5.onnx"), expected_cpu_nodes, expected_gpu_nodes);
+}
+#endif
+
 // Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
 // if the relevant session option config flag is set
 // For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
@@ -191,7 +285,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     ExecutionProviders execution_providers;
     CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
     ASSERT_TRUE(status.IsOK()) << status;
 
     KernelRegistryManager krm;
@@ -212,7 +306,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Finalize the session state
     SessionOptions so;
     // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
-    so.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
+    so.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
@@ -240,7 +334,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     ExecutionProviders execution_providers;
     CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
     ASSERT_TRUE(status.IsOK()) << status;
 
     KernelRegistryManager krm;
@@ -447,7 +541,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
       .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
 
   ExecutionProviders execution_providers;
-  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
 
   DataTransferManager dtm;
@@ -488,7 +582,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   PlaceAllNodesToCPUEP(model.MainGraph());
 
   SessionOptions sess_options;
-  sess_options.session_configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager,
                                                       sess_options));

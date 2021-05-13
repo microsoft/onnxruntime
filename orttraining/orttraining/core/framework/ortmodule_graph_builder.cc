@@ -39,10 +39,12 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
     graph_info_.user_output_names.emplace_back(node_arg->Name());
   }
 
-  graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
-                                                         config.initializer_names_to_train.end());
-  graph_info_.initializer_names.assign(config.initializer_names.begin(),
-                                                config.initializer_names.end());
+  graph_info_.initializer_names_to_train = std::unordered_set<std::string>(
+                                                        config_.initializer_names_to_train.begin(),
+                                                        config_.initializer_names_to_train.end());
+  graph_info_.initializer_names = std::unordered_set<std::string>(
+                                                config_.initializer_names.begin(),
+                                                config_.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : graph_info_.user_input_names) {
@@ -50,7 +52,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   // Remove all the initializers from the graph and move them to graph inputs.
-  for (const auto& initializer_name : graph_info_.initializer_names) {
+  for (const auto& initializer_name : config_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
     ORT_ENFORCE(node_arg != nullptr);
     input_args.emplace_back(node_arg);
@@ -147,7 +149,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
 
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
                  config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
@@ -198,6 +200,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
   return Status::OK();
 }
 
@@ -274,10 +277,9 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) != non_differentiable_indices.end()) {
-      ;
-    } else {
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
@@ -314,11 +316,11 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
 
   // Add initializer gradients to graph outputs.
   graph_info_.initializer_grad_names_to_train.clear();
-  for (const auto& initializer_name : graph_info_.initializer_names_to_train) {
+  for (const auto& initializer_name : config_.initializer_names_to_train) {
     std::string initializer_gradient_name = GradientBuilderBase::GradientName(initializer_name);
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
-    graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
+    graph_info_.initializer_grad_names_to_train.emplace(initializer_gradient_name);
     new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
   }
 

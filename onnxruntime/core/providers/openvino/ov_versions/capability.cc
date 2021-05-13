@@ -32,8 +32,6 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
   } else if (version_param == "V_2021_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_1, device_type_);
-  } else if (version_param == "V_2020_4") {
-    data_ops_ = new DataOps(graph_viewer_, V_2020_4, device_type_);
   } else if (version_param == "V_2021_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
   } else {
@@ -146,12 +144,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
 
       //If subgraph has less then three, graph is considered trivial
-      if (data_ops_->GetVersion() != V_2020_4) {
-
-        if (this_cluster.size() < 3) {
-          continue;
-        }
-
+      if (this_cluster.size() < 3) {
+        continue;
       } else {
         //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
         if (this_cluster.size() == 1) {

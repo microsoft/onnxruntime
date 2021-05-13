@@ -12,17 +12,25 @@ namespace {
 Ort::Env* g_env;
 }  // namespace
 
-void OrtInit() {
-  // TODO: allow user to specify logging
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
-  g_env = new Ort::Env{logging_level, "Default"};
+void OrtInit(int numThreads, int logging_level) {
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  OrtThreadingOptions* tp_options;
+  Ort::ThrowOnError(Ort::GetApi().CreateThreadingOptions(&tp_options));
+  Ort::ThrowOnError(Ort::GetApi().SetGlobalIntraOpNumThreads(tp_options, numThreads));
+  Ort::ThrowOnError(Ort::GetApi().SetGlobalInterOpNumThreads(tp_options, 1));
+
+  g_env = new Ort::Env{tp_options, static_cast<OrtLoggingLevel>(logging_level), "Default"};
+#endif
+  g_env = new Ort::Env{static_cast<OrtLoggingLevel>(logging_level), "Default"};
 }
 
 Ort::Session* OrtCreateSession(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
   session_options.SetLogId("onnxruntime");
 
-#if !defined(__EMSCRIPTEN_PTHREADS__)
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  session_options.DisablePerSessionThreads();
+#else
   // must disable thread pool when WebAssembly multi-threads support is disabled.
   session_options.SetIntraOpNumThreads(1);
 #endif
@@ -63,7 +71,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     shapes[i] = dims[i];
   }
 
-  return Ort::Value::CreateTensor({},
+  return Ort::Value::CreateTensor(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault),
                                   data,
                                   data_length,
                                   dims_length > 0 ? shapes.data() : nullptr,

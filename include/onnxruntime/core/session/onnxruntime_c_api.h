@@ -157,7 +157,7 @@ ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(IoBinding);
-ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+ORT_RUNTIME_CLASS(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
@@ -268,36 +268,40 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t gpu_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
+  size_t gpu_mem_limit;                           // default cuda memory limitation to maximum finite value of size_t.
+                                                  // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
+                                                  // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
+  OrtArenaCfg* default_memory_arena_cfg;
 } OrtCUDAProviderOptions;
 
 /// <summary>
 /// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
 /// </summary>
 typedef struct OrtROCMProviderOptions {
-  int device_id;                                    // hip device with id=0 as default device.
-  int miopen_conv_exhaustive_search;                // miopen conv algo exhaustive search option
-  size_t gpu_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
-  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+  int device_id;                      // hip device with id=0 as default device.
+  int miopen_conv_exhaustive_search;  // miopen conv algo exhaustive search option
+  size_t gpu_mem_limit;               // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;          // default area extend strategy to KNextPowerOfTwo.
 } OrtROCMProviderOptions;
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;                                  // cuda device id.
-  int has_user_compute_stream;                    // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                      // user specified CUDA compute stream.
-  int has_trt_options;                            // override environment variables with following TensorRT settings at runtime.
-  size_t trt_max_workspace_size;                  // maximum workspace size for TensorRT.
-  int trt_fp16_enable;                            // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
-  int trt_int8_enable;                            // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
-  const char* trt_int8_calibration_table_name;    // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;      // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int device_id;                                // cuda device id.
+  int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;                    // user specified CUDA compute stream.
+  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
+  int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
+  const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -310,9 +314,9 @@ typedef struct OrtOpenVINOProviderOptions {
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
-  size_t num_of_threads;  // 0 uses default number of threads
-  unsigned char use_compiled_network; // 0 = false, nonzero = true
-  const char* blob_dump_path; // path is set to empty by default
+  size_t num_of_threads;               // 0 uses default number of threads
+  unsigned char use_compiled_network;  // 0 = false, nonzero = true
+  const char* blob_dump_path;          // path is set to empty by default
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -343,12 +347,12 @@ struct OrtApi {
   const char*(ORT_API_CALL* GetErrorMessage)(_In_ const OrtStatus* status)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /**
-     * \param out Should be freed by `OrtReleaseEnv` after use
+     * \param out Should be freed by `ReleaseEnv` after use
      */
   ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /**
-   * \param out Should be freed by `OrtReleaseEnv` after use
+   * \param out Should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
                   OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
@@ -375,7 +379,7 @@ struct OrtApi {
                   _Inout_updates_all_(output_names_len) OrtValue** output);
 
   /**
-    * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
+    * \return A pointer of the newly created object. The pointer should be freed by ReleaseSessionOptions after use
     */
   ORT_API2_STATUS(CreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
@@ -432,7 +436,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
   /*
-  Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
+  Create a custom op domain. After all sessions using it are released, call ReleaseCustomOpDomain
   */
   ORT_API2_STATUS(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 
@@ -474,18 +478,18 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
 
   /**
-   * \param out  should be freed by OrtReleaseTypeInfo after use
+   * \param out  should be freed by ReleaseTypeInfo after use
    */
   ORT_API2_STATUS(SessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
 
   /**
- * \param out  should be freed by OrtReleaseTypeInfo after use
+ * \param out  should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(SessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index,
                   _Outptr_ OrtTypeInfo** type_info);
@@ -501,7 +505,7 @@ struct OrtApi {
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
   /**
-   * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
+   * \return A pointer to the newly created object. The pointer should be freed by ReleaseRunOptions after use
    */
   ORT_API2_STATUS(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
@@ -520,8 +524,8 @@ struct OrtApi {
   ORT_API2_STATUS(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 
   /**
-   * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
-   * \param out Should be freed by calling OrtReleaseValue
+   * Create a tensor from an allocator. ReleaseValue will also release the buffer inside the output value
+   * \param out Should be freed by calling ReleaseValue
    * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
    */
   ORT_API2_STATUS(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* shape, size_t shape_len,
@@ -529,8 +533,8 @@ struct OrtApi {
 
   /**
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
-   * p_data is owned by caller. OrtReleaseValue won't release p_data.
-   * \param out Should be freed by calling OrtReleaseValue
+   * p_data is owned by caller. ReleaseValue won't release p_data.
+   * \param out Should be freed by calling ReleaseValue
    */
   ORT_API2_STATUS(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
                   size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -578,7 +582,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 
   /**
-     * The 'out' value should be released by calling OrtReleaseTensorTypeAndShapeInfo
+     * The 'out' value should be released by calling ReleaseTensorTypeAndShapeInfo
      */
   ORT_API2_STATUS(CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
@@ -611,14 +615,14 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
   /**
- * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
+ * \param out Should be freed by ReleaseTensorTypeAndShapeInfo after use
  */
   ORT_API2_STATUS(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
   /**
  * Get the type information of an OrtValue
  * \param value
- * \param out The returned value should be freed by OrtReleaseTypeInfo after use
+ * \param out The returned value should be freed by ReleaseTypeInfo after use
  */
   ORT_API2_STATUS(GetTypeInfo, _In_ const OrtValue* value, _Outptr_result_maybenull_ OrtTypeInfo** out);
 
@@ -793,7 +797,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Env);
   ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
   ORT_CLASS_RELEASE(MemoryInfo);
-  ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+  ORT_CLASS_RELEASE(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
   ORT_CLASS_RELEASE(Value);
   ORT_CLASS_RELEASE(RunOptions);
   ORT_CLASS_RELEASE(TypeInfo);
@@ -1156,7 +1160,7 @@ struct OrtApi {
    * Use this in conjunction with DisablePerSessionThreads API or else the session will use
    * its own thread pools.
    *
-   * \param out should be freed by `OrtReleaseEnv` after use
+   * \param out should be freed by `ReleaseEnv` after use
    */
   ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
@@ -1191,6 +1195,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 
   /**
+  * (Deprecated) Use `CreateArenaCfgV2` instead
   * Use this API to create the configuration of an arena that can eventually be used to define
   * an arena based allocator's behavior
   * \param max_mem - use 0 to allow ORT to choose the default
@@ -1276,6 +1281,41 @@ struct OrtApi {
      */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Out_ int64_t* out, _Inout_ size_t* size);
+
+  /**
+  * Use this API to create the configuration of an arena that can eventually be used to define
+  * an arena based allocator's behavior
+  * \param arena_config_keys - keys to configure the arena
+  * \param arena_config_values - values to configure the arena
+  * \param num_keys - number of keys passed in
+  * Supported keys are (See docs/C_API.md for details on what the following parameters mean and how to choose these values.):
+  * "max_mem": Maximum memory that can be allocated by the arena based allocator. 
+     Use 0 for ORT to pick the best value. Default is 0.
+  * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested. 
+     Use -1 to allow ORT to choose the default.
+  * "initial_chunk_size_bytes": (Possible) Size of the first allocation in the arena. 
+     Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the first allocation size is determined by the allocation memory request. 
+  * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
+     crossing which the current chunk is chunked into 2.
+  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+     Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+     Ultimately, the allocation size is determined by the allocation memory request.
+     Further allocation sizes are governed by the arena extend strategy.
+  */
+  ORT_API2_STATUS(CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys,
+                  _In_reads_(num_keys) const size_t* arena_config_values, _In_ size_t num_keys,
+                  _Outptr_ OrtArenaCfg** out);
+
+  /**
+     * Set a single run configuration entry as a pair of strings
+     * If a configuration with same key exists, this will overwrite the configuration with the given config_value
+     * \param config_key    A null terminated string representation of the config key
+     * \param config_value  A null terminated string representation of the config value
+     * The config_key and the format of config_value are defined in onnxruntime_run_options_config_keys.h
+     */
+  ORT_API2_STATUS(AddRunConfigEntry, _Inout_ OrtRunOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*

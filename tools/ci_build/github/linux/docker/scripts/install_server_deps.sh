@@ -42,7 +42,7 @@ rm -rf /tmp/googletest
 echo "Installing protobuf from source"
 git clone https://github.com/protocolbuffers/protobuf.git
 cd protobuf
-git checkout v3.15.8
+git checkout v3.16.0
 mkdir b
 cd b
 cmake ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Debug
