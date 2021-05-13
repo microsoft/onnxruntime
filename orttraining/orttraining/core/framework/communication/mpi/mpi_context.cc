@@ -8,6 +8,8 @@
 #include <pthread.h>
 #endif
 
+#define SHARED_PROVIDER_TODO 0
+
 namespace onnxruntime {
 namespace training {
 
@@ -27,7 +29,7 @@ MPIContext::~MPIContext() {
   // due to unknown reasons, we then proceed to an ungraceful exit.
   std::this_thread::sleep_for(std::chrono::seconds(MPIContext::MPI_TIMEOUT_IN_SECONDS));
   if (!perform_graceful_exit) {
-#if 0
+#if SHARED_PROVIDER_TODO
     LOGS(logger_, INFO) << "MPI is not able to gracefully shut down. Aborting MPI.";
 #endif
     // Request to cancel the thread since it's not responsive.
@@ -89,11 +91,11 @@ MPIContext::MPIContext() : world_rank_(0),
   char version[MPI_MAX_LIBRARY_VERSION_STRING];
   MPI_Get_library_version(version, &len);
 
-#if 0
+#if SHARED_PROVIDER_TODO
   LOGS(logger_, INFO) << "MPI context initialized. World size: " << world_size
-                     << ". World rank: " << world_rank
-                     << ". Local size: " << local_size
-                     << ". Local rank: " << local_rank;
+                      << ". World rank: " << world_rank
+                      << ". Local size: " << local_size
+                      << ". Local rank: " << local_rank;
 #endif
 
   mpi_groups_.resize(WorkerGroupType::WorkerGroupTypeCount);
@@ -146,8 +148,8 @@ void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
 #ifdef USE_MPI
   auto group_name = DistributedRunContext::GetInstance().GetWorkerGroupName(group_type);
   if (this->mpi_groups_[group_type].is_group_initialized) {
-#if 0
-    LOGS(logger_, INFO) << "Group "<<group_name<<" already exists. Re-initializing with different ranks.";
+#if SHARED_PROVIDER_TODO
+    LOGS(logger_, INFO) << "Group " << group_name << " already exists. Re-initializing with different ranks.";
 #endif
     MPI_CHECK(MPI_Group_free(&this->mpi_groups_[group_type].mpi_group));
     MPI_CHECK(MPI_Comm_free(&this->mpi_groups_[group_type].communicator));
