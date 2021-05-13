@@ -386,20 +386,19 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                              int input_idx,
-                              /*out*/ bool& stored_weight) override {
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override {
     ORT_UNUSED_PARAMETER(input_idx);
 
-    weight_packed_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-    stored_weight = true;
+    weight_packed_ = std::move(prepacked_buffers[0]);
+    used_shared_buffers = true;
     ++store_pre_packed_weight_calls_count;
     return Status::OK();
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                 AllocatorPtr alloc) override {
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
 
@@ -408,10 +407,9 @@ class PrePackingTestOpKernel : public OpKernel {
     data_weights_packed[0] = 1.2345f;
     data_weights_packed[1] = data_weights_packed[0] * 2.f;
 
-    if (prepacked_weight_for_caching != nullptr) {
-      prepacked_weight_for_caching->buffers_.push_back(std::move(weight_packed_));
-      prepacked_weight_for_caching->buffer_sizes_.push_back(8);
-      prepacked_weight_for_caching->is_filled_ = true;
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(weight_packed_));
+      prepacked_weights->buffer_sizes_.push_back(8);
     }
 
     is_packed = true;
@@ -680,6 +678,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
     // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+    ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
 
@@ -706,6 +705,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
     // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+    ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
   }
@@ -753,6 +753,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
     // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+    ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
 
@@ -779,6 +780,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
     // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+    ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
   }
@@ -830,13 +832,14 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
 
     const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
     // Assert that a pre-pack call was made
+    ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     // Assert that we made a call to store pre-packed weight from a shared container
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
     // The weight to be "stored" is the same weight that we got by invoking PrePack() in the step above.
     // Hence, assert that it wasn't a "cached" pre-packed weight (i.e.) pre-packed weight
     // from another instance of the same op_type consuming the same constant initializer.
-    ASSERT_EQ(session_state_1.GetUsedCachedprepackedWeightCounter(), static_cast<size_t>(0));
+    ASSERT_EQ(session_state_1.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(0));
 
     // Second session/model
     Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -861,13 +864,14 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
                                                           sess_options));
 
     // Assert that a pre-pack call was made
+    ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
     ASSERT_EQ(kernel->prepack_calls_count, 1);
     // Assert that we made a call to store pre-packed weight from a shared container
     ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
     // The weight to be "stored" is a "cached" weight (i.e.) a pre-packed weight
     // from another instance of the same op_type consuming the same constant initializer.
     // Assert this.
-    ASSERT_EQ(session_state_2.GetUsedCachedprepackedWeightCounter(), static_cast<size_t>(1));
+    ASSERT_EQ(session_state_2.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(1));
   }
 }
 

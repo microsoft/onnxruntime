@@ -170,54 +170,49 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        concurrency::ThreadPool* thread_pool);
 
 template <typename T>
-Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, /*out*/ bool& is_packed,
-                        /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/,
-                        AllocatorPtr /*alloc_for_caching*/) {
+Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
+                        /*out*/ bool& is_packed,
+                        /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                            AllocatorPtr alloc) {
+Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
+                            AllocatorPtr alloc, /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
     is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
-    bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
-      prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
-      prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
-      prepacked_weight_for_caching->shapes_.push_back(b_shape_);
-      prepacked_weight_for_caching->is_filled_ = true;
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
     }
   }
   return Status::OK();
 }
 
 template <typename T>
-Status Gemm<T>::StorePrePackedWeight(const PrePackedWeights& /*prepacked_weight*/,
-                                     int /*input_idx*/,
-                                     /*out*/ bool& stored_weight) {
-  stored_weight = false;
+Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          int /*input_idx*/,
+                                          /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
   return Status::OK();
 }
 
 template <>
-Status Gemm<float>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                                         int input_idx,
-                                         /*out*/ bool& stored_weight) {
-  stored_weight = false;
+Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
 
   if (input_idx == 1) {
-    // Cached pre-packed weight
-    stored_weight = true;
-    // This is a cached pre-packed buffer and this kernel doesn't own it and hence the deleter is null
-    packed_b_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-    b_shape_ = prepacked_weight.shapes_[0];
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
   }
   return Status::OK();
 }

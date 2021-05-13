@@ -110,12 +110,9 @@ class InferenceSession {
     Create a new InferenceSession
     @param session_options Session options.
     @param session_env This represents the context for the session and contains the logger and the global threadpools.
-    @param prepacked_weights_container An optional container to store the prepacked weights of shared initializers 
-                                       to be shared across sessions.
     */
   explicit InferenceSession(const SessionOptions& session_options,
-                            const Environment& session_env,
-                            PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                            const Environment& session_env);
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -124,19 +121,15 @@ class InferenceSession {
     @param session_options Session options.
     @param model_uri absolute path of the model file.
     @param session_env This represents the context for the session and contains the logger and the global threadpools.
-    @param prepacked_weights_container An optional container to store the prepacked weights of shared initializers 
-                                       to be shared across sessions.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::string& model_uri,
-                   PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                   const std::string& model_uri);
 #ifdef _WIN32
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::wstring& model_uri,
-                   PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                   const std::wstring& model_uri);
 #endif
 
   /**
@@ -144,14 +137,11 @@ class InferenceSession {
     @param session_options Session options.
     @param istream object of the model.
     @param session_env This represents the context for the session and contains the logger and the global threadpools.
-    @param prepacked_weights_container An optional container to store the prepacked weights of shared initializers 
-                                       to be shared across sessions.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   std::istream& model_istream,
-                   PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                   std::istream& model_istream);
 
   /**
     Create a new InferenceSession
@@ -159,15 +149,12 @@ class InferenceSession {
     @param model_data Model data buffer.
     @param model_data_len Model data buffer size.
     @param session_env This represents the context for the session and contains the logger and the global threadpools.
-    @param prepacked_weights_container An optional container to store the prepacked weights of shared initializers 
-                                       to be shared across sessions.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
                    const void* model_data,
-                   int model_data_len,
-                   PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                   int model_data_len);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -442,6 +429,13 @@ class InferenceSession {
     return *session_state_;
   }
 
+  /**
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights 
+    *  of shared initializers to be shared across sessions.
+    * @param prepacked_weights_container PrepackedWeightsContainer instance 
+    */
+  Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -498,8 +492,7 @@ class InferenceSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
   void ConstructorCommon(const SessionOptions& session_options,
-                         const Environment& session_env,
-                         PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+                         const Environment& session_env);
 
   common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 

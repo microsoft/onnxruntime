@@ -272,4 +272,9 @@ ORT_API(void, ReleasePrepackedWeightsContainer, _Frees_ptr_opt_ OrtPrepackedWeig
 ORT_API_STATUS_IMPL(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                     _Outptr_ OrtSession** out);
+ORT_API_STATUS_IMPL(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                    _In_ const void* model_data, size_t model_data_length,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out);
+
 }  // namespace OrtApis

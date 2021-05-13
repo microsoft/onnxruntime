@@ -27,13 +27,13 @@ class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                 AllocatorPtr alloc) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                              int input_idx,
-                              /*out*/ bool& stored_weight) override;
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
   Status Compute(OpKernelContext* context) const override;
 

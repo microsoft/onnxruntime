@@ -37,17 +37,18 @@ ONNX_CPU_OPERATOR_KERNEL(
     ConvTranspose<float>);
 
 template <typename T>
-Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, /*out*/ bool& is_packed,
-                                 /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/,
-                                 AllocatorPtr /*alloc*/) {
+Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+                                 /*out*/ bool& is_packed,
+                                 /*out*/ PrePackedWeights* /*prepacked_weights*/
+) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                                     /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                                     AllocatorPtr alloc) {
+Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     /*out*/ bool& is_packed,
+                                     /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack filter tensor
@@ -80,12 +81,10 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
                     K, N);
     }
 
-    bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (share_prepacked_weights) {
-      prepacked_weight_for_caching->buffers_.push_back(std::move(transposed_filter_));
-      prepacked_weight_for_caching->buffer_sizes_.push_back(packed_filter_data_size);
-      prepacked_weight_for_caching->shapes_.push_back(filter_shape_);
-      prepacked_weight_for_caching->is_filled_ = true;
+      prepacked_weights->buffers_.push_back(std::move(transposed_filter_));
+      prepacked_weights->buffer_sizes_.push_back(packed_filter_data_size);
     }
 
     is_packed = true;
@@ -94,23 +93,22 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, /*out*
 }
 
 template <typename T>
-Status ConvTranspose<T>::StorePrePackedWeight(const PrePackedWeights& /*prepacked_weight*/,
-                                              int /*input_idx*/,
-                                              /*out*/ bool& stored_weight) {
-  stored_weight = false;
+Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                   int /*input_idx*/,
+                                                   /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                                                  int input_idx,
-                                                  /*out*/ bool& stored_weight) {
-  stored_weight = false;
+Status ConvTranspose<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       int input_idx,
+                                                       /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
 
   if (input_idx == 1) {
-    stored_weight = true;
-    filter_shape_ = prepacked_weight.shapes_[0];
-    transposed_filter_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+    used_shared_buffers = true;
+    transposed_filter_ = std::move(prepacked_buffers[0]);
   }
 
   return Status::OK();

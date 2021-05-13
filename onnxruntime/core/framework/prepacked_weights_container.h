@@ -25,17 +25,11 @@ class PrepackedWeightsContainer final {
 
   AllocatorPtr GetAllocator(const std::string& device_name);
 
-  const PrePackedWeights& GetCachedWeight(const std::string& key);
+  const PrePackedWeights& GetWeight(const std::string& key);
 
-  void WriteCachedWeight(const std::string& key, PrePackedWeights&& packed_weight);
+  void WriteWeight(const std::string& key, PrePackedWeights&& packed_weight);
 
-  bool HasCachedWeight(const std::string& key) const;
-
-  bool HasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
-                                                         const void* const_initialized_tensor_data) const;
-
-  void MarkHasPrepackedWeightForOpTypeAndConstantInitializer(const std::string& op_type,
-                                                             const void* const_initialized_tensor_data);
+  bool HasWeight(const std::string& key) const;
 
   // Not thread-safe
   size_t GetNumberOfElements() const;
@@ -48,16 +42,11 @@ class PrepackedWeightsContainer final {
   // of its pre-packed weight.
   OrtMutex mutex_;
 
- private:
-  std::string GenerateKeyFromOpTypeAndInitializerData(const std::string& op_type,
-                                                      const void* const_initialized_tensor_data) const;
-
   // Define allocators ahead of the container containing tensors because the allocators
   // needs to destructed after the container containing the pre-packed cached tensors
   // because the Tensor buffers will be de-allocated using these allocators
   std::unordered_map<std::string, AllocatorPtr> allocators_;
-  std::unordered_map<std::string, PrePackedWeights> initialized_tensor_name_to_prepacked_weights_;
-  std::unordered_set<std::string> op_type_tensor_data_memory_map_;
+  std::unordered_map<std::string, PrePackedWeights> initialized_tensor_name_to_prepacked_weights_map_;
 };
 
 }  // namespace onnxruntime

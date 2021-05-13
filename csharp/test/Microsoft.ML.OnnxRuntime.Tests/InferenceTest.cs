@@ -2258,7 +2258,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                         dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes))
                 {
 
-                    using (var prepackedWeightsContainer = new PrepackedWeightsContainer())
+                    using (var prepackedWeightsContainer = new PrePackedWeightsContainer())
                     {
                         using (var options = new SessionOptions())
                         {
@@ -2269,9 +2269,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             int[] expectedDimensions = { 3, 1 };
 
                             // We want the pre-packed weights of the shared initializer to be shared between sessions (memory savings)
-                            // and hence we pass in the 'prepackedWeightsContainer' at sessio creation time
+                            // and hence we pass in the 'prepackedWeightsContainer' at session creation time
+                            byte[] modelData = File.ReadAllBytes(modelPath);
+
+                            // Test both InferenceSession ctors that take PrePackedWeightsContainer instances
                             using (var session = new InferenceSession(modelPath, options, prepackedWeightsContainer))
-                            using (var session2 = new InferenceSession(modelPath, options, prepackedWeightsContainer))
+                            using (var session2 = new InferenceSession(modelData, options, prepackedWeightsContainer))
                             {
                                 var inputMeta = session.InputMetadata;
                                 var container = new List<NamedOnnxValue>();

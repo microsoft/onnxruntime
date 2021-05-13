@@ -474,8 +474,6 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
   test.AddPrePackedSharedContainerToSessions();
 
-  size_t used_cached_pre_packed_weights_counter = 0;
-
   // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
   // and we want to ensure that it is available in this build
   auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
@@ -484,25 +482,44 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
     return execution_providers;
   };
 
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
   // Session 1
   {
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
-             nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(0));  // No pre-packed weights have been shared thus far
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
 
-  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
-  // in the shared container will be zero in which case this test will be a no-op
   auto number_of_elements_in_shared_prepacked_buffers_container =
       test.GetNumberOfElementsInPrePackedSharedContainer();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
 
   // Session 2
   {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
     auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {},
-             nullptr, &ep_vec, {}, &used_cached_pre_packed_weights_counter);
-    ASSERT_EQ(used_cached_pre_packed_weights_counter, static_cast<size_t>(number_of_elements_in_shared_prepacked_buffers_container));
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
 #endif

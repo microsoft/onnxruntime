@@ -409,7 +409,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_ const OrtEnv* env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
-                                                _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                                                 size_t model_data_length,
 
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
@@ -425,14 +424,12 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
-          model_path,
-          reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container));
+          model_path);
     } else {
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
-          model_data, static_cast<int>(model_data_length),
-          reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container));
+          model_data, static_cast<int>(model_data_length));
     }
 #else
     return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
@@ -440,8 +437,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
   } else {
     sess = std::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment(),
-        reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container));
+        env->GetEnvironment());
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -468,7 +464,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 }
 
 static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
-                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess) {
+                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
+                                        _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -486,6 +483,11 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     }
   }
 
+  if (prepacked_weights_container != nullptr) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
+        reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
+  }
+
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
 
   return nullptr;
@@ -501,7 +503,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -524,7 +526,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, nullptr, model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -1927,8 +1929,34 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithPrepackedWeightsContainer, _In_ co
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, prepacked_weights_container, 0, sess));
-    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                    _In_ const void* model_data, size_t model_data_length,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data,
+                                                      model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
@@ -2198,6 +2226,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::CreatePrepackedWeightsContainer,
     &OrtApis::ReleasePrepackedWeightsContainer,
     &OrtApis::CreateSessionWithPrepackedWeightsContainer,
+    &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

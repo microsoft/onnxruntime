@@ -23,13 +23,13 @@ class QAttention : public OpKernel, public AttentionCPUBase {
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                 AllocatorPtr alloc) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& /*out*/ is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                              int input_idx,
-                              /*out*/ bool& stored_weight) override;
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -56,11 +56,9 @@ template <typename T>
 QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {}
 
 template <typename T>
-Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool& is_packed,
-                              /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                              AllocatorPtr alloc) {
-  is_packed = false;
-
+Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                              /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   if (1 != input_idx) {
     return Status::OK();
   }
@@ -106,13 +104,10 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
     weights_data += head_size;
   }
 
-  bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
   if (share_prepacked_weights) {
-    prepacked_weight_for_caching->buffers_.push_back(std::move(packed_weights_));
-    prepacked_weight_for_caching->buffer_sizes_.push_back(packed_weights_data_size);
-    prepacked_weight_for_caching->shapes_.push_back(weight_shape_);
-    prepacked_weight_for_caching->weights_sizes_.push_back(packed_weights_size_);
-    prepacked_weight_for_caching->is_filled_ = true;
+    prepacked_weights->buffers_.push_back(std::move(packed_weights_));
+    prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
   }
 
   is_packed = true;
@@ -120,19 +115,15 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, /*out*/ bool
 }
 
 template <typename T>
-Status QAttention<T>::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                                           int input_idx,
-                                           /*out*/ bool& stored_weight) {
-  stored_weight = false;
-
+Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
   if (1 != input_idx) {
     return Status::OK();
   }
 
-  stored_weight = true;
-  weight_shape_ = prepacked_weight.shapes_[0];
-  packed_weights_size_ = prepacked_weight.weights_sizes_[0];
-  packed_weights_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
+  used_shared_buffers = true;
+  packed_weights_ = std::move(prepacked_buffers[0]);
 
   return Status::OK();
 }

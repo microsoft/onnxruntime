@@ -305,8 +305,12 @@ class SessionState {
     return parent_;
   }
 
-  size_t GetUsedCachedprepackedWeightCounter() const {
-    return used_cached_pre_packed_weights_counter_;
+  size_t GetNumberOfPrepacksCounter() const {
+    return number_of_prepacks_counter_;
+  }
+
+  size_t GetUsedSharedPrePackedWeightCounter() const {
+    return used_shared_pre_packed_weights_counter_;
   }
 
  private:
@@ -481,9 +485,13 @@ class SessionState {
   }
 #endif
 
-  // Counter for number of times a cached version of the pre-packed weight corresponding to
+  // Counter for number of times pre-packing of weights was performed across kernels
+  // part the model
+  size_t number_of_prepacks_counter_ = 0;
+
+  // Counter for number of times a shared version of the pre-packed weight corresponding to
   // a constant initialized weight was used by the session state
-  size_t used_cached_pre_packed_weights_counter_ = 0;
+  size_t used_shared_pre_packed_weights_counter_ = 0;
 };
 
 }  // namespace onnxruntime

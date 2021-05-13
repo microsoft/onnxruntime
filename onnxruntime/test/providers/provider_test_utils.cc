@@ -756,7 +756,8 @@ void OpTester::Run(
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     const Graph::ResolveOptions& options,
-    /*out*/ size_t* used_cached_pre_packed_weights_counter) {
+    /*out*/ size_t* number_of_pre_packed_weights_counter,
+    /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
 #ifndef NDEBUG
@@ -848,8 +849,11 @@ void OpTester::Run(
         }
       }
 
-      InferenceSession session_object{so, GetEnvironment(),
-                                      add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
+      InferenceSession session_object{so, GetEnvironment()};
+
+      if (add_prepacked_shared_container_to_sessions_) {
+        session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_);
+      }
 
       ASSERT_TRUE(!execution_providers->empty())
           << "Empty execution providers vector.";
@@ -865,13 +869,20 @@ void OpTester::Run(
           run_options, feeds, output_names, provider_types);
 
       // After the model has initialized (happens in ExecuteModel),
-      // we should be able to tell how many cached prepacked weights
-      // this model has used.
-      // Populate the value if the user has request this information.
-      if (used_cached_pre_packed_weights_counter) {
-        *used_cached_pre_packed_weights_counter =
-            session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
+      // we should be able to tell how many constant initializers were pre-packed
+      // and out of these pre-packed ones how many of them used a "cached" version
+      // from the shared container.
+      // Populate these value if the user has requested this information.
+      if (number_of_pre_packed_weights_counter) {
+        *number_of_pre_packed_weights_counter =
+            session_object.GetSessionState().GetNumberOfPrepacksCounter();
       }
+
+      if (number_of_shared_pre_packed_weights_counter) {
+        *number_of_shared_pre_packed_weights_counter =
+            session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+      }
+
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -883,8 +894,11 @@ void OpTester::Run(
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
-        InferenceSession session_object{so, GetEnvironment(),
-                                        add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
+        InferenceSession session_object{so, GetEnvironment()};
+
+        if (add_prepacked_shared_container_to_sessions_) {
+          session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_);
+        }
 
         for (auto& custom_session_registry : custom_session_registries_)
           ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
@@ -964,12 +978,18 @@ void OpTester::Run(
             run_options, feeds, output_names, provider_type);
 
         // After the model has initialized (happens in ExecuteModel),
-        // we should be able to tell how many cached prepacked weights
-        // this model has used.
-        // Populate the value if the user has request this information.
-        if (used_cached_pre_packed_weights_counter) {
-          *used_cached_pre_packed_weights_counter =
-              session_object.GetSessionState().GetUsedCachedprepackedWeightCounter();
+        // we should be able to tell how many constant initializers were pre-packed
+        // and out of these pre-packed ones how many of them used a "cached" version
+        // from the shared container.
+        // Populate these value if the user has requested this information.
+        if (number_of_pre_packed_weights_counter) {
+          *number_of_pre_packed_weights_counter =
+              session_object.GetSessionState().GetNumberOfPrepacksCounter();
+        }
+
+        if (number_of_shared_pre_packed_weights_counter) {
+          *number_of_shared_pre_packed_weights_counter =
+              session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
         }
 
         cur_provider = "not set";
@@ -998,8 +1018,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
   run_options.run_log_verbosity_level = 1;
 
   Status status;
-  InferenceSession subgraph_session_object{so, GetEnvironment(),
-                                           add_prepacked_shared_container_to_sessions_ ? &prepacked_weights_container_ : nullptr};
+  InferenceSession subgraph_session_object{so, GetEnvironment()};
   ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
 

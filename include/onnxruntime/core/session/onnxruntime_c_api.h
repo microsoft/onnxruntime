@@ -1333,7 +1333,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(PrepackedWeightsContainer);
 
   /**
-     * Samr functionality offered by CreateSession() API except that a container that contains
+     * Same functionality offered by CreateSession() API except that a container that contains
      pre-packed weights' buffers is written into/read from by the created session.
      This is useful when used in conjunction with the AddInitializer() API which injects
      shared initializer info into sessions. Wherever possible, the pre-packed versions of these 
@@ -1341,11 +1341,30 @@ struct OrtApi {
      these instead of duplicating these in memory.
      * \env - OrtEnv instance instance
      * \model_path - model path
-     * \options - OrtSessionoptions instance
+     * \options - OrtSessionOptions instance
      * \prepacked_weights_container - OrtPrepackedWeightsContainer instance
-     * \out - created sessio instance
+     * \out - created session instance
      */
   ORT_API2_STATUS(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _Outptr_ OrtSession** out);
+
+  /**
+     * Same functionality offered by CreateSessionFromArray() API except that a container that contains
+     pre-packed weights' buffers is written into/read from by the created session.
+     This is useful when used in conjunction with the AddInitializer() API which injects
+     shared initializer info into sessions. Wherever possible, the pre-packed versions of these 
+     shared initializers are cached in this container so that multiple sessions can just re-use
+     these instead of duplicating these in memory.
+     * \env - OrtEnv instance instance
+     * \model_data - model byte array
+     * \model_data_length - the size of the model byte array
+     * \options - OrtSessionOptions instance
+     * \prepacked_weights_container - OrtPrepackedWeightsContainer instance
+     * \out - created session instance
+     */
+  ORT_API2_STATUS(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                  _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
 };

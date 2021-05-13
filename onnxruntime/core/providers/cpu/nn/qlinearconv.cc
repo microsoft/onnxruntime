@@ -24,13 +24,13 @@ class QLinearConv : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                 AllocatorPtr alloc) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                              int input_idx,
-                              /*out*/ bool& stored_weight) override;
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   static void ReorderFilter(const uint8_t* input,
@@ -90,9 +90,9 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                            AllocatorPtr alloc) {
+Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                            /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // Support packing the weight matrix.
@@ -126,7 +126,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
   const size_t group_output_channels = output_channels / group_count;
   const size_t kernel_dim = group_input_channels * kernel_size;
 
-  bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
@@ -161,11 +161,8 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
       }
 
       if (share_prepacked_weights) {
-        prepacked_weight_for_caching->buffers_.push_back(std::move(packed_W_buffer_));
-        prepacked_weight_for_caching->buffer_sizes_.push_back(packed_W_data_size);
-        prepacked_weight_for_caching->weights_sizes_.push_back(packed_W_size_);
-        prepacked_weight_for_caching->flags_.push_back(is_W_signed_);
-        prepacked_weight_for_caching->is_filled_ = true;
+        prepacked_weights->buffers_.push_back(std::move(packed_W_buffer_));
+        prepacked_weights->buffer_sizes_.push_back(packed_W_data_size);
       }
 
       is_W_packed_ = true;
@@ -173,16 +170,14 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
       return Status::OK();
     } else {
       if (share_prepacked_weights) {
-        prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
-        prepacked_weight_for_caching->buffer_sizes_.push_back(0);
-        prepacked_weight_for_caching->is_filled_ = true;
+        prepacked_weights->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+        prepacked_weights->buffer_sizes_.push_back(0);
       }
     }
   } else {
     if (share_prepacked_weights) {
-      prepacked_weight_for_caching->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
-      prepacked_weight_for_caching->buffer_sizes_.push_back(0);
-      prepacked_weight_for_caching->is_filled_ = true;
+      prepacked_weights->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+      prepacked_weights->buffer_sizes_.push_back(0);
     }
   }
 
@@ -199,10 +194,8 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
   if (share_prepacked_weights) {
-    prepacked_weight_for_caching->buffers_.push_back(std::move(reordered_W_buffer_));
-    prepacked_weight_for_caching->buffer_sizes_.push_back(reordered_w_data_size);
-    prepacked_weight_for_caching->flags_.push_back(is_W_signed_);
-    prepacked_weight_for_caching->is_filled_ = true;
+    prepacked_weights->buffers_.push_back(std::move(reordered_W_buffer_));
+    prepacked_weights->buffer_sizes_.push_back(reordered_w_data_size);
   }
 
   is_W_packed_ = true;
@@ -210,24 +203,21 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& /*out*/ i
   return Status::OK();
 }
 
-Status QLinearConv::StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                                         int input_idx,
-                                         /*out*/ bool& stored_weight) {
+Status QLinearConv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {
     return Status::OK();
   }
 
-  stored_weight = true;
+  used_shared_buffers = true;
 
-  is_W_packed_ = true;
-  is_W_signed_ = prepacked_weight.flags_[0];
-  if (prepacked_weight.buffers_.size() == 1) {  // This means that only packed_W_ exists
-    packed_W_buffer_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-    packed_W_size_ = prepacked_weight.weights_sizes_[0];
-  } else if (prepacked_weight.buffers_.size() == 2) {  // This means that only reordered_W_ exists
+  if (prepacked_buffers.size() == 1) {  // This means that only packed_W_ exists
+    packed_W_buffer_ = std::move(prepacked_buffers[0]);
+  } else if (prepacked_buffers.size() == 2) {  // This means that only reordered_W_ exists
     // Enforce that the first "placeholder" buffer is nullptr
-    ORT_ENFORCE(prepacked_weight.buffers_[0] == nullptr);
-    reordered_W_buffer_ = BufferUniquePtr(prepacked_weight.buffers_[1].get(), BufferDeleter(nullptr));
+    ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
+    reordered_W_buffer_ = std::move(prepacked_buffers[1]);
   }
 
   return Status::OK();

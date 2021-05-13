@@ -11,13 +11,13 @@ namespace Microsoft.ML.OnnxRuntime
     /// This class holds pre-packed weights of shared initializers to be shared across sessions using these initializers
     /// and thereby provide memory savings by sharing the same pre-packed versions of these shared initializers
     /// </summary>
-    public class PrepackedWeightsContainer : SafeHandle
+    public class PrePackedWeightsContainer : SafeHandle
     {
 
         /// <summary>
-        /// Constructs an empty PrepackedWeightsContainer
+        /// Constructs an empty PrePackedWeightsContainer
         /// </summary>
-        public PrepackedWeightsContainer()
+        public PrePackedWeightsContainer()
             : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreatePrepackedWeightsContainer(out handle));

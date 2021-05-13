@@ -438,9 +438,11 @@ class OpTester {
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            const Graph::ResolveOptions& resolve_options = {},
-           /*out*/ size_t* used_cached_pre_packed_weights_counter = nullptr);
+           /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
+           /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
-  std::vector<MLValue> GetFetches() { return fetches_; }
+  std::vector<MLValue>
+  GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 

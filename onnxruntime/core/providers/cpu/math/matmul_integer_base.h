@@ -11,9 +11,9 @@ class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weight_for_caching,
-                 AllocatorPtr alloc) override {
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override {
     is_packed = false;
 
     // only pack Matrix B
@@ -47,13 +47,10 @@ class MatMulIntegerBase : public OpKernel {
       packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
       MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
 
-      bool share_prepacked_weights = (prepacked_weight_for_caching != nullptr);
+      bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {
-        prepacked_weight_for_caching->buffers_.push_back(std::move(packed_b_));
-        prepacked_weight_for_caching->buffer_sizes_.push_back(packed_b_size);
-        prepacked_weight_for_caching->shapes_.push_back(b_shape_);
-        prepacked_weight_for_caching->flags_.push_back(b_is_signed_);
-        prepacked_weight_for_caching->is_filled_ = true;
+        prepacked_weights->buffers_.push_back(std::move(packed_b_));
+        prepacked_weights->buffer_sizes_.push_back(packed_b_size);
       }
 
       is_packed = true;
@@ -61,16 +58,14 @@ class MatMulIntegerBase : public OpKernel {
     return Status::OK();
   }
 
-  Status StorePrePackedWeight(const PrePackedWeights& prepacked_weight,
-                              int input_idx,
-                              /*out*/ bool& stored_weight) override {
-    stored_weight = false;
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override {
+    used_shared_buffers = false;
 
     if (input_idx == GetBIdx()) {
-      stored_weight = true;
-      packed_b_ = BufferUniquePtr(prepacked_weight.buffers_[0].get(), BufferDeleter(nullptr));
-      b_shape_ = prepacked_weight.shapes_[0];
-      b_is_signed_ = prepacked_weight.flags_[0];
+      used_shared_buffers = true;
+      packed_b_ = std::move(prepacked_buffers[0]);
     }
 
     return Status::OK();
