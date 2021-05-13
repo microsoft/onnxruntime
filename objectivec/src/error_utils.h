@@ -3,29 +3,31 @@
 
 #import <Foundation/Foundation.h>
 
+#include <exception>
+
 #include "core/session/onnxruntime_cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 void ORTSaveCodeAndDescriptionToError(int code, const char* description, NSError** error);
-void ORTSaveExceptionToError(const Ort::Exception& e, NSError** error);
+void ORTSaveOrtExceptionToError(const Ort::Exception& e, NSError** error);
+void ORTSaveExceptionToError(const std::exception& e, NSError** error);
 
-// API implementation wrapper macros to handle ORT C++ API exceptions
-// clang-format off
-#define ORT_OBJC_API_IMPL_BEGIN \
-  try {
-
-#define ORT_OBJC_API_IMPL_END(error, failure_return_value) \
-  } catch (const Ort::Exception& e) {                      \
-    ORTSaveExceptionToError(e, (error));                   \
-    return (failure_return_value);                         \
+// helper macros to catch and handle C++ exceptions
+#define ORT_OBJC_API_IMPL_CATCH(error, failure_return_value) \
+  catch (const Ort::Exception& e) {                          \
+    ORTSaveOrtExceptionToError(e, (error));                  \
+    return (failure_return_value);                           \
+  }                                                          \
+  catch (const std::exception& e) {                          \
+    ORTSaveExceptionToError(e, (error));                     \
+    return (failure_return_value);                           \
   }
-// clang-format on
 
-#define ORT_OBJC_API_IMPL_END_BOOL(error) \
-  ORT_OBJC_API_IMPL_END(error, NO)
+#define ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error) \
+  ORT_OBJC_API_IMPL_CATCH(error, NO)
 
-#define ORT_OBJC_API_IMPL_END_NULLABLE(error) \
-  ORT_OBJC_API_IMPL_END(error, nil)
+#define ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error) \
+  ORT_OBJC_API_IMPL_CATCH(error, nil)
 
 NS_ASSUME_NONNULL_END
