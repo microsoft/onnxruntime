@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
@@ -138,6 +139,69 @@ TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
                                      B_dims,
                                      "testdata/dynamic_quantize_matmul_uint8.onnx",
                                      true /*is_matrix_b_constant*/);
+}
+
+TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       const std::vector<int64_t>& weights_shape,
+                       const std::vector<int64_t>& b_scale_zp_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<int8_t>(weights_shape,
+                                                     std::numeric_limits<int8_t>::min() / 2,
+                                                     std::numeric_limits<int8_t>::max() / 2);
+
+      // add DynamicQuantizeLinear
+      auto* dql_output = builder.MakeIntermediate();
+      auto* dql_scale = builder.MakeIntermediate();
+      auto* dql_zp = builder.MakeIntermediate();
+      builder.AddNode("DynamicQuantizeLinear", {input_arg}, {dql_output, dql_scale, dql_zp});
+
+      // add MatMulInteger
+      auto* matmul_integer_output = builder.MakeIntermediate();
+      auto* B_zp_arg = builder.MakeInput<int8_t>(b_scale_zp_shape,
+                                                 std::numeric_limits<int8_t>::min() / 2,
+                                                 std::numeric_limits<int8_t>::max() / 2);
+      builder.AddNode("MatMulInteger", {dql_output, weight, dql_zp, B_zp_arg}, {matmul_integer_output});
+
+      // add Cast
+      auto* cast_output = builder.MakeIntermediate();
+      Node& cast_node = builder.AddNode("Cast", {matmul_integer_output}, {cast_output});
+      cast_node.AddAttribute("to", (int64_t)1);
+
+      // add Mul1
+      auto* B_scale_arg = builder.MakeInput<float>(b_scale_zp_shape, -0.1f, 0.f);
+      auto* mul1_output = builder.MakeIntermediate();
+      builder.AddNode("Mul", {dql_scale, B_scale_arg}, {mul1_output});
+
+      // add Mul2
+      builder.AddNode("Mul", {mul1_output, cast_output}, {output_arg});
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
+  };
+
+  // Scale Scalar
+  test_case({5, 4, 3}, {3, 4}, {1});
+
+  // 2D B per-column
+  test_case({5, 4, 3}, {3, 4}, {4});
+  test_case({5, 4, 3}, {3, 4}, {1, 4});
+
+  // ND B per-column
+  test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
 }
 
 }  // namespace test

@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
@@ -134,6 +135,133 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test) {
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test) {
   RunMatMulIntegerToFloatTest<int8_t, false, true>("testdata/matmul_integer_to_float_int8_bias.onnx");
   RunMatMulIntegerToFloatTest<uint8_t, false, true>("testdata/matmul_integer_to_float_uint8_bias.onnx");
+}
+
+TEST(MatMulIntegerToFloat, MatMulInteger_Nuphar) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       const std::vector<int64_t>& weights_shape,
+                       const std::vector<int64_t>& scale_shape_1,
+                       const std::vector<int64_t>& scale_shape_2) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<int8_t>(weights_shape,
+                                                     std::numeric_limits<int8_t>::min() / 2,
+                                                     std::numeric_limits<int8_t>::max() / 2);
+
+      // add MatMulInteger
+      auto* matmul_integer_output = builder.MakeIntermediate();
+      builder.AddNode("MatMulInteger", {input_arg, weight}, {matmul_integer_output});
+
+      // add Cast
+      auto* cast_output = builder.MakeIntermediate();
+      Node& cast_node = builder.AddNode("Cast", {matmul_integer_output}, {cast_output});
+      cast_node.AddAttribute("to", (int64_t)1);
+
+      // add Mul1
+      auto* mul1_input1_arg = builder.MakeInput<float>(scale_shape_1, -0.1f, 0.f);
+      auto* mul1_input2_arg = builder.MakeInput<float>(scale_shape_2, -0.1f, 0.f);
+      auto* mul1_output = builder.MakeIntermediate();
+      builder.AddNode("Mul", {mul1_input1_arg, mul1_input2_arg}, {mul1_output});
+
+      // add Mul2
+      builder.AddNode("Mul", {mul1_output, cast_output}, {output_arg});
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
+  };
+
+  // Scale Scalar
+  test_case({5, 4, 3}, {3, 4}, {1}, {1});
+
+  // B per-column
+  test_case({5, 4, 3}, {3, 4}, {1}, {4});
+
+  // A per-row, B per-column
+  test_case({5, 4, 3}, {3, 4}, {5, 4, 1}, {4});
+  test_case({5, 4, 3}, {3, 4}, {5, 4, 1}, {1, 4});
+  test_case({5, 4, 3}, {3, 4}, {1, 4}, {5, 4, 1});
+  test_case({5, 4, 3}, {3, 4}, {4}, {5, 4, 1});
+
+  // A per-row, B per-column, and offset
+  test_case({15, 14, 13}, {15, 13, 27}, {15, 14, 1}, {15, 1, 27});
+  test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27}, {15, 14, 1});
+}
+
+TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       const std::vector<int64_t>& weights_shape,
+                       const std::vector<int64_t>& b_scale_zp_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<int8_t>(weights_shape,
+                                                     std::numeric_limits<int8_t>::min() / 2,
+                                                     std::numeric_limits<int8_t>::max() / 2);
+
+      // add MatMulInteger
+      auto* matmul_integer_output = builder.MakeIntermediate();
+      auto* A_zp_arg = builder.MakeInput<uint8_t>({1},
+                                                  std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+      auto* B_zp_arg = builder.MakeInput<int8_t>(b_scale_zp_shape,
+                                                 std::numeric_limits<int8_t>::min() / 2,
+                                                 std::numeric_limits<int8_t>::max() / 2);
+      builder.AddNode("MatMulInteger", {input_arg, weight, A_zp_arg, B_zp_arg}, {matmul_integer_output});
+
+      // add Cast
+      auto* cast_output = builder.MakeIntermediate();
+      Node& cast_node = builder.AddNode("Cast", {matmul_integer_output}, {cast_output});
+      cast_node.AddAttribute("to", (int64_t)1);
+
+      // add Mul1
+      auto* A_scale_arg = builder.MakeInput<float>({1}, -0.1f, 0.f);
+      auto* B_scale_arg = builder.MakeInput<float>(b_scale_zp_shape, -0.1f, 0.f);
+      auto* mul1_output = builder.MakeIntermediate();
+      builder.AddNode("Mul", {A_scale_arg, B_scale_arg}, {mul1_output});
+
+      // add Mul2
+      builder.AddNode("Mul", {mul1_output, cast_output}, {output_arg});
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
+  };
+
+  // Scale Scalar
+  test_case({5, 4, 3}, {3, 4}, {1});
+
+  // 2D B per-column
+  test_case({5, 4, 3}, {3, 4}, {4});
+  test_case({5, 4, 3}, {3, 4}, {1, 4});
+
+  // ND B per-column
+  test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
 }
 
 }  // namespace test
