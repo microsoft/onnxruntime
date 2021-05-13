@@ -1407,14 +1407,14 @@ if (onnxruntime_USE_CUDA)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
       # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+      # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+      # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
 
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
+      # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
+      # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+        # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
       endif()
     endif()
   endif()
@@ -1423,7 +1423,7 @@ if (onnxruntime_USE_CUDA)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
   endif()
   if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC -threads 6")
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
@@ -1532,7 +1532,7 @@ if (onnxruntime_ENABLE_TRAINING)
         NAMES ${NCCL_LIBNAME}
         HINTS
         ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
-        ${onnxruntime_NCCL_HOME}/lib
+        ${onnxruntime_NCCL_HOME}/lib64
         $ENV{CUDA_ROOT}/lib64)
 
       include(FindPackageHandleStandardArgs)

@@ -313,6 +313,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
         compute_status = p_op_kernel->Compute(&op_kernel_context);
+        // std::cout << node.OpType() << " : " << p_op_kernel->Node().GetExecutionProviderType() << std::endl;
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {

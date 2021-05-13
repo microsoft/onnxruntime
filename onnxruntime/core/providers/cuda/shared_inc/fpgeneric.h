@@ -412,6 +412,25 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
 }
 #endif
 
+template<typename LayoutInputA, typename LayoutInputB>
+cudaError_t cutlassGemmHelper(int m, int n, int k,
+                              const half* A, int lda,
+                              const half* B, int ldb,
+                              half* C, int ldc,
+                              float alpha, // float beta,
+                              cudaStream_t stream);
+
+template<typename LayoutInputA, typename LayoutInputB>
+cudaError_t cutlassGemmStridedBatchedHelper(int m, int n, int k,
+                                            const half* A, int lda,
+                                            long long int strideA,
+                                            const half* B, int ldb,
+                                            long long int strideB,
+                                            half* C, int ldc,
+                                            long long int strideC,
+                                            int batch_count,
+                                            float alpha, // float beta,
+                                            cudaStream_t stream);
 // transpose using geam
 inline cublasStatus_t cublasTransposeHelper(cudaStream_t, cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return cublasSgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);

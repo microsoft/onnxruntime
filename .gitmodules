@@ -75,3 +75,6 @@
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
 	branch = 2.0.13
+[submodule "cmake/external/cutlass"]
+	path = cmake/external/cutlass
+	url = https://github.com/NVIDIA/cutlass.git

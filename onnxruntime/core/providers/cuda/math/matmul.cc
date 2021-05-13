@@ -6,6 +6,8 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 
+#include "cutlass/layout/matrix.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -38,11 +40,11 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       MatMul<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(float)
+// REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-REGISTER_KERNEL_TYPED(BFloat16)
+// REGISTER_KERNEL_TYPED(BFloat16)
 #endif
 
 // StridedBatchedGemm can be used for the following GEMM computation
@@ -119,45 +121,149 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        Base::CublasHandle(),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
-        ldb,
-        reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
-        lda,
-        &zero,
-        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-        ldc,
-        device_prop));
+    // CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    //     Base::CublasHandle(),
+    //     transB,
+    //     transA,
+    //     static_cast<int>(helper.N()),
+    //     static_cast<int>(helper.M()),
+    //     static_cast<int>(helper.K()),
+    //     &alpha,
+    //     reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+    //     ldb,
+    //     reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+    //     lda,
+    //     &zero,
+    //     reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+    //     ldc,
+    //     device_prop));
+
+    if (!transa && !transb) {
+      cutlassGemmHelper<cutlass::layout::RowMajor, cutlass::layout::RowMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()), lda,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()), ldb,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()), ldc,
+                                                                              alpha_,
+                                                                              Stream());
+    } else if (!transa && transb) {
+      cutlassGemmHelper<cutlass::layout::RowMajor, cutlass::layout::ColumnMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()), lda,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()), ldb,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()), ldc,
+                                                                              alpha_,
+                                                                              Stream());
+    } else if (transa && !transb) {
+      cutlassGemmHelper<cutlass::layout::ColumnMajor, cutlass::layout::RowMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()), lda,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()), ldb,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()), ldc,
+                                                                              alpha_,
+                                                                              Stream());
+    } else {
+      cutlassGemmHelper<cutlass::layout::ColumnMajor, cutlass::layout::ColumnMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()), lda,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()), ldb,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()), ldc,
+                                                                              alpha_,
+                                                                              Stream());
+    }
+
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, stride_A, stride_B, stride_C, batch_count)) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
-                                                          transB,
-                                                          transA,
-                                                          static_cast<int>(helper.N()),
-                                                          static_cast<int>(helper.M()),
-                                                          static_cast<int>(helper.K()),
-                                                          &alpha,
-                                                          reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
-                                                          ldb,
-                                                          stride_B,
-                                                          reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
-                                                          lda,
-                                                          stride_A,
-                                                          &zero,
-                                                          reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-                                                          ldc,
-                                                          stride_C,
-                                                          static_cast<int>(batch_count),
-                                                          device_prop));
+    // CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
+    //                                                       transB,
+    //                                                       transA,
+    //                                                       static_cast<int>(helper.N()),
+    //                                                       static_cast<int>(helper.M()),
+    //                                                       static_cast<int>(helper.K()),
+    //                                                       &alpha,
+    //                                                       reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+    //                                                       ldb,
+    //                                                       stride_B,
+    //                                                       reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+    //                                                       lda,
+    //                                                       stride_A,
+    //                                                       &zero,
+    //                                                       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+    //                                                       ldc,
+    //                                                       stride_C,
+    //                                                       static_cast<int>(batch_count),
+    //                                                       device_prop));
 
+    if (!transa && !transb) {
+      cutlassGemmStridedBatchedHelper<cutlass::layout::RowMajor, cutlass::layout::RowMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                                              lda,
+                                                                              stride_A,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                                              ldb,
+                                                                              stride_B,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                                              ldc,
+                                                                              stride_C,
+                                                                              static_cast<int>(batch_count),
+                                                                              alpha_,
+                                                                              Stream());
+    } else if (!transa && transb) {
+      cutlassGemmStridedBatchedHelper<cutlass::layout::RowMajor, cutlass::layout::ColumnMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                                              lda,
+                                                                              stride_A,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                                              ldb,
+                                                                              stride_B,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                                              ldc,
+                                                                              stride_C,
+                                                                              static_cast<int>(batch_count),
+                                                                              alpha_,
+                                                                              Stream());
+    } else if (transa && !transb) {
+      cutlassGemmStridedBatchedHelper<cutlass::layout::ColumnMajor, cutlass::layout::RowMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                                              lda,
+                                                                              stride_A,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                                              ldb,
+                                                                              stride_B,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                                              ldc,
+                                                                              stride_C,
+                                                                              static_cast<int>(batch_count),
+                                                                              alpha_,
+                                                                              Stream());
+    } else {
+      cutlassGemmStridedBatchedHelper<cutlass::layout::ColumnMajor, cutlass::layout::ColumnMajor>(static_cast<int>(helper.M()),
+                                                                              static_cast<int>(helper.N()),
+                                                                              static_cast<int>(helper.K()),
+                                                                              reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                                              lda,
+                                                                              stride_A,
+                                                                              reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                                              ldb,
+                                                                              stride_B,
+                                                                              reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                                              ldc,
+                                                                              stride_C,
+                                                                              static_cast<int>(batch_count),
+                                                                              alpha_,
+                                                                              Stream());
+    }
     return Status::OK();
   }
 
