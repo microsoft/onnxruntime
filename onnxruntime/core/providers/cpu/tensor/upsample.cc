@@ -84,7 +84,7 @@ static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
     input_mapping[output_dim0_idx] = input_dim0_idx;
   }
 
-  return std::move(input_mapping);
+  return input_mapping;
 }
 
 static std::vector<std::vector<int64_t>>
@@ -131,7 +131,7 @@ UpsampleNearestSetupInputMappings(int64_t n_dim,
     }
   }
 
-  return std::move(input_mappings);
+  return input_mappings;
 };
 
 template <typename T>
@@ -518,7 +518,7 @@ static BilinearParams SetupUpsampleBilinear(int64_t input_height,
     }
   }
 
-  return std::move(p);
+  return p;
 }
 
 template <typename T>
@@ -733,7 +733,7 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
     }
   }
 
-  return std::move(p);
+  return p;
 }
 
 // The following method supports a 5-D input in 'Linear mode'
