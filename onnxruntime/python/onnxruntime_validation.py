@@ -113,8 +113,9 @@ def validate_build_package_info():
                 # TODO: rcom
                 pass
 
-        except: # noqa
+        except Exception as e: # noqa
             warnings.warn('WARNING: failed to collect onnxruntime version and build info')
+            print(e)
 
     if import_ortmodule_exception:
         raise import_ortmodule_exception
