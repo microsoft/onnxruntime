@@ -741,11 +741,9 @@ void TestQuantizedAttentionPastState(int64_t batch,
   constexpr int32_t weight_range = weight_max - weight_min;
 
   std::vector<WeightT> weight_zero_point(weight_scale_zp_size);
-  std::for_each(weight_zero_point.begin(),
-                weight_zero_point.end(),
-                [&random, &weight_min, &weight_max](WeightT& zp) {
-                  zp = static_cast<WeightT>(random.Uniform<int32_t>({1}, weight_min, weight_max)[0]);
-                });
+  for(auto& zp : weight_zero_point) {
+    zp = static_cast<WeightT>(random.Uniform<int32_t>({1}, weight_min, weight_max)[0]);
+  }
 
   WeightT weight_mean = (weight_min + weight_max) / 2 + 1;
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
