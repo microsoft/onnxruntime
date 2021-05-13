@@ -16,14 +16,16 @@ namespace torch {
 
 template <>
 void ObjectPointer<PyObject>::free() {
-  if (ptr) {
-    Py_DECREF(ptr);
-  }
+  Py_XDECREF(ptr);
 }
 
-// Holder of GIL (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock) state.
-// It automatically acquire the state upon creation and
-// release the acquired state after being destroyed.
+// Holder of GIL
+// (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock)
+// state. It automatically acquire the state upon creation and release the
+// acquired state after being destroyed.
+// This class is a standard design pattern for running Python function from
+// non-Python-created threads.
+// See https://docs.python.org/3/c-api/init.html#non-python-created-threads for details.
 class GilGuard {
  public:
   GilGuard() : state_(PyGILState_Ensure()){};
@@ -156,7 +158,6 @@ void InvokeRunner(
     PyObject* callback_runner,
     PyObject* args,
     std::vector<void*>& returned_args) {
-  GilGuard guard;
   PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
   if (PyErr_Occurred()) {
     PyErr_Print();
@@ -261,6 +262,8 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args,
     bool is_training_mode) {
+  // Python-related calls should happen only if guard is alive.
+  GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
   Invoke(
       runner,
@@ -282,6 +285,8 @@ void TorchProxy::Backward(
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
     std::vector<void*>& returned_args) {
+  // Python-related calls should happen only if guard is alive.
+  GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
   Invoke(
       runner,
