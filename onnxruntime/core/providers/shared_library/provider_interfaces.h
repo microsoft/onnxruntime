@@ -46,6 +46,10 @@ class PassThrough;
 class YieldOp;
 }  // namespace contrib
 
+namespace training {
+class DistributedRunContext;
+}
+
 template <typename T, typename TResult>
 struct IteratorHolder {
   IteratorHolder(std::unique_ptr<T>&& p) : p_{std::move(p)} {}
@@ -784,6 +788,8 @@ struct ProviderHost {
   virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
+
+  virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 #endif
 };
