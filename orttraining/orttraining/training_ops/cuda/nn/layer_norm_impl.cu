@@ -306,7 +306,7 @@ __global__ void cuComputeGradInput(
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     if (use_gamma) {
-#ifndef HIP_VERSION
+#ifndef __HIP_PLATFORM_HCC__
       int l = 4 * thrx;
       for (; l + 3 < n2; l += 4 * numx) {
         for (int k = 0; k < 4; ++k) {
@@ -349,7 +349,7 @@ __global__ void cuComputeGradInput(
       }
 #endif
     } else {
-#ifndef HIP_VERSION
+#ifndef __HIP_PLATFORM_HCC__
       int l = 4 * thrx;
       for (; l + 3 < n2; l += 4 * numx) {
         for (int k = 0; k < 4; ++k) {
@@ -538,7 +538,7 @@ void HostLayerNormGradient(
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min<unsigned int>(static_cast<unsigned int>(n1), static_cast<unsigned int>(maxGridY)), 1);
   dim3 threads1(warp_size, 4, 1);
-#ifdef HIP_VERSION
+#ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100
   threads1.y = 2;
 #endif

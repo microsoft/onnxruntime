@@ -365,7 +365,7 @@ void HostApplyLayerNorm(
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
 
   dim3 threads(warp_size, 4, 1);
-#ifdef HIP_VERSION
+#ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100
   threads.y = 1;
 #endif
