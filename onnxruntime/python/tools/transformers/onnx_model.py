@@ -85,6 +85,16 @@ class OnnxModel:
                             graph_queue.append(g)
         return all_graphs
 
+    def get_graph_by_node(self, node):
+        for graph in self.get_all_graphs():
+            if node in graph.node:
+                return graph
+
+    def get_graph_by_name(self, graph_name):
+        for graph in self.get_all_graphs():
+            if graph_name == graph.name:
+                return graph
+
     def remove_node(self, node):
         for graph in self.get_all_graphs():
             if node in graph.node:
@@ -97,8 +107,14 @@ class OnnxModel:
     def add_node(self, node):
         self.model.graph.node.extend([node])
 
-    def add_nodes(self, nodes_to_add):
-        self.model.graph.node.extend(nodes_to_add)
+    def add_nodes(self, nodes_to_add, node_name_to_graph_name = None):
+        if node_name_to_graph_name is None:
+            self.model.graph.node.extend(nodes_to_add)
+        else:
+            for node in nodes_to_add:
+                graph_name = node_name_to_graph_name[node.name]
+                graph = self.get_graph_by_name(graph_name)
+                graph.node.extend([node])
 
     def add_initializer(self, tensor):
         self.model.graph.initializer.extend([tensor])

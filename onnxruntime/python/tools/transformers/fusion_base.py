@@ -5,6 +5,7 @@
 from logging import getLogger
 from onnx_model import OnnxModel
 from typing import Union, List
+from onnx import GraphProto
 
 logger = getLogger(__name__)
 
@@ -22,7 +23,8 @@ class Fusion:
         self.nodes_to_remove: List = []
         self.nodes_to_add: List = []
         self.prune_graph: bool = False
-        self.node_to_graph: dict = {}
+        self.node_name_to_graph_name: dict = {}
+        self.this_graph_name: str = None
 
     def apply(self):
         logger.debug(f"start {self.description} fusion...")
@@ -32,6 +34,7 @@ class Fusion:
         # This assumes that two search ops will not be fused at same time!
         for search_op_type in self.search_op_types:
             for node in self.model.get_nodes_by_op_type(search_op_type):
+                self.this_graph_name = (self.model.get_graph_by_node(node)).name
                 self.fuse(node, input_name_to_nodes, output_name_to_node)
 
         op_list = [node.op_type for node in self.nodes_to_add]
@@ -40,7 +43,7 @@ class Fusion:
             logger.info(f"Fused {self.description} count: {count}")
 
         self.model.remove_nodes(self.nodes_to_remove)
-        self.model.add_nodes(self.nodes_to_add)
+        self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
 
         if self.prune_graph:
             self.model.prune_graph()
