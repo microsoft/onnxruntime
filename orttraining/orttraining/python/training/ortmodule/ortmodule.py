@@ -101,6 +101,8 @@ class ORTModule(torch.nn.Module):
         self._isTrain = isTrain
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
         """Override original method to delegate execution to the base module"""
 
         # Override the state_dict() method so that the state dict key names
@@ -110,26 +112,40 @@ class ORTModule(torch.nn.Module):
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
                         strict: bool = True):
-        """Override original method to delegate execution to the base module"""
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
 
+        """Override original method to delegate execution to the base module"""
         # Override the load_state_dict() method so that the loaded state dict
         # key names does not need to contain the _flattened_module._original_module prefix
         return self._original_module.load_state_dict(
             state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support register_buffer")
+
         """Override original method to delegate execution to the base module"""
         self._original_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support register_parameter")
+
         """Override original method to delegate execution to the base module"""
         self._original_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support get_parameter")
+
         """Override original method to delegate execution to the base module"""
         return self._original_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support get_buffer")
+
         """Override original method to delegate execution to the base module"""
         return self._original_module.get_buffer(target)
 
@@ -141,15 +157,24 @@ class ORTModule(torch.nn.Module):
             """Override original method to delegate execution to the base module"""
             yield from self._original_module.parameters(recurse=recurse)
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:        
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support named_parameters")
+
         """Override original method to delegate execution to the base module"""
         yield from self._original_module.named_parameters(prefix=prefix, recurse=recurse)
 
-    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
+    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:        
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support buffers")
+
         """Override original method to delegate execution to the base module"""
         yield from self._original_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+        if not self._original_module:
+            raise NotSupported("ORTModule crated from ONNX model doesn't support named_buffers")
+
         """Override original method to delegate execution to the base module"""
         yield from self._original_module.named_buffers(prefix=prefix, recurse=recurse)
 
