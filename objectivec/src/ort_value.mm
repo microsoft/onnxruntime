@@ -114,7 +114,7 @@ ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
   const size_t elementSize = SizeOfCAPITensorElementType(tensorTypeAndShapeInfo.GetElementType());
   size_t rawDataLength;
   if (!SafeMultiply(elementCount, elementSize, rawDataLength)) {
-    throw Ort::Exception{"failed to compute tensor data length", ORT_RUNTIME_EXCEPTION};
+    ORT_CXX_API_THROW("failed to compute tensor data length", ORT_RUNTIME_EXCEPTION);
   }
 
   void* rawData;

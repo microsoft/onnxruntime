@@ -75,7 +75,7 @@ auto SelectAndTransform(
   const auto it = std::find_if(
       std::begin(container), std::end(container), select_fn);
   if (it == std::end(container)) {
-    throw Ort::Exception{not_found_msg, ORT_NOT_IMPLEMENTED};
+    ORT_CXX_API_THROW(not_found_msg, ORT_NOT_IMPLEMENTED);
   }
   return transform_fn(*it);
 }

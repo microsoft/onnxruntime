@@ -24,13 +24,13 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param env The ORT Environment instance.
  * @param path The path to the ONNX model.
- * @param sessionOptions Session configuration options.
+ * @param sessionOptions Optional session configuration options.
  * @param[out] error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                            modelPath:(NSString*)path
-                      sessionOptions:(ORTSessionOptions*)sessionOptions
+                      sessionOptions:(nullable ORTSessionOptions*)sessionOptions
                                error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 /**
@@ -39,13 +39,13 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param inputs Dictionary of input names to input ORT values.
  * @param outputs Dictionary of output names to output ORT values.
- * @param runOptions Run configuration options.
+ * @param runOptions Optional run configuration options.
  * @param[out] error Optional error information set if an error occurs.
  * @return Whether the model was run successfully.
  */
 - (BOOL)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
               outputs:(NSDictionary<NSString*, ORTValue*>*)outputs
-           runOptions:(ORTRunOptions*)runOptions
+           runOptions:(nullable ORTRunOptions*)runOptions
                 error:(NSError**)error;
 
 /**
@@ -54,14 +54,14 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param inputs Dictionary of input names to input ORT values.
  * @param outputNames Set of output names.
- * @param runOptions Run configuration options.
+ * @param runOptions Optional run configuration options.
  * @param[out] error Optional error information set if an error occurs.
  * @return A dictionary of output names to output ORT values with the outputs
  *         requested in `outputNames`, or nil if an error occurs.
  */
 - (nullable NSDictionary<NSString*, ORTValue*>*)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
                                                   outputNames:(NSSet<NSString*>*)outputNames
-                                                   runOptions:(ORTRunOptions*)runOptions
+                                                   runOptions:(nullable ORTRunOptions*)runOptions
                                                         error:(NSError**)error;
 
 @end
