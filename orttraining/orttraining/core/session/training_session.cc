@@ -711,7 +711,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
+                                                        const TrainingGraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -735,7 +735,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 const TrainingGraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +

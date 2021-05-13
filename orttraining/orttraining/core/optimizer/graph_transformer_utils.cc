@@ -47,6 +47,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
@@ -58,7 +59,7 @@ namespace transformer_utils {
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
-    const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
+    const TrainingGraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
@@ -74,7 +75,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
       rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-      rule_transformer->Register(std::make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(std::make_unique<BatchNormReplacement>());
       rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
       rule_transformer->Register(std::make_unique<ExpandElimination>());
       rule_transformer->Register(std::make_unique<CastElimination>());
@@ -118,10 +119,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
       }
-      if (config.propagate_cast_ops_level >= 0) {
-        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
-        transformers.emplace_back(std::make_unique<PropagateCastOps>(static_cast<size_t>(config.propagate_cast_ops_level),
-                                                                             config.propagate_cast_ops_allow,
+      if (config.propagate_cast_ops_config.level >= 0) {
+        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+        transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
+                                                                             static_cast<size_t>(config.propagate_cast_ops_config.level),
+                                                                             config.propagate_cast_ops_config.allow,
                                                                              cuda_execution_provider));
       }
     } break;

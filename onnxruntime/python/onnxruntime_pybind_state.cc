@@ -28,7 +28,8 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack/dlpack_converter.h"
+#include "core/dlpack/dlpack_converter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 // execution provider factory creator headers
@@ -946,6 +947,15 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+#ifdef ENABLE_TRAINING
+   m.def(
+      "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
+        size_t aten_op_executor_address_int;
+        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+        void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+        contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
+      });
+#endif
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
@@ -1482,13 +1492,13 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
+        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
         DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
-        OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+        OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
         // Make sure this capsule will never be used again.
         PyCapsule_SetName(data.ptr(), "used_dltensor");
         return ort_value;
