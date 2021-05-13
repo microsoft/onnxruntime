@@ -390,16 +390,6 @@ if enable_training:
                     print(
                         "Error getting cudart version. ",
                         "did not find any cudart library" if len(cudart_versions) == 0 else "found multiple cudart libraries")
-
-                # do not need to record cudnn version.
-                # at runtime, we will validate existence of a cudnn that cupport the cuda_version
-                # cudnn_versions = find_cudnn_versions(build_env=True)
-                # if len(cudnn_versions) == 1:
-                #     f.write("cudnn_version = {}\n".format(cudnn_versions[0]))
-                # else:
-                #     print(
-                #         "Error getting cudnn version. ",
-                #         "did not find any cudnn library" if len(cudnn_versions) == 0 else "found multiple cudnn libraries")
             else:
                 # TODO: rocm
                 pass
