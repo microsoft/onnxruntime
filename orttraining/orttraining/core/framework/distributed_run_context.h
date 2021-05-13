@@ -85,7 +85,7 @@ class DistributedRunContext {
     return DistributedRunContext::GetOrCreateInstance();
   }
 #else
-  DistributedRunContext& GetInstance() { return Provider_Gethost()->GetDistributedRunContextInstance; }
+  DistributedRunContext& GetInstance() { return Provider_GetHost()->GetDistributedRunContextInstance(); }
 #endif
   /* SHORTCUT FUNCTIONS START */
 
