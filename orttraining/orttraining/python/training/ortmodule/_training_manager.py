@@ -176,7 +176,7 @@ class TrainingManager(GraphExecutionManager):
                 # Append gradients of initializer to results
                 # Go over each initializer, check if it required grad and append to results accordingly
                 initializer_index = num_user_input_grads
-                for initializer_name, _ in self._flattened_module.named_parameters():
+                for initializer_name, _ in self._onnx_model_parameters if self._onnx_model_parameters else self._flattened_module.named_parameters():
                     if initializer_name in self._graph_info.initializer_names_to_train:
                         results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
                         initializer_index += 1
@@ -193,7 +193,7 @@ class TrainingManager(GraphExecutionManager):
                                                     if name in self._graph_info.initializer_names] if self._flattened_module else \
                                                     [p[1] for p in self._onnx_model_parameters],
                                                 self._graph_info.user_input_names,
-                                                self._input_info.names,
+                                                self._input_info,
                                                 self._flattened_module.named_buffers() if self._flattened_module else {},
                                                 inputs,
                                                 kwargs,
