@@ -23,20 +23,27 @@ NS_ASSUME_NONNULL_BEGIN
                            modelPath:(NSString*)path
                       sessionOptions:(nullable ORTSessionOptions*)sessionOptions
                                error:(NSError**)error {
-  self = [super init];
-  if (self) {
-    try {
-      _session = Ort::Session{[env CXXAPIOrtEnv],
-                              path.UTF8String,
-                              sessionOptions != nil
-                                  ? [sessionOptions CXXAPIOrtSessionOptions]
-                                  : Ort::SessionOptions{}};
-    } catch (const Ort::Exception& e) {
-      ORTSaveExceptionToError(e, error);
-      self = nil;
-    }
+  if ((self = [super init]) == nil) {
+    return nil;
   }
-  return self;
+
+  try {
+    if (!sessionOptions) {
+      sessionOptions = [[ORTSessionOptions alloc] initWithError:error];
+      if (!sessionOptions) {
+        return nil;
+      }
+    }
+
+    _session = Ort::Session{[env CXXAPIOrtEnv],
+                            path.UTF8String,
+                            [sessionOptions CXXAPIOrtSessionOptions]};
+
+    return self;
+  } catch (const Ort::Exception& e) {
+    ORTSaveExceptionToError(e, error);
+    return nil;
+  }
 }
 
 - (BOOL)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
@@ -44,6 +51,13 @@ NS_ASSUME_NONNULL_BEGIN
            runOptions:(nullable ORTRunOptions*)runOptions
                 error:(NSError**)error {
   ORT_OBJC_API_IMPL_BEGIN
+
+  if (!runOptions) {
+    runOptions = [[ORTRunOptions alloc] initWithError:error];
+    if (!runOptions) {
+      return NO;
+    }
+  }
 
   std::vector<const char*> inputNames, outputNames;
   std::vector<const OrtValue*> inputValues;
@@ -59,10 +73,7 @@ NS_ASSUME_NONNULL_BEGIN
     outputValues.push_back(static_cast<OrtValue*>([outputs[outputName] CXXAPIOrtValue]));
   }
 
-  Ort::ThrowOnError(Ort::GetApi().Run(*_session,
-                                      runOptions != nil
-                                          ? [runOptions CXXAPIOrtRunOptions]
-                                          : Ort::RunOptions{},
+  Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
                                       inputNames.data(), inputValues.data(), inputNames.size(),
                                       outputNames.data(), outputNames.size(), outputValues.data()));
 
@@ -76,6 +87,13 @@ NS_ASSUME_NONNULL_BEGIN
                                                    runOptions:(nullable ORTRunOptions*)runOptions
                                                         error:(NSError**)error {
   ORT_OBJC_API_IMPL_BEGIN
+
+  if (!runOptions) {
+    runOptions = [[ORTRunOptions alloc] initWithError:error];
+    if (!runOptions) {
+      return nil;
+    }
+  }
 
   NSArray<NSString*>* outputNameArray = outputNameSet.allObjects;
 
@@ -93,10 +111,7 @@ NS_ASSUME_NONNULL_BEGIN
     outputValues.push_back(nullptr);
   }
 
-  Ort::ThrowOnError(Ort::GetApi().Run(*_session,
-                                      runOptions != nil
-                                          ? [runOptions CXXAPIOrtRunOptions]
-                                          : Ort::RunOptions{},
+  Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
                                       inputNames.data(), inputValues.data(), inputNames.size(),
                                       outputNames.data(), outputNames.size(), outputValues.data()));
 
