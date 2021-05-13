@@ -55,6 +55,7 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #endif
 
 #ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
@@ -516,6 +517,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllTensorAndSequenceTensorTypes(); }
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
@@ -866,6 +868,8 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 
 #ifdef ENABLE_TRAINING
+  void ATenOpBase__Init(contrib::ATenOpBase* p, const OpKernelInfo& info, bool is_backward) override { return p->ATenOpBase::Init(info, is_backward); }
+  Status ATenOpBase__Compute(const contrib::ATenOpBase* p, OpKernelContext* p_ctx) override { return p->ATenOpBase::Compute(p_ctx); }
   void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
   void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
   Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }

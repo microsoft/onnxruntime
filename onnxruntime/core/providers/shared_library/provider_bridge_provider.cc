@@ -337,6 +337,7 @@ std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
 #endif
 
 #ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #endif
@@ -470,6 +471,9 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
+void ATenOpBase::Init(const OpKernelInfo& info, bool is_backward) { return g_host->ATenOpBase__Init(this, info, is_backward); }
+Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOpBase__Compute(this, p_ctx); }
+
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }

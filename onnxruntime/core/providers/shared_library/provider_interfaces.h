@@ -38,6 +38,7 @@ class PhiloxGenerator;
 class Einsum;
 
 namespace contrib {
+class ATenOpBase;
 class LongformerAttentionBase;
 class AttentionBase;
 class Group;
@@ -436,6 +437,7 @@ struct ProviderHost {
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
@@ -771,6 +773,8 @@ struct ProviderHost {
 #endif
 
 #ifdef ENABLE_TRAINING
+  virtual void ATenOpBase__Init(contrib::ATenOpBase* p, const OpKernelInfo& info, bool is_backward) = 0;
+  virtual Status ATenOpBase__Compute(const contrib::ATenOpBase* p, OpKernelContext* p_ctx) = 0;
   virtual void contrib__record_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) = 0;
@@ -1237,6 +1241,7 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
