@@ -61,6 +61,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("MatMul", op_registrations);
   }
 
+  {  // Clip
+    CreateClipOpBuilder("Clip", op_registrations);
+  }
+
   return op_registrations;
 }
 
