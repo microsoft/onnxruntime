@@ -8,15 +8,10 @@ nav_order: 12
 # Vitis-AI Execution Provider
 {: .no_toc }
 
-<p align="center">
-  <img src="/images/Vitis-AI.png">
-</p>
-
 [Vitis-AI](https://github.com/Xilinx/Vitis-AI) is Xilinx's development stack for hardware-accelerated AI inference on Xilinx platforms, including both edge devices and Alveo cards. It consists of optimized IP, tools, libraries, models, and example designs. It is designed with high efficiency and ease of use in mind, unleashing the full potential of AI acceleration on Xilinx FPGA and ACAP.
 
 The current Vitis-AI execution provider inside ONNXRuntime enables acceleration of Neural Network model inference using DPUv1. DPUv1 is a hardware accelerator for Convolutional Neural Networks (CNN) on top of the Xilinx [Alveo](https://www.xilinx.com/products/boards-and-kits/alveo.html) platform and targets U200 and U250 accelerator cards.
 
-On this page you will find information on how to [build](#Build) ONNXRuntime with Vitis-AI and on how to [get started](#Getting-started) with an example.
 
 ## Contents
 {: .no_toc }
@@ -24,11 +19,7 @@ On this page you will find information on how to [build](#Build) ONNXRuntime wit
 * TOC placeholder
 {:toc}
 
-## Build
-
-For building ONNXRuntime with the Vitis-AI execution provider, you will have to setup the hardware environment and build the docker, see [build steps](#Hardware-setup-and-docker-build).
-
-### System requirements
+## Requirements
 
 The following table lists system requirements for running docker containers as well as Alveo cards.  
 
@@ -46,7 +37,10 @@ The following table lists system requirements for running docker containers as w
 | FPGA                                                | Xilinx Alveo U200 or U250                                  |
 | Docker Version                                      | 19\.03\.1                                                  |
 
-### Hardware setup and docker build
+## Build
+See [Build instructions](../../how-to/build/eps.md#vitis-ai).
+
+**Hardware setup and docker build**
 
 1. Clone the Vitis AI repository:
     ```
@@ -84,13 +78,13 @@ The following table lists system requirements for running docker containers as w
    conda activate vitis-ai-tensorflow
    ```
 
-## Getting started
+## Usage
 
 ### On-the-fly quantization
 
 Usually, to be able to accelerate inference of Neural Network models with Vitis-AI DPU accelerators, those models need to quantized upfront. In the ONNXRuntime Vitis-AI execution provider we make use of on-the-fly quantization to remove this additional preprocessing step. In this flow, one doesn't need to quantize his/her model upfront but can make use of the typical inference execution calls (InferenceSession.run) to quantize the model on-the-fly using the first N inputs that are provided (see more information below). This will set up and calibrate the Vitis-AI DPU and from that point onwards inference will be accelerated for all next inputs.
 
-### Config/Settings
+## Configuration Options
 
 A couple of environment variables can be used to customize the Vitis-AI execution provider.
 

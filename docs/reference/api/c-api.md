@@ -14,6 +14,30 @@ nav_order: 1
 * TOC placeholder
 {:toc}
 
+## Builds
+
+| Artifact  | Description | Supported Platforms |
+|-----------|-------------|---------------------|
+| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../../resources/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../../resources/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.directml) | GPU - DirectML (Release) | Windows 10 1709+ |
+| [ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev) | Same as Release versions |
+
+
+.zip and .tgz files are also included as assets in each [Github release](https://github.com/microsoft/onnxruntime/releases).
+
+## API Reference
+Refer to [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h)
+
+1. Include [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
+2. Call OrtCreateEnv
+3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
+   - Optionally add more execution providers (e.g. for CUDA use OrtSessionOptionsAppendExecutionProvider_CUDA)
+4. Create Tensor
+   1) OrtCreateMemoryInfo
+   2) OrtCreateTensorWithDataAsOrtValue
+5. OrtRun
+
 ## Features
 
 * Creating an InferenceSession from an on-disk model file and a set of SessionOptions.
@@ -56,22 +80,6 @@ chooses to override this by setting ```session_state.use_env_allocators``` to "0
    * *Scenario*: You've several models that use the same set of initializers except the last few layers of the model and you load these models in the same process. When every model (session) creates a separate instance of the same initializer, it leads to excessive and wasteful memory usage since in this case it's the same initializer. You want to optimize memory usage while having the flexibility to allocate the initializers (possibly even store them in shared memory). 
    * *Example Usage*: Use the ```AddInitializer``` API to add a pre-allocated initializer to session options before calling ```CreateSession```. Use the same instance of session options to create several sessions allowing the initializer(s) to be shared between the sessions. See [C API sample usage (TestSharingOfInitializer)](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/shared_lib/test_inference.cc) and [C# API sample usage (TestWeightSharingBetweenSessions)](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs).
 
-## Usage Overview
-
-1. Include [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
-2. Call OrtCreateEnv
-3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
-   - Optionally add more execution providers (e.g. for CUDA use OrtSessionOptionsAppendExecutionProvider_CUDA)
-4. Create Tensor
-   1) OrtCreateMemoryInfo
-   2) OrtCreateTensorWithDataAsOrtValue
-5. OrtRun
-
-## Sample code
-
-The example below shows a sample run using the SqueezeNet model from ONNX model zoo, including dynamically reading model inputs, outputs, shape and type information, as well as running a sample vector and fetching the resulting class probabilities for inspection.
-
-* [C_Api_Sample.cpp](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
 ## Deployment
 
@@ -88,3 +96,7 @@ There are some cases where the app is not directly consuming the onnxruntime but
 ## Telemetry
 
 To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.
+
+## Samples
+
+See [Tutorials: API Basics - C](../../tutorials/inferencing/api-basics.md#c-1)

@@ -12,8 +12,6 @@ kramdown:
   toc_levels: "1,2,3"
 logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:
-  "Get started":
-    - "/docs/get-started/"
   "Tutorials":
     - "/docs/tutorials/"
   "How to":

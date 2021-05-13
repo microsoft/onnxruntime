@@ -6,11 +6,32 @@ nav_order: 1
 ---
 
 # CUDA Execution Provider
+{: .no_toc }
 
 The CUDA Execution Provider enables hardware accelerated computation on Nvidia CUDA-enabled GPUs.
 
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+## Requirements
+Please reference table below for official GPU packages dependencies.
+
+|ONNX Runtime|CUDA|cuDNN|Notes|
+|---|---|---|---|
+|1.8|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4<br/>libcupti.so 2020.1.1|
+|1.7|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
+|1.5-1.6|10.2|8.0.3|CUDA 11 can be built from source|
+|1.2-1.4|10.1|7.6.5|Requires cublas10-10.2.1.243; cublas 10.1.x will not work|
+|1.0-1.1|10.0|7.6.4|CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017|
+
+For older versions, please reference the readme and build pages on the release branch.
+
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build.md#CUDA).
+For build instructions, please see the [BUILD page](../../how-to/build/eps.md#cuda).
 
 ## Configuration Options
 The CUDA Execution Provider supports the following configuration options.
@@ -51,7 +72,7 @@ Whether to do copies in the default stream or use separate streams. The recommen
 
 Default value: true
 
-## Example Usage
+## Samples
 
 ### Python
 
@@ -88,14 +109,4 @@ options.do_copy_in_default_stream = 1;
 
 SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
 ```
-## Version dependency
-Please reference table below for official GPU packages dependencies.
 
-|ONNX Runtime|CUDA|cuDNN|Notes|
-|---|---|---|---|
-|1.7|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
-|1.5-1.6|10.2|8.0.3|CUDA 11 can be built from source|
-|1.2-1.4|10.1|7.6.5|Requires cublas10-10.2.1.243; cublas 10.1.x will not work|
-|1.0-1.1|10.0|7.6.4|CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017|
-
-For older versions, please reference the readme and build pages on the release branch.

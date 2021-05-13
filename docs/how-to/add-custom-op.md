@@ -1,47 +1,40 @@
 ---
-title: Add a new operator
+title: Use custom operators
 parent: How to
-nav_order: 2
+nav_order: 6
 ---
-
-# Add a new operator to ONNX Runtime
+# Custom operators
 {: .no_toc }
 
+ONNX Runtime provides options to run custom operators that are not official ONNX operators. The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/contrib_ops) contains some common non-official ops, however it's not recommended to add operators here to avoid increasing binary size of the core runtime package.
 ## Contents
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
 
-A new op can be written and registered with ONNXRuntime in the following 3 ways
+## Register a custom operator
+A new op can be registered with ONNX Runtime using the Custom Operator API (onnxruntime_c_api.h)
 
-## Custom Operator API
-
-Use the custom operator C/C++ API (onnxruntime_c_api.h)
-
-* Create an OrtCustomOpDomain with the domain name used by the custom ops
-* Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add
-* Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
+1. Create an OrtCustomOpDomain with the domain name used by the custom ops
+2.  Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add
+3.  Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
   
-See [this](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/shared_lib/test_inference.cc) for examples called `MyCustomOp` and `SliceCustomOp` that use the C++ helper API (onnxruntime_cxx_api.h).
+### Examples
+{: .no_toc}
 
-You can also compile the custom ops into a shared library and use that to run a model via the C++ API. The same test file contains an example.
+* [C++ helper API](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/shared_lib/test_inference.cc): custom ops `MyCustomOp` and `SliceCustomOp` use the C++ helper API (onnxruntime_cxx_api.h). The test file also demonstrates an option to  compile the custom ops into a shared library to be used to run a model via the C++ API.
 
-The source code for a sample custom op shared library containing two custom kernels is [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc).
+* [Custom op shared library](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc): sample custom op shared library containing two custom kernels
 
-See [this](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/python/onnxruntime_test_python.py) for an example called `testRegisterCustomOpsLibrary` that uses the Python API to register a shared library that contains custom op kernels. Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are the CUDA and the CPU EPs.
+* [Custom op shared library with Python API](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/python/onnxruntime_test_python.py): `testRegisterCustomOpsLibrary` uses the Python API to register a shared library with custom op kernels. Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are the CUDA and the CPU EPs.
 
-Note that when a model being inferred on gpu, onnxruntime will insert MemcpyToHost op before a cpu custom op and append MemcpyFromHost after to make sure tensor(s) are accessible throughout calling, meaning there are no extra efforts required from custom op developer for the case.
+* [E2E example: Export and run a PyTorch model with custom op](../tutorials/tutorials/export-pytorch-model.html)
 
-When using CUDA custom ops, to ensure synchronization between ORT's CUDA kernels and the custom CUDA kernels, they must all use the same CUDA compute stream. To ensure this, you may first create a CUDA stream and pass it to the underlying Session via SessionOptions (use `OrtCudaProviderOptions` struct). This will ensure ORT's CUDA kernels use that stream and if the custom CUDA kernels are launched using the same stream, synchronization is now taken care of implicitly. For a sample, please see how the afore-mentioned `MyCustomOp` is being launched and how the Session using this custom op is created.
+## CUDA custom ops
+When a model being inferred on GPU, onnxruntime will insert MemcpyToHost op before a CPU custom op and append MemcpyFromHost after to make sure tensor(s) are accessible throughout calling, meaning there are no extra efforts required from custom op developer for the case.
 
-## Use RegisterCustomRegistry API
+When using CUDA custom ops, to ensure synchronization between ORT's CUDA kernels and the custom CUDA kernels, they must all use the same CUDA compute stream. To ensure this, you may first create a CUDA stream and pass it to the underlying Session via SessionOptions (use `OrtCudaProviderOptions` struct). This will ensure ORT's CUDA kernels use that stream and if the custom CUDA kernels are launched using the same stream, synchronization is now taken care of implicitly.
 
-Implement your kernel and schema (if required) using the OpKernel and OpSchema APIs (headers are in the include folder).
-Create a CustomRegistry object and register your kernel and schema with this registry.
-Register the custom registry with ONNXRuntime using RegisterCustomRegistry API.
-See [this](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/framework/local_kernel_registry_test.cc) for an example. for an example.
+For a sample, please see how the afore-mentioned `MyCustomOp` is being launched and how the Session using this custom op is created.
 
-## Contribute the operator to ONNXRuntime
-
-This is for ops that are in the process of being proposed to ONNX. This way you don't have to wait for an approval from the ONNX team if the op is required in production today. See [this](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/contrib_ops) for an example.
