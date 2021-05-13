@@ -274,7 +274,6 @@ class GraphExecutionManager(ABC):
                 def shortname(kclass):
                     return kclass.__qualname__
                 for kclass in torch.autograd.Function.__subclasses__():
-                    print("Registering apply and backward for ", shortname(kclass))
                     onnxruntime.register_forward_core(shortname(kclass), getattr(kclass, "apply"))
                     onnxruntime.register_backward_core(shortname(kclass), getattr(kclass, "backward"))
             else:

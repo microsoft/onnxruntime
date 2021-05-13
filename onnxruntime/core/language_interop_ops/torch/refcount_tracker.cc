@@ -27,7 +27,7 @@ void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObj
   } else {
     addrs[addr].push_back(log_tag);
   }
-  std::cout << "Track" << ObjCategoryToString(category) << " - Address: [" << addr << "] RefCnt: " << Py_REFCNT(addr) << " LogTag: " << log_tag << std::endl;
+  std::cout << "Track" << ObjCategoryToString(category) << "\t - \tAddress: [" << addr << "] \tRefCnt: " << Py_REFCNT(addr) << " \tLogTag: " << log_tag << std::endl;
 }
 
 void RefCountTracker::DumpDetails() {
@@ -35,7 +35,7 @@ void RefCountTracker::DumpDetails() {
     std::ostringstream oss;
     oss << "Category: " << ObjCategoryToString(addr_info_it->first) << std::endl;
     for (auto it = addr_info_it->second.begin(); it != addr_info_it->second.end(); ++it) {
-      oss << "\tAddress: [" << it->first << "] \t RefCnt: " << Py_REFCNT(it->first) << " \tLogTag: (";
+      oss << "\tAddress: [" << it->first << "] \tRefCnt: " << Py_REFCNT(it->first) << " \tLogTag: (";
       for (auto vit = it->second.begin(); vit != it->second.end(); ++vit) {
         oss << *vit << ",";
       }
