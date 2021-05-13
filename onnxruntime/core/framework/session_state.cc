@@ -283,6 +283,16 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel* kernel, int input_idx,
   return Status::OK();
 }
 
+static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
+                                                     const PrePackedWeights& pre_packed_weights) {
+  std::ostringstream ss_1;
+  ss_1 << op_type;
+  ss_1 << "+";
+  ss_1 << std::to_string(pre_packed_weights.GetHash());
+
+  return ss_1.str();
+}
+
 Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                                        const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
@@ -330,23 +340,17 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                     ORT_ENFORCE(weights_to_be_filled_in.buffers_.size() > 0, "The kernel corresponding to the node ", node.Name(),
                                 " doesn't have an implementation that can cache computed pre-packed weights");
 
-                    auto prepacked_weight_hash = weights_to_be_filled_in.GetHash();
-
                     const auto& op_type = node.OpType();
 
                     // Sanity check
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    std::ostringstream ss_1;
-                    ss_1 << op_type;
-                    ss_1 << "+";
-                    ss_1 << std::to_string(prepacked_weight_hash);
-
                     // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
                     // that we just got by invoking PrePack() on this kernel.
 
-                    const std::string& prepacked_weights_container_key = ss_1.str();
+                    const std::string& prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(op_type,
+                                                                                                           weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(prepacked_weights_container_key);
 
@@ -1181,7 +1185,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
-    // TODO: Remove const_cast ugliness
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }

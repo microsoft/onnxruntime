@@ -15,7 +15,8 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
   // Support only CPU based allocators for now.
   // as pre-packing is only supported by CPU kernels for now.
   if (device_name == CPU) {
-    /*we do not need an arena based allocator*/
+    // TODO: Investigate benefits of using an arena based allocator
+    // For now, we go with a non-arena based allocator
     AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
                                       0, false};
     auto allocator = CreateAllocator(device_info);
@@ -31,21 +32,21 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
 
 const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& key) {
   ORT_ENFORCE(HasWeight(key), "PrepackedWeightsContainer does not have an initializer with the same key: ", key);
-  return initialized_tensor_name_to_prepacked_weights_map_[key];
+  return prepacked_weights_map_[key];
 }
 
 void PrepackedWeightsContainer::WriteWeight(const std::string& key, PrePackedWeights&& packed_weight) {
   ORT_ENFORCE(!HasWeight(key), "PrepackedWeightsContainer already has an initializer with the same key: ", key);
-  initialized_tensor_name_to_prepacked_weights_map_.insert({key, std::move(packed_weight)});
+  prepacked_weights_map_.insert({key, std::move(packed_weight)});
 }
 
 bool PrepackedWeightsContainer::HasWeight(const std::string& key) const {
-  return initialized_tensor_name_to_prepacked_weights_map_.find(key) !=
-         initialized_tensor_name_to_prepacked_weights_map_.end();
+  return prepacked_weights_map_.find(key) !=
+         prepacked_weights_map_.end();
 }
 
 size_t PrepackedWeightsContainer::GetNumberOfElements() const {
-  return initialized_tensor_name_to_prepacked_weights_map_.size();
+  return prepacked_weights_map_.size();
 }
 
 }  // namespace onnxruntime

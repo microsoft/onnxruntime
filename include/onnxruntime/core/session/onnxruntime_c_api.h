@@ -1322,7 +1322,13 @@ struct OrtApi {
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
 
   /*
-     * Creates an OrtPrepackedWeightsContainer instance
+     * Creates an OrtPrepackedWeightsContainer instance.
+     * This container will hold pre-packed buffers of shared initializers for sharing between sessions
+     * (i.e.) if there are shared initializers that can be shared between sessions, the pre-packed buffers 
+     * of these (if any) may possibly be shared to provide memory footprint savings. Pass this container
+     * to sessions that you would like to share pre-packed buffers of shared initializers at session 
+     * creation time. 
+     *  \out - created OrtPrepackedWeightsContainer instance
     */
   ORT_API2_STATUS(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
 

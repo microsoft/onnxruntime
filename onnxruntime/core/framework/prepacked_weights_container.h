@@ -46,7 +46,11 @@ class PrepackedWeightsContainer final {
   // needs to destructed after the container containing the pre-packed cached tensors
   // because the Tensor buffers will be de-allocated using these allocators
   std::unordered_map<std::string, AllocatorPtr> allocators_;
-  std::unordered_map<std::string, PrePackedWeights> initialized_tensor_name_to_prepacked_weights_map_;
+
+  // This is an unordered map that holds a mapping between a composite key
+  // to PrePackedWeights instances.
+  // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
+  std::unordered_map<std::string, PrePackedWeights> prepacked_weights_map_;
 };
 
 }  // namespace onnxruntime
