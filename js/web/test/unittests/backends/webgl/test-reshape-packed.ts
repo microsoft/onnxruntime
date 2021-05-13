@@ -90,6 +90,11 @@ function getTestData(): TestData[] {
       inputShape: [2, 2, 2, 4],
       outputShape: [2, 1, 4, 4],
     },
+    {
+      elementCount: 18432,
+      inputShape: [512, 36, 1, 1],
+      outputShape: [512, 36],
+    },
   ];
 }
 
