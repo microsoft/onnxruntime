@@ -587,8 +587,7 @@ stages:
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && \
-                /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release
+                bash -c "$(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release"
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
