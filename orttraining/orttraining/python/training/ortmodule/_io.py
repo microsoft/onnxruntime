@@ -9,6 +9,22 @@ import inspect
 import torch
 import warnings
 
+class _PrimitiveType(object):
+    _primitive_types = {int, bool, float}
+    @staticmethod
+    def is_primitive_type(value):
+        return type(value) in _PrimitiveType._primitive_types
+
+    @staticmethod
+    def get_tensor(value, device):
+        return torch.tensor(value, device=device)
+
+    @staticmethod
+    def get_primitive_dtype(value):
+        # If `value` is a boolean, save the value of the boolean in dtype.
+        # This way, if the value changes from one forward call to the next, the schema will mismatch,
+        # and the model will be re-exported.
+        return f"{str(type(value))}_{value}" if isinstance(value, bool) else str(type(value))
 
 class _InputInfo(object):
     def __init__(self,
@@ -40,11 +56,13 @@ class _InputInfo(object):
             \t#Positionals (non-None): {self.num_positionals_non_none}
             \tKeyword names:           {self.keyword_names}'''
 
-    def flatten(self, args, kwargs):
+    def flatten(self, args, kwargs, device):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
 
-        ret = list(args)
-        ret += [kwargs[name] for name in self.names if name in kwargs]
+        ret = [_PrimitiveType.get_tensor(arg, device) if _PrimitiveType.is_primitive_type(arg) else arg for arg in args]
+        ret += [_PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
+            else kwargs[name] for name in self.names if name in kwargs]
+
         return ret
 
     def unflatten(self, flat_args):
@@ -55,7 +73,7 @@ class _InputInfo(object):
             if name in self.keyword_names}
         return args, kwargs
 
-def _combine_input_buffers_initializers(param_names, onnx_input_names, input_info, buffer_names, inputs, kwargs):
+def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
     '''Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -73,26 +91,38 @@ def _combine_input_buffers_initializers(param_names, onnx_input_names, input_inf
         if name in kwargs and kwargs[name] is not None:
             # Only use keywords coming from user that are expected by ONNX model
             inp = kwargs[name]
-        elif input_idx < len(non_none_inputs):
-            # Only use positionals coming from user that are expected by ONNX model
-            if name != input_info.names[input_idx]:
-                # When ONNX drops unused inputs, get correct index from user input
-                input_idx = input_info.names.index(name)
-            inp = non_none_inputs[input_idx]
 
-        elif input_idx >= len(non_none_inputs):
+        if inp is None:
+            try:
+                # Only use positionals coming from user that are expected by ONNX model
+                # if input_idx >= len(input_info.names), IndexError will be thrown
+                if name != input_info.names[input_idx]:
+                    # When ONNX drops unused inputs, get correct index from user input
+                    # if name is not in input_info.names, ValueError will be thrown
+                    input_idx = input_info.names.index(name)
+                inp = non_none_inputs[input_idx]
+            except (IndexError, ValueError):
+                # ONNX input name is not present in input_info.names.
+                pass
+
+        if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
             try:
                 inp = buffer_names_dict[name]
             except KeyError:
-                raise KeyError(f'Registered buffer name {name} not found.')
+                # ONNX input name is not present in the registered buffer dict.
+                pass
 
         if inp is not None:
+            if _PrimitiveType.is_primitive_type(inp):
+                inp = _PrimitiveType.get_tensor(inp, device)
             result.append(inp)
         else:
             raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
-    # Initializers
-    result.extend([param[1] for param in param_names])
+
+    # params is a list of all initializers known to the onnx graph
+    result.extend(params)
+
     return result
 
 
@@ -201,6 +231,8 @@ def _extract_schema(data):
 
     if data is None:
         return None
+    elif _PrimitiveType.is_primitive_type(data):
+        return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
@@ -233,7 +265,9 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
         if output is None:
             return
         elif isinstance(output, torch.Tensor):
-            output_name = f'output{output_idx[0]}'
+            # Naming the outputs with a hyphen ensures that there can be no input with the same
+            # name, preventing collisions with other NodeArgs (for example an input to forward called output0)
+            output_name = f'output-{output_idx[0]}'
             output_idx[0] += 1
             output_names.append(output_name)
             output_dynamic_axes[output_name] = {}
@@ -305,10 +339,17 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
         return dynamic_axes
 
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
-        if input is not None and (onnx_graph is None or name in onnx_graph_input_names):
+        if input is None:
+            # Drop all None inputs.
+            return
+
+        # InputInfo should contain all the names irrespective of whether they are
+        # a part of the onnx graph or not.
+        input_names.append(name)
+
+        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input, torch.Tensor):
             if input.requires_grad:
                 input_names_require_grad.append(name)
-            input_names.append(name)
             dynamic_axes.update(_add_dynamic_shape(name, input))
             input_shape.append(list(input.size()))
 

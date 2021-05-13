@@ -30,6 +30,10 @@ are used for code-formatting and linting features for developers:
 
 To populate typescript type declarations, in each projects, run `npm ci`.
 
+#### Run code formatter and linter manually
+
+in `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run clang-format.
+
 ## onnxruntime-common
 
 > language: typescript
@@ -154,6 +158,97 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 
 ## onnxruntime-react-native
 
-TBD
+> language: typescript, java, objective-c
 
-<!-- TODO: update this section for onnxruntime react-native -->
+> dependency: onnxruntime-common
+
+> folder: <ORT_ROOT>/js/react_native
+
+This project provides an ONNX Runtime React Native JavaScript library to run ONNX models on React Native Android and iOS app.
+
+### Requirements
+
+- Yarn
+- Android SDK and NDK, which can be installed via Android Studio or sdkmanager command line tool
+- A Mac computer with the latest macOS
+- [Xcode](https://developer.apple.com/xcode/)
+- [CMake](https://cmake.org/download/)
+- [Python 3](https://www.python.org/downloads/mac-osx/)
+
+### Build
+
+1. Install NPM packages for ONNX Runtime common JavaScript library and required React Native JavaScript libraries
+
+   1. in `<ORT_ROOT>/js/`, run `npm ci`.
+   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
+   3. in `<ORT_ROOT>/js/react_native/`, run `yarn`.
+
+2. Build Android ONNX Runtime package
+
+   1. Set up an Android build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#android)
+
+   2. In `<ORT_ROOT>`, run this python script to build ONNX Runtime Android archive file. In windows, this requires admin account to build. If an app uses a fixed set of models, refer to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#android) and build a mobile version package
+   ```python
+   python tools/ci_build/github/android/build_aar_package.py js/react_native/scripts/aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
+   ```
+
+   3. This generates `onnxruntime-mobile-<version>.aar` in `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>`. Copy `aar` file into `<ORT_ROOT>/js/react_native/android/libs` and rename it as `onnxruntime.aar`
+
+   4. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
+   ```sh
+   adb shell am instrument -w ai.onnxruntime.react_native.test/androidx.test.runner.AndroidJUnitRunner
+   ```
+
+3. Build iOS ONNX Runtime package
+
+   1. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#ios).
+   
+   2. Build ONNX Runtime library for iOS from `<ORT_ROOT>` using this command,
+   ```sh
+   ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 11
+   ```
+   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphoneos`
+
+   3. Clean up the previous build and build ONNX Runtime library for iOS Simulator from `<ORT_ROOT>`
+   ```sh
+   ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target 11
+   ```
+   Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphonesimulator/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphonesimulator`
+   
+   4. Edit `onnxruntime-react-native.iphoneos.podspec` and `onnxruntime-react-native.iphonesimulator.podsepc` in `<ORT_ROOT>/js/react_native` to change a version of ONNX Runtime library.
+
+   5. Copy ONNX Runtime header files
+   ```sh
+   cp <ORT_ROOT>/include/onnxruntime/core/session/*.h <ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/include
+   ```
+
+   6. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
+       ```sh
+       pod install
+       export ONNXRUNTIME_VERSION=<version>; xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
+       ```
+
+4. Update a version in `package.json` to align with ONNX Runtime version.
+
+5. Test an example for Android and iOS. In Windows, open Android Emulator first. From `<ORT_ROOT>/js/react_native`
+    ```sh
+    yarn bootstrap
+    yarn example ios
+    yarn example android
+    ```
+
+### NPM Packaging
+
+1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
+
+2. Run `yarn prepack` to change `onnxruntime-common` to point to a published npm package
+
+3. Run `npm pack` and verify NPM package contents
+
+4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
+
+5. Run `npm publish <tgz>` to publish to npmjs
+
+### Distribution
+
+It should be able to consumed by React Native projects that uses Yarn packages through `yarn add onnxruntime-react-native`.

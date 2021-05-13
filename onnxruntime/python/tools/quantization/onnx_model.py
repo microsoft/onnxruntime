@@ -272,10 +272,11 @@ class ONNXModel:
         # initialize sorted_nodes
         sorted_nodes = []
         for input in itertools.chain(self.initializer(), self.model.graph.input):
-            for node_idx in deps_to_nodes[input.name]:
-                deps_count[node_idx] = deps_count[node_idx] - 1
-                if deps_count[node_idx] == 0:
-                    sorted_nodes.append(self.nodes()[node_idx])
+            if input_name in deps_to_nodes:
+                for node_idx in deps_to_nodes[input.name]:
+                    deps_count[node_idx] = deps_count[node_idx] - 1
+                    if deps_count[node_idx] == 0:
+                        sorted_nodes.append(self.nodes()[node_idx])
 
         s = 0
         e = len(sorted_nodes)
