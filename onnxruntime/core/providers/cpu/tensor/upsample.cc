@@ -1214,7 +1214,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
     // When sizes input is available directly populate it into the output_dims array.
-    memcpy(output_dims.data(), sizes->Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
+    memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
 
     ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
