@@ -349,7 +349,6 @@ and present state are optional. Present state could appear in output even when p
       .SinceVersion(1)
       .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(-1))
       .Attr("unidirectional",
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
@@ -373,7 +372,6 @@ and present state are optional. Present state could appear in output even when p
       .SinceVersion(1)
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("head_size", "Size of an attention head", AttributeProto::INT, static_cast<int64_t>(-1))
       .Attr("unidirectional",
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,

@@ -44,7 +44,6 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
-  head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("head_size", -1));
 
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 }
@@ -236,7 +235,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, hidden_size_x3, packed_weights_data);
     packed_weights_data += packed_weights_size_;
-    weights_data += head_size_;
+    weights_data += head_size;
   }
 
   is_packed = true;
@@ -307,15 +306,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         int input_offset = batch_index * sequence_length * input_hidden_size;
         int weights_offset = qkv_index * hidden_size + head_index * head_size;
         T* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size_);
+        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
         for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size_ * sizeof(T));
-          broadcast_data_dest += head_size_;
+          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
+          broadcast_data_dest += head_size;
         }
 
         //                   original           transposed            iteration
@@ -324,7 +323,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
         if (packed_weights_) {
           const auto* packed_weight =
-              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size_);
+              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
           MlasGemm(
               CblasNoTrans,               // TransA = no
               sequence_length,            // M      = S
@@ -336,7 +335,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               packed_weight,              // B
               1.0f,                       // beta
               qkv_dest + qkv_offset,      // C
-              head_size_,                 // ldc
+              head_size,                 // ldc
               nullptr);                   // use single-thread
         } else {
           math::GemmEx<float, ThreadPool>(
@@ -363,7 +362,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
-                        head_size_, hidden_size, context);
+                        head_size, hidden_size, context);
 }
 
 }  // namespace contrib

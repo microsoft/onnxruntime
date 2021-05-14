@@ -90,7 +90,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
-    weights_data += head_size_;
+    weights_data += head_size;
   }
 
   is_packed = true;
@@ -108,9 +108,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
   //   Input  7 - weight_zero_point : scalar for now, will support per column later
-  //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size_)
+  //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
   //   Output 0                     : (batch_size, sequence_length, hidden_size)
-  //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size_)
+  //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
   //   ORT_RETURN_IF_ERROR(CheckInputs(context));
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = packed_weights_ ? nullptr : context->Input<Tensor>(1);
@@ -250,7 +250,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
                         batch_size, sequence_length,
-                        head_size_, hidden_size, context);
+                        head_size, hidden_size, context);
 }
 
 }  // namespace contrib

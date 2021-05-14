@@ -35,7 +35,6 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
   int num_heads_;             // number of attention heads
-  mutable int head_size_;     // size of each attention head
   bool is_unidirectional_;    // whether every token can only attend to previous tokens.
 };
 
